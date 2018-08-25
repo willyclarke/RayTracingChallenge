@@ -1,0 +1,15 @@
+#!/bin/bash
+
+CURRDIR=$(pwd)
+SOURCEFILE=${CURRDIR}/src/main.cpp
+mkdir -p ${CURRDIR}/../../../build/Cucumber
+OUTPUT="-o ${CURRDIR}/../../../build/Cucumber/raytrace"
+INCLUDE="-I."
+FLAGS="-g -Wall -fcolor-diagnostics -DHANDMADE_INTERNAL"
+OPTIMIZATION="-O3"
+LIBS=-pthread
+DATE=$(date)
+echo ${DATE}
+COMPILECMD="${OPTIMIZATION} ${FLAGS} ${INCLUDE} ${SOURCEFILE} -std=c++14 ${OUTPUT} ${LIBS}"
+clang++ ${COMPILECMD}
+rc -c clang++ ${COMPILECMD}
