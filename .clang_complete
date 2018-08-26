@@ -1,3 +1,4 @@
 -Wall
 -Wextra
+-Icommon/src/main
 -std=c++14
