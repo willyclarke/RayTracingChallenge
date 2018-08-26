@@ -7,7 +7,7 @@
  * License  : MIT
  * Descripti: Test file to test the datastructures in raytracer
  ******************************************************************************/
-#include "../../../../common/datastructures.hpp"
+#include <datastructures.hpp>
 
 #include <cstdlib>  //<! for size_t definition.
 #include <iostream>
@@ -45,4 +45,9 @@ void RunTests()
    {
        std::cerr << "TestIsVector Failed!" << std::endl;
    }
+}
+
+auto main() -> int
+{
+    return 0;
 }

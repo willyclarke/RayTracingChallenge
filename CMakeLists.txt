@@ -1,4 +1,9 @@
 cmake_minimum_required(VERSION 3.0) # setting this is required
+set(CMAKE_PROJECT_VERSION 0)
+set(CMAKE_PROJECT_VERSION_MAJOR 0)
+set(CMAKE_PROJECT_VERSION_MINOR 0)
+set(CMAKE_PROJECT_VERSION_PATCH 1)
+
 if(UNIX AND NOT APPLE)
     set(LINUX TRUE)
 endif()
@@ -11,6 +16,15 @@ else()
     message(STATUS ">>> Not Linux")
     # stuff that should happen not on Linux
 endif()
+
+###############################################################################
+# Google testing
+###############################################################################
+add_subdirectory(external/googletest)
+enable_testing()
+set(GTest TRUE)
+###############################################################################
+
 # The libraries need to be defined first?
 add_subdirectory(common)
 add_subdirectory(src/raytrace)

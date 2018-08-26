@@ -61,9 +61,6 @@ target_compile_options(raytrace PUBLIC -std=c++1y -Wall -g -Wall -fcolor-diagnos
 
 # This allows to include files relative to the root of the src directory with a <> pair
 target_include_directories(raytrace PUBLIC src/main)
-#target_include_directories(raytrace PUBLIC external)
-#target_include_directories(raytrace PUBLIC external/spdlog/include)
-#target_include_directories(raytrace PUBLIC common/src/main)
 
 # This copies all resource files in the build directory.
 # We need this, because we want to work with paths relative to the executable.
