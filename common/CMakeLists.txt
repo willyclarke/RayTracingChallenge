@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0) # setting this is required
-project(raytrace_project)                # this sets the project name
+project(raylib_project)                # this sets the project name
 ###############################################################################
 # Copied from
 ###############################################################################
@@ -52,18 +52,17 @@ add_definitions(-DHANDMADE_INTERNAL)
 
 # The data is just added to the executable, because in some IDEs (QtCreator)
 # files are invisible when they are not explicitly part of the project.
-add_executable(raytrace ${sources} ${data})
+add_library(raylib ${sources} ${data})
 
-# Just for raytrace add some compiler flags.
-target_compile_options(raytrace PUBLIC -std=c++1y -Wall -g -Wall -fcolor-diagnostics)
+# Just for raylib add some compiler flags.
+target_compile_options(raylib PUBLIC -std=c++1y -Wall -g -Wall -fcolor-diagnostics)
 # NOTE: to see more of what is going on you can add "-v"
-#target_compile_options(raytrace PUBLIC -v)
+#target_compile_options(raylib PUBLIC -v)
 
 # This allows to include files relative to the root of the src directory with a <> pair
-target_include_directories(raytrace PUBLIC src/main)
-#target_include_directories(raytrace PUBLIC external)
-#target_include_directories(raytrace PUBLIC external/spdlog/include)
-#target_include_directories(raytrace PUBLIC common/src/main)
+target_include_directories(raylib PUBLIC src/main)
+target_include_directories(raylib PUBLIC external)
+target_include_directories(raylib PUBLIC external/spdlog/include)
 
 # This copies all resource files in the build directory.
 # We need this, because we want to work with paths relative to the executable.
@@ -82,19 +81,17 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # that we need to link into the program.
 #find_package(Boost 1.36.0 COMPONENTS filesystem system REQUIRED)
 if (LINUX)
-    target_link_libraries(raytrace PUBLIC
+    target_link_libraries(raylib PUBLIC
         #${Boost_LIBRARIES}
         # here you can add any library dependencies
         pthread
         rt
-        raylib
         )
 else()
-    target_link_libraries(raytrace PUBLIC
+    target_link_libraries(raylib PUBLIC
         #${Boost_LIBRARIES}
         # here you can add any library dependencies
         pthread
-        raylib
         )
 endif()
 
@@ -118,11 +115,11 @@ if(GTEST_FOUND)
 
   # This allows us to use the executable as a link library, and inherit all
   # linker options and library dependencies from it, by simply adding it as dependency.
-  set_target_properties(raytrace PROPERTIES ENABLE_EXPORTS on)
+  set_target_properties(raylib PROPERTIES ENABLE_EXPORTS on)
 
   target_link_libraries(unit_tests PUBLIC
     ${GTEST_BOTH_LIBRARIES}
-    raytrace
+    raylib
   )
 
   target_include_directories(unit_tests PUBLIC
@@ -137,18 +134,18 @@ endif()
 
 # All install commands get the same destination. this allows us to use paths
 # relative to the executable.
-install(TARGETS raytrace DESTINATION destination)
+install(TARGETS raylib DESTINATION destination)
 
 # This is basically a repeat of the file copy instruction that copies the
 # resources in the build directory, but here we tell cmake that we want it
 # in the package.
-#install(DIRECTORY resources DESTINATION raytrace_destination)
+#install(DIRECTORY resources DESTINATION raylib_destination)
 
 # Now comes everything we need, to create a package
 # there are a lot more variables you can set, and some
 # you need to set for some package types, but we want to
 # be minimal here.
-set(CPACK_PACKAGE_NAME "Myraytrace")
+set(CPACK_PACKAGE_NAME "Myraylib")
 set(CPACK_PACKAGE_VERSION "1.0.0")
 
 # We don't want to split our program up into several incomplete pieces.

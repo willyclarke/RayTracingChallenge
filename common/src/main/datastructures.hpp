@@ -17,7 +17,11 @@ namespace ww
         float X{};
         float Y{};
         float Z{};
-        float W{};
+        float W{}; //!< is 1.0 when tuple is point and 0.0 when tuple is a vector.
     };
+
+    // NOTE: Declarations.
+    bool IsVector(tup const &Tup);
+    bool IsPoint(tup const &Tup);
 };
 #endif
