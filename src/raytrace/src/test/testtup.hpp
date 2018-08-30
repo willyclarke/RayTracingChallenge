@@ -7,4 +7,4 @@
   * License  : MIT
   * Descripti: Declarations for the tuple tests
   ******************************************************************************/
-void RunTests();
+void RunTests(int argc, char *argv[]);

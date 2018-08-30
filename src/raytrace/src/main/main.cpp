@@ -12,6 +12,12 @@
 #include <iostream>
 
 #include "featuretest.hpp"
+#include "gtest/gtest.h"
+
+//TEST(ZeroValue, Construction)
+//{
+//    EXPECT_EQ(0, int(0));
+//}
 
 // ---
 // NOTE: Main function.
@@ -32,7 +38,7 @@ auto main(int argc, char *argv[]) -> int
 
    if (DoTheTest)
    {
-      RunTupleTest();
+      RunTupleTest(argc, argv);
    }
 
    return 0;

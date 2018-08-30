@@ -80,20 +80,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 #find_package(Boost 1.36.0 COMPONENTS filesystem system REQUIRED)
 if (LINUX)
     target_link_libraries(raytrace PUBLIC
-        #${Boost_LIBRARIES}
-        # here you can add any library dependencies
-        pthread
         rt
-        raylib
         )
-else()
+endif()
     target_link_libraries(raytrace PUBLIC
         #${Boost_LIBRARIES}
         # here you can add any library dependencies
         pthread
         raylib
+        gtest
         )
-endif()
 
 ###############################################################################
 ## testing ####################################################################

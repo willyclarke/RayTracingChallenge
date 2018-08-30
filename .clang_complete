@@ -1,4 +1,5 @@
 -Wall
 -Wextra
 -Icommon/src/main
+-Iexternal/googletest/googletest/include
 -std=c++14
