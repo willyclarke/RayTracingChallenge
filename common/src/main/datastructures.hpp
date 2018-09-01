@@ -28,20 +28,26 @@ constexpr float EPSILON = 0.0000001;  // 1E27 * std::numeric_limits<float>::min(
 
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
-tup Sub(tup const &A, tup const &B);
 bool Equal(float const A, float const B);
 bool Equal(tup const &A, tup const &B);
+tup Negate(tup const &Tup);
+float MagSquared(tup const &Tup);
+float Mag(tup const &Tup);
+tup Multiply(float const S, tup const &Tup);
+tup Point(float A, float B, float C);
 bool IsVector(tup const &Tup);
 bool IsPoint(tup const &Tup);
+tup Sub(tup const &A, tup const &B);
 tup Vector(float A, float B, float C);
-tup Point(float A, float B, float C);
 
 };  // namespace ww
-
 
 // ---
 // NOTE: Declare the operator for inclusion elsewhere.
 // ---
 std::ostream &operator<<(std::ostream &stream, const ww::tup &T);
-
+ww::tup operator-(ww::tup const &Tup);
+ww::tup operator*(float const S, ww::tup const &Tup);
+ww::tup operator*(ww::tup const &Tup, float const S);
+ww::tup operator/(ww::tup const &Tup, float const S);
 #endif

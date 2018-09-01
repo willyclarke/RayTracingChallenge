@@ -12,6 +12,7 @@
 
 #include <datastructures.hpp>
 
+#include <cmath>
 #include <iostream>
 
 #include "gtest/gtest.h"
@@ -76,7 +77,7 @@ TEST(Tuples, Addition)
    EXPECT_EQ(ww::Equal(C, Expect), true);
 }
 
-TEST(Tuples, Subtraction1)
+TEST(Tuples, SubtractionPointFromPoint)
 {
    ww::tup const P1 = ww::Point(3.f, 2.f, 1.f);
    ww::tup const P2 = ww::Point(5.f, 6.f, 7.f);
@@ -85,7 +86,7 @@ TEST(Tuples, Subtraction1)
    EXPECT_EQ(ww::Equal(V, Expect) && IsVector(V), true);
 }
 
-TEST(Tuples, Subtraction2)
+TEST(Tuples, SubtractionVectorFromPoint)
 {
    ww::tup const P1 = ww::Point(3.f, 2.f, 1.f);
    ww::tup const V1 = ww::Vector(5.f, 6.f, 7.f);
@@ -94,7 +95,7 @@ TEST(Tuples, Subtraction2)
    EXPECT_EQ(ww::Equal(P, Expect) && IsPoint(P), true);
 }
 
-TEST(Tuples, Subtraction3)
+TEST(Tuples, SubtractionVectorFromZeroVector)
 {
    ww::tup const Z = ww::Vector(0.f, 0.f, 0.f);
    ww::tup const V1 = ww::Vector(-1.f, -2.f, -3.f);
@@ -102,6 +103,70 @@ TEST(Tuples, Subtraction3)
    ww::tup const P = ww::Sub(Z, V1);
    EXPECT_EQ(ww::Equal(P, Expect), true);
    EXPECT_EQ(ww::IsPoint(P), false);
+}
+
+TEST(Tuples, NegateTuple)
+{
+   ww::tup const T{-1.f, -2.f, 3.f, -4.f};
+   ww::tup const N = ww::Negate(T);
+   ww::tup const Expect{1.f, 2.f, -3.f, 4.f};
+   EXPECT_EQ(ww::Equal(N, Expect), true);
+}
+
+TEST(Tuples, NegateTupleOperator)
+{
+   ww::tup const T{-1.f, -2.f, 3.f, -4.f};
+   ww::tup const N = -T;
+   ww::tup const Expect{1.f, 2.f, -3.f, 4.f};
+   EXPECT_EQ(ww::Equal(N, Expect), true);
+}
+
+TEST(Tuples, Multiply)
+{
+   ww::tup const A{1.f, -2.f, 3.f, -4.f};
+   ww::tup const R{ww::Multiply(3.5f, A)};
+   ww::tup const Expect{3.5f, -7.f, 10.5f, -14.0f};
+   EXPECT_EQ(ww::Equal(R, Expect), true);
+}
+
+TEST(Tuples, MultiplyOperatorMul1)
+{
+   ww::tup const A{1.f, -2.f, 3.f, -4.f};
+   ww::tup const R = A * 3.5f;
+   ww::tup const Expect{3.5f, -7.f, 10.5f, -14.0f};
+   EXPECT_EQ(ww::Equal(R, Expect), true);
+}
+
+TEST(Tuples, MultiplyOperatorMul2)
+{
+   ww::tup const A{1.f, -2.f, 3.f, -4.f};
+   ww::tup const R = 3.5f * A;
+   ww::tup const Expect{3.5f, -7.f, 10.5f, -14.0f};
+   EXPECT_EQ(ww::Equal(R, Expect), true);
+}
+
+TEST(Tuples, DivideOperatorDiv1)
+{
+   ww::tup const A{1.f, -2.f, 3.f, -4.f};
+   ww::tup const R = A / 2.f;
+   ww::tup const Expect{0.5f, -1.f, 1.5f, -2.0f};
+   EXPECT_EQ(ww::Equal(R, Expect), true);
+}
+
+TEST(Tuples, MagnitudeSquared)
+{
+   EXPECT_EQ(ww::Equal(ww::MagSquared(ww::Vector(1.f, 0.f, 0.f)), 1.f), true);
+   EXPECT_EQ(ww::Equal(ww::MagSquared(ww::Vector(0.f, 1.f, 0.f)), 1.f), true);
+   EXPECT_EQ(ww::Equal(ww::MagSquared(ww::Vector(0.f, 0.f, 1.f)), 1.f), true);
+}
+
+TEST(Tuples, MagnitudeVectors)
+{
+   EXPECT_EQ(ww::Equal(ww::Mag(ww::Vector(1.f, 0.f, 0.f)), 1.f), true);
+   EXPECT_EQ(ww::Equal(ww::Mag(ww::Vector(0.f, 1.f, 0.f)), 1.f), true);
+   EXPECT_EQ(ww::Equal(ww::Mag(ww::Vector(0.f, 0.f, 1.f)), 1.f), true);
+   EXPECT_EQ(ww::Equal(ww::Mag(ww::Vector(1.f, 2.f, 3.f)), std::sqrt(14.f)), true);
+   EXPECT_EQ(ww::Equal(ww::Mag(ww::Vector(-1.f, -2.f, -3.f)), std::sqrt(14.f)), true);
 }
 
 // ---

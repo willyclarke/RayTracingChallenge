@@ -23,13 +23,6 @@ tup Add(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
-tup Sub(tup const &A, tup const &B)
-{
-   tup const Result = {A.X - B.X, A.Y - B.Y, A.Z - B.Z, A.W - B.W};
-   return (Result);
-}
-
-//------------------------------------------------------------------------------
 bool Equal(float const A, float const B)
 {
    if (std::fabs(A - B) < EPSILON)
@@ -66,9 +59,46 @@ bool IsVector(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
+tup Multiply(float const S, tup const &Tup)
+{
+   tup const Result{S * Tup.X, S * Tup.Y, S * Tup.Z, S * Tup.W};
+   return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup Negate(tup const &Tup)
+{
+   tup const Result{-Tup.X, -Tup.Y, -Tup.Z, -Tup.W};
+   return (Result);
+}
+
+//------------------------------------------------------------------------------
+float MagSquared(tup const &Tup)
+{
+    float const Result = Tup.X * Tup.X + //<!
+        Tup.Y * Tup.Y + //<!
+        Tup.Z * Tup.Z + //<!
+        Tup.W * Tup.W ; //<!
+    return (Result);
+}
+
+//------------------------------------------------------------------------------
+float Mag(tup const &Tup)
+{
+    return (std::sqrt(MagSquared(Tup)));
+}
+
+//------------------------------------------------------------------------------
 tup Point(float A, float B, float C)
 {
    tup Result{A, B, C, 1.f};
+   return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup Sub(tup const &A, tup const &B)
+{
+   tup const Result = {A.X - B.X, A.Y - B.Y, A.Z - B.Z, A.W - B.W};
    return (Result);
 }
 
@@ -81,7 +111,7 @@ tup Vector(float A, float B, float C)
 };  // namespace ww
 
 // ---
-// NOTE: Stream operator for this file only: prints a tuple
+// NOTE: Stream operator
 // ---
 std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
 {
@@ -92,3 +122,14 @@ std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
           << " " << std::setw(4) << T.W;
    return stream;
 }
+
+// ---
+// NOTE: The Negate operator.
+// ---
+ww::tup operator-(ww::tup const &Tup) { return (ww::Negate(Tup)); }
+ww::tup operator*(float const S, ww::tup const &Tup) { return (ww::Multiply(S, Tup)); }
+ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Multiply(S, Tup)); }
+// ---
+// NOTE: Division operator does not check for divide by zero; Who cares?
+// ---
+ww::tup operator/(ww::tup const &Tup, float const S) { return (ww::Multiply(1.f / S, Tup)); }
