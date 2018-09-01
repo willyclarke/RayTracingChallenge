@@ -28,6 +28,7 @@ constexpr float EPSILON = 0.0000001;  // 1E27 * std::numeric_limits<float>::min(
 
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
+tup Cross(tup const &A, tup const &B);
 float Dot(tup const &A, tup const &B);
 bool Equal(float const A, float const B);
 bool Equal(tup const &A, tup const &B);

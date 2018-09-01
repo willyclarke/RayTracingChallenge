@@ -191,6 +191,14 @@ TEST(Tuples, DotProduct)
     EXPECT_EQ(ww::Equal(ww::Dot(A, B), 20.f), true);
 }
 
+TEST(Tuples, CrossProduct)
+{
+    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+    ww::tup const B{ww::Vector(2.f, 3.f, 4.f)};
+    ww::tup const Result = ww::Cross(A, B);
+    EXPECT_EQ(ww::Equal(Result, ww::Vector(-1.f, 2.f, -1.f)), true);
+}
+
 // ---
 // NOTE: Test function for the tuples.
 //     : Prints out expected results for some simple tests define in the
