@@ -14,11 +14,6 @@
 #include "featuretest.hpp"
 #include "gtest/gtest.h"
 
-//TEST(ZeroValue, Construction)
-//{
-//    EXPECT_EQ(0, int(0));
-//}
-
 // ---
 // NOTE: Main function.
 // ---
