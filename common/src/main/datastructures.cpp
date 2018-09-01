@@ -89,6 +89,13 @@ float Mag(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
+tup Normal(tup const &Tup)
+{
+    tup const Result = Tup / Mag(Tup);
+    return (Result);
+}
+
+//------------------------------------------------------------------------------
 tup Point(float A, float B, float C)
 {
    tup Result{A, B, C, 1.f};

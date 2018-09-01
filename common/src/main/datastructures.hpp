@@ -30,13 +30,14 @@ constexpr float EPSILON = 0.0000001;  // 1E27 * std::numeric_limits<float>::min(
 tup Add(tup const &A, tup const &B);
 bool Equal(float const A, float const B);
 bool Equal(tup const &A, tup const &B);
-tup Negate(tup const &Tup);
+bool IsVector(tup const &Tup);
+bool IsPoint(tup const &Tup);
 float MagSquared(tup const &Tup);
 float Mag(tup const &Tup);
 tup Multiply(float const S, tup const &Tup);
+tup Negate(tup const &Tup);
+tup Normal(tup const &Tup);
 tup Point(float A, float B, float C);
-bool IsVector(tup const &Tup);
-bool IsPoint(tup const &Tup);
 tup Sub(tup const &A, tup const &B);
 tup Vector(float A, float B, float C);
 
