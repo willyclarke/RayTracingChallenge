@@ -199,6 +199,24 @@ TEST(Tuples, CrossProduct)
     EXPECT_EQ(ww::Equal(Result, ww::Vector(-1.f, 2.f, -1.f)), true);
 }
 
+TEST(Tuples, AddOpertor)
+{
+    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+    ww::tup const B{ww::Vector(1.f, 2.f, 3.f)};
+    ww::tup const Expect{ww::Add(A, B)};
+    ww::tup const Result = A + B;
+    EXPECT_EQ(ww::Equal(Expect, Result), true);
+}
+
+TEST(Tuples, SubOpertor)
+{
+    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+    ww::tup const B{ww::Vector(1.f, 2.f, 3.f)};
+    ww::tup const Expect{ww::Sub(A, B)};
+    ww::tup const Result = A - B;
+    EXPECT_EQ(ww::Equal(Expect, Result), true);
+}
+
 // ---
 // NOTE: Test function for the tuples.
 //     : Prints out expected results for some simple tests define in the

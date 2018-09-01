@@ -49,7 +49,9 @@ tup Vector(float A, float B, float C);
 // NOTE: Declare the operator for inclusion elsewhere.
 // ---
 std::ostream &operator<<(std::ostream &stream, const ww::tup &T);
+ww::tup operator+(ww::tup const &A, ww::tup const &B);
 ww::tup operator-(ww::tup const &Tup);
+ww::tup operator-(ww::tup const &A, ww::tup const &B);
 ww::tup operator*(float const S, ww::tup const &Tup);
 ww::tup operator*(ww::tup const &Tup, float const S);
 ww::tup operator/(ww::tup const &Tup, float const S);

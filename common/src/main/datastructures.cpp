@@ -152,7 +152,9 @@ std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
 // ---
 // NOTE: The Negate operator.
 // ---
+ww::tup operator+(ww::tup const &A, ww::tup const &B) { return (ww::Add(A, B)); }
 ww::tup operator-(ww::tup const &Tup) { return (ww::Negate(Tup)); }
+ww::tup operator-(ww::tup const &A, ww::tup const &B) { return (ww::Sub(A, B)); }
 ww::tup operator*(float const S, ww::tup const &Tup) { return (ww::Multiply(S, Tup)); }
 ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Multiply(S, Tup)); }
 // ---
