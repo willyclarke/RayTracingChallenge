@@ -23,6 +23,21 @@ tup Add(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
+// ---
+// NOTE: For an explanation of what the dot product actually is you can take a look
+//     : at the description at
+//     : http://betterexplained.com/articles/vector-calculus-understanding-the-dot-product .
+// ---
+float Dot(tup const &A, tup const &B)
+{
+   float const Result = A.X * B.X +  //!<
+                        A.Y * B.Y +  //<!
+                        A.Y * B.Y +  //<!
+                        A.Y * B.Y;   //<!
+   return (Result);
+}
+
+//------------------------------------------------------------------------------
 bool Equal(float const A, float const B)
 {
    if (std::fabs(A - B) < EPSILON)
@@ -66,6 +81,19 @@ tup Multiply(float const S, tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
+float MagSquared(tup const &Tup)
+{
+   float const Result = Tup.X * Tup.X +  //<!
+                        Tup.Y * Tup.Y +  //<!
+                        Tup.Z * Tup.Z +  //<!
+                        Tup.W * Tup.W;   //<!
+   return (Result);
+}
+
+//------------------------------------------------------------------------------
+float Mag(tup const &Tup) { return (std::sqrt(MagSquared(Tup))); }
+
+//------------------------------------------------------------------------------
 tup Negate(tup const &Tup)
 {
    tup const Result{-Tup.X, -Tup.Y, -Tup.Z, -Tup.W};
@@ -73,26 +101,10 @@ tup Negate(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
-float MagSquared(tup const &Tup)
-{
-    float const Result = Tup.X * Tup.X + //<!
-        Tup.Y * Tup.Y + //<!
-        Tup.Z * Tup.Z + //<!
-        Tup.W * Tup.W ; //<!
-    return (Result);
-}
-
-//------------------------------------------------------------------------------
-float Mag(tup const &Tup)
-{
-    return (std::sqrt(MagSquared(Tup)));
-}
-
-//------------------------------------------------------------------------------
 tup Normal(tup const &Tup)
 {
-    tup const Result = Tup / Mag(Tup);
-    return (Result);
+   tup const Result = Tup / Mag(Tup);
+   return (Result);
 }
 
 //------------------------------------------------------------------------------

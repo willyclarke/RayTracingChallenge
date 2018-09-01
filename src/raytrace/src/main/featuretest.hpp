@@ -184,6 +184,13 @@ TEST(Tuples, Normal)
    EXPECT_EQ(ww::Equal(ww::Mag(ww::Normal(ww::Vector(1.f, 2.f, 3.f))), 1.f), true);
 }
 
+TEST(Tuples, DotProduct)
+{
+    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+    ww::tup const B{ww::Vector(2.f, 3.f, 4.f)};
+    EXPECT_EQ(ww::Equal(ww::Dot(A, B), 20.f), true);
+}
+
 // ---
 // NOTE: Test function for the tuples.
 //     : Prints out expected results for some simple tests define in the
