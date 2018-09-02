@@ -12,7 +12,7 @@
 #include <iostream>
 
 #include "featuretest.hpp"
-#include "gtest/gtest.h"
+#include "projectile.hpp"
 
 // ---
 // NOTE: Main function.
@@ -20,6 +20,7 @@
 auto main(int argc, char *argv[]) -> int
 {
    bool DoTheTest{};
+   bool DoTheProjectile{};
 
    if (argc > 1)
    {
@@ -29,11 +30,19 @@ auto main(int argc, char *argv[]) -> int
          std::cout << "Do the test" << std::endl;
          DoTheTest = true;
       }
+      else if ("-p" == Argv1)
+      {
+         DoTheProjectile = true;
+      }
    }
 
    if (DoTheTest)
    {
       RunTupleTest(argc, argv);
+   }
+   else if (DoTheProjectile)
+   {
+       rtcch1::RunProjectileTest(argc, argv);
    }
 
    return 0;
