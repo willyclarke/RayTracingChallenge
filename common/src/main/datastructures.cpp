@@ -11,6 +11,7 @@
 #include "datastructures.hpp"
 
 #include <cmath>
+#include <iomanip>  // for std::setprecision
 #include <iostream>
 
 namespace ww
@@ -141,11 +142,16 @@ tup Vector(float A, float B, float C)
 // ---
 std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
 {
+   // ---
+   // NOTE: The width need to be big enough to hold a negative sign.
+   // ---
+   size_t const P{5};
+   size_t const W{P + 3};
    stream << ((T.W != 0) ? "Point:" : "Vector:");
-   stream << std::setw(4) << T.X         //<!
-          << " " << std::setw(4) << T.Y  //<!
-          << " " << std::setw(4) << T.Z  //<!
-          << " " << std::setw(4) << T.W;
+   stream << " " << std::setprecision(P) << std::setw(W) << T.X  //<!
+          << " " << std::setprecision(P) << std::setw(W) << T.Y  //<!
+          << " " << std::setprecision(P) << std::setw(W) << T.Z  //<!
+          << " " << std::setprecision(P) << std::setw(W) << T.W;
    return stream;
 }
 
