@@ -146,12 +146,12 @@ std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
    // NOTE: The width need to be big enough to hold a negative sign.
    // ---
    size_t const P{5};
-   size_t const W{P + 3};
+   size_t const W{P + 5};
    stream << ((T.W != 0) ? "Point:" : "Vector:");
-   stream << " " << std::setprecision(P) << std::setw(W) << T.X  //<!
-          << " " << std::setprecision(P) << std::setw(W) << T.Y  //<!
-          << " " << std::setprecision(P) << std::setw(W) << T.Z  //<!
-          << " " << std::setprecision(P) << std::setw(W) << T.W;
+   stream << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.X  //<!
+          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Y  //<!
+          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Z  //<!
+          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.W;
    return stream;
 }
 
