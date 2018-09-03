@@ -1,0 +1,22 @@
+# Readme for 'My Raytracing Challenge'
+:author: Willy Clarke
+
+== Project description
+
+The 'Ray Tracer Challenge' is a book. It contains a specification on how to build a raytracer. The
+code in this repository is my attempt to learn about raytracing in general.
+
+The book describes a test driven method of creating the code. I have pulled in the Google Test
+project. The tests have not been named so that they can be referenced from the book yet.
+
+TODO: Rename all the Google Tests so that they can be referenced from the book.
+
+== References
+
+The Ray Tracer Challenge
+_A Test-Driven Guide to Your First 3D Renderer_
+by Jamis Buck
+
+https://pragprog.com/book/jbtracer/the-ray-tracer-challenge[The Ray Tracer Challenge]
+
+https://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/[Compare floating point]

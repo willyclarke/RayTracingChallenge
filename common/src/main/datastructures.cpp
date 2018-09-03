@@ -14,12 +14,30 @@
 #include <iomanip>  // for std::setprecision
 #include <iostream>
 
+// ---
+// NOTE: Stream operator
+// ---
+std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
+{
+   // ---
+   // NOTE: The width need to be big enough to hold a negative sign.
+   // ---
+   size_t const P{5};
+   size_t const W{P + 5};
+   stream << ((T.W != 0) ? "Point:" : "Vector:");
+   stream << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.X  //<!
+          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Y  //<!
+          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Z  //<!
+          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.W;
+   return stream;
+}
+
 namespace ww
 {
 //------------------------------------------------------------------------------
 tup Add(tup const &A, tup const &B)
 {
-   tup const Result = {A.X + B.X, A.Y + B.Y, A.Z + B.Z, A.W + B.W};
+   tup const Result{A.X + B.X, A.Y + B.Y, A.Z + B.Z, A.W + B.W};
    return (Result);
 }
 
@@ -31,11 +49,6 @@ tup Cross(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
-// ---
-// NOTE: For an explanation of what the dot product actually is you can take a look
-//     : at the description at
-//     : http://betterexplained.com/articles/vector-calculus-understanding-the-dot-product .
-// ---
 float Dot(tup const &A, tup const &B)
 {
    float const Result = A.X * B.X +  //!<
@@ -136,24 +149,6 @@ tup Vector(float A, float B, float C)
    return (Result);
 }
 };  // namespace ww
-
-// ---
-// NOTE: Stream operator
-// ---
-std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
-{
-   // ---
-   // NOTE: The width need to be big enough to hold a negative sign.
-   // ---
-   size_t const P{5};
-   size_t const W{P + 5};
-   stream << ((T.W != 0) ? "Point:" : "Vector:");
-   stream << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.X  //<!
-          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Y  //<!
-          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Z  //<!
-          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.W;
-   return stream;
-}
 
 // ---
 // NOTE: The Negate operator.

@@ -186,35 +186,42 @@ TEST(Tuples, Normal)
 
 TEST(Tuples, DotProduct)
 {
-    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
-    ww::tup const B{ww::Vector(2.f, 3.f, 4.f)};
-    EXPECT_EQ(ww::Equal(ww::Dot(A, B), 20.f), true);
+   ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+   ww::tup const B{ww::Vector(2.f, 3.f, 4.f)};
+   EXPECT_EQ(ww::Equal(ww::Dot(A, B), 20.f), true);
 }
 
 TEST(Tuples, CrossProduct)
 {
-    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
-    ww::tup const B{ww::Vector(2.f, 3.f, 4.f)};
-    ww::tup const Result = ww::Cross(A, B);
-    EXPECT_EQ(ww::Equal(Result, ww::Vector(-1.f, 2.f, -1.f)), true);
+   ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+   ww::tup const B{ww::Vector(2.f, 3.f, 4.f)};
+   ww::tup const Result = ww::Cross(A, B);
+   EXPECT_EQ(ww::Equal(Result, ww::Vector(-1.f, 2.f, -1.f)), true);
 }
 
 TEST(Tuples, AddOpertor)
 {
-    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
-    ww::tup const B{ww::Vector(1.f, 2.f, 3.f)};
-    ww::tup const Expect{ww::Add(A, B)};
-    ww::tup const Result = A + B;
-    EXPECT_EQ(ww::Equal(Expect, Result), true);
+   ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+   ww::tup const B{ww::Vector(1.f, 2.f, 3.f)};
+   ww::tup const Expect{ww::Add(A, B)};
+   ww::tup const Result = A + B;
+   EXPECT_EQ(ww::Equal(Expect, Result), true);
 }
 
 TEST(Tuples, SubOpertor)
 {
-    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
-    ww::tup const B{ww::Vector(1.f, 2.f, 3.f)};
-    ww::tup const Expect{ww::Sub(A, B)};
-    ww::tup const Result = A - B;
-    EXPECT_EQ(ww::Equal(Expect, Result), true);
+   ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
+   ww::tup const B{ww::Vector(1.f, 2.f, 3.f)};
+   ww::tup const Expect{ww::Sub(A, B)};
+   ww::tup const Result = A - B;
+   EXPECT_EQ(ww::Equal(Expect, Result), true);
+}
+
+TEST(Colors, AssignColor)
+{
+   ww::tup const C{1.f, 0.f, 0.f, 1.f};
+   EXPECT_EQ(ww::Equal(1.f, C.R) + ww::Equal(0.f, C.G) + ww::Equal(0.f, C.B) + ww::Equal(1.f, C.I),  //<!
+             4.f);
 }
 
 // ---
