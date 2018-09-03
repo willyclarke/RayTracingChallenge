@@ -47,6 +47,7 @@ TEST(Tuples, IsVectorTrue)
    EXPECT_EQ(B.W == 0, true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, Equality1)
 {
    float const A{1.0};
@@ -54,6 +55,7 @@ TEST(Tuples, Equality1)
    EXPECT_EQ(ww::Equal(A, B), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, Equality2)
 {
    ww::tup const A = ww::Vector(1.f, 2.f, 3.f);
@@ -61,6 +63,7 @@ TEST(Tuples, Equality2)
    EXPECT_EQ(ww::Equal(A, B), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, Equality3)
 {
    ww::tup const A = ww::Vector(1.f, 2.f, 3.f);
@@ -68,6 +71,7 @@ TEST(Tuples, Equality3)
    EXPECT_EQ(ww::Equal(A, B), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, Addition)
 {
    ww::tup const A = {3.f, -2.f, 5.f, 1.f};
@@ -77,6 +81,7 @@ TEST(Tuples, Addition)
    EXPECT_EQ(ww::Equal(C, Expect), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, SubtractionPointFromPoint)
 {
    ww::tup const P1 = ww::Point(3.f, 2.f, 1.f);
@@ -86,6 +91,7 @@ TEST(Tuples, SubtractionPointFromPoint)
    EXPECT_EQ(ww::Equal(V, Expect) && IsVector(V), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, SubtractionVectorFromPoint)
 {
    ww::tup const P1 = ww::Point(3.f, 2.f, 1.f);
@@ -95,6 +101,7 @@ TEST(Tuples, SubtractionVectorFromPoint)
    EXPECT_EQ(ww::Equal(P, Expect) && IsPoint(P), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, SubtractionVectorFromZeroVector)
 {
    ww::tup const Z = ww::Vector(0.f, 0.f, 0.f);
@@ -105,6 +112,7 @@ TEST(Tuples, SubtractionVectorFromZeroVector)
    EXPECT_EQ(ww::IsPoint(P), false);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, NegateTuple)
 {
    ww::tup const T{-1.f, -2.f, 3.f, -4.f};
@@ -113,6 +121,7 @@ TEST(Tuples, NegateTuple)
    EXPECT_EQ(ww::Equal(N, Expect), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, NegateTupleOperator)
 {
    ww::tup const T{-1.f, -2.f, 3.f, -4.f};
@@ -121,6 +130,7 @@ TEST(Tuples, NegateTupleOperator)
    EXPECT_EQ(ww::Equal(N, Expect), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, Multiply)
 {
    ww::tup const A{1.f, -2.f, 3.f, -4.f};
@@ -129,6 +139,7 @@ TEST(Tuples, Multiply)
    EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, MultiplyOperatorMul1)
 {
    ww::tup const A{1.f, -2.f, 3.f, -4.f};
@@ -137,6 +148,7 @@ TEST(Tuples, MultiplyOperatorMul1)
    EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, MultiplyOperatorMul2)
 {
    ww::tup const A{1.f, -2.f, 3.f, -4.f};
@@ -145,6 +157,7 @@ TEST(Tuples, MultiplyOperatorMul2)
    EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, DivideOperatorDiv1)
 {
    ww::tup const A{1.f, -2.f, 3.f, -4.f};
@@ -153,6 +166,7 @@ TEST(Tuples, DivideOperatorDiv1)
    EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, MagnitudeSquared)
 {
    EXPECT_EQ(ww::Equal(ww::MagSquared(ww::Vector(1.f, 0.f, 0.f)), 1.f), true);
@@ -160,6 +174,7 @@ TEST(Tuples, MagnitudeSquared)
    EXPECT_EQ(ww::Equal(ww::MagSquared(ww::Vector(0.f, 0.f, 1.f)), 1.f), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, MagnitudeVectors)
 {
    EXPECT_EQ(ww::Equal(ww::Mag(ww::Vector(1.f, 0.f, 0.f)), 1.f), true);
@@ -169,6 +184,7 @@ TEST(Tuples, MagnitudeVectors)
    EXPECT_EQ(ww::Equal(ww::Mag(ww::Vector(-1.f, -2.f, -3.f)), std::sqrt(14.f)), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, Normal)
 {
    EXPECT_EQ(ww::Equal(ww::Normal(ww::Vector(4.f, 0.f, 0.f)), ww::Vector(1.f, 0.f, 0.f)), true);
@@ -184,6 +200,7 @@ TEST(Tuples, Normal)
    EXPECT_EQ(ww::Equal(ww::Mag(ww::Normal(ww::Vector(1.f, 2.f, 3.f))), 1.f), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, DotProduct)
 {
    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
@@ -191,6 +208,7 @@ TEST(Tuples, DotProduct)
    EXPECT_EQ(ww::Equal(ww::Dot(A, B), 20.f), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, CrossProduct)
 {
    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
@@ -199,6 +217,7 @@ TEST(Tuples, CrossProduct)
    EXPECT_EQ(ww::Equal(Result, ww::Vector(-1.f, 2.f, -1.f)), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, AddOpertor)
 {
    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
@@ -208,6 +227,7 @@ TEST(Tuples, AddOpertor)
    EXPECT_EQ(ww::Equal(Expect, Result), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Tuples, SubOpertor)
 {
    ww::tup const A{ww::Vector(1.f, 2.f, 3.f)};
@@ -217,6 +237,7 @@ TEST(Tuples, SubOpertor)
    EXPECT_EQ(ww::Equal(Expect, Result), true);
 }
 
+//------------------------------------------------------------------------------
 TEST(Colors, AssignColor)
 {
    ww::tup const C{1.f, 0.f, 0.f, 1.f};
