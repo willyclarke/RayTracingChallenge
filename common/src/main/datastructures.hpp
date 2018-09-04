@@ -49,6 +49,7 @@ constexpr float EPSILON = 0.0000001;  // 1E27 * std::numeric_limits<float>::min(
 
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
+tup Color(float const R, float const G, float const B);
 tup Cross(tup const &A, tup const &B);
 
 // ---
@@ -70,6 +71,10 @@ bool IsPoint(tup const &Tup);
 float MagSquared(tup const &Tup);
 float Mag(tup const &Tup);
 tup Multiply(float const S, tup const &Tup);
+
+//NOTE: Also called Hadamard or Schur product.
+tup Multiply(tup const A, tup const B);
+
 tup Negate(tup const &Tup);
 tup Normal(tup const &Tup);
 tup Point(float A, float B, float C);
@@ -86,5 +91,6 @@ ww::tup operator-(ww::tup const &Tup);
 ww::tup operator-(ww::tup const &A, ww::tup const &B);
 ww::tup operator*(float const S, ww::tup const &Tup);
 ww::tup operator*(ww::tup const &Tup, float const S);
+ww::tup operator*(ww::tup const &A, ww::tup const &B);
 ww::tup operator/(ww::tup const &Tup, float const S);
 #endif

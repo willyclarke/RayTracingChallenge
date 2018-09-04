@@ -240,9 +240,47 @@ TEST(Tuples, SubOpertor)
 //------------------------------------------------------------------------------
 TEST(Colors, AssignColor)
 {
-   ww::tup const C{1.f, 0.f, 0.f, 1.f};
-   EXPECT_EQ(ww::Equal(1.f, C.R) + ww::Equal(0.f, C.G) + ww::Equal(0.f, C.B) + ww::Equal(1.f, C.I),  //<!
-             4.f);
+   {
+      ww::tup const C{1.f, 0.f, 0.f, 1.f};
+      EXPECT_EQ(ww::Equal(1.f, C.R) + ww::Equal(0.f, C.G) + ww::Equal(0.f, C.B) + ww::Equal(1.f, C.I),  //<!
+                4.f);
+   }
+   {
+      ww::tup const C = ww::Color(-0.5f, 0.4f, 1.7f);
+      EXPECT_EQ(ww::Equal(-0.5f, C.R) && ww::Equal(0.4f, C.G) &&  //<!
+                    ww::Equal(1.7f, C.B) && ww::Equal(0.f, C.I),  //<!
+                true);
+   }
+}
+
+//------------------------------------------------------------------------------
+TEST(Colors, AddColors)
+{
+    ww::tup const C1 = ww::Color(0.9f, 0.6f, 0.75f);
+    ww::tup const C2 = ww::Color(0.7f, 0.1f, 0.25f);
+    ww::tup const C = C1 + C2;
+    ww::tup const Expect = ww::Color(0.9f + 0.7f, 0.6f + 0.1f, 0.75f + 0.25f);
+    EXPECT_EQ(ww::Equal(C, Expect), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Colors, SubColors)
+{
+    ww::tup const C1 = ww::Color(0.9f, 0.6f, 0.75f);
+    ww::tup const C2 = ww::Color(0.7f, 0.1f, 0.25f);
+    ww::tup const C = C1 - C2;
+    ww::tup const Expect = ww::Color(0.9f - 0.7f, 0.6f - 0.1f, 0.75f - 0.25f);
+    EXPECT_EQ(ww::Equal(C, Expect), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Colors, MulColors)
+{
+    ww::tup const C1 = ww::Color(1.f, 0.2f, 0.4f);
+    ww::tup const C2 = ww::Color(0.9f, 1.f, 0.1f);
+    ww::tup const C = C1 * C2;
+    ww::tup const Expect = ww::Color(0.9f, 0.2f, 0.04f);
+    EXPECT_EQ(ww::Equal(C, Expect), true);
 }
 
 // ---

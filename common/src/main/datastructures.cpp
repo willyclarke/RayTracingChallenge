@@ -42,6 +42,13 @@ tup Add(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
+tup Color(float const R, float const G, float const B)
+{
+   tup Result{R, G, B, 0.f};
+   return (Result);
+}
+
+//------------------------------------------------------------------------------
 tup Cross(tup const &A, tup const &B)
 {
    tup const Result = Vector(A.Y * B.Z - A.Z * B.Y, A.Z * B.X - A.X * B.Z, A.X * B.Y - A.Y * B.X);
@@ -102,6 +109,13 @@ tup Multiply(float const S, tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
+tup Multiply(tup const A, tup const B)
+{
+   tup const Result{A.R * B.R, A.G * B.G, A.B * B.B, 0.f};
+   return (Result);
+}
+
+//------------------------------------------------------------------------------
 float MagSquared(tup const &Tup)
 {
    float const Result = Tup.X * Tup.X +  //<!
@@ -158,6 +172,7 @@ ww::tup operator-(ww::tup const &Tup) { return (ww::Negate(Tup)); }
 ww::tup operator-(ww::tup const &A, ww::tup const &B) { return (ww::Sub(A, B)); }
 ww::tup operator*(float const S, ww::tup const &Tup) { return (ww::Multiply(S, Tup)); }
 ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Multiply(S, Tup)); }
+ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Multiply(A, B)); }
 // ---
 // NOTE: Division operator does not check for divide by zero; Who cares?
 // ---
