@@ -256,31 +256,59 @@ TEST(Colors, AssignColor)
 //------------------------------------------------------------------------------
 TEST(Colors, AddColors)
 {
-    ww::tup const C1 = ww::Color(0.9f, 0.6f, 0.75f);
-    ww::tup const C2 = ww::Color(0.7f, 0.1f, 0.25f);
-    ww::tup const C = C1 + C2;
-    ww::tup const Expect = ww::Color(0.9f + 0.7f, 0.6f + 0.1f, 0.75f + 0.25f);
-    EXPECT_EQ(ww::Equal(C, Expect), true);
+   ww::tup const C1 = ww::Color(0.9f, 0.6f, 0.75f);
+   ww::tup const C2 = ww::Color(0.7f, 0.1f, 0.25f);
+   ww::tup const C = C1 + C2;
+   ww::tup const Expect = ww::Color(0.9f + 0.7f, 0.6f + 0.1f, 0.75f + 0.25f);
+   EXPECT_EQ(ww::Equal(C, Expect), true);
 }
 
 //------------------------------------------------------------------------------
 TEST(Colors, SubColors)
 {
-    ww::tup const C1 = ww::Color(0.9f, 0.6f, 0.75f);
-    ww::tup const C2 = ww::Color(0.7f, 0.1f, 0.25f);
-    ww::tup const C = C1 - C2;
-    ww::tup const Expect = ww::Color(0.9f - 0.7f, 0.6f - 0.1f, 0.75f - 0.25f);
-    EXPECT_EQ(ww::Equal(C, Expect), true);
+   ww::tup const C1 = ww::Color(0.9f, 0.6f, 0.75f);
+   ww::tup const C2 = ww::Color(0.7f, 0.1f, 0.25f);
+   ww::tup const C = C1 - C2;
+   ww::tup const Expect = ww::Color(0.9f - 0.7f, 0.6f - 0.1f, 0.75f - 0.25f);
+   EXPECT_EQ(ww::Equal(C, Expect), true);
 }
 
 //------------------------------------------------------------------------------
 TEST(Colors, MulColors)
 {
-    ww::tup const C1 = ww::Color(1.f, 0.2f, 0.4f);
-    ww::tup const C2 = ww::Color(0.9f, 1.f, 0.1f);
-    ww::tup const C = C1 * C2;
-    ww::tup const Expect = ww::Color(0.9f, 0.2f, 0.04f);
-    EXPECT_EQ(ww::Equal(C, Expect), true);
+   ww::tup const C1 = ww::Color(1.f, 0.2f, 0.4f);
+   ww::tup const C2 = ww::Color(0.9f, 1.f, 0.1f);
+   ww::tup const C = C1 * C2;
+   ww::tup const Expect = ww::Color(0.9f, 0.2f, 0.04f);
+   EXPECT_EQ(ww::Equal(C, Expect), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Colors, CreateCanvas)
+{
+   ww::canvas Canvas{};
+   EXPECT_EQ(Canvas.vXY.size() > 0, true);
+
+   // NOTE: Check that the inital colors are all 0.f.
+   float Sum{};
+   for (size_t Idx = 0;           //<!
+        Idx < Canvas.vXY.size();  //<!
+        ++Idx)
+   {
+      Sum += (Canvas.vXY[Idx].R + Canvas.vXY[Idx].G + Canvas.vXY[Idx].B);
+   }
+   EXPECT_EQ(Sum, 0.f);
+}
+
+//------------------------------------------------------------------------------
+TEST(Colors, WritePixel)
+{
+   ww::canvas Canvas{};
+
+   ww::tup const Red{ww::Color(1.f, 0.f, 0.f)};
+   WritePixel(Canvas, 2, 3, Red);
+   ww::tup const ReadRed = ww::ReadPixel(Canvas, 2, 3);
+   EXPECT_EQ(ww::Equal(Red, ReadRed), true);
 }
 
 // ---

@@ -162,6 +162,22 @@ tup Vector(float A, float B, float C)
    tup Result{A, B, C, 0.f};
    return (Result);
 }
+
+// ---
+// NOTE: Canvas methods/functions.
+// ---
+void WritePixel(canvas &Canvas, int X, int Y, tup const &Color)
+{
+   Assert(Canvas.vXY.size() > (X + Y * Canvas.W), __FILE__, __LINE__);
+   Canvas.vXY[X + Y * Canvas.W] = Color;
+}
+//------------------------------------------------------------------------------
+tup ReadPixel(canvas &Canvas, int X, int Y)
+{
+   Assert(Canvas.vXY.size() > (X + Y * Canvas.W), __FILE__, __LINE__);
+   tup const Result = Canvas.vXY[X + Y * Canvas.W];
+   return (Result);
+}
 };  // namespace ww
 
 // ---

@@ -13,12 +13,28 @@
 #include <iomanip>  // for setw().
 #include <iostream>
 #include <limits>
+#include <vector>
+
+//------------------------------------------------------------------------------
+// NOTE: The assert will write to a null pointer.
+#if HANDMADE_SLOW
+#define debug(format, ...) fprintf(stderr, format, ##__VA_ARGS__)
+#define Assert(Condition, ...)                                          \
+   if (!(Condition))                                                    \
+   {                                                                    \
+      fprintf(stderr, "ASSERT. Function %s. Line %d\n", ##__VA_ARGS__); \
+      *(volatile int *)0 = 0;                                           \
+   }
+#else
+#define Assert(Condition, ...)
+#endif
 
 namespace ww
 {
+constexpr float EPSILON = 0.0000001;  // 1E27 * std::numeric_limits<float>::min();
 
+//------------------------------------------------------------------------------
 union tup {
-   //!< Ctor
    tup() : X{}, Y{}, Z{}, W{} {};
    tup(float IX, float IY, float IZ, float IW) : X{IX}, Y{IY}, Z{IZ}, W{IW} {};
    ~tup() {}
@@ -43,9 +59,23 @@ union tup {
       float B;
       float I;  //!< Intensity is 1.0 at max and 0.0 at pitch black.
    };
-};  // namespace ww
+};  // end of union tup.
 
-constexpr float EPSILON = 0.0000001;  // 1E27 * std::numeric_limits<float>::min();
+//------------------------------------------------------------------------------
+struct canvas
+{
+   canvas(int IW = 10, int IH = 10) : W{IW}, H{IH} { vXY.resize(W * H); }
+   canvas(canvas const &Other)
+   {
+      W = Other.W;
+      H = Other.H;
+      vXY = Other.vXY;
+   }
+   ~canvas() {}
+   int W{};  //<! Width
+   int H{};  //<! Height
+   std::vector<tup> vXY{};
+};
 
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
@@ -72,7 +102,7 @@ float MagSquared(tup const &Tup);
 float Mag(tup const &Tup);
 tup Multiply(float const S, tup const &Tup);
 
-//NOTE: Also called Hadamard or Schur product.
+// NOTE: Also called Hadamard or Schur product.
 tup Multiply(tup const A, tup const B);
 
 tup Negate(tup const &Tup);
@@ -80,6 +110,12 @@ tup Normal(tup const &Tup);
 tup Point(float A, float B, float C);
 tup Sub(tup const &A, tup const &B);
 tup Vector(float A, float B, float C);
+
+// ---
+// NOTE: Canvas declarations.
+// ---
+void WritePixel(canvas &Canvas, int X, int Y, tup const &Color);
+tup ReadPixel(canvas &Canvas, int X, int Y);
 };  // namespace ww
 
 // ---
