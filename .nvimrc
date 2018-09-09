@@ -1,4 +1,4 @@
-set makeprg=ninja\ -C\ /Users/willyclarke/Documents/Development/Cucumber/build
+set makeprg=ninja\ -C\ $PWD/../build/RayTracingChallenge
 let g:chromatica#dotclangfile_search_path = $PWD
 
 
