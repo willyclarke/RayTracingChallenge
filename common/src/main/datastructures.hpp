@@ -13,6 +13,7 @@
 #include <iomanip>  // for setw().
 #include <iostream>
 #include <limits>
+#include <strstream>
 #include <vector>
 
 //------------------------------------------------------------------------------
@@ -116,6 +117,8 @@ tup Vector(float A, float B, float C);
 // ---
 void WritePixel(canvas &Canvas, int X, int Y, tup const &Color);
 tup ReadPixel(canvas &Canvas, int X, int Y);
+std::strstream PPMHeader(canvas const &Canvas, int X, int Y);
+void WriteToPPM(canvas const &Canvas, std::string const &Filename = "test.ppm");
 };  // namespace ww
 
 // ---

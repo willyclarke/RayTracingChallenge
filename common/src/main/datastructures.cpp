@@ -11,6 +11,7 @@
 #include "datastructures.hpp"
 
 #include <cmath>
+#include <fstream>
 #include <iomanip>  // for std::setprecision
 #include <iostream>
 
@@ -177,6 +178,50 @@ tup ReadPixel(canvas &Canvas, int X, int Y)
    Assert(Canvas.vXY.size() > (X + Y * Canvas.W), __FILE__, __LINE__);
    tup const Result = Canvas.vXY[X + Y * Canvas.W];
    return (Result);
+}
+
+//------------------------------------------------------------------------------
+// ---
+// NOTE: The Portable Pix Map header.
+//     : Returns a string stream with a magic number, the dimension and the pixel
+//     : resolution.
+// ---
+std::string PPMHeader(canvas const &Canvas)
+{
+   std::strstream ss;
+   ss << "P3\n" << Canvas.W << " " << Canvas.H << "\n255\n";
+   return (ss.str());
+}
+
+//------------------------------------------------------------------------------
+// NOTE: Write the canvas to a Portable Pix Map file.
+void WriteToPPM(canvas const &Canvas, std::string const &Filename)
+{
+   std::ofstream O(Filename, std::ofstream::out);
+   O << PPMHeader(Canvas) << std::flush;
+   int PixelCount{};
+   for (size_t Idx = 0;           //<!
+        Idx < Canvas.vXY.size();  //<!
+        ++Idx, ++PixelCount)
+   {
+      // NOTE: As per the standard the count per line should not exceed 70.
+      //     : So 33 pixels x 3 byte per pixel should do the trick.
+      if ((!(PixelCount % 33) || (!(Idx % Canvas.W))) && (Idx > 0))
+      {
+         O << "\n" << std::flush;
+         PixelCount = 0;
+      }
+
+      // NOTE: Truncate the float values between 0.f and 1.f.
+      // clang-format off
+      O <<        int(255 * std::max<float>(0.f, std::min<float>(1.f, Canvas.vXY[Idx].R)))  //<!
+        << " " << int(255 * std::max<float>(0.f, std::min<float>(1.f, Canvas.vXY[Idx].G)))  //<!
+        << " " << int(255 * std::max<float>(0.f, std::min<float>(1.f, Canvas.vXY[Idx].B)))  //<!
+        << " ";
+      // clang-format on
+   }
+   O << "\n" << std::flush;
+   O.close();
 }
 };  // namespace ww
 

@@ -311,6 +311,47 @@ TEST(Colors, WritePixel)
    EXPECT_EQ(ww::Equal(Red, ReadRed), true);
 }
 
+//------------------------------------------------------------------------------
+TEST(Canvas, WritePPM)
+{
+   ww::canvas Canvas(5, 3);
+   ww::tup const C1{ww::Color(1.5f, 0.f, 0.f)};
+   ww::tup const C2{ww::Color(0.f, 0.5f, 0.f)};
+   ww::tup const C3{ww::Color(-0.5f, 0.f, 1.f)};
+   WritePixel(Canvas, 0, 0, C1);
+   WritePixel(Canvas, 2, 1, C2);
+   WritePixel(Canvas, 4, 2, C3);
+   WriteToPPM(Canvas, "testwriteppm.ppm");
+}
+
+//------------------------------------------------------------------------------
+TEST(Canvas, WritePPMLong)
+{
+   ww::canvas Canvas(10, 2);
+   // NOTE: Write the same color to all pixels.
+   for (size_t Idx = 0;           //<!
+        Idx < Canvas.vXY.size();  //<!
+        ++Idx)
+   {
+      Canvas.vXY[Idx] = ww::Color(1.f, 0.0f, 0.6f);
+   }
+   WriteToPPM(Canvas, "testwritelongppm.ppm");
+}
+
+//------------------------------------------------------------------------------
+TEST(Canvas, WritePPMLong2)
+{
+   ww::canvas Canvas(100, 200);
+   // NOTE: Write the same color to all pixels.
+   // for (size_t Idx = 0;           //<!
+   //     Idx < Canvas.vXY.size();  //<!
+   //     ++Idx)
+   for (auto &Color : Canvas.vXY)
+   {
+      Color = ww::Color(1.f, 0.0f, 0.6f);
+   }
+   WriteToPPM(Canvas, "testwritelongppm2.ppm");
+}
 // ---
 // NOTE: Test function for the tuples.
 //     : Prints out expected results for some simple tests define in the
