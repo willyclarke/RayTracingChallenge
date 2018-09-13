@@ -14,6 +14,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <memory>  // for shared pointer.
 
 #include "gtest/gtest.h"
 
@@ -310,10 +311,12 @@ TEST(Colors, WritePixel)
    ww::tup const ReadRed = ww::ReadPixel(Canvas, 2, 3);
    EXPECT_EQ(ww::Equal(Red, ReadRed), true);
 }
-
+#if 0
 //------------------------------------------------------------------------------
 TEST(Canvas, WritePPM)
 {
+   return;
+   char const *ptrFilename = "WritePPM.ppm";
    ww::canvas Canvas(5, 3);
    ww::tup const C1{ww::Color(1.5f, 0.f, 0.f)};
    ww::tup const C2{ww::Color(0.f, 0.5f, 0.f)};
@@ -321,37 +324,125 @@ TEST(Canvas, WritePPM)
    WritePixel(Canvas, 0, 0, C1);
    WritePixel(Canvas, 2, 1, C2);
    WritePixel(Canvas, 4, 2, C3);
-   WriteToPPM(Canvas, "testwriteppm.ppm");
+   WriteToPPM(Canvas, ptrFilename);
+
+   // ---
+   // NOTE: Now test that things are actually equal.
+   // ---
+   {
+      std::shared_ptr<ww::canvas> ptrCanvas = ww::ReadFromPPM(ptrFilename);
+      if (ptrCanvas)
+      {
+         ww::canvas &Cv = *ptrCanvas;
+         EXPECT_EQ(ptrCanvas != 0, true);
+         EXPECT_EQ(Cv.W, Canvas.W);
+         EXPECT_EQ(Cv.H, Canvas.H);
+         EXPECT_EQ(Cv.vXY.size(), Canvas.vXY.size());
+         EXPECT_EQ(Cv.vXY[0].R, 1.f);   // se setting of color above.
+         EXPECT_EQ(Cv.vXY[0].G, 0.f);   // se setting of color above.
+         EXPECT_EQ(Cv.vXY[0].B, 0.6f);  // se setting of color above.
+      }
+   }
 }
 
 //------------------------------------------------------------------------------
 TEST(Canvas, WritePPMLong)
 {
+   return;
+   char const *ptrFilename = "WritePPMLong.ppm";
    ww::canvas Canvas(10, 2);
    // NOTE: Write the same color to all pixels.
    for (size_t Idx = 0;           //<!
         Idx < Canvas.vXY.size();  //<!
         ++Idx)
    {
+      std::cout << "Idx:" << Idx << ". Canvas.vXY.size:" << Canvas.vXY.size() << std::endl;
+
       Canvas.vXY[Idx] = ww::Color(1.f, 0.0f, 0.6f);
    }
-   WriteToPPM(Canvas, "testwritelongppm.ppm");
+   WriteToPPM(Canvas, ptrFilename);
+
+   // ---
+   // NOTE: Now test that things are actually equal.
+   // ---
+   {
+      std::shared_ptr<ww::canvas> ptrCanvas = ww::ReadFromPPM(ptrFilename);
+      if (ptrCanvas)
+      {
+         ww::canvas &Cv = *ptrCanvas;
+         EXPECT_EQ(ptrCanvas != 0, true);
+         EXPECT_EQ(Cv.W, Canvas.W);
+         EXPECT_EQ(Cv.H, Canvas.H);
+         EXPECT_EQ(Cv.vXY.size(), Canvas.vXY.size());
+         EXPECT_EQ(Cv.vXY[0].R, 1.f);   // se setting of color above.
+         EXPECT_EQ(Cv.vXY[0].G, 0.f);   // se setting of color above.
+         EXPECT_EQ(Cv.vXY[0].B, 0.6f);  // se setting of color above.
+      }
+   }
+}
+#endif
+
+//------------------------------------------------------------------------------
+TEST(Canvas, PPMHeader)
+{
+   ww::canvas Canvas(1500, 2000);
+
+   size_t const CalcSizeHeader = (sizeof("P3\n") - 1) + std::to_string(Canvas.W).size() + (sizeof(" ") - 1) +
+                                 std::to_string(Canvas.H).size() + (sizeof("\n255") - 1);
+   std::string const Header = ww::PPMHeader(Canvas);
+
+   EXPECT_EQ(CalcSizeHeader == Header.size(), true);
 }
 
 //------------------------------------------------------------------------------
 TEST(Canvas, WritePPMLong2)
 {
-   ww::canvas Canvas(100, 200);
-   // NOTE: Write the same color to all pixels.
-   // for (size_t Idx = 0;           //<!
-   //     Idx < Canvas.vXY.size();  //<!
-   //     ++Idx)
+   char const *ptrFilename = "W.ppm";
+   ww::canvas Canvas(15, 2);
    for (auto &Color : Canvas.vXY)
    {
       Color = ww::Color(1.f, 0.0f, 0.6f);
    }
-   WriteToPPM(Canvas, "testwritelongppm2.ppm");
+   ww::WriteToPPMFile(Canvas, ptrFilename);
+
+   // ---
+   // NOTE: Now test that things are actually equal.
+   // ---
+   {
+      std::shared_ptr<ww::canvas> ptrCanvas = ww::ReadFromPPM(ptrFilename);
+      ww::canvas &Cv = *ptrCanvas;
+      if (ptrCanvas)
+      {
+         EXPECT_EQ(ptrCanvas != 0, true);
+         EXPECT_EQ(Cv.W, Canvas.W);
+         EXPECT_EQ(Cv.H, Canvas.H);
+         EXPECT_EQ(Cv.vXY.size(), Canvas.vXY.size());
+         EXPECT_EQ(ww::Equal(Cv.vXY[0].R, 1.f), true);   // se setting of color above.
+         EXPECT_EQ(ww::Equal(Cv.vXY[0].G, 0.f), true);   // se setting of color above.
+         EXPECT_EQ(ww::Equal(Cv.vXY[0].B, 0.6f), true);  // se setting of color above.
+      }
+   }
 }
+
+#if 0
+//------------------------------------------------------------------------------
+TEST(Canvas, ReadFromPPM)
+{
+   char const *ptrFilename = "ReadFromPPM.ppm";
+   {
+      ww::canvas Canvas(1, 2);
+      for (auto &Color : Canvas.vXY)
+      {
+         Color = ww::Color(1.f, 0.0f, 0.6f);
+      }
+      WriteToPPM(Canvas, ptrFilename);
+   }
+   {
+      std::shared_ptr<ww::canvas> ptrCanvas = ww::ReadFromPPM(ptrFilename);
+      EXPECT_EQ(ptrCanvas != 0, true);
+   }
+}
+#endif
 // ---
 // NOTE: Test function for the tuples.
 //     : Prints out expected results for some simple tests define in the
@@ -360,7 +451,12 @@ TEST(Canvas, WritePPMLong2)
 void RunTupleTest(int argc, char *argv[])
 {
    ::testing::InitGoogleTest(&argc, argv);
-   int const Result = RUN_ALL_TESTS();
-   std::cout << "Testing result was " << (Result ? "Failure." : "Success.") << std::endl;
+   for (size_t Idx = 0;  //<!
+        Idx < 1;         //<!
+        ++Idx)
+   {
+      int const Result = RUN_ALL_TESTS();
+      std::cout << "Testing result was " << (Result ? "Failure." : "Success.") << std::endl;
+   }
 }
 #endif

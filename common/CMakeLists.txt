@@ -56,7 +56,7 @@ add_definitions(-DHANDMADE_SLOW)
 add_library(raylib ${sources} ${data})
 
 # Just for raylib add some compiler flags.
-target_compile_options(raylib PUBLIC -std=c++1y -Wall -g -Wall -fcolor-diagnostics)
+target_compile_options(raylib PUBLIC -std=c++17 -Wall -g -Wall -fcolor-diagnostics)
 # NOTE: to see more of what is going on you can add "-v"
 #target_compile_options(raylib PUBLIC -v)
 

@@ -2,4 +2,4 @@
 -Wextra
 -Icommon/src/main
 -I../build/RayTracingChallenge/googletest-src/googletest/include
--std=c++14
+-std=c++17
