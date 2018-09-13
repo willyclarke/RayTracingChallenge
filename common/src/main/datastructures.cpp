@@ -201,7 +201,11 @@ std::string PPMHeader(canvas const &Canvas)
 }
 
 //------------------------------------------------------------------------------
-int WriteToPPM(canvas const &Canvas, std::string const &Filename)
+// NOTE: This is actually take two of creating a PPM file and it uses a slightly different
+//       approach compared to the file writing functin below.
+//       For now I will keep the code around for reference.
+//------------------------------------------------------------------------------
+int WriteToPPMFile(canvas const &Canvas, std::string const &Filename)
 {
    std::string Tmp{Filename};
    if (!Tmp.size())
@@ -228,21 +232,6 @@ int WriteToPPM(canvas const &Canvas, std::string const &Filename)
 
    Assert(Canvas.vXY.size() == Canvas.W * Canvas.H, __FILE__, __LINE__);
 
-   // char const *PPM =
-   //    "\n255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 "
-   //    "153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153\n255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 "
-   //    "0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153 255 0 153\n";
-
-   // std::cout << ". SizeofBody:" << std::strlen(PPM) << ". SizeofHeader:" << Header.size() << std::endl;
-   // std::cout << Header << PPM << std::endl;
-
-   // for (size_t Idx = 0;          ///<!
-   //     Idx < std::strlen(PPM);  ///<!
-   //     ++Idx)
-   //{
-   //   std::putc(PPM[Idx], fp);
-   //}
-#if 1
    int PixelCount{};
    for (size_t Idx = 0;           //<!
         Idx < Canvas.vXY.size();  //<!
@@ -264,7 +253,7 @@ int WriteToPPM(canvas const &Canvas, std::string const &Filename)
       // clang-format on
       std::string const Output = std::to_string(cR) + " " + std::to_string(cG) + " " + std::to_string(cB) + " ";
 
-      // NOTE: So we have a stringstream with the data, lets write to the file.
+      // NOTE: So we have a string with the data, lets write to the file.
       for (size_t I = 0;       //<!
            I < Output.size();  //<!
            ++I)
@@ -273,19 +262,8 @@ int WriteToPPM(canvas const &Canvas, std::string const &Filename)
       }
    }
    std::putc('\n', fp);
-#endif
    std::fclose(fp);
 
-   std::cout << std::endl;
-   std::cout << "\nFinished with:" << Tmp << std::endl;
-
-   // ---
-   // NOTE: Reopen the file to get it flushed. Not sure if this works, but its worth a try.
-   // ---
-   //{
-   //   FILE *fp = std::fopen(Tmp.c_str(), "r");
-   //   std::fclose(fp);
-   //}
    // NOTE: move the file to the name it is supposed to have.
    int const Result = std::rename(Tmp.c_str(), Filename.c_str());
    return (Result);
@@ -293,7 +271,7 @@ int WriteToPPM(canvas const &Canvas, std::string const &Filename)
 
 //------------------------------------------------------------------------------
 // NOTE: Write the canvas to a Portable Pix Map file.
-void WriteToPPMFile(canvas const &Canvas, std::string const &Filename)
+void WriteToPPM(canvas const &Canvas, std::string const &Filename)
 {
    std::ofstream O(Filename, std::ofstream::out | std::ofstream::trunc);
 
@@ -307,7 +285,7 @@ void WriteToPPMFile(canvas const &Canvas, std::string const &Filename)
       std::string Output{};
       // NOTE: As per the standard the count per line should not exceed 70.
       //     : So 33 pixels x 3 byte per pixel should do the trick.
-      if ((!(PixelCount % 15) || (!(Idx % Canvas.W))) && (Idx > 0))
+      if ((!(PixelCount % 33) || (!(Idx % Canvas.W))) && (Idx > 0))
       {
          Output += "\n";
          PixelCount = 0;

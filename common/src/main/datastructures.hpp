@@ -119,8 +119,8 @@ void WritePixel(canvas &Canvas, int X, int Y, tup const &Color);
 tup ReadPixel(canvas &Canvas, int X, int Y);
 std::strstream PPMHeader(canvas const &Canvas, int X, int Y);
 std::string PPMHeader(canvas const &Canvas);
-int WriteToPPM(canvas const &Canvas, std::string const &Filename = "test.ppm");
-void WriteToPPMFile(canvas const &Canvas, std::string const &Filename = "test.ppm");
+void WriteToPPM(canvas const &Canvas, std::string const &Filename = "test.ppm");
+int WriteToPPMFile(canvas const &Canvas, std::string const &Filename = "test.ppm");
 std::shared_ptr<canvas> ReadFromPPM(std::string const &Filename = "test.ppm");
 };  // namespace ww
 
