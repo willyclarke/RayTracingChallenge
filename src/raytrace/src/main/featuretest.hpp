@@ -311,7 +311,6 @@ TEST(Colors, WritePixel)
    ww::tup const ReadRed = ww::ReadPixel(Canvas, 2, 3);
    EXPECT_EQ(ww::Equal(Red, ReadRed), true);
 }
-
 //------------------------------------------------------------------------------
 TEST(Canvas, WritePPM)
 {

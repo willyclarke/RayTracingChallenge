@@ -285,7 +285,7 @@ void WriteToPPM(canvas const &Canvas, std::string const &Filename)
       std::string Output{};
       // NOTE: As per the standard the count per line should not exceed 70.
       //     : So 33 pixels x 3 byte per pixel should do the trick.
-      if ((!(PixelCount % 33) || (!(Idx % Canvas.W))) && (Idx > 0))
+      if ((!(PixelCount % 15) || (!(Idx % Canvas.W))) && (Idx > 0))
       {
          Output += "\n";
          PixelCount = 0;
