@@ -1,7 +1,8 @@
 #!/bin/bash
 
+# FIXME: This file is no longer supported.
 CURRDIR=$(pwd)
-SOURCEFILE=${CURRDIR}/src/main/main.cpp
+SOURCEFILE=${CURRDIR}/src/main/mainsinglecompunit.cpp
 mkdir -p ${CURRDIR}/../../../build/RayTracingChallenge
 OUTPUT="-o ${CURRDIR}/../../../build/RayTracingChallenge/raytrace"
 INCLUDE="-I. -I../../common/src/main"
@@ -12,4 +13,4 @@ DATE=$(date)
 echo ${DATE}
 COMPILECMD="${OPTIMIZATION} ${FLAGS} ${INCLUDE} ${SOURCEFILE} -std=c++17 ${OUTPUT} ${LIBS}"
 clang++ ${COMPILECMD}
-rc -c clang++ ${COMPILECMD}
+rc -c clang++ ${COMPILECMD} # Update the compilation database.
