@@ -11,7 +11,7 @@ project. The tests have not been named so that they can be referenced from the b
 
 TODO: Rename all the Google Tests so that they can be referenced from the book.
 
-== Dependecies
+== Dependencies
 
 * None if you use the build.linux script. TODO: Make this work.
 

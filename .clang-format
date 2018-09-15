@@ -44,8 +44,8 @@ PointerAlignment: Left
 SpacesBeforeTrailingComments: 2
 Cpp11BracedListStyle: true
 Standard:        Auto
-IndentWidth:     3
-TabWidth:        6
+IndentWidth:     2
+TabWidth:        4
 UseTab:          Never
 BreakBeforeBraces: Allman
 #BreakBeforeBraces: Attach
