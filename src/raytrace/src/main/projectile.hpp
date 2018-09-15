@@ -112,14 +112,12 @@ void RunProjectileTest()
     // Pos y = 1000 -> Pixel = Canvas.H/2
     float const P = VPixelMeter * Pos + Canvas.H;
     int const Result = std::min<int>(Canvas.H - 1, std::max<int>(0, int(P)));
-    std::cout << "P:" << P << ". Res:" << Result << std::endl;
     return Result;
   };
 
   while ((P.Position.Y > 0.f) && !Stop)
   {
     P = Tick(World, P);
-    std::cout << "X->" << P.Position << std::endl;
     ww::WritePixel(Canvas, HPixel(P.Position.X), VPixel(P.Position.Y), Color);
 
     if (Count++ > 10000)
