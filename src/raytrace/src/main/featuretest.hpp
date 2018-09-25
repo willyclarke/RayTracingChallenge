@@ -135,7 +135,7 @@ TEST(Tuples, NegateTupleOperator)
 TEST(Tuples, Multiply)
 {
    ww::tup const A{1.f, -2.f, 3.f, -4.f};
-   ww::tup const R{ww::Multiply(3.5f, A)};
+   ww::tup const R{ww::Mul(3.5f, A)};
    ww::tup const Expect{3.5f, -7.f, 10.5f, -14.0f};
    EXPECT_EQ(ww::Equal(R, Expect), true);
 }

@@ -87,7 +87,10 @@ struct canvas
 //------------------------------------------------------------------------------
 union matrix {
   matrix() : R0{}, R1{}, R2{}, R3{}, Dimension{4} {}
-  matrix(tup const &Cr0, tup const &Cr1, tup const &Cr2, tup const &Cr3) : R0{Cr0}, R1{Cr1}, R2{Cr2}, R3{Cr3}, Dimension{4} {}
+  matrix(tup const &Cr0, tup const &Cr1, tup const &Cr2, tup const &Cr3)
+      : R0{Cr0}, R1{Cr1}, R2{Cr2}, R3{Cr3}, Dimension{4}
+  {
+  }
   ~matrix() {}
   matrix(matrix const &Other)
   {
@@ -136,12 +139,12 @@ bool IsVector(tup const &Tup);
 bool IsPoint(tup const &Tup);
 float MagSquared(tup const &Tup);
 float Mag(tup const &Tup);
-tup Multiply(float const S, tup const &Tup);
+tup Mul(float const S, tup const &Tup);
 
 // ---
 // NOTE: Multiply is also called Hadamard or Schur product.
 // ---
-tup Multiply(tup const A, tup const B);
+tup Mul(tup const A, tup const B);
 tup Negate(tup const &Tup);
 tup Normal(tup const &Tup);
 tup Point(float A, float B, float C);
@@ -162,12 +165,19 @@ std::shared_ptr<canvas> ReadFromPPM(std::string const &Filename = "test.ppm");
 // ---
 // NOTE: Matrix functions.
 // ---
+bool Equal(matrix const &A, matrix const &B);
+float Get(matrix const &M, int Row, int Col);
+matrix I();
 matrix Matrix44();
 matrix Matrix44(tup const &R0, tup const &R1, tup const &R2, tup const &R3);
 matrix Matrix33(tup const &R0, tup const &R1, tup const &R2);
 matrix Matrix22(tup const &R0, tup const &R1);
-float Get(matrix const &M, int Row, int Col);
-void MatrixElementSet(matrix &M, int Row, int Col, float Value);
+matrix Mul(matrix const &A, matrix const &B);
+matrix Mul(matrix const &A, matrix const &B);
+tup Mul(matrix const &A, tup const &T);
+void Set(matrix &M, int Row, int Col, float Value);
+matrix Transpose(matrix const &M);
+
 };  // namespace ww
 
 // ---
@@ -182,4 +192,6 @@ ww::tup operator*(float const S, ww::tup const &Tup);
 ww::tup operator*(ww::tup const &Tup, float const S);
 ww::tup operator*(ww::tup const &A, ww::tup const &B);
 ww::tup operator/(ww::tup const &Tup, float const S);
+ww::matrix operator*(ww::matrix const &A, ww::matrix const &B);
+ww::tup operator*(ww::matrix const &A, ww::tup const &T);
 #endif

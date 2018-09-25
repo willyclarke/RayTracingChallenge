@@ -93,7 +93,7 @@ TEST(Matrix, TwoByTwo)
   EXPECT_EQ(Get(M22, 0, 1), 2.f);
   EXPECT_EQ(Get(M22, 1, 0), 3.f);
   EXPECT_EQ(Get(M22, 1, 1), 4.f);
-  //std::cout << M22 << std::endl;
+  // std::cout << M22 << std::endl;
 }
 
 //------------------------------------------------------------------------------
@@ -109,9 +109,63 @@ TEST(Matrix, ThreeByThree)
   EXPECT_EQ(Get(M33, 2, 0), 7.f);
   EXPECT_EQ(Get(M33, 2, 1), 8.f);
   EXPECT_EQ(Get(M33, 2, 2), 9.f);
-  //std::cout << M33 << std::endl;
-  //M33.Dimension = 4;
-  //std::cout << M33 << std::endl;
+  // std::cout << M33 << std::endl;
+  // M33.Dimension = 4;
+  // std::cout << M33 << std::endl;
+}
+//------------------------------------------------------------------------------
+TEST(Matrix, Multiply)
+{
+  ww::matrix const M{ww::tup{1.f, 2.f, 3.f, 4.f},  //!<
+                     ww::tup{2.f, 4.f, 4.f, 2.f},  //!<
+                     ww::tup{8.f, 6.f, 4.f, 1.f},  //!<
+                     ww::tup{0.f, 0.f, 0.f, 1.f}};
+  ww::tup const T{1.f, 2.f, 3.f, 1.f};
+  ww::tup const Result = M * T;
+  EXPECT_EQ(Result.C[0], 18.f);
+  EXPECT_EQ(Result.C[1], 24.f);
+  EXPECT_EQ(Result.C[2], 33.f);
+  EXPECT_EQ(Result.C[3], 1.f);
+}
+//------------------------------------------------------------------------------
+TEST(Matrix, Identity)
+{
+  {
+    // ---
+    // NOTE: Verify that matrix multiplied by Identity matrix gives the same matrix as result.
+    // ---
+    ww::matrix const M{ww::tup{0.f, 1.f, 2.f, 4.f},   //!<
+                       ww::tup{1.f, 2.f, 4.f, 8.f},   //!<
+                       ww::tup{2.f, 4.f, 8.f, 16.f},  //!<
+                       ww::tup{4.f, 8.f, 16.f, 32.f}};
+    ww::matrix const A = M * ww::I();
+
+    EXPECT_EQ(ww::Equal(M, A), true);
+  }
+
+  // ---
+  // NOTE: Test that multiplication of Identity matrix and a tuple gives the same tuple.
+  // ---
+  {
+    ww::tup A{1.f, 2.f, 3.f, 4.f};
+    ww::tup B = ww::I() * A;
+    EXPECT_EQ(ww::Equal(A, B), true);
+  }
+}
+//------------------------------------------------------------------------------
+TEST(Matrix, Transpose)
+{
+  ww::matrix const M{
+      ww::tup{0.f, 9.f, 3.f, 0.f},  //
+      ww::tup{9.f, 8.f, 0.f, 8.f},  //
+      ww::tup{1.f, 8.f, 5.f, 3.f},  //
+      ww::tup{0.f, 0.f, 5.f, 8.f}   //
+  };
+  ww::matrix const MT = ww::Transpose(ww::Transpose(M));
+  EXPECT_EQ(ww::Equal(M, MT), true);
+  ww::matrix A = ww::I();
+  ww::matrix AT = ww::Transpose(A);
+  EXPECT_EQ(ww::Equal(AT, ww::I()), true);
 }
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])

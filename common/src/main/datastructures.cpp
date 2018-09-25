@@ -155,16 +155,16 @@ bool IsVector(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
-tup Multiply(float const S, tup const &Tup)
+tup Mul(float const S, tup const &Tup)
 {
   tup const Result{S * Tup.X, S * Tup.Y, S * Tup.Z, S * Tup.W};
   return (Result);
 }
 
 //------------------------------------------------------------------------------
-tup Multiply(tup const A, tup const B)
+tup Mul(tup const A, tup const B)
 {
-  tup const Result{A.R * B.R, A.G * B.G, A.B * B.B, 0.f};
+  tup const Result{A.R * B.R, A.G * B.G, A.B * B.B, A.W * B.W};
   return (Result);
 }
 
@@ -434,12 +434,14 @@ matrix Matrix44()
   return (Result);
 }
 
+//------------------------------------------------------------------------------
 matrix Matrix44(tup const &R0, tup const &R1, tup const &R2, tup const &R3)
 {
   matrix Result{R0, R1, R2, R3};
   return (Result);
 }
 
+//------------------------------------------------------------------------------
 // NOTE: Use the data structure for 4x4 matrix for all types of matrixes.
 matrix Matrix33(tup const &R0, tup const &R1, tup const &R2)
 {
@@ -448,6 +450,7 @@ matrix Matrix33(tup const &R0, tup const &R1, tup const &R2)
   return (M);
 }
 
+//------------------------------------------------------------------------------
 // NOTE: Use the data structure for 4x4 matrix for all types of matrixes.
 matrix Matrix22(tup const &R0, tup const &R1)
 {
@@ -456,6 +459,7 @@ matrix Matrix22(tup const &R0, tup const &R1)
   return (M);
 }
 
+//------------------------------------------------------------------------------
 float Get(matrix const &M, int Row, int Col)
 {
   Assert(Row < M.Dimension, __FUNCTION__, __LINE__);
@@ -464,6 +468,81 @@ float Get(matrix const &M, int Row, int Col)
 };
 
 void Set(matrix &M, int Row, int Col, float Value) { M.R[Row].C[Col] = Value; }
+
+//------------------------------------------------------------------------------
+matrix Mul(matrix const &A, matrix const &B)
+{
+  matrix M{};
+  for (size_t Row = 0;  ///<!
+       Row < 4;         ///<!
+       ++Row)
+  {
+    for (size_t Col = 0;  ///<!
+         Col < 4;         ///<!
+         ++Col)
+    {
+      float const Mrc = Get(A, Row, 0) * Get(B, 0, Col) +  //
+                        Get(A, Row, 1) * Get(B, 1, Col) +  //
+                        Get(A, Row, 2) * Get(B, 2, Col) +  //
+                        Get(A, Row, 3) * Get(B, 3, Col);   //
+      Set(M, Row, Col, Mrc);
+    }
+  }
+  return (M);
+}
+
+//------------------------------------------------------------------------------
+tup Mul(matrix const &A, tup const &T)
+{
+  tup Result{};
+  for (size_t Idx = 0;  ///<!
+       Idx < 4;         ///<!
+       ++Idx)
+  {
+    Result.C[Idx] = Get(A, Idx, 0) * T.C[0] +  //
+                    Get(A, Idx, 1) * T.C[1] +  //
+                    Get(A, Idx, 2) * T.C[2] +  //
+                    Get(A, Idx, 3) * T.C[3];
+  }
+  return (Result);
+}
+
+matrix I()
+{
+  matrix Identity{};
+  Set(Identity, 0, 0, 1.f);
+  Set(Identity, 1, 1, 1.f);
+  Set(Identity, 2, 2, 1.f);
+  Set(Identity, 3, 3, 1.f);
+  return (Identity);
+}
+
+//------------------------------------------------------------------------------
+bool Equal(matrix const &A, matrix const &B)
+{
+  return Equal(A.R[0], B.R[0]) &&  //
+         Equal(A.R[0], B.R[0]) &&  //
+         Equal(A.R[0], B.R[0]) &&  //
+         Equal(A.R[0], B.R[0]);
+}
+
+//------------------------------------------------------------------------------
+matrix Transpose(matrix const &M)
+{
+  matrix R{};
+  for (size_t Row = 0;  ///<!
+       Row < 4;         ///<!
+       ++Row)
+  {
+    for (size_t Col = 0;  ///<!
+         Col < 4;         ///<!
+         ++Col)
+    {
+        R.R[Row].C[Col] = M.R[Col].C[Row];
+    }
+  }
+  return (R);
+}
 };  // namespace ww
 
 // ---
@@ -472,10 +551,12 @@ void Set(matrix &M, int Row, int Col, float Value) { M.R[Row].C[Col] = Value; }
 ww::tup operator+(ww::tup const &A, ww::tup const &B) { return (ww::Add(A, B)); }
 ww::tup operator-(ww::tup const &Tup) { return (ww::Negate(Tup)); }
 ww::tup operator-(ww::tup const &A, ww::tup const &B) { return (ww::Sub(A, B)); }
-ww::tup operator*(float const S, ww::tup const &Tup) { return (ww::Multiply(S, Tup)); }
-ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Multiply(S, Tup)); }
-ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Multiply(A, B)); }
+ww::tup operator*(float const S, ww::tup const &Tup) { return (ww::Mul(S, Tup)); }
+ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Mul(S, Tup)); }
+ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Mul(A, B)); }
+ww::matrix operator*(ww::matrix const &A, ww::matrix const &B) { return (ww::Mul(A, B)); }
+ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)); }
 // ---
 // NOTE: Division operator does not check for divide by zero; Who cares?
 // ---
-ww::tup operator/(ww::tup const &Tup, float const S) { return (ww::Multiply(1.f / S, Tup)); }
+ww::tup operator/(ww::tup const &Tup, float const S) { return (ww::Mul(1.f / S, Tup)); }
