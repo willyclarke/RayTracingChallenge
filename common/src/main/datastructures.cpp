@@ -521,9 +521,9 @@ matrix I()
 bool Equal(matrix const &A, matrix const &B)
 {
   return Equal(A.R[0], B.R[0]) &&  //
-         Equal(A.R[0], B.R[0]) &&  //
-         Equal(A.R[0], B.R[0]) &&  //
-         Equal(A.R[0], B.R[0]);
+         Equal(A.R[1], B.R[1]) &&  //
+         Equal(A.R[2], B.R[2]) &&  //
+         Equal(A.R[3], B.R[3]);
 }
 
 //------------------------------------------------------------------------------
