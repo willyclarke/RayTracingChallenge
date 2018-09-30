@@ -538,9 +538,58 @@ matrix Transpose(matrix const &M)
          Col < 4;         ///<!
          ++Col)
     {
-        R.R[Row].C[Col] = M.R[Col].C[Row];
+      R.R[Row].C[Col] = M.R[Col].C[Row];
     }
   }
+  return (R);
+}
+
+//------------------------------------------------------------------------------
+float Determinant22(matrix const &M)
+{
+  // NOTE: The determinant is D = a*d - b*c
+  float const Result = M.R[0].C[0] * M.R[1].C[1] - M.R[1].C[0] * M.R[0].C[1];
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+matrix SubMatrix(matrix const &M, int RemoveRow, int RemoveCol)
+{
+  matrix R{};
+  int ShiftR{};
+
+  // NOTE: For each row copy source until we get to the removerow
+  //       When we get to the remove row the source shifts by one,
+  //       so that we skip the RemoveRow.
+  for (int Row = 0;            ///<!
+       Row < M.Dimension - 1;  ///<!
+       ++Row)
+  {
+    if (Row == RemoveRow) ShiftR++;
+    R.R[Row] = M.R[Row + ShiftR];
+  }
+
+  // NOTE: Dimension reduces by 1 when we remove one row/column.
+  R.Dimension = M.Dimension - 1;
+
+  // NOTE: Copy the columns.
+  for (int Row = 0;        ///<!
+       Row < R.Dimension;  ///<! The rows are already in order, so we only need to
+       ++Row)              ///<! iterate over the result rows.
+  {
+    for (int Col = 0;        ///<!
+         Col < M.Dimension;  ///<!
+         ++Col)
+    {
+      if (Col < RemoveCol) continue;  // No point in copy of data that is already correctly placed.
+
+      if (Col < M.Dimension - 1)
+        R.R[Row].C[Col] = R.R[Row].C[Col + 1];
+      else
+        R.R[Row].C[Col] = 0.f;
+    }
+  }
+
   return (R);
 }
 };  // namespace ww

@@ -165,6 +165,7 @@ std::shared_ptr<canvas> ReadFromPPM(std::string const &Filename = "test.ppm");
 // ---
 // NOTE: Matrix functions.
 // ---
+float Determinant22(matrix const &M);
 bool Equal(matrix const &A, matrix const &B);
 float Get(matrix const &M, int Row, int Col);
 matrix I();
@@ -177,6 +178,7 @@ matrix Mul(matrix const &A, matrix const &B);
 tup Mul(matrix const &A, tup const &T);
 void Set(matrix &M, int Row, int Col, float Value);
 matrix Transpose(matrix const &M);
+matrix SubMatrix(matrix const &M, int RemoveRow, int RemoveCol);
 
 };  // namespace ww
 

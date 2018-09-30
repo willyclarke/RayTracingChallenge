@@ -168,6 +168,59 @@ TEST(Matrix, Transpose)
   EXPECT_EQ(ww::Equal(AT, ww::I()), true);
 }
 //------------------------------------------------------------------------------
+TEST(Matrix, Determinant22)
+{
+  ww::matrix M22 = ww::Matrix22(ww::tup{1.f, 5.f, 0.f, 0.f}, ww::tup{-3.f, 2.f, 0.f, 0.f});
+  float Det = ww::Determinant22(M22);
+  EXPECT_EQ(ww::Equal(Det, 17.f), true);
+}
+//------------------------------------------------------------------------------
+TEST(Matrix, Submatrix33)
+{
+  {
+    ww::matrix const M{
+        ww::tup{-6.f, 1.f, 1.f, 6.f},  //
+        ww::tup{-8.f, 5.f, 8.f, 6.f},  //
+        ww::tup{-1.f, 0.f, 8.f, 2.f},  //
+        ww::tup{-7.f, 1.f, -1.f, 1.f}  //
+    };
+    ww::matrix const TR = ww::Matrix33(ww::tup{-6.f, 1.f, 1.f, 0.f},  //
+                                       ww::tup{-8.f, 5.f, 8.f, 0.f},  //
+                                       ww::tup{-1.f, 0.f, 8.f, 0.f});
+
+    ww::matrix const R = ww::SubMatrix(M, 3, 3);
+    EXPECT_EQ(ww::Equal(R, TR), true);
+  }
+  {
+    ww::matrix const M{
+        ww::tup{-6.f, 1.f, 1.f, 6.f},  //
+        ww::tup{-8.f, 5.f, 8.f, 6.f},  //
+        ww::tup{-1.f, 0.f, 8.f, 2.f},  //
+        ww::tup{-7.f, 1.f, -1.f, 1.f}  //
+    };
+    ww::matrix TR = ww::Matrix33(ww::tup{-6.f, 1.f, 6.f, 0.f},  //
+                                 ww::tup{-8.f, 8.f, 6.f, 0.f},  //
+                                 ww::tup{-7.f, -1.f, 1.f, 0.f});
+
+    ww::matrix R = ww::SubMatrix(M, 2, 1);
+    EXPECT_EQ(ww::Equal(R, TR), true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Submatrix22)
+{
+  {
+    ww::matrix const M = ww::Matrix33(ww::tup{1.f, 5.f, 0.f, 0.f},   //
+                                      ww::tup{-3.f, 2.f, 7.f, 0.f},  //
+                                      ww::tup{0.f, 6.f, -3.f, 0.f});
+    ww::matrix const R = ww::SubMatrix(M, 0, 2);
+    ww::matrix const TR = ww::Matrix22(ww::tup{-3.f, 2.f, 0.f, 0.f},  //
+                                       ww::tup{0.f, 6.f, 0.f, 0.f});
+    EXPECT_EQ(ww::Equal(R, TR), true);
+  }
+}
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);
