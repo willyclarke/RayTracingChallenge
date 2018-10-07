@@ -220,6 +220,73 @@ TEST(Matrix, Submatrix22)
     EXPECT_EQ(ww::Equal(R, TR), true);
   }
 }
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Minorx33)
+{
+  ww::matrix const A = ww::Matrix33(ww::tup{3.f, 5.f, 0.f, 0.f},    //
+                                    ww::tup{2.f, -1.f, -7.f, 0.f},  //
+                                    ww::tup{6.f, -1.f, 5.f, 0.f});
+  ww::matrix const B = ww::SubMatrix(A, 1, 0);
+  ww::matrix const TR = ww::Matrix22(ww::tup{5.f, 0.f, 0.f, 0.f},  //
+                                     ww::tup{-1.f, 5.f, 0.f, 0.f});
+  EXPECT_EQ(ww::Equal(B, TR), true);
+
+  float const CalculatedMinor = Minor(A, 1, 0);
+  EXPECT_EQ(CalculatedMinor, 25.f);
+
+  float const DeterminantB = Determinant22(B);
+  EXPECT_EQ(DeterminantB, 25.f);
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Cofactor)
+{
+  {
+    ww::matrix const A = ww::Matrix33(ww::tup{3.f, 5.f, 0.f, 0.f},    //
+                                      ww::tup{2.f, -1.f, -7.f, 0.f},  //
+                                      ww::tup{6.f, -1.f, 5.f, 0.f});
+    EXPECT_EQ(A.Dimension, 3);
+    EXPECT_EQ(ww::Minor(A, 0, 0), -12.f);
+    EXPECT_EQ(ww::Cofactor22(A, 0, 0), -12.f);
+    EXPECT_EQ(ww::Minor(A, 1, 0), 25.f);
+    EXPECT_EQ(ww::Cofactor22(A, 1, 0), -25.f);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Determinant33)
+{
+  {
+    ww::matrix const A = ww::Matrix33(ww::tup{1.f, 2.f, 6.f, 0.f},    //
+                                      ww::tup{-5.f, 8.f, -4.f, 0.f},  //
+                                      ww::tup{2.f, 6.f, 4.f, 0.f});
+
+    EXPECT_EQ(A.Dimension, 3);
+    EXPECT_EQ(ww::Cofactor22(A, 0, 0), 56.f);
+    EXPECT_EQ(ww::Cofactor22(A, 0, 1), 12.f);
+    EXPECT_EQ(ww::Cofactor22(A, 0, 2), -46.f);
+    float const Det = A.R0.C[0] * ww::Cofactor22(A, 0, 0) +  //
+                      A.R0.C[1] * ww::Cofactor22(A, 0, 1) +  //
+                      A.R0.C[2] * ww::Cofactor22(A, 0, 2);
+    EXPECT_EQ(Det, -196);
+    EXPECT_EQ(ww::Determinant33(A), -196.f);
+    EXPECT_EQ(Det, ww::Determinant(A));
+  }
+  {
+    ww::matrix const A = ww::Matrix44(ww::tup{-2.f, -8.f, 3.f, 5.f},  //
+                                      ww::tup{-3.f, 1.f, 7.f, 3.f},   //
+                                      ww::tup{1.f, 2.f, -9.f, 6.f},   //
+                                      ww::tup{-6.f, 7.f, 7.f, -9.f});
+    float const D = Determinant44(A);
+    EXPECT_EQ(D, -4071.f);
+    EXPECT_EQ(D, ww::Determinant(A));
+    EXPECT_EQ(ww::Cofactor33(A, 0, 0), 690.f);
+    EXPECT_EQ(ww::Cofactor33(A, 0, 1), 447.f);
+    EXPECT_EQ(ww::Cofactor33(A, 0, 2), 210.f);
+    EXPECT_EQ(ww::Cofactor33(A, 0, 3), 51.f);
+  }
+}
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
@@ -237,5 +304,5 @@ void RunMatrixTest(int argc, char *argv[])
     if (Result != 0) break;
   }
 }
-}  // namespace rtcch3
+};  // namespace rtcch3
 #endif

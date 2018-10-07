@@ -165,14 +165,43 @@ std::shared_ptr<canvas> ReadFromPPM(std::string const &Filename = "test.ppm");
 // ---
 // NOTE: Matrix functions.
 // ---
+
+// ---
+// \fn Cofactor A minor that possibly have had its sign changed.
+// \return
+// ---
+float Cofactor22(matrix const &M, int RemoveRow, int RemoveCol);
+float Cofactor33(matrix const &M, int RemoveRow, int RemoveCol);
+float Cofactor44(matrix const &M, int RemoveRow, int RemoveCol);
+
 float Determinant22(matrix const &M);
+float Determinant33(matrix const &M);
+float Determinant44(matrix const &M);
+float Determinant(matrix const &M);
 bool Equal(matrix const &A, matrix const &B);
 float Get(matrix const &M, int Row, int Col);
+
+/// ---
+/// \fn Identity matrix
+/// \return Returs a 4x4 identity matrix.
+/// ---
 matrix I();
+
 matrix Matrix44();
 matrix Matrix44(tup const &R0, tup const &R1, tup const &R2, tup const &R3);
 matrix Matrix33(tup const &R0, tup const &R1, tup const &R2);
 matrix Matrix22(tup const &R0, tup const &R1);
+
+/// ---
+/// \fn Minor Calculate the determinant of a 2x2 submatrix.
+/// \ brief Remove one row and column to be able to calculate the determinant
+///         of a 2x2 matrix.
+/// \param matrix &
+/// \param RemoveRow - The row to be removed before computing the determinant.
+/// \param RemoveCol - The column to be removed before computing the determinant.
+/// \return Determinant of a submatrix of which a Row,Column have been removed.
+float Minor(matrix const &M, int RemoveRow, int RemoveCol);
+
 matrix Mul(matrix const &A, matrix const &B);
 matrix Mul(matrix const &A, matrix const &B);
 tup Mul(matrix const &A, tup const &T);

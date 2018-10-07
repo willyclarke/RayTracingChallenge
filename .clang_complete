@@ -1,5 +1,5 @@
 -Wall
 -Wextra
--Icommon/src/main
--I../build/RayTracingChallenge/googletest-src/googletest/include
+/*-Icommon/src/main*/
+/*-I../build/RayTracingChallenge/googletest-src/googletest/include*/
 -std=c++17

@@ -553,6 +553,42 @@ float Determinant22(matrix const &M)
 }
 
 //------------------------------------------------------------------------------
+float Determinant33(matrix const &M)
+{
+  float const CF0 = Cofactor22(M, 0, 0);
+  float const CF1 = Cofactor22(M, 0, 1);
+  float const CF2 = Cofactor22(M, 0, 2);
+
+  float const Result = M.R0.C[0] * CF0 + M.R0.C[1] * CF1 + M.R0.C[2] * CF2;
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+float Determinant44(matrix const &M)
+{
+  matrix const M0 = SubMatrix(M, 0, 0);
+  matrix const M1 = SubMatrix(M, 0, 1);
+  matrix const M2 = SubMatrix(M, 0, 2);
+  matrix const M3 = SubMatrix(M, 0, 3);
+  float const DetM0 = Determinant33(M0);
+  float const DetM1 = Determinant33(M1);
+  float const DetM2 = Determinant33(M2);
+  float const DetM3 = Determinant33(M3);
+  float const Result = M.R0.C[0] * DetM0 - M.R0.C[1] * DetM1 + M.R0.C[2] * DetM2 - M.R0.C[3] * DetM3;
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+float Determinant(matrix const &M)
+{
+    float Result{};
+    if (M.Dimension == 4) Result = Determinant44(M);
+    else if (M.Dimension == 3) Result = Determinant33(M);
+    else if (M.Dimension == 2) Result = Determinant22(M);
+    return(Result);
+}
+
+//------------------------------------------------------------------------------
 matrix SubMatrix(matrix const &M, int RemoveRow, int RemoveCol)
 {
   matrix R{};
@@ -591,6 +627,38 @@ matrix SubMatrix(matrix const &M, int RemoveRow, int RemoveCol)
   }
 
   return (R);
+}
+
+//------------------------------------------------------------------------------
+float Minor(matrix const &M, int RemoveRow, int RemoveCol)
+{
+  matrix const SM = SubMatrix(M, RemoveRow, RemoveCol);
+  float Result = Determinant22(SM);
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+float Cofactor22(matrix const &M, int RemoveRow, int RemoveCol)
+{
+  Assert(M.Dimension == 3, __FUNCTION__, __LINE__);
+  // NOTE: Change sign for the Cofactor when the sum of Row and Col is an odd number.
+  //       So; move to -2 for sign and then add 1.
+  int const Sign = -((RemoveRow + RemoveCol) % 2) * 2 + 1;
+  float const Result = Sign * Minor(M, RemoveRow, RemoveCol);
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+float Cofactor33(matrix const &M, int RemoveRow, int RemoveCol)
+{
+  Assert(M.Dimension == 4, __FUNCTION__, __LINE__);
+  matrix const A = SubMatrix(M, RemoveRow, RemoveCol);
+  Assert(A.Dimension == 3, __FUNCTION__, __LINE__);
+
+  float const SignCol[4]{1.f, -1.f, 1.f, -1.f};
+  float const Result = SignCol[RemoveCol] * Determinant33(A);
+  return (Result);
 }
 };  // namespace ww
 
