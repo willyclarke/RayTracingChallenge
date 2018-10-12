@@ -63,22 +63,22 @@ std::ostream &operator<<(std::ostream &stream, const ww::matrix &M)
              << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].Z << " |";  //<!
       break;
     default:
-      stream << "\n |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].X         //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].Y           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].Z           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].W << " |";  //<!
-      stream << "\n |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].X         //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].Y           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].Z           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].W << " |";  //<!
-      stream << "\n |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].X         //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].Y           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].Z           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].W << " |";  //<!
-      stream << "\n |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].X         //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].Y           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].Z           //<!
-             << " |" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].W << " |";  //<!
+      stream << "\n {" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].X         //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].Y           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].Z           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[0].W << " }";  //<!
+      stream << "\n {" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].X         //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].Y           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].Z           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[1].W << " }";  //<!
+      stream << "\n {" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].X         //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].Y           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].Z           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[2].W << " }";  //<!
+      stream << "\n {" << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].X         //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].Y           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].Z           //<!
+             << " ," << std::fixed << std::setprecision(P) << std::setw(W) << M.R[3].W << " }";  //<!
       break;
   };
   stream << "\n";
@@ -470,6 +470,56 @@ float Get(matrix const &M, int Row, int Col)
 void Set(matrix &M, int Row, int Col, float Value) { M.R[Row].C[Col] = Value; }
 
 //------------------------------------------------------------------------------
+is_invertible_return IsInvertible(matrix const &M)
+{
+  // NOTE: When the determinant has already been calculated we just return that result.
+  //       Otherwise the Determinant is calculated and a tuple is returned..
+  is_invertible_return Result{M.ID};
+
+  if (!Result.IsInvertible)
+  {
+    Result.Determinant = Determinant(M);
+    Result.IsInvertible = Result.Determinant != 0;
+  }
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+matrix Inverse(matrix const &M)
+{
+  // NOTE: Inverse of matrix is done by
+  // 1. Calculate the determinant. If different than zero ok
+  // 2. Calculate the cofactor of the input matrix.
+  // 3. Transpose the Resulting matrix.
+  // 4. Divide each element by the determinant.
+
+  matrix Result{};
+  float &DetM = Result.ID.Determinant;
+  DetM = Determinant(M);
+
+  if (Equal(DetM, 0.f)) return (Result);
+
+  // NOTE: Since we did not return above the matrix must be invertible
+  Result.ID.IsInvertible = true;
+
+  for (int Row = 0;        ///<!
+       Row < M.Dimension;  ///<!
+       ++Row)
+  {
+    for (int Col = 0;        ///<!
+         Col < M.Dimension;  ///<!
+         ++Col)
+    {
+      Result.R[Row].C[Col] = Cofactor(M, Row, Col) / DetM;
+    }
+  }
+
+  // NOTE: The transposed matrix is not updated with the Determinant and the IsInvertible flag.
+  Result = Transpose(Result);
+
+  return (Result);
+}
+//------------------------------------------------------------------------------
 matrix Mul(matrix const &A, matrix const &B)
 {
   matrix M{};
@@ -507,6 +557,7 @@ tup Mul(matrix const &A, tup const &T)
   return (Result);
 }
 
+//------------------------------------------------------------------------------
 matrix I()
 {
   matrix Identity{};
@@ -555,9 +606,9 @@ float Determinant22(matrix const &M)
 //------------------------------------------------------------------------------
 float Determinant33(matrix const &M)
 {
-  float const CF0 = Cofactor22(M, 0, 0);
-  float const CF1 = Cofactor22(M, 0, 1);
-  float const CF2 = Cofactor22(M, 0, 2);
+  float const CF0 = Cofactor33(M, 0, 0);
+  float const CF1 = Cofactor33(M, 0, 1);
+  float const CF2 = Cofactor33(M, 0, 2);
 
   float const Result = M.R0.C[0] * CF0 + M.R0.C[1] * CF1 + M.R0.C[2] * CF2;
   return (Result);
@@ -581,11 +632,14 @@ float Determinant44(matrix const &M)
 //------------------------------------------------------------------------------
 float Determinant(matrix const &M)
 {
-    float Result{};
-    if (M.Dimension == 4) Result = Determinant44(M);
-    else if (M.Dimension == 3) Result = Determinant33(M);
-    else if (M.Dimension == 2) Result = Determinant22(M);
-    return(Result);
+  float Result{};
+  if (M.Dimension == 4)
+    Result = Determinant44(M);
+  else if (M.Dimension == 3)
+    Result = Determinant33(M);
+  else if (M.Dimension == 2)
+    Result = Determinant22(M);
+  return (Result);
 }
 
 //------------------------------------------------------------------------------
@@ -639,7 +693,7 @@ float Minor(matrix const &M, int RemoveRow, int RemoveCol)
 }
 
 //------------------------------------------------------------------------------
-float Cofactor22(matrix const &M, int RemoveRow, int RemoveCol)
+float Cofactor33(matrix const &M, int RemoveRow, int RemoveCol)
 {
   Assert(M.Dimension == 3, __FUNCTION__, __LINE__);
   // NOTE: Change sign for the Cofactor when the sum of Row and Col is an odd number.
@@ -650,14 +704,26 @@ float Cofactor22(matrix const &M, int RemoveRow, int RemoveCol)
 }
 
 //------------------------------------------------------------------------------
-float Cofactor33(matrix const &M, int RemoveRow, int RemoveCol)
+float Cofactor44(matrix const &M, int RemoveRow, int RemoveCol)
 {
   Assert(M.Dimension == 4, __FUNCTION__, __LINE__);
   matrix const A = SubMatrix(M, RemoveRow, RemoveCol);
-  Assert(A.Dimension == 3, __FUNCTION__, __LINE__);
 
-  float const SignCol[4]{1.f, -1.f, 1.f, -1.f};
-  float const Result = SignCol[RemoveCol] * Determinant33(A);
+  int const Sign = -((RemoveRow + RemoveCol) % 2) * 2 + 1;
+  float const Result = Sign * Determinant33(A);
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+float Cofactor(matrix const &M, int RemoveRow, int RemoveCol)
+{
+  float Result{};
+
+  if (M.Dimension == 4)
+    Result = Cofactor44(M, RemoveRow, RemoveCol);
+  else if (M.Dimension == 3)
+    Result = Cofactor33(M, RemoveRow, RemoveCol);
+
   return (Result);
 }
 };  // namespace ww

@@ -32,7 +32,7 @@
 
 namespace ww
 {
-constexpr float EPSILON = 0.0000001;  // 1E27 * std::numeric_limits<float>::min();
+constexpr float EPSILON = 0.0000100;  // 1E27 * std::numeric_limits<float>::min();
 
 //------------------------------------------------------------------------------
 union tup {
@@ -84,6 +84,14 @@ struct canvas
   std::vector<tup> vXY{};
 };
 
+// NOTE: Use a struct to return multiple values.
+struct is_invertible_return
+{
+  bool IsInvertible{};
+  bool IsComputed{};
+  float Determinant{};
+};
+
 //------------------------------------------------------------------------------
 union matrix {
   matrix() : R0{}, R1{}, R2{}, R3{}, Dimension{4} {}
@@ -99,6 +107,7 @@ union matrix {
     R2 = Other.R2;
     R3 = Other.R3;
     Dimension = Other.Dimension;
+    ID = Other.ID;
   }
 
   struct  //!< A matrix can be four tuple rows
@@ -108,6 +117,8 @@ union matrix {
     tup R2{};
     tup R3{};
     int Dimension{4};
+    // NOTE: Storeage of invertible and determinant
+    is_invertible_return ID{};
   };
   struct  //!< or it can be an array of 4 tuple rows.
   {
@@ -170,7 +181,7 @@ std::shared_ptr<canvas> ReadFromPPM(std::string const &Filename = "test.ppm");
 // \fn Cofactor A minor that possibly have had its sign changed.
 // \return
 // ---
-float Cofactor22(matrix const &M, int RemoveRow, int RemoveCol);
+float Cofactor(matrix const &M, int RemoveRow, int RemoveCol);
 float Cofactor33(matrix const &M, int RemoveRow, int RemoveCol);
 float Cofactor44(matrix const &M, int RemoveRow, int RemoveCol);
 
@@ -180,6 +191,15 @@ float Determinant44(matrix const &M);
 float Determinant(matrix const &M);
 bool Equal(matrix const &A, matrix const &B);
 float Get(matrix const &M, int Row, int Col);
+
+is_invertible_return IsInvertible(matrix const &M);
+
+/// \fn Inverse Calculate the inverse of the matrix M.
+///
+/// \brief The inverse is not always possible to calculate. When inversion is
+///        not possible the Zero matrix will be returned.
+/// \return Inverse when possible, Zero matrix otherwise.
+matrix Inverse(matrix const &M);
 
 /// ---
 /// \fn Identity matrix
