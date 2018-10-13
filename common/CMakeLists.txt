@@ -37,9 +37,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g -O3")
 ###############################################################################
 ## Specify the c/cpp compiler to use ##########################################
 ###############################################################################
-set(CMAKE_C_COMPILER clang)
+#set(CMAKE_C_COMPILER clang)
 #set(CMAKE_C_COMPILER gcc)
-set(CMAKE_CXX_COMPILER clang++)
+#set(CMAKE_CXX_COMPILER clang++)
 #set(CMAKE_CXX_COMPILER g++)
 
 ###############################################################################
