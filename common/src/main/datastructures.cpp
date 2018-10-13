@@ -216,6 +216,8 @@ tup Vector(float A, float B, float C)
   return (Result);
 }
 
+//------------------------------------------------------------------------------
+float Radians(float Deg) { return (PI_F * Deg / 180.f); }
 // ---
 // NOTE: Canvas methods/functions.
 // ---

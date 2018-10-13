@@ -33,6 +33,8 @@
 namespace ww
 {
 constexpr float EPSILON = 0.0000100;  // 1E27 * std::numeric_limits<float>::min();
+constexpr double PI = 3.141592653589793238463;
+constexpr float PI_F = 3.14159265358979f;
 
 //------------------------------------------------------------------------------
 union tup {
@@ -151,6 +153,7 @@ bool IsPoint(tup const &Tup);
 float MagSquared(tup const &Tup);
 float Mag(tup const &Tup);
 tup Mul(float const S, tup const &Tup);
+float Radians(float Deg);
 
 // ---
 // NOTE: Multiply is also called Hadamard or Schur product.
