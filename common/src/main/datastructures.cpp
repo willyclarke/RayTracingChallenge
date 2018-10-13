@@ -750,6 +750,42 @@ matrix Scale(float X, float Y, float Z)
 
   return (M);
 }
+
+//------------------------------------------------------------------------------
+matrix RotateX(float Alfa)
+{
+  matrix M{I()};
+  Set(M, 1, 1, std::cos(Alfa));
+  Set(M, 1, 2, -std::sin(Alfa));
+  Set(M, 2, 1, std::sin(Alfa));
+  Set(M, 2, 2, std::cos(Alfa));
+
+  return (M);
+}
+
+//------------------------------------------------------------------------------
+matrix RotateY(float Alfa)
+{
+  matrix M{I()};
+  Set(M, 0, 0, std::cos(Alfa));
+  Set(M, 0, 2, std::sin(Alfa));
+  Set(M, 2, 0, -std::sin(Alfa));
+  Set(M, 2, 2, std::cos(Alfa));
+
+  return (M);
+}
+
+//------------------------------------------------------------------------------
+matrix RotateZ(float Alfa)
+{
+  matrix M{I()};
+  Set(M, 0, 0, std::cos(Alfa));
+  Set(M, 0, 1, -std::sin(Alfa));
+  Set(M, 1, 0, std::sin(Alfa));
+  Set(M, 1, 1, std::cos(Alfa));
+
+  return (M);
+}
 };  // namespace ww
 
 // ---

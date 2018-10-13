@@ -497,8 +497,48 @@ TEST(Matrix, Scaling)
   }
   // NOTE: Test that reflection is the same a changing the sign of one axis.
   {
-      ww::tup const P = ww::Scale(-1.f, 1.f, 1.f) * ww::Point(2.f, 3.f, 4.f);
-      EXPECT_EQ(ww::Equal(P, ww::Point(-2.f, 3.f, 4.f)), true);
+    ww::tup const P = ww::Scale(-1.f, 1.f, 1.f) * ww::Point(2.f, 3.f, 4.f);
+    EXPECT_EQ(ww::Equal(P, ww::Point(-2.f, 3.f, 4.f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, RotationX)
+{
+  // NOTE: Rotating a point around the X-axis
+  {
+    ww::tup const P = ww::Point(0.f, 1.f, 0.f);
+    float const N = 180.f;
+    ww::tup const HalfQuart = ww::RotateX(ww::Radians(N / 4.f)) * P;
+    ww::tup const FullQuart = ww::RotateX(ww::Radians(N / 2.f)) * P;
+    EXPECT_EQ(ww::Equal(HalfQuart, ww::Point(0.f, std::sqrt(2.f) / 2.f, std::sqrt(2.f) / 2.f)), true);
+    EXPECT_EQ(ww::Equal(FullQuart, ww::Point(0.f, 0.f, 1.f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, RotationY)
+{  // NOTE: Rotating a point around the Y-axis
+  {
+    ww::tup const P = ww::Point(0.f, 0.f, 1.f);
+    float const N = 180.f;
+    ww::tup const HalfQuart = ww::RotateY(ww::Radians(N / 4.f)) * P;
+    ww::tup const FullQuart = ww::RotateY(ww::Radians(N / 2.f)) * P;
+    EXPECT_EQ(ww::Equal(HalfQuart, ww::Point(std::sqrt(2.f) / 2.f, 0.f, std::sqrt(2.f) / 2.f)), true);
+    EXPECT_EQ(ww::Equal(FullQuart, ww::Point(1.f, 0.f, 0.f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, RotationZ)
+{  // NOTE: Rotating a point around the Z-axis
+  {
+    ww::tup const P = ww::Point(0.f, 1.f, 0.f);
+    float const N = 180.f;
+    ww::tup const HalfQuart = ww::RotateZ(ww::Radians(N / 4.f)) * P;
+    ww::tup const FullQuart = ww::RotateZ(ww::Radians(N / 2.f)) * P;
+    EXPECT_EQ(ww::Equal(HalfQuart, ww::Point(-std::sqrt(2.f) / 2.f, std::sqrt(2.f) / 2.f, 0.f)), true);
+    EXPECT_EQ(ww::Equal(FullQuart, ww::Point(-1.f, 0.f, 0.f)), true);
   }
 }
 
