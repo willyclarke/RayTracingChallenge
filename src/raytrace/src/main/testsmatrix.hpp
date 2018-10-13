@@ -475,6 +475,34 @@ TEST(Matrix, Translation)
 }
 
 //------------------------------------------------------------------------------
+TEST(Matrix, Scaling)
+{
+  // NOTE: Scaling applied to a point.
+  {
+    ww::tup const P = ww::Point(-4.f, 6.f, 8.f);
+    ww::tup const P2 = ww::Scale(2.f, 3.f, 4.f) * P;
+    EXPECT_EQ(ww::Equal(P2, ww::Point(-8.f, 18.f, 32.f)), true);
+  }
+  // NOTE: Scaling applied to a vector.
+  {
+    ww::tup const V = ww::Vector(-4.f, 6.f, 8.f);
+    ww::tup const V2 = ww::Scale(2.f, 3.f, 4.f) * V;
+    EXPECT_EQ(ww::Equal(V2, ww::Vector(-8.f, 18.f, 32.f)), true);
+  }
+  // NOTE: Expect the tuple to "grow" in the opposite direction when scaling with the inverse.
+  {
+    ww::matrix const InvTransform = ww::Inverse(ww::Scale(2.f, 3.f, 4.f));
+    ww::tup const V = InvTransform * ww::Vector(-4.f, 6.f, 8.f);
+    EXPECT_EQ(ww::Equal(V, ww::Vector(-2.f, 2.f, 2.f)), true);
+  }
+  // NOTE: Test that reflection is the same a changing the sign of one axis.
+  {
+      ww::tup const P = ww::Scale(-1.f, 1.f, 1.f) * ww::Point(2.f, 3.f, 4.f);
+      EXPECT_EQ(ww::Equal(P, ww::Point(-2.f, 3.f, 4.f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);

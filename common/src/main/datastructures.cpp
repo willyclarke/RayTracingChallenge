@@ -729,13 +729,24 @@ float Cofactor(matrix const &M, int RemoveRow, int RemoveCol)
 
 matrix Translation(float X, float Y, float Z)
 {
-    matrix M{I()};
-    Set(M, 0, 3, X);
-    Set(M, 1, 3, Y);
-    Set(M, 2, 3, Z);
-    Set(M, 3, 3, 1.f);
+  matrix M{I()};
+  Set(M, 0, 3, X);
+  Set(M, 1, 3, Y);
+  Set(M, 2, 3, Z);
 
-    return(M);
+  return (M);
+}
+
+//------------------------------------------------------------------------------
+matrix Scale(float X, float Y, float Z)
+{
+  matrix M{I()};
+
+  Set(M, 0, 0, X);
+  Set(M, 1, 1, Y);
+  Set(M, 2, 2, Z);
+
+  return (M);
 }
 };  // namespace ww
 
