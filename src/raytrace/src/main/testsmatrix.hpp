@@ -441,7 +441,36 @@ TEST(Matrix, PuttingItTogether)
     ww::Set(M, 1, 0, 10.f);  // set an element to a different number
     ww::Set(M, 2, 0, 10.f);  // set an element to a different number
     ww::tup const T2 = M * T;
-    //std::cout << T2 << std::endl;
+    // std::cout << T2 << std::endl;
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Translation)
+{
+  // NOTE: A simple translation.
+  // from X:-3 -> X:2 is a translation of 5 units.
+  // from Y:4 -> Y:1 is a translation of -3 units.
+  // from Z:5 -> Z:2 is a translation of 2 units.
+  {
+    ww::tup const P = ww::Point(-3.f, 4.f, 5.f);
+    ww::tup const T = ww::Translation(5.f, -3.f, 2.f) * P;
+    EXPECT_EQ(ww::Equal(T, ww::Point(2.f, 1.f, 7.f)), true);
+  }
+  // NOTE: move the translation in reverse by multiplication with the inverse
+  {
+    ww::matrix const Transform = ww::Translation(5.f, -3.f, 2.f);
+    ww::matrix const InvTransf = ww::Inverse(Transform);
+    ww::tup const P = ww::Point(-3.f, 4.f, 5.f);
+    ww::tup const P2 = InvTransf * P;
+    EXPECT_EQ(ww::Equal(P2, ww::Point(-8.f, 7.f, 3.f)), true);
+  }
+  // NOTE: Multiplying a vector with a translation should not change the vector, it is just
+  //       an arrow with a different position.
+  {
+    ww::tup V = ww::Vector(-3.f, 4.f, 5.f);
+    ww::tup const V2 = ww::Translation(5.f, -3.f, 2.f) * V;
+    EXPECT_EQ(ww::Equal(V2, V), true);
   }
 }
 

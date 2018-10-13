@@ -229,6 +229,7 @@ void Set(matrix &M, int Row, int Col, float Value);
 matrix Transpose(matrix const &M);
 matrix SubMatrix(matrix const &M, int RemoveRow, int RemoveCol);
 
+matrix Translation(float X, float Y, float Z);
 };  // namespace ww
 
 // ---
