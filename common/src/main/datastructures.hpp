@@ -236,6 +236,7 @@ matrix RotateX(float Alfa);
 matrix RotateY(float Alfa);
 matrix RotateZ(float Alfa);
 matrix Scale(float X, float Y, float Z);
+matrix Shearing(float Xy, float Xz, float Yx, float Yz, float Zx, float Zy);
 matrix Translation(float X, float Y, float Z);
 };  // namespace ww
 

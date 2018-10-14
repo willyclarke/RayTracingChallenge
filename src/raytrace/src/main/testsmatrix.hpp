@@ -543,6 +543,85 @@ TEST(Matrix, RotationZ)
 }
 
 //------------------------------------------------------------------------------
+TEST(Matrix, Shearing1)
+{
+  {
+    // NOTE: Check shearing by checking point after calculation.
+    EXPECT_EQ(                                                                      //!<
+        ww::Equal(                                                                  //!<
+            ww::Shearing(1.f, 0.f, 0.f, 0.f, 0.f, 0.f) * ww::Point(2.f, 3.f, 4.f),  //!<
+            ww::Point(5.f, 3.f, 4.f)                                                //!<
+            ),
+        true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Shearing2)
+{
+  {
+    EXPECT_EQ(                                                                      //!<
+        ww::Equal(                                                                  //!<
+            ww::Shearing(0.f, 1.f, 0.f, 0.f, 0.f, 0.f) * ww::Point(2.f, 3.f, 4.f),  //!<
+            ww::Point(6.f, 3.f, 4.f)                                                //!<
+            ),
+        true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Shearing3)
+{
+  {
+    EXPECT_EQ(                                                                      //!<
+        ww::Equal(                                                                  //!<
+            ww::Shearing(0.f, 0.f, 1.f, 0.f, 0.f, 0.f) * ww::Point(2.f, 3.f, 4.f),  //!<
+            ww::Point(2.f, 5.f, 4.f)                                                //!<
+            ),
+        true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Shearing4)
+{
+  {
+    EXPECT_EQ(                                                                      //!<
+        ww::Equal(                                                                  //!<
+            ww::Shearing(0.f, 0.f, 0.f, 1.f, 0.f, 0.f) * ww::Point(2.f, 3.f, 4.f),  //!<
+            ww::Point(2.f, 7.f, 4.f)                                                //!<
+            ),
+        true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Shearing5)
+{
+  {
+    EXPECT_EQ(                                                                      //!<
+        ww::Equal(                                                                  //!<
+            ww::Shearing(0.f, 0.f, 0.f, 0.f, 1.f, 0.f) * ww::Point(2.f, 3.f, 4.f),  //!<
+            ww::Point(2.f, 3.f, 6.f)                                                //!<
+            ),
+        true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Matrix, Shearing6)
+{
+  {
+    EXPECT_EQ(                                                                      //!<
+        ww::Equal(                                                                  //!<
+            ww::Shearing(0.f, 0.f, 0.f, 0.f, 0.f, 1.f) * ww::Point(2.f, 3.f, 4.f),  //!<
+            ww::Point(2.f, 3.f, 7.f)                                                //!<
+            ),
+        true);
+  }
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);
