@@ -786,16 +786,33 @@ matrix RotateZ(float Alfa)
 
   return (M);
 }
+
+//------------------------------------------------------------------------------
 matrix Shearing(float Xy, float Xz, float Yx, float Yz, float Zx, float Zy)
 {
-    matrix M{I()};
-    Set(M, 0, 1, Xy);
-    Set(M, 0, 2, Xz);
-    Set(M, 1, 0, Yx);
-    Set(M, 1, 2, Yz);
-    Set(M, 2, 0, Zx);
-    Set(M, 2, 1, Zy);
-    return(M);
+  matrix M{I()};
+  Set(M, 0, 1, Xy);
+  Set(M, 0, 2, Xz);
+  Set(M, 1, 0, Yx);
+  Set(M, 1, 2, Yz);
+  Set(M, 2, 0, Zx);
+  Set(M, 2, 1, Zy);
+  return (M);
+}
+
+//------------------------------------------------------------------------------
+matrix TranslateScaleRotate(                   //!<
+    float TransX, float TransY, float TransZ,  //!< Translation is in m(?)
+    float ScaleX, float ScaleY, float ScaleZ,  //!< Scale input is unitless.
+    float AlfaX, float AlfaY, float AlfaZ      //!< Input rotation in radians.
+)
+{
+  matrix const M = Translation(TransX, TransY, TransZ) *             //!<
+                   Scale(ScaleX, ScaleY, ScaleZ) *                   //!<
+                   RotateX(AlfaX) * RotateY(AlfaY) * RotateZ(AlfaZ)  //!<
+      ;
+
+  return (M);
 }
 };  // namespace ww
 

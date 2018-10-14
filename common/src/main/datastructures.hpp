@@ -238,6 +238,12 @@ matrix RotateZ(float Alfa);
 matrix Scale(float X, float Y, float Z);
 matrix Shearing(float Xy, float Xz, float Yx, float Yz, float Zx, float Zy);
 matrix Translation(float X, float Y, float Z);
+// Combine translation, rotate and scale in one single function.
+matrix TranslateScaleRotate(                   //!<
+    float TransX, float TransY, float TransZ,  //!< Translation is in m(?)
+    float ScaleX, float ScaleY, float ScaleZ,  //!< Scale input is unitless.
+    float AlfaX, float AlfaY, float AlfaZ      //!< Input rotation in radians.
+);
 };  // namespace ww
 
 // ---

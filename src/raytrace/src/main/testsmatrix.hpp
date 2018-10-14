@@ -622,6 +622,59 @@ TEST(Matrix, Shearing6)
 }
 
 //------------------------------------------------------------------------------
+TEST(Matrix, RotScaleTranslate)
+{
+  // NOTE: First check that the simple approach works. Do the single transformations
+  //       one by one and verify the result as we move along.
+  {
+    float const N = 180.f;
+    ww::tup const P = ww::Point(1.f, 0.f, 1.f);
+
+    ww::tup const P2 = ww::RotateX(ww::Radians(N) / 2.f) * P;
+    EXPECT_EQ(ww::Equal(P2, ww::Point(1.f, -1.f, 0.f)), true);
+
+    ww::tup const P3 = ww::Scale(5.f, 5.f, 5.f) * P2;
+    EXPECT_EQ(ww::Equal(P3, ww::Point(5.f, -5.f, 0.f)), true);
+
+    ww::tup const P4 = ww::Translation(10.f, 5.f, 7.f) * P3;
+    EXPECT_EQ(ww::Equal(P4, ww::Point(15.f, 0.f, 7.f)), true);
+  }
+  // NOTE: Now check that the TranslateScaleRotate works as expected by applying the funtion
+  //       to do the operations.
+  {
+    float const N = 180.f;
+    ww::tup const P = ww::Point(1.f, 0.f, 1.f);
+
+    // NOTE: Rotation.
+    ww::tup const P2 = ww::TranslateScaleRotate(           //!<
+                           0.f, 0.f, 0.f,                  //!<
+                           1.f, 1.f, 1.f,                  //!<
+                           ww::Radians(N) / 2.f, 0.f, 0.f  //!<
+                           ) *
+                       P;
+    EXPECT_EQ(ww::Equal(P2, ww::Point(1.f, -1.f, 0.f)), true);
+
+    // NOTE: Scale and rotate.
+    ww::tup const P3 = ww::TranslateScaleRotate(           //!<
+                           0.f, 0.f, 0.f,                  //!<
+                           5.f, 5.f, 5.f,                  //!<
+                           ww::Radians(N) / 2.f, 0.f, 0.f  //!<
+                           ) *
+                       P;
+    EXPECT_EQ(ww::Equal(P3, ww::Point(5.f, -5.f, 0.f)), true);
+
+    // NOTE: Full on, translate, scale and rotate.
+    ww::tup const P4 = ww::TranslateScaleRotate(           //!<
+                           10.f, 5.f, 7.f,                 //!<
+                           5.f, 5.f, 5.f,                  //!<
+                           ww::Radians(N) / 2.f, 0.f, 0.f  //!<
+                           ) *
+                       P;
+    EXPECT_EQ(ww::Equal(P4, ww::Point(15.f, 0.f, 7.f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);
