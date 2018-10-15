@@ -715,8 +715,6 @@ TEST(Matrix, CreateClockPPM)
   EXPECT_EQ(HPixel(HAcross), Canvas.W - 1);
   EXPECT_EQ(VPixel(VAcross), Canvas.H - 1);
 
-  std::cout << "HPixel:" << HPixel(0) << ". VPixel:" << VPixel(0) << std::endl;
-
   auto ClockPixel = [&](float const X, float const Y) -> void {
     ww::WritePixel(Canvas, HPixel(X + 2 * 0.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
     ww::WritePixel(Canvas, HPixel(X + 2 * 1.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
