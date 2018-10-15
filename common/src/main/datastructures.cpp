@@ -223,7 +223,10 @@ float Radians(float Deg) { return (PI_F * Deg / 180.f); }
 // ---
 void WritePixel(canvas &Canvas, int X, int Y, tup const &Color)
 {
-  // std::cout << "X:" << X << ". Y:" << Y << ". clc:" << (X + Y * Canvas.W) << ". size:" << Canvas.vXY.size()
+  //std::cout << "X:" << X                       //!<
+  //          << ". Y:" << Y                     //!<
+  //          << ". clc:" << (X + Y * Canvas.W)  //!<
+  //          << ". size:" << Canvas.vXY.size()  //!<
   //          << std::endl;
 
   Assert(Canvas.vXY.size() > (X + Y * Canvas.W), __FILE__, __LINE__);

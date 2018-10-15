@@ -675,6 +675,99 @@ TEST(Matrix, RotScaleTranslate)
 }
 
 //------------------------------------------------------------------------------
+TEST(Matrix, CreateClockPPM)
+{
+  ww::canvas Canvas(900, 900);
+  ww::tup Color = ww::Color(1.f, 0.f, 0.f);
+  // NOTE: Define the number of meters across.
+  float const HAcross{1.f};
+  float const VAcross{1.f};
+
+  // ---
+  // So we need to scale from our world to pixel.
+  // Set up pixels per meter.
+  // ---
+  float const HPixelMeter = Canvas.W / (2.f * HAcross);  // use Xm horisontal across.
+  auto HPixel = [&](float const Pos) -> int {
+    // Pos = 0  -> Pixel = Canvas.W/2
+    // Pos = -1 -> Pixel = 0
+    // Pos = +1 -> Pixel = Canvas.W
+    float const P = HPixelMeter * Pos + Canvas.W / 2.f;
+    int const Result = std::min<int>(Canvas.W - 1, std::max<int>(0, int(P)));
+    return Result;
+  };
+
+  // The vertical axis need to be reversed.
+  float const VPixelMeter = Canvas.H / (2.f * VAcross);  // use Xm vertiacal across.
+  auto VPixel = [&](float const Pos) -> int {
+    // Pos y = 0    -> Pixel = Canvas.H
+    // Pos y = 2000 -> Pixel = 0
+    // Pos y = 1000 -> Pixel = Canvas.H/2
+    float const P = VPixelMeter * Pos + Canvas.H / 2.f;
+    int const Result = std::min<int>(Canvas.H - 1, std::max<int>(0, int(P)));
+    return Result;
+  };
+
+  EXPECT_EQ(HPixel(-HAcross), 0);
+  EXPECT_EQ(VPixel(-VAcross), 0);
+  EXPECT_EQ(HPixel(0.f), Canvas.W / 2.f);
+  EXPECT_EQ(VPixel(0.f), Canvas.H / 2.f);
+  EXPECT_EQ(HPixel(HAcross), Canvas.W - 1);
+  EXPECT_EQ(VPixel(VAcross), Canvas.H - 1);
+
+  std::cout << "HPixel:" << HPixel(0) << ". VPixel:" << VPixel(0) << std::endl;
+
+  auto ClockPixel = [&](float const X, float const Y) -> void {
+    ww::WritePixel(Canvas, HPixel(X + 2 * 0.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 1.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 2.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 3.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 4.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
+
+    ww::WritePixel(Canvas, HPixel(X + 2 * 0.f / Canvas.W), VPixel(Y + 2 * 1.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 1.f / Canvas.W), VPixel(Y + 2 * 1.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 2.f / Canvas.W), VPixel(Y + 2 * 1.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 3.f / Canvas.W), VPixel(Y + 2 * 1.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 4.f / Canvas.W), VPixel(Y + 2 * 1.f / Canvas.H), Color);
+
+    ww::WritePixel(Canvas, HPixel(X + 2 * 0.f / Canvas.W), VPixel(Y + 2 * 2.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 1.f / Canvas.W), VPixel(Y + 2 * 2.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 2.f / Canvas.W), VPixel(Y + 2 * 2.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 3.f / Canvas.W), VPixel(Y + 2 * 2.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 4.f / Canvas.W), VPixel(Y + 2 * 2.f / Canvas.H), Color);
+
+    ww::WritePixel(Canvas, HPixel(X + 2 * 0.f / Canvas.W), VPixel(Y + 2 * 3.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 1.f / Canvas.W), VPixel(Y + 2 * 3.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 2.f / Canvas.W), VPixel(Y + 2 * 3.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 3.f / Canvas.W), VPixel(Y + 2 * 3.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 4.f / Canvas.W), VPixel(Y + 2 * 3.f / Canvas.H), Color);
+
+    ww::WritePixel(Canvas, HPixel(X + 2 * 0.f / Canvas.W), VPixel(Y + 2 * 4.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 1.f / Canvas.W), VPixel(Y + 2 * 4.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 2.f / Canvas.W), VPixel(Y + 2 * 4.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 3.f / Canvas.W), VPixel(Y + 2 * 4.f / Canvas.H), Color);
+    ww::WritePixel(Canvas, HPixel(X + 2 * 4.f / Canvas.W), VPixel(Y + 2 * 4.f / Canvas.H), Color);
+  };
+
+  ClockPixel(0.f, 0.f);
+  float const Angle = 360.f / 12.f;  //!< There are 12 jewels around the clock.
+
+  for (int Idx = 0;  ///<!
+       Idx < 12;     ///<!
+       ++Idx)
+  {
+    ww::tup const ClockP =
+        ww::TranslateScaleRotate(0.5f, 0.f, 0.f,                               //!< Translation is in m(?)
+                                 1.f, 1.f, 1.f,                                //!< Scale input is unitless.
+                                 0.f, 0.f, float(Idx) * ww::Radians(Angle)) *  //!< Input rotation in radians.
+        ww::Vector(0.5f, 0.f, 0.f);
+    ClockPixel(ClockP.X, ClockP.Y);
+  }
+
+  // Finally we write the file
+  ww::WriteToPPM(Canvas, "Clock.ppm");
+}
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);
