@@ -831,9 +831,9 @@ sphere Sphere(tup const &Center, float Radius)
 }
 
 //------------------------------------------------------------------------------
-intersections Intersect(sphere const &Sphere, ray &Ray)
+intersect Intersect(sphere const &Sphere, ray &Ray)
 {
-  intersections Result{};
+  intersect Result{};
   return (Result);
 }
 
@@ -854,7 +854,7 @@ ray Ray(tup const &O, tup const &D)
 }
 
 //------------------------------------------------------------------------------
-int Count(intersections const &I) { return (int(I.t.size())); }
+int Count(intersect const &I) { return (int(I.t.size())); }
 
 //------------------------------------------------------------------------------
 tup Position(ray const &R, float t)
@@ -868,9 +868,9 @@ tup Position(ray const &R, float t)
 }
 
 //------------------------------------------------------------------------------
-intersections Intersect(sphere const &Sphere, ray const &Ray)
+intersect Intersect(sphere const &Sphere, ray const &Ray)
 {
-  intersections Result{};
+  intersect Result{};
   // NOTE: See explanation from:
   // https://stackoverflow.com/questions/1073336/circle-line-segment-collision-detection-algorithm#1084899
   //

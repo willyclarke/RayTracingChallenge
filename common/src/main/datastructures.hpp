@@ -84,7 +84,7 @@ struct sphere
 /// \struct intersection
 /// \brief Collection of t values where a ray intersects an object.
 /// ---
-struct intersections
+struct intersect
 {
   std::vector<float> t{};  //!< The points of intersection.
 };
@@ -277,7 +277,7 @@ matrix TranslateScaleRotate(                   //!<
 /// ---
 /// \fn Sphere releated functions
 /// ---
-intersections Intersect(sphere const &Sphere, ray const &Ray);
+intersect Intersect(sphere const &Sphere, ray const &Ray);
 
 /// ---
 /// Ray releated functions.

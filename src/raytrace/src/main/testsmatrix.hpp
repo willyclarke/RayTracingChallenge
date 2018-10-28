@@ -805,7 +805,7 @@ TEST(RaySphere, IntersectSphere2Points1)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersections XS = ww::Intersect(S, R);
+  ww::intersect XS = ww::Intersect(S, R);
   EXPECT_EQ(ww::Dot(R.D, R.D), 1.f);
   EXPECT_EQ(XS.t.size(), 2);
   if (XS.t.size() == 2)
@@ -821,7 +821,7 @@ TEST(RaySphere, IntersectSphere2Points2)
   ww::ray const R = ww::Ray(ww::Point(0.f, 1.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersections XS = ww::Intersect(S, R);
+  ww::intersect XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.t.size(), 2);
   if (XS.t.size() == 2)
   {
@@ -838,7 +838,7 @@ TEST(RaySphere, IntersectSphere2Points3)
   ww::sphere const S{};
   EXPECT_EQ(S.R, 1.f);
 
-  ww::intersections XS = ww::Intersect(S, R);
+  ww::intersect XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.t.size(), 0);
 }
 
@@ -851,7 +851,7 @@ TEST(RaySphere, IntersectSphere2Points4)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersections XS = ww::Intersect(S, R);
+  ww::intersect XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.t.size(), 2);
   if (XS.t.size() == 2)
   {
@@ -867,7 +867,7 @@ TEST(RaySphere, IntersectSphere2Points5)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersections XS = ww::Intersect(S, R);
+  ww::intersect XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.t.size(), 2);
   if (XS.t.size() == 2)
   {
