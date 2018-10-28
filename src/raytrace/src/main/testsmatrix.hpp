@@ -765,6 +765,117 @@ TEST(Matrix, CreateClockPPM)
   // Finally we write the file
   ww::WriteToPPM(Canvas, "Clock.ppm");
 }
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, Intersect1)
+{
+  ww::tup const Origin = ww::Point(1.f, 2.f, 3.f);
+  ww::tup const Direction = ww::Vector(4.f, 5.f, 6.f);
+  ww::ray const Ray = ww::Ray(Origin, Direction);
+  EXPECT_EQ(ww::Equal(Ray.O, Origin), true);
+  EXPECT_EQ(ww::Equal(Ray.D, Direction), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, MoveAlongRay)
+{
+  ww::ray const R = Ray(ww::Point(2.f, 3.f, 4.f), ww::Vector(1.f, 0.f, 0.f));
+
+  // NOTE: Move along a ray, start at t=0, point is exected to be at origin.
+  //       Keep on moving along the ray, so at t=1 the expected position is
+  //       an x value which has increased by 1.
+  //       And so on...
+  EXPECT_EQ(ww::Equal(ww::Point(2.f, 3.f, 4.f), ww::Position(R, 0.f)), true);
+  EXPECT_EQ(ww::Equal(ww::Point(3.f, 3.f, 4.f), ww::Position(R, 1.f)), true);
+  EXPECT_EQ(ww::Equal(ww::Point(1.f, 3.f, 4.f), ww::Position(R, -1.f)), true);
+  EXPECT_EQ(ww::Equal(ww::Point(4.5f, 3.f, 4.f), ww::Position(R, 2.5f)), true);
+}
+
+//------------------------------------------------------------------------------
+// NOTE: Test that the ray goes straight through the sphere.
+//
+//                              xx
+//-5    -4     -3     -2    -1 x  x       +1    +2
+// -----| -----| -----| -----|x    x -----| -----| -----|
+// Ray >>>>                    x  x
+//                              xx
+//
+TEST(RaySphere, IntersectSphere2Points1)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::sphere const S{};
+
+  ww::intersections XS = ww::Intersect(S, R);
+  EXPECT_EQ(ww::Dot(R.D, R.D), 1.f);
+  EXPECT_EQ(XS.t.size(), 2);
+  if (XS.t.size() == 2)
+  {
+    EXPECT_EQ(XS.t[0], 4.f);
+    EXPECT_EQ(XS.t[1], 6.f);
+  }
+}
+//------------------------------------------------------------------------------
+// NOTE: Test that the ray kind of just touches, tangents, the sphere.
+TEST(RaySphere, IntersectSphere2Points2)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 1.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::sphere const S{};
+
+  ww::intersections XS = ww::Intersect(S, R);
+  EXPECT_EQ(XS.t.size(), 2);
+  if (XS.t.size() == 2)
+  {
+    EXPECT_EQ(XS.t[0], 5.f);
+    EXPECT_EQ(XS.t[1], 5.f);
+  }
+}
+
+//------------------------------------------------------------------------------
+// NOTE: Test that the ray misses the sphere.
+TEST(RaySphere, IntersectSphere2Points3)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 2.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::sphere const S{};
+  EXPECT_EQ(S.R, 1.f);
+
+  ww::intersections XS = ww::Intersect(S, R);
+  EXPECT_EQ(XS.t.size(), 0);
+}
+
+//------------------------------------------------------------------------------
+// NOTE: Test that the ray when it originates from inside the sphere intersects
+//       behind and in the direction of the sphere. i.e. the ray is infinite in
+//       both directions.
+TEST(RaySphere, IntersectSphere2Points4)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::sphere const S{};
+
+  ww::intersections XS = ww::Intersect(S, R);
+  EXPECT_EQ(XS.t.size(), 2);
+  if (XS.t.size() == 2)
+  {
+    EXPECT_EQ(XS.t[0], -1.f);
+    EXPECT_EQ(XS.t[1], 1.f);
+  }
+}
+
+//------------------------------------------------------------------------------
+// NOTE: Test that the sphere may be behind the origin of the ray.
+TEST(RaySphere, IntersectSphere2Points5)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::sphere const S{};
+
+  ww::intersections XS = ww::Intersect(S, R);
+  EXPECT_EQ(XS.t.size(), 2);
+  if (XS.t.size() == 2)
+  {
+    EXPECT_EQ(XS.t[0], -6.f);
+    EXPECT_EQ(XS.t[1], -4.f);
+  }
+}
+
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {

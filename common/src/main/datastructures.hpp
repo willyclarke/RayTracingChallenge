@@ -70,6 +70,35 @@ union tup {
   };
 };  // end of union tup.
 
+/// ---
+/// \struct sphere
+/// \brief The sphere is defined by its center and the radii.
+/// ---
+struct sphere
+{
+  tup Center{};
+  float R{1.f};  //!< Radius.
+};
+
+/// ---
+/// \struct intersection
+/// \brief Collection of t values where a ray intersects an object.
+/// ---
+struct intersections
+{
+  std::vector<float> t{};  //!< The points of intersection.
+};
+
+/// ---
+/// \struct ray
+/// \brief A ray consist of an origint point and a vector for the direction.
+/// ---
+struct ray
+{
+  tup O{};  //!< The origin.
+  tup D{};  //!< The direction.
+};
+
 //------------------------------------------------------------------------------
 struct canvas
 {
@@ -244,6 +273,17 @@ matrix TranslateScaleRotate(                   //!<
     float ScaleX, float ScaleY, float ScaleZ,  //!< Scale input is unitless.
     float AlfaX, float AlfaY, float AlfaZ      //!< Input rotation in radians.
 );
+
+/// ---
+/// \fn Sphere releated functions
+/// ---
+intersections Intersect(sphere const &Sphere, ray const &Ray);
+
+/// ---
+/// Ray releated functions.
+/// ---
+ray Ray(tup const &P, tup const &V);
+tup Position(ray const &R, float t);
 };  // namespace ww
 
 // ---

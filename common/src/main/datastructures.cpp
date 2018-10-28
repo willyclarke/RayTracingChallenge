@@ -817,6 +817,91 @@ matrix TranslateScaleRotate(                   //!<
 
   return (M);
 }
+
+/// ---
+/// \fn Sphere releated functions
+/// ---
+//------------------------------------------------------------------------------
+sphere Sphere(tup const &Center, float Radius)
+{
+  sphere S{};
+  S.Center = Center;
+  S.R = Radius;
+  return (S);
+}
+
+//------------------------------------------------------------------------------
+intersections Intersect(sphere const &Sphere, ray &Ray)
+{
+  intersections Result{};
+  return (Result);
+}
+
+/// ---
+/// Ray releated functions.
+/// ---
+//------------------------------------------------------------------------------
+ray Ray(tup const &O, tup const &D)
+{
+  Assert(IsPoint(O), __FUNCTION__, __LINE__);
+  Assert(IsVector(D), __FUNCTION__, __LINE__);
+
+  ray Result{};
+  Result.O = O;
+  Result.D = D;
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+int Count(intersections const &I) { return (int(I.t.size())); }
+
+//------------------------------------------------------------------------------
+tup Position(ray const &R, float t)
+{
+  tup Result{};
+
+  Result = R.O + R.D * t;
+  Assert(IsPoint(Result), __FUNCTION__, __LINE__);
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+intersections Intersect(sphere const &Sphere, ray const &Ray)
+{
+  intersections Result{};
+  // NOTE: See explanation from:
+  // https://stackoverflow.com/questions/1073336/circle-line-segment-collision-detection-algorithm#1084899
+  //
+  // NOTE: The vector from the sphere's center to the ray origin
+  //       Remember that the sphere is centered at the world origin
+  tup const Sphere2Ray = Ray.O - Point(0.f, 0.f, 0.f);
+  //std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
+
+  float const A = Dot(Ray.D, Ray.D);
+  float const B = 2 * Dot(Ray.D, Sphere2Ray);
+  float const C = Dot(Sphere2Ray, Sphere2Ray) - 1.f;
+  float const Discriminant = B * B - 4 * A * C;
+  //std::cout << "A:" << A << ". B:" << B << ". C:" << C << ". Discriminant:" << Discriminant << std::endl;
+
+  if (Discriminant >= 0)
+  {
+    float const t1 = (-B - std::sqrt(Discriminant)) / (2 * A);
+    float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
+    if (t1 > t2)
+    {
+      Result.t.push_back(t2);
+      Result.t.push_back(t1);
+    }
+    else
+    {
+      Result.t.push_back(t1);
+      Result.t.push_back(t2);
+    }
+  }
+  return (Result);
+}
 };  // namespace ww
 
 // ---
