@@ -854,7 +854,7 @@ ray Ray(tup const &O, tup const &D)
 }
 
 //------------------------------------------------------------------------------
-int Count(intersect const &I) { return (int(I.t.size())); }
+int Count(intersect const &I) { return I.Count(); }
 
 //------------------------------------------------------------------------------
 tup Position(ray const &R, float t)
@@ -867,8 +867,11 @@ tup Position(ray const &R, float t)
   return (Result);
 }
 
+// intersection Intersection(float t, object *Object);
+// intersections Intersections(intersection const &I1, intersection const &I2);
+// intersect Intersect(object *pObject, ray const &Ray);
 //------------------------------------------------------------------------------
-intersect Intersect(sphere const &Sphere, ray const &Ray)
+intersect IntersectSphere(sphere const &Sphere, ray const &Ray)
 {
   intersect Result{};
   // NOTE: See explanation from:
@@ -877,13 +880,55 @@ intersect Intersect(sphere const &Sphere, ray const &Ray)
   // NOTE: The vector from the sphere's center to the ray origin
   //       Remember that the sphere is centered at the world origin
   tup const Sphere2Ray = Ray.O - Point(0.f, 0.f, 0.f);
-  //std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
+  // std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
 
   float const A = Dot(Ray.D, Ray.D);
   float const B = 2 * Dot(Ray.D, Sphere2Ray);
   float const C = Dot(Sphere2Ray, Sphere2Ray) - 1.f;
   float const Discriminant = B * B - 4 * A * C;
-  //std::cout << "A:" << A << ". B:" << B << ". C:" << C << ". Discriminant:" << Discriminant << std::endl;
+  // std::cout << "A:" << A << ". B:" << B << ". C:" << C << ". Discriminant:" << Discriminant << std::endl;
+
+  if (Discriminant >= 0)
+  {
+    float const t1 = (-B - std::sqrt(Discriminant)) / (2 * A);
+    float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
+    intersection I{};
+    I.Object = Sphere;
+    if (t1 > t2)
+    {
+      I.t = t2;
+      Result.vI.push_back(I);
+      I.t = t1;
+      Result.vI.push_back(I);
+    }
+    else
+    {
+      I.t = t1;
+      Result.vI.push_back(I);
+      I.t = t2;
+      Result.vI.push_back(I);
+    }
+  }
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+intersect Intersect(sphere const &Object, ray const &Ray)
+{
+  intersect Result{};
+  // NOTE: See explanation from:
+  // https://stackoverflow.com/questions/1073336/circle-line-segment-collision-detection-algorithm#1084899
+  //
+  // NOTE: The vector from the sphere's center to the ray origin
+  //       Remember that the sphere is centered at the world origin
+  tup const Object2Ray = Ray.O - Point(0.f, 0.f, 0.f);
+  // std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
+
+  float const A = Dot(Ray.D, Ray.D);
+  float const B = 2 * Dot(Ray.D, Object2Ray);
+  float const C = Dot(Object2Ray, Object2Ray) - 1.f;
+  float const Discriminant = B * B - 4 * A * C;
+  // std::cout << "A:" << A << ". B:" << B << ". C:" << C << ". Discriminant:" << Discriminant << std::endl;
 
   if (Discriminant >= 0)
   {
@@ -891,17 +936,49 @@ intersect Intersect(sphere const &Sphere, ray const &Ray)
     float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
     if (t1 > t2)
     {
-      Result.t.push_back(t2);
-      Result.t.push_back(t1);
+      intersection I{};
+      I.t = t2;
+      // I.Object = Object;
+      Result.vI.push_back(I);
+      I.t = t1;
+      Result.vI.push_back(I);
     }
     else
     {
-      Result.t.push_back(t1);
-      Result.t.push_back(t2);
+      intersection I{};
+      I.t = t1;
+      // I.Object = Object;
+      Result.vI.push_back(I);
+      I.t = t2;
+      Result.vI.push_back(I);
     }
   }
   return (Result);
 }
+
+//------------------------------------------------------------------------------
+intersection Intersection(float t, object *pObject)
+{
+  intersection Result{};
+  Result.t = t;
+  Result.pObject = pObject;
+  // Result.Object = *pObject;
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+intersections Intersections(intersection const &I1, intersection const &I2)
+{
+  intersections Result{};
+  Result.vI.push_back(I1);
+  Result.vI.push_back(I2);
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+bool Equal(sphere const &A, sphere const &B) { return (Equal(A.Center, B.Center) && Equal(A.R, B.R)); }
 };  // namespace ww
 
 // ---
@@ -915,6 +992,8 @@ ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Mul(S, Tup));
 ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Mul(A, B)); }
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B) { return (ww::Mul(A, B)); }
 ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)); }
+// bool operator==(ww::sphere const &A, ww::sphere const &B) {return (ww::Equal(A, B));}
+bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
 // ---
 // NOTE: Division operator does not check for divide by zero; Who cares?
 // ---

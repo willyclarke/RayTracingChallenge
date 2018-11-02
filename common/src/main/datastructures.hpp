@@ -71,13 +71,49 @@ union tup {
 };  // end of union tup.
 
 /// ---
-/// \struct sphere
-/// \brief The sphere is defined by its center and the radii.
+/// \struct base struct for the raytracing objects
 /// ---
-struct sphere
+struct object
 {
   tup Center{};
+  object() {}
+  virtual ~object() {}
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+/// ---
+/// \struct sphere
+/// \brief The sphere is defined by its center and the radii.
+/// \detailed By making this struct a subclass of object we are able
+///           to set up pointers to objeects of different types.
+/// ---
+struct sphere : public object
+{
   float R{1.f};  //!< Radius.
+};
+
+/// ---
+/// \struct cube
+/// \brief Placeholder/stub for an upcoming cube. For now it is used for testing
+///        of object pointers.
+/// ---
+struct cube : public object
+{
+  float L{1.f};
+};
+
+/// ---
+/// \struct intersections
+/// \brief Connect the time t value with the object for intersection.
+struct intersection
+{
+  float t{};
+  object *pObject{};  //!< The pointer need to be cast to a valid object type.
+  object Object{};
 };
 
 /// ---
@@ -86,9 +122,19 @@ struct sphere
 /// ---
 struct intersect
 {
-  std::vector<float> t{};  //!< The points of intersection.
+  std::vector<intersection> vI{};  //!< The points of intersection.
+  int Count() const { return (int)vI.size(); }
 };
 
+/// ---
+/// \struct intersections
+/// \brief A collection of intersect's as defined above.
+/// ---
+struct intersections
+{
+  std::vector<intersection> vI{};
+  int Count() const { return (int)vI.size(); }
+};
 /// ---
 /// \struct ray
 /// \brief A ray consist of an origint point and a vector for the direction.
@@ -284,6 +330,10 @@ intersect Intersect(sphere const &Sphere, ray const &Ray);
 /// ---
 ray Ray(tup const &P, tup const &V);
 tup Position(ray const &R, float t);
+intersection Intersection(float t, object *Object);
+intersections Intersections(intersection const &I1, intersection const &I2);
+intersect Intersect(sphere const &Object, ray const &Ray);
+bool Equal(sphere const &A, sphere const &B);
 };  // namespace ww
 
 // ---
@@ -300,4 +350,5 @@ ww::tup operator*(ww::tup const &A, ww::tup const &B);
 ww::tup operator/(ww::tup const &Tup, float const S);
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B);
 ww::tup operator*(ww::matrix const &A, ww::tup const &T);
+bool operator==(ww::sphere const &A, ww::sphere const &B);
 #endif

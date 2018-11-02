@@ -807,11 +807,11 @@ TEST(RaySphere, IntersectSphere2Points1)
 
   ww::intersect XS = ww::Intersect(S, R);
   EXPECT_EQ(ww::Dot(R.D, R.D), 1.f);
-  EXPECT_EQ(XS.t.size(), 2);
-  if (XS.t.size() == 2)
+  EXPECT_EQ(XS.Count(), 2);
+  if (XS.Count() == 2)
   {
-    EXPECT_EQ(XS.t[0], 4.f);
-    EXPECT_EQ(XS.t[1], 6.f);
+    EXPECT_EQ(XS.vI[0].t, 4.f);
+    EXPECT_EQ(XS.vI[1].t, 6.f);
   }
 }
 //------------------------------------------------------------------------------
@@ -822,11 +822,11 @@ TEST(RaySphere, IntersectSphere2Points2)
   ww::sphere const S{};
 
   ww::intersect XS = ww::Intersect(S, R);
-  EXPECT_EQ(XS.t.size(), 2);
-  if (XS.t.size() == 2)
+  EXPECT_EQ(XS.Count(), 2);
+  if (XS.Count() == 2)
   {
-    EXPECT_EQ(XS.t[0], 5.f);
-    EXPECT_EQ(XS.t[1], 5.f);
+    EXPECT_EQ(XS.vI[0].t, 5.f);
+    EXPECT_EQ(XS.vI[1].t, 5.f);
   }
 }
 
@@ -839,7 +839,7 @@ TEST(RaySphere, IntersectSphere2Points3)
   EXPECT_EQ(S.R, 1.f);
 
   ww::intersect XS = ww::Intersect(S, R);
-  EXPECT_EQ(XS.t.size(), 0);
+  EXPECT_EQ(XS.Count(), 0);
 }
 
 //------------------------------------------------------------------------------
@@ -852,11 +852,11 @@ TEST(RaySphere, IntersectSphere2Points4)
   ww::sphere const S{};
 
   ww::intersect XS = ww::Intersect(S, R);
-  EXPECT_EQ(XS.t.size(), 2);
-  if (XS.t.size() == 2)
+  EXPECT_EQ(XS.Count(), 2);
+  if (XS.Count() == 2)
   {
-    EXPECT_EQ(XS.t[0], -1.f);
-    EXPECT_EQ(XS.t[1], 1.f);
+    EXPECT_EQ(XS.vI[0].t, -1.f);
+    EXPECT_EQ(XS.vI[1].t, 1.f);
   }
 }
 
@@ -868,12 +868,44 @@ TEST(RaySphere, IntersectSphere2Points5)
   ww::sphere const S{};
 
   ww::intersect XS = ww::Intersect(S, R);
-  EXPECT_EQ(XS.t.size(), 2);
-  if (XS.t.size() == 2)
+  EXPECT_EQ(XS.Count(), 2);
+  if (XS.Count() == 2)
   {
-    EXPECT_EQ(XS.t[0], -6.f);
-    EXPECT_EQ(XS.t[1], -4.f);
+    EXPECT_EQ(XS.vI[0].t, -6.f);
+    EXPECT_EQ(XS.vI[1].t, -4.f);
   }
+}
+
+//------------------------------------------------------------------------------
+// Scenario: An intersection encapsulates the 'time' t and the object of type T
+TEST(RaySphere, IntersectionSphere)
+{
+  ww::sphere S{};
+  ww::intersection I = ww::Intersection(3.5f, &S);
+  ww::object *pObject = &S;
+
+  EXPECT_EQ(3.5f, I.t);
+  EXPECT_EQ(pObject->isA<ww::sphere>(), true);
+  EXPECT_EQ(I.pObject->isA<ww::sphere>(), true);
+  EXPECT_EQ(I.pObject->isA<ww::cube>(), false);
+  EXPECT_EQ(I.pObject, &S);
+  ww::sphere *pSphere = dynamic_cast<ww::sphere *>(I.pObject);
+  bool const TheSpheresAreEqual = *pSphere == S;
+  EXPECT_EQ(TheSpheresAreEqual, true);
+}
+
+//------------------------------------------------------------------------------
+// NOTE: Aggregate intersection objects together so that we can work with multiple
+//       intersections at once.
+TEST(RaySphere, IntersectionsVector)
+{
+    ww::sphere S{};
+    ww::intersection I1 = ww::Intersection(1.f, &S);
+    ww::intersection I2 = ww::Intersection(2.f, &S);
+    ww::intersections XS = ww::Intersections(I1, I2);
+    EXPECT_EQ(XS.Count(), 2);
+    EXPECT_EQ(XS.vI[0].t, 1.f);
+    EXPECT_EQ(XS.vI[1].t, 2.f);
 }
 
 //------------------------------------------------------------------------------
