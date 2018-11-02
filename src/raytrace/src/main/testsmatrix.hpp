@@ -899,13 +899,16 @@ TEST(RaySphere, IntersectionSphere)
 //       intersections at once.
 TEST(RaySphere, IntersectionsVector)
 {
-    ww::sphere S{};
-    ww::intersection I1 = ww::Intersection(1.f, &S);
-    ww::intersection I2 = ww::Intersection(2.f, &S);
-    ww::intersections XS = ww::Intersections(I1, I2);
-    EXPECT_EQ(XS.Count(), 2);
+  ww::sphere S{};
+  ww::intersection I1 = ww::Intersection(1.f, &S);
+  ww::intersection I2 = ww::Intersection(2.f, &S);
+  ww::intersections XS = ww::Intersections(I1, I2);
+  EXPECT_EQ(XS.Count(), 2);
+  if (XS.Count() == 2)
+  {
     EXPECT_EQ(XS.vI[0].t, 1.f);
     EXPECT_EQ(XS.vI[1].t, 2.f);
+  }
 }
 
 //------------------------------------------------------------------------------
