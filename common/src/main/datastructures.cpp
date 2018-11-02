@@ -934,20 +934,18 @@ intersect Intersect(sphere const &Object, ray const &Ray)
   {
     float const t1 = (-B - std::sqrt(Discriminant)) / (2 * A);
     float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
+    intersection I{};
+    I.Object = Object;
     if (t1 > t2)
     {
-      intersection I{};
       I.t = t2;
-      // I.Object = Object;
       Result.vI.push_back(I);
       I.t = t1;
       Result.vI.push_back(I);
     }
     else
     {
-      intersection I{};
       I.t = t1;
-      // I.Object = Object;
       Result.vI.push_back(I);
       I.t = t2;
       Result.vI.push_back(I);
