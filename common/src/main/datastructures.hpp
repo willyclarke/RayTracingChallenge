@@ -109,10 +109,18 @@ struct cube : public object
 /// ---
 /// \struct intersections
 /// \brief Connect the time t value with the object for intersection.
+/// \detail The pointer to the object allows us to build a vector of
+///         objects. This is the main reason for using it.
 struct intersection
 {
   float t{};
   object *pObject{};  //!< The pointer need to be cast to a valid object type.
+
+  // ---
+  // NOTE: You will lose the attributes of the derived classes
+  // since the object does not hold any info about for instance a sphere, cube etc.
+  // So; is this of any use at all?
+  // ---
   object Object{};
 };
 
@@ -334,6 +342,8 @@ intersection Intersection(float t, object *Object);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersect Intersect(sphere const &Object, ray const &Ray);
 bool Equal(sphere const &A, sphere const &B);
+bool Equal(intersection const &A, intersection const &B);
+intersection Hit(intersections const &Intersections);
 };  // namespace ww
 
 // ---
@@ -351,4 +361,5 @@ ww::tup operator/(ww::tup const &Tup, float const S);
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B);
 ww::tup operator*(ww::matrix const &A, ww::tup const &T);
 bool operator==(ww::sphere const &A, ww::sphere const &B);
+bool operator==(ww::intersection const &A, ww::intersection const &B);
 #endif

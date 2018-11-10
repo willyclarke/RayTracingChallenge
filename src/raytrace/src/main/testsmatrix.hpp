@@ -912,6 +912,55 @@ TEST(RaySphere, IntersectionsVector)
 }
 
 //------------------------------------------------------------------------------
+// NOTE: The hit, when all intersections have positive t.
+TEST(RaySphere, IntersectionsHit1)
+{
+  ww::sphere S{};
+  ww::intersection const I1 = ww::Intersection(1.f, &S);
+  ww::intersection const I2 = ww::Intersection(2.f, &S);
+  ww::intersections const XS = ww::Intersections(I1, I2);
+  ww::intersection const H = ww::Hit(XS);
+  EXPECT_EQ(I1 == H, true);
+  EXPECT_EQ(I2 == H, false);
+}
+
+//------------------------------------------------------------------------------
+// NOTE: The hit, when some intersections have negative t.
+TEST(RaySphere, IntersectionsHit2)
+{
+  ww::sphere S{};
+  ww::intersection const I1 = ww::Intersection(-1.f, &S);
+  ww::intersection const I2 = ww::Intersection(1.f, &S);
+  ww::intersections const XS = ww::Intersections(I1, I2);
+  ww::intersection const H = ww::Hit(XS);
+  EXPECT_EQ(I1 == H, false);
+  EXPECT_EQ(I2 == H, true);
+
+  // NOTE: Both object pointers will point to the sphere.
+  EXPECT_EQ(H.pObject == I1.pObject, true);
+  EXPECT_EQ(H.pObject == I2.pObject, true);
+}
+
+//------------------------------------------------------------------------------
+// NOTE: The hit, when all intersections have negative t.
+TEST(RaySphere, IntersectionsHit3)
+{
+  ww::sphere S{};
+  ww::intersection const I1 = ww::Intersection(-2.f, &S);
+  ww::intersection const I2 = ww::Intersection(-1.f, &S);
+  ww::intersections const XS = ww::Intersections(I1, I2);
+  ww::intersection const H = ww::Hit(XS);
+  EXPECT_EQ(I1 == H, false);
+  EXPECT_EQ(I2 == H, false);
+  EXPECT_EQ(XS.Count(), 2);
+  EXPECT_EQ(H.pObject, nullptr);
+  EXPECT_EQ(H.pObject == I1.pObject, false);
+  EXPECT_EQ(H.pObject == I2.pObject, false);
+  EXPECT_EQ(H.pObject->isA<ww::sphere>(), false);
+  EXPECT_EQ(H.pObject->isA<ww::cube>(), false);
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);

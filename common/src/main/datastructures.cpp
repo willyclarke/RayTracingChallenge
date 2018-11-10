@@ -960,7 +960,6 @@ intersection Intersection(float t, object *pObject)
   intersection Result{};
   Result.t = t;
   Result.pObject = pObject;
-  // Result.Object = *pObject;
 
   return (Result);
 }
@@ -977,6 +976,60 @@ intersections Intersections(intersection const &I1, intersection const &I2)
 
 //------------------------------------------------------------------------------
 bool Equal(sphere const &A, sphere const &B) { return (Equal(A.Center, B.Center) && Equal(A.R, B.R)); }
+
+//------------------------------------------------------------------------------
+bool Equal(intersection const &A, intersection const &B)
+{
+  bool const Result = Equal(A.t, B.t);
+  // std::cout << "Result:" << Result << ". Equal -> A:" << A.t << " B:" << B.t << std::endl;
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+intersection Hit(intersections const &Intersections)
+{
+  intersection Result{};
+
+  // ---
+  // NOTE: Check that there is anything in the vector.
+  // ---
+  if (Intersections.Count() == 2)
+  {
+    float const &H0 = Intersections.vI[0].t;
+    float const &H1 = Intersections.vI[1].t;
+    // Decide on the minimum t. Seed it with the first entry of intersections.
+    float Checkt = std::max<float>(H0, H1);
+
+    // NOTE: There is at least one hit since the checked value is not negative.
+    if (Checkt >= 0)
+    {
+      if ((H0 >= 0) && (H0 <= H1))
+      {
+        Result = Intersections.vI[0];
+        // std::cout << "Count2A:Updated result with t:" << Result.t << std::endl;
+      }
+      else if ((H1 >= 0) && ((H1 <= H0) || (H0 < 0)))
+      {
+        Result = Intersections.vI[1];
+        // std::cout << "Count2B:Updated result with t:" << Result.t << std::endl;
+      }
+    }
+  }
+  // NOTE: This part of the code is untested .... FIXME: (Willy Clarke)
+  else if (Intersections.Count() == 1)
+  {
+    // NOTE: assert here until this code is ready for testing.
+    Assert(Intersections.Count() == 0, __FUNCTION__, __LINE__);
+    float const &H0 = Intersections.vI[0].t;
+    if (H0 > 0)
+    {
+      Result = Intersections.vI[0];
+      std::cout << "Count1:Updated result with t:" << Result.t << std::endl;
+    }
+  }
+  return (Result);
+}
 };  // namespace ww
 
 // ---
@@ -992,6 +1045,7 @@ ww::matrix operator*(ww::matrix const &A, ww::matrix const &B) { return (ww::Mul
 ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)); }
 // bool operator==(ww::sphere const &A, ww::sphere const &B) {return (ww::Equal(A, B));}
 bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::intersection const &A, ww::intersection const &B) { return (ww::Equal(A, B)); }
 // ---
 // NOTE: Division operator does not check for divide by zero; Who cares?
 // ---
