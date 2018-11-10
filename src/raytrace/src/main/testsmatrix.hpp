@@ -981,6 +981,83 @@ TEST(RaySphere, IntersectionsHit4)
   EXPECT_EQ(I3 == H, false);
   EXPECT_EQ(I4 == H, true);
 }
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, TranslateRay)
+{
+  ww::ray const R = ww::Ray(ww::Point(1.f, 2.f, 3.f), ww::Vector(0.f, 1.f, 0.f));
+  ww::matrix const M = ww::Translation(3.f, 4.f, 5.f);
+
+  // NOTE: transform the ray R with matrix M. This will test the translation of a ray.
+  ww::ray const R2 = ww::Transform(R, M);
+  EXPECT_EQ(R2.O.X, 4.f);
+  EXPECT_EQ(R2.O.Y, 6.f);
+  EXPECT_EQ(R2.O.Z, 8.f);
+  EXPECT_EQ(ww::IsPoint(R2.O), true);
+  EXPECT_EQ(ww::IsVector(R2.D), true);
+  EXPECT_EQ(ww::Equal(R2.D, ww::Vector(0.f, 1.f, 0.f)), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, ScaleRay)
+{
+  ww::ray const R = ww::Ray(ww::Point(1.f, 2.f, 3.f), ww::Vector(0.f, 1.f, 0.f));
+  ww::matrix const M = ww::Scale(2.f, 3.f, 4.f);
+
+  // NOTE: transform the ray R with matrix M. This will test the scaling of a ray.
+  //       The vector is left un-normalized. This is intentional.
+  ww::ray const R2 = ww::Transform(R, M);
+  EXPECT_EQ(R2.O.X, 2.f);
+  EXPECT_EQ(R2.O.Y, 6.f);
+  EXPECT_EQ(R2.O.Z, 12.f);
+  EXPECT_EQ(ww::IsPoint(R2.O), true);
+  EXPECT_EQ(ww::IsVector(R2.D), true);
+  EXPECT_EQ(ww::Equal(R2.D, ww::Vector(0.f, 3.f, 0.f)), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, SphereDefaultTransformation)
+{
+  ww::sphere S{};
+  EXPECT_EQ(ww::Equal(S.T, ww::I()), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, SphereChangeTransformation)
+{
+  ww::sphere S{};
+  S.T = ww::Translation(2.f, 3.f, 4.f);  // set the transform.
+  EXPECT_EQ(ww::Equal(S.T, ww::Translation(2.f, 3.f, 4.f)), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, SphereIntersectScaled)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::sphere S{};
+
+  S.T = ww::Scale(2.f, 2.f, 2.f);
+  ww::intersect const XS = ww::Intersect(S, R);
+
+  EXPECT_EQ(XS.Count(), 2);
+  if (XS.Count() == 2)
+  {
+    EXPECT_EQ(XS.vI[0].t, 3.f);
+    EXPECT_EQ(XS.vI[1].t, 7.f);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, SphereIntersectTranslated)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::sphere S{};
+
+  S.T = ww::Translation(5.f, 0.f, 0.f);
+  ww::intersect const XS = ww::Intersect(S, R);
+
+  EXPECT_EQ(XS.Count(), 0);
+}
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {

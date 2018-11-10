@@ -70,12 +70,62 @@ union tup {
   };
 };  // end of union tup.
 
+// NOTE: Use a struct to return multiple values.
+struct is_invertible_return
+{
+  bool IsInvertible{};
+  bool IsComputed{};
+  float Determinant{};
+};
+
+//------------------------------------------------------------------------------
+union matrix {
+  matrix() : R0{}, R1{}, R2{}, R3{}, Dimension{4} {}
+  matrix(tup const &Cr0, tup const &Cr1, tup const &Cr2, tup const &Cr3)
+      : R0{Cr0}, R1{Cr1}, R2{Cr2}, R3{Cr3}, Dimension{4}
+  {
+  }
+  ~matrix() {}
+  matrix(matrix const &Other)
+  {
+    R0 = Other.R0;
+    R1 = Other.R1;
+    R2 = Other.R2;
+    R3 = Other.R3;
+    Dimension = Other.Dimension;
+    ID = Other.ID;
+  }
+
+  struct  //!< A matrix can be four tuple rows
+  {
+    tup R0{};
+    tup R1{};
+    tup R2{};
+    tup R3{};
+    int Dimension{4};
+    // NOTE: Storeage of invertible and determinant
+    is_invertible_return ID{};
+  };
+  struct  //!< or it can be an array of 4 tuple rows.
+  {
+    tup R[4];
+  };
+};
+
 /// ---
 /// \struct base struct for the raytracing objects
 /// ---
 struct object
 {
   tup Center{};
+
+  //!< The transform of the object, initialize to identity matrix
+  matrix T{
+      tup{1.f, 0.f, 0.f, 0.f},  //!<
+      tup{0.f, 1.f, 0.f, 0.f},  //!<
+      tup{0.f, 0.f, 1.f, 0.f},  //!<
+      tup{0.f, 0.f, 0.f, 1.f}   //!<
+  };                            //!<
   object() {}
   virtual ~object() {}
   template <typename T>
@@ -167,48 +217,6 @@ struct canvas
   int W{};  //<! Width
   int H{};  //<! Height
   std::vector<tup> vXY{};
-};
-
-// NOTE: Use a struct to return multiple values.
-struct is_invertible_return
-{
-  bool IsInvertible{};
-  bool IsComputed{};
-  float Determinant{};
-};
-
-//------------------------------------------------------------------------------
-union matrix {
-  matrix() : R0{}, R1{}, R2{}, R3{}, Dimension{4} {}
-  matrix(tup const &Cr0, tup const &Cr1, tup const &Cr2, tup const &Cr3)
-      : R0{Cr0}, R1{Cr1}, R2{Cr2}, R3{Cr3}, Dimension{4}
-  {
-  }
-  ~matrix() {}
-  matrix(matrix const &Other)
-  {
-    R0 = Other.R0;
-    R1 = Other.R1;
-    R2 = Other.R2;
-    R3 = Other.R3;
-    Dimension = Other.Dimension;
-    ID = Other.ID;
-  }
-
-  struct  //!< A matrix can be four tuple rows
-  {
-    tup R0{};
-    tup R1{};
-    tup R2{};
-    tup R3{};
-    int Dimension{4};
-    // NOTE: Storeage of invertible and determinant
-    is_invertible_return ID{};
-  };
-  struct  //!< or it can be an array of 4 tuple rows.
-  {
-    tup R[4];
-  };
 };
 
 //------------------------------------------------------------------------------
@@ -336,15 +344,17 @@ intersect Intersect(sphere const &Sphere, ray const &Ray);
 /// ---
 /// Ray releated functions.
 /// ---
-ray Ray(tup const &P, tup const &V);
-tup Position(ray const &R, float t);
+bool Equal(intersection const &A, intersection const &B);
+bool Equal(sphere const &A, sphere const &B);
+intersection Hit(intersections const &Intersections);
 intersection Intersection(float t, object *Object);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersections &Intersections(intersections &XS, intersection const &I);
 intersect Intersect(sphere const &Object, ray const &Ray);
-bool Equal(sphere const &A, sphere const &B);
-bool Equal(intersection const &A, intersection const &B);
-intersection Hit(intersections const &Intersections);
+ray Mul(matrix const &M, ray const &R);
+tup Position(ray const &R, float t);
+ray Ray(tup const &P, tup const &V);
+ray Transform(ray const &R, matrix const &M);
 };  // namespace ww
 
 // ---
@@ -361,6 +371,7 @@ ww::tup operator*(ww::tup const &A, ww::tup const &B);
 ww::tup operator/(ww::tup const &Tup, float const S);
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B);
 ww::tup operator*(ww::matrix const &A, ww::tup const &T);
+ww::ray operator*(ww::matrix const &M, ww::ray const &R);
 bool operator==(ww::sphere const &A, ww::sphere const &B);
 bool operator==(ww::intersection const &A, ww::intersection const &B);
 #endif

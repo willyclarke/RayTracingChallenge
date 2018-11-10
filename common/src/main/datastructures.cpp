@@ -913,9 +913,18 @@ intersect IntersectSphere(sphere const &Sphere, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
-intersect Intersect(sphere const &Object, ray const &Ray)
+intersect Intersect(sphere const &Object, ray const &RayIn)
 {
   intersect Result{};
+
+  // ---
+  // NOTE: The object to which we are trying to calculate the intersect may
+  //       kind of not be placed at origin. So use its transform to 'move' the
+  //       ray by calculation of the inverse.
+  // ---
+  ray const Ray = Transform(RayIn, Inverse(Object.T));
+
+  // ---
   // NOTE: See explanation from:
   // https://stackoverflow.com/questions/1073336/circle-line-segment-collision-detection-algorithm#1084899
   //
@@ -977,8 +986,8 @@ intersections Intersections(intersection const &I1, intersection const &I2)
 //------------------------------------------------------------------------------
 intersections &Intersections(intersections &XS, intersection const &I)
 {
-    XS.vI.push_back(I);
-    return (XS);
+  XS.vI.push_back(I);
+  return (XS);
 }
 
 //------------------------------------------------------------------------------
@@ -1062,6 +1071,18 @@ intersection Hit(intersections const &Intersections)
   }
   return (Result);
 }
+
+//------------------------------------------------------------------------------
+ray Mul(matrix const &M, ray const &R)
+{
+  ray Result{};
+  Result.O = M * R.O;
+  Result.D = M * R.D;
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+ray Transform(ray const &R, matrix const &M) { return M * R; }
 };  // namespace ww
 
 // ---
@@ -1075,6 +1096,7 @@ ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Mul(S, Tup));
 ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Mul(A, B)); }
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B) { return (ww::Mul(A, B)); }
 ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)); }
+ww::ray operator*(ww::matrix const &M, ww::ray const &R) { return (ww::Mul(M, R)); }
 // bool operator==(ww::sphere const &A, ww::sphere const &B) {return (ww::Equal(A, B));}
 bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::intersection const &A, ww::intersection const &B) { return (ww::Equal(A, B)); }
