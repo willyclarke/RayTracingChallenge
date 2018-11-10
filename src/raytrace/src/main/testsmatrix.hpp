@@ -961,6 +961,27 @@ TEST(RaySphere, IntersectionsHit3)
 }
 
 //------------------------------------------------------------------------------
+// NOTE: The hit is always the lowest non-negative intersection.
+TEST(RaySphere, IntersectionsHit4)
+{
+  ww::sphere S{};
+  ww::intersection const I1 = ww::Intersection(5.f, &S);
+  ww::intersection const I2 = ww::Intersection(7.f, &S);
+  ww::intersection const I3 = ww::Intersection(-3.f, &S);
+  ww::intersection const I4 = ww::Intersection(2.f, &S);
+  ww::intersections XS{};
+  Intersections(XS, I1);
+  Intersections(XS, I2);
+  Intersections(XS, I3);
+  Intersections(XS, I4);
+  ww::intersection const H = ww::Hit(XS);
+  EXPECT_EQ(XS.Count(), 4);
+  EXPECT_EQ(I1 == H, false);
+  EXPECT_EQ(I2 == H, false);
+  EXPECT_EQ(I3 == H, false);
+  EXPECT_EQ(I4 == H, true);
+}
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);

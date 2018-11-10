@@ -975,6 +975,13 @@ intersections Intersections(intersection const &I1, intersection const &I2)
 }
 
 //------------------------------------------------------------------------------
+intersections &Intersections(intersections &XS, intersection const &I)
+{
+    XS.vI.push_back(I);
+    return (XS);
+}
+
+//------------------------------------------------------------------------------
 bool Equal(sphere const &A, sphere const &B) { return (Equal(A.Center, B.Center) && Equal(A.R, B.R)); }
 
 //------------------------------------------------------------------------------
@@ -987,7 +994,7 @@ bool Equal(intersection const &A, intersection const &B)
 }
 
 //------------------------------------------------------------------------------
-intersection Hit(intersections const &Intersections)
+intersection Hit1(intersections const &Intersections)
 {
   intersection Result{};
 
@@ -1026,6 +1033,31 @@ intersection Hit(intersections const &Intersections)
     {
       Result = Intersections.vI[0];
       std::cout << "Count1:Updated result with t:" << Result.t << std::endl;
+    }
+  }
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+intersection Hit(intersections const &Intersections)
+{
+  intersection Result{};
+
+  bool DoFirstUpdate{true};
+
+  for (auto I : Intersections.vI)
+  {
+    if (I.t > 0)
+    {
+      if (DoFirstUpdate)
+      {
+        Result = I;
+        DoFirstUpdate = false;
+      }
+      else if (I.t < Result.t)
+      {
+        Result = I;
+      }
     }
   }
   return (Result);

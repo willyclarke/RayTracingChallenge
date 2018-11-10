@@ -340,6 +340,7 @@ ray Ray(tup const &P, tup const &V);
 tup Position(ray const &R, float t);
 intersection Intersection(float t, object *Object);
 intersections Intersections(intersection const &I1, intersection const &I2);
+intersections &Intersections(intersections &XS, intersection const &I);
 intersect Intersect(sphere const &Object, ray const &Ray);
 bool Equal(sphere const &A, sphere const &B);
 bool Equal(intersection const &A, intersection const &B);
