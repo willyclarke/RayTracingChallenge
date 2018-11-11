@@ -251,7 +251,7 @@ float Radians(float Deg);
 // ---
 tup Mul(tup const A, tup const B);
 tup Negate(tup const &Tup);
-tup Normal(tup const &Tup);
+tup Normalize(tup const &Tup);
 tup Point(float A, float B, float C);
 tup Sub(tup const &A, tup const &B);
 tup Vector(float A, float B, float C);

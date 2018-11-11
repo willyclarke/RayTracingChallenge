@@ -51,7 +51,7 @@ void RunProjectileTest(int argc, char *argv[])
   // NOTE: Projectile starts one unit above the origin.
   //     : Velocity is normalized to one unit per tick.
   // ---
-  projectile P{ww::Point(0.f, 1.f, 0.f), ww::Normal(ww::Vector(1.f, 1.f, 0.f))};
+  projectile P{ww::Point(0.f, 1.f, 0.f), ww::Normalize(ww::Vector(1.f, 1.f, 0.f))};
   // ---
   // NOTE: World gravity of -0.1 unit/tick and wind is 0.01 unit/tick.
   // ---
@@ -75,7 +75,7 @@ namespace rtcch2
 void RunProjectileTest()
 {
   ww::tup Start = ww::Point(0.f, 1.f, 0.f);
-  ww::tup Velocity = ww::Normal(ww::Vector(1., 1.8f, 0.f)) * 11.25f;
+  ww::tup Velocity = ww::Normalize(ww::Vector(1., 1.8f, 0.f)) * 11.25f;
 
   projectile P{Start, Velocity};
 

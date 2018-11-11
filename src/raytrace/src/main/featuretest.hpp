@@ -188,17 +188,17 @@ TEST(Tuples, MagnitudeVectors)
 //------------------------------------------------------------------------------
 TEST(Tuples, Normal)
 {
-  EXPECT_EQ(ww::Equal(ww::Normal(ww::Vector(4.f, 0.f, 0.f)), ww::Vector(1.f, 0.f, 0.f)), true);
+  EXPECT_EQ(ww::Equal(ww::Normalize(ww::Vector(4.f, 0.f, 0.f)), ww::Vector(1.f, 0.f, 0.f)), true);
   // ---
   // NOTE: The length/magnitude of the vector 1,2,3 is Sqrt(14).
   // ---
   float const Sq14 = std::sqrt(14.f);
-  EXPECT_EQ(ww::Equal(ww::Normal(ww::Vector(1.f, 2.f, 3.f)), ww::Vector(1.f / Sq14, 2.f / Sq14, 3.f / Sq14)), true);
+  EXPECT_EQ(ww::Equal(ww::Normalize(ww::Vector(1.f, 2.f, 3.f)), ww::Vector(1.f / Sq14, 2.f / Sq14, 3.f / Sq14)), true);
 
   // ---
   // NOTE: Test that the length/magnitude of the normal vector of the vector 1,2,3 is 1.0.
   // ---
-  EXPECT_EQ(ww::Equal(ww::Mag(ww::Normal(ww::Vector(1.f, 2.f, 3.f))), 1.f), true);
+  EXPECT_EQ(ww::Equal(ww::Mag(ww::Normalize(ww::Vector(1.f, 2.f, 3.f))), 1.f), true);
 }
 
 //------------------------------------------------------------------------------

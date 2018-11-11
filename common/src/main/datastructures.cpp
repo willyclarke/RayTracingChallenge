@@ -189,7 +189,7 @@ tup Negate(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
-tup Normal(tup const &Tup)
+tup Normalize(tup const &Tup)
 {
   tup const Result = Tup / Mag(Tup);
   return (Result);
