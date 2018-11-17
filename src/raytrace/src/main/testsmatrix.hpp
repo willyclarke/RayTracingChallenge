@@ -1062,47 +1062,55 @@ TEST(RaySphere, SphereIntersectTranslated)
 //------------------------------------------------------------------------------
 TEST(RaySphere, SpherePuttingItTogether)
 {
-  ww::tup const RayOrigin = ww::Point(0.f, 0.f, -5.f);
-  ww::tup Color = ww::Color(1.f, 0.f, 0.f);
+  // ---
+  // NOTE: Create a lambda for the ray/sphere intersection.
+  //       This allows us to change the transform of the sphere
+  //       to create interesting effects, like scaling, skewing etc.
+  // ---
+  auto CreateSphere = [&](ww::sphere &S, std::string const &FileName) -> void {
+    ww::tup const RayOrigin = ww::Point(0.f, 0.f, -5.f);
+    ww::tup Color = ww::Color(1.f, 0.f, 0.f);
 
-  float const WallZ{10.f};
-  float const WallSize{7.f};  // Assume a square wall
-  float const Half{WallSize / 2.f};
+    float const WallZ{10.f};
+    float const WallSize{7.f};  // Assume a square wall
+    float const Half{WallSize / 2.f};
 
-  int const CanvasPixels{100};
-  float const PixelSize{WallSize / CanvasPixels};
-  ww::canvas Canvas(CanvasPixels, CanvasPixels);
-  ww::sphere S{};
+    int const CanvasPixels{100};
+    float const PixelSize{WallSize / CanvasPixels};
+    ww::canvas Canvas(CanvasPixels, CanvasPixels);
 
-  for (size_t IdxY = 0;          ///<!
-       IdxY < CanvasPixels - 1;  ///<!
-       ++IdxY)
-  {
-    // NOTE: Compute the world y coordinate : top = +half, bottom = -half
-    float const WorldY = Half - PixelSize * IdxY;
-
-    for (size_t IdxX = 0;          ///<!
-         IdxX < CanvasPixels - 1;  ///<!
-         ++IdxX)
+    for (size_t IdxY = 0;          ///<!
+         IdxY < CanvasPixels - 1;  ///<!
+         ++IdxY)
     {
-      // NOTE: Compute the world x coordinate : left = -half, right = half
-      float const WorldX = -Half + PixelSize * IdxX;
+      // NOTE: Compute the world y coordinate : top = +half, bottom = -half
+      float const WorldY = Half - PixelSize * IdxY;
 
-      ww::tup const Position = ww::Point(WorldX, WorldY, WallZ);
-      ww::ray const R = ww::Ray(Position, ww::Normalize(Position - RayOrigin));
-
-      ww::intersect const XS = ww::Intersect(S, R);
-      if (XS.Count())
+      for (size_t IdxX = 0;          ///<!
+           IdxX < CanvasPixels - 1;  ///<!
+           ++IdxX)
       {
-        // std::cout << "Got hit at " << WorldX << "," << WorldY << ". PixelPos:" << IdxX << "," << IdxY << std::endl;
-        ww::WritePixel(Canvas, IdxX, IdxY, Color);
+        // NOTE: Compute the world x coordinate : left = -half, right = half
+        float const WorldX = -Half + PixelSize * IdxX;
+
+        ww::tup const Position = ww::Point(WorldX, WorldY, WallZ);
+        ww::ray const R = ww::Ray(Position, ww::Normalize(Position - RayOrigin));
+
+        ww::intersect const XS = ww::Intersect(S, R);
+        if (XS.Count())
+        {
+          // std::cout << "Got hit at " << WorldX << "," << WorldY << ". PixelPos:" << IdxX << "," << IdxY << std::endl;
+          ww::WritePixel(Canvas, IdxX, IdxY, Color);
+        }
       }
     }
-  }
-  ww::WriteToPPM(Canvas, "SpherePuttingItTogether.ppm");
+    ww::WriteToPPM(Canvas, FileName);
+    // NOTE: Just a dummy test.
+    EXPECT_EQ(WallZ, 10.f);
+  };
 
-  // NOTE: Just a dummy test.
-  EXPECT_EQ(WallZ, 10.f);
+  ww::sphere S{};
+  CreateSphere(S, "SpherePuttingItTogether.ppm");
 }
 
 //------------------------------------------------------------------------------
