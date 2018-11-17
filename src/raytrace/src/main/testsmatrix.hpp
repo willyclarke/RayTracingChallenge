@@ -1111,6 +1111,20 @@ TEST(RaySphere, SpherePuttingItTogether)
 
   ww::sphere S{};
   CreateSphere(S, "SpherePuttingItTogether.ppm");
+
+  // NOTE: Scale the sphere
+  S.T = ww::Scale(1.f, 0.5f, 1.f);
+  CreateSphere(S, "SphereScaledY.ppm");
+  S.T = ww::Scale(0.5f, 1.0f, 1.f);
+  CreateSphere(S, "SphereScaledX.ppm");
+
+  // NOTE: Scaling in the Z direction is not visible from this viewpoint.
+  //       So the end result should still be a circle.
+  S.T = ww::Scale(1.0f, 1.0f, 0.5f);
+  CreateSphere(S, "SphereScaledZ.ppm");
+
+  S.T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  CreateSphere(S, "SphereScaledX1.ppm");
 }
 
 //------------------------------------------------------------------------------
