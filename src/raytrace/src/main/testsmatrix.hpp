@@ -1058,6 +1058,53 @@ TEST(RaySphere, SphereIntersectTranslated)
 
   EXPECT_EQ(XS.Count(), 0);
 }
+
+//------------------------------------------------------------------------------
+TEST(RaySphere, SpherePuttingItTogether)
+{
+  ww::tup const RayOrigin = ww::Point(0.f, 0.f, -5.f);
+  ww::tup Color = ww::Color(1.f, 0.f, 0.f);
+
+  float const WallZ{10.f};
+  float const WallSize{7.f};  // Assume a square wall
+  float const Half{WallSize / 2.f};
+
+  int const CanvasPixels{100};
+  float const PixelSize{WallSize / CanvasPixels};
+  ww::canvas Canvas(CanvasPixels, CanvasPixels);
+  ww::sphere S{};
+
+  for (size_t IdxY = 0;          ///<!
+       IdxY < CanvasPixels - 1;  ///<!
+       ++IdxY)
+  {
+    // NOTE: Compute the world y coordinate : top = +half, bottom = -half
+    float const WorldY = Half - PixelSize * IdxY;
+
+    for (size_t IdxX = 0;          ///<!
+         IdxX < CanvasPixels - 1;  ///<!
+         ++IdxX)
+    {
+      // NOTE: Compute the world x coordinate : left = -half, right = half
+      float const WorldX = -Half + PixelSize * IdxX;
+
+      ww::tup const Position = ww::Point(WorldX, WorldY, WallZ);
+      ww::ray const R = ww::Ray(Position, ww::Normalize(Position - RayOrigin));
+
+      ww::intersect const XS = ww::Intersect(S, R);
+      if (XS.Count())
+      {
+        // std::cout << "Got hit at " << WorldX << "," << WorldY << ". PixelPos:" << IdxX << "," << IdxY << std::endl;
+        ww::WritePixel(Canvas, IdxX, IdxY, Color);
+      }
+    }
+  }
+  ww::WriteToPPM(Canvas, "SpherePuttingItTogether.ppm");
+
+  // NOTE: Just a dummy test.
+  EXPECT_EQ(WallZ, 10.f);
+}
+
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
