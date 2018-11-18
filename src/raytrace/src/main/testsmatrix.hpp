@@ -1128,11 +1128,26 @@ TEST(RaySphere, SpherePuttingItTogether)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6, SphereNormals)
+TEST(Ch6LightAndShading, SphereNormals)
 {
-    ww::sphere S{};
+  ww::sphere S{};
+  {
     ww::tup const N = ww::NormalAt(S, ww::Point(1.f, 0.f, 0.f));
     EXPECT_EQ(ww::Equal(N, ww::Vector(1.f, 0.f, 0.f)), true);
+  }
+  {
+    ww::tup const N = ww::NormalAt(S, ww::Point(0.f, 1.f, 0.f));
+    EXPECT_EQ(ww::Equal(N, ww::Vector(0.f, 1.f, 0.f)), true);
+  }
+  {
+    ww::tup const N = ww::NormalAt(S, ww::Point(0.f, 0.f, 1.f));
+    EXPECT_EQ(ww::Equal(N, ww::Vector(0.f, 0.f, 1.f)), true);
+  }
+  {
+    float const Sqrt3O3 = std::sqrt(3.f) / 3.f;
+    ww::tup const N = ww::NormalAt(S, ww::Point(Sqrt3O3, Sqrt3O3, Sqrt3O3));
+    EXPECT_EQ(ww::Equal(N, ww::Vector(Sqrt3O3, Sqrt3O3, Sqrt3O3)), true);
+  }
 }
 
 //------------------------------------------------------------------------------

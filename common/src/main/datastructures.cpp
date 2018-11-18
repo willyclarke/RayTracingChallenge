@@ -1087,7 +1087,8 @@ ray Transform(ray const &R, matrix const &M) { return M * R; }
 //------------------------------------------------------------------------------
 tup NormalAt(object const &O, tup const P)
 {
-  tup Result{};
+  // NOTE: This result is only valid for a unit sphere.
+  tup const Result = Normalize(P - Point(0.f, 0.f, 0.f));
   return (Result);
 }
 };  // namespace ww
