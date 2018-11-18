@@ -355,6 +355,13 @@ ray Mul(matrix const &M, ray const &R);
 tup Position(ray const &R, float t);
 ray Ray(tup const &P, tup const &V);
 ray Transform(ray const &R, matrix const &M);
+
+
+/// ---
+/// Surface normal functions
+/// ---
+tup NormalAt(object const &O, tup const P);
+
 };  // namespace ww
 
 // ---

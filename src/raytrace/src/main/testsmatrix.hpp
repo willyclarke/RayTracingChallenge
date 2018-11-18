@@ -1128,6 +1128,14 @@ TEST(RaySphere, SpherePuttingItTogether)
 }
 
 //------------------------------------------------------------------------------
+TEST(Ch6, SphereNormals)
+{
+    ww::sphere S{};
+    ww::tup const N = ww::NormalAt(S, ww::Point(1.f, 0.f, 0.f));
+    EXPECT_EQ(ww::Equal(N, ww::Vector(1.f, 0.f, 0.f)), true);
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);

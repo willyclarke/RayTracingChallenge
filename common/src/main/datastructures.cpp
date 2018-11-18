@@ -1083,6 +1083,13 @@ ray Mul(matrix const &M, ray const &R)
 
 //------------------------------------------------------------------------------
 ray Transform(ray const &R, matrix const &M) { return M * R; }
+
+//------------------------------------------------------------------------------
+tup NormalAt(object const &O, tup const P)
+{
+  tup Result{};
+  return (Result);
+}
 };  // namespace ww
 
 // ---
