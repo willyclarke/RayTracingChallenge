@@ -1151,6 +1151,43 @@ TEST(Ch6LightAndShading, SphereNormals)
 }
 
 //------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, SphereNormalsTranslated)
+{
+  ww::sphere S{};
+
+  {
+    // NOTE: Move the sphere up to +y=1
+    S.T = ww::Translation(0.f, 1.f, 0.f);
+
+    // ---
+    // Scenario: Computing the nomal on a translated sphere.
+    //           The normal should now be at y= 0.707 for its y and
+    //           the x normal should be a negative number, -.707.
+    // ---
+    ww::tup const N1 = ww::NormalAt(S, ww::Point(0.f, 1.70711f, -0.70711f));
+    EXPECT_EQ(ww::Equal(N1, ww::Vector(0.f, 0.70711f, -0.70711f)), true);
+
+    // NOTE: Set up the scaling.
+    //       First rotate the normal by some radians
+    ww::tup Rot = ww::RotateZ(1.f / 5.f) * N1;
+
+    EXPECT_EQ(ww::IsVector(Rot), true);
+
+    // thereafter apply scaling and rotation.
+    S.T = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.0f, 0.5f, 1.0f, Rot.X, Rot.Y, Rot.Z);
+
+    // ---
+    // Scenario: Computing the nomal on a translated sphere.
+    //           The normal should now be at y= 0.707 for its y and
+    //           the x normal should be a negative number, -.707.
+    // ---
+    float const Sqrt2O2 = std::sqrt(2.f) / 2.f;
+    ww::tup const N2 = ww::NormalAt(S, ww::Point(0.f, Sqrt2O2, -Sqrt2O2));
+    EXPECT_EQ(ww::Equal(N2, ww::Vector(0.f, 0.97014f, -0.24254f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);

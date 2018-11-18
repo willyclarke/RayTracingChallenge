@@ -1085,10 +1085,18 @@ ray Mul(matrix const &M, ray const &R)
 ray Transform(ray const &R, matrix const &M) { return M * R; }
 
 //------------------------------------------------------------------------------
+// \fn NormalAt
+// \brief Calculate normal vector at given point. The resulting vector will
+//        be normalized to a length of 1.f.
 tup NormalAt(object const &O, tup const P)
 {
-  // NOTE: This result is only valid for a unit sphere.
-  tup const Result = Normalize(P - Point(0.f, 0.f, 0.f));
+  tup const ObjectPoint = Inverse(O.T) * P;
+  tup const ObjectNormal = ObjectPoint - Point(0.f, 0.f, 0.f);
+
+  tup WorldNormal = Transpose(Inverse(O.T)) * ObjectNormal;
+  WorldNormal.W = 0.f;
+
+  tup const Result = Normalize(WorldNormal);
   return (Result);
 }
 };  // namespace ww
