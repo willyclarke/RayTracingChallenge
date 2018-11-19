@@ -360,7 +360,8 @@ ray Transform(ray const &R, matrix const &M);
 /// ---
 /// Surface normal functions
 /// ---
-tup NormalAt(object const &O, tup const P);
+tup NormalAt(object const &O, tup const &P);
+tup Reflect(tup const &In, tup const &Normal);
 
 };  // namespace ww
 

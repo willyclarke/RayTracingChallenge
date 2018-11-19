@@ -1088,7 +1088,7 @@ ray Transform(ray const &R, matrix const &M) { return M * R; }
 // \fn NormalAt
 // \brief Calculate normal vector at given point. The resulting vector will
 //        be normalized to a length of 1.f.
-tup NormalAt(object const &O, tup const P)
+tup NormalAt(object const &O, tup const &P)
 {
   tup const ObjectPoint = Inverse(O.T) * P;
   tup const ObjectNormal = ObjectPoint - Point(0.f, 0.f, 0.f);
@@ -1098,6 +1098,14 @@ tup NormalAt(object const &O, tup const P)
 
   tup const Result = Normalize(WorldNormal);
   return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup Reflect(tup const &In, tup const &Normal)
+{
+    tup Result{};
+    Result = In - Normal * 2.f * Dot(In, Normal);
+    return (Result);
 }
 };  // namespace ww
 

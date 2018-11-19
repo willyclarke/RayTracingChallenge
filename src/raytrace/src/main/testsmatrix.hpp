@@ -1188,6 +1188,34 @@ TEST(Ch6LightAndShading, SphereNormalsTranslated)
 }
 
 //------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, ReflectingVector45Degrees)
+{
+  {
+    //
+    // \   A   /
+    //  \  |  /
+    //   \ | /
+    //    \|/
+    // NOTE: Think of a ball that travels at 45°, hits the ground and is reflected.
+    //       The ball is travelling in the positive x and downward with a negative z.
+    //       The normal will then point straight up from the ground, hence y=1.
+    ww::tup const V = ww::Vector(1.f, -1.f, 0.f);
+    ww::tup const N = ww::Vector(0.f, 1.f, 0.f);
+    ww::tup const R = ww::Reflect(V, N);
+    EXPECT_EQ(ww::Equal(R, ww::Vector(1.f, 1.f, 0.f)), true);
+  }
+  {
+    // The surface is tilting 45°. Ball is falling straight down...
+    // The result is that the ball travels straight in the X direction.
+    ww::tup const V = ww::Vector(0.f, -1.f, 0.f);
+    float const Sqrt2O2 = std::sqrt(2.f) / 2.f;
+    ww::tup const N = ww::Vector(Sqrt2O2, Sqrt2O2, 0.f);
+    ww::tup const R = ww::Reflect(V, N);
+    EXPECT_EQ(ww::Equal(R, ww::Vector(1.f, 0.f, 0.f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);
