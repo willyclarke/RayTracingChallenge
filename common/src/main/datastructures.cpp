@@ -1088,6 +1088,7 @@ ray Transform(ray const &R, matrix const &M) { return M * R; }
 // \fn NormalAt
 // \brief Calculate normal vector at given point. The resulting vector will
 //        be normalized to a length of 1.f.
+//------------------------------------------------------------------------------
 tup NormalAt(object const &O, tup const &P)
 {
   tup const ObjectPoint = Inverse(O.T) * P;
@@ -1100,6 +1101,11 @@ tup NormalAt(object const &O, tup const &P)
   return (Result);
 }
 
+//------------------------------------------------------------------------------
+// \fn Reflect
+// \brief Calculate the reflection vector based on the input and the surface normal.
+// \sa https://math.stackexchange.com/questions/13261/how-to-get-a-reflection-vector
+// \sa https://en.wikipedia.org/wiki/Vector_projection
 //------------------------------------------------------------------------------
 tup Reflect(tup const &In, tup const &Normal)
 {
