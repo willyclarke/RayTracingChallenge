@@ -1216,6 +1216,32 @@ TEST(Ch6LightAndShading, ReflectingVector45Degrees)
 }
 
 //------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, PointLightPositionIntensity)
+{
+  ww::tup const Position = ww::Point(0.f, 0.f, 0.f);
+  ww::tup const Intensity = ww::Color(1.f, 1.f, 1.f);
+  ww::light const Light = ww::PointLight(Position, Intensity);
+  EXPECT_EQ(ww::Equal(Position, Light.Position), true);
+  EXPECT_EQ(ww::Equal(Intensity, Light.Intensity), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, MaterialInitialization)
+{
+  ww::material const Material{};
+  float const Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
+  float const Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
+  float const Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
+  float const Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
+
+  EXPECT_EQ(Material.Ambient, Ambient);
+  EXPECT_EQ(Material.Diffuse, Diffuse);
+  EXPECT_EQ(Material.Specular, Specular);
+  EXPECT_EQ(Material.Shininess, Shininess);
+}
+};  // namespace rtcch3
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);
@@ -1232,5 +1258,6 @@ void RunMatrixTest(int argc, char *argv[])
     if (Result != 0) break;
   }
 }
-};  // namespace rtcch3
+}
+;  // namespace rtcch3
 #endif

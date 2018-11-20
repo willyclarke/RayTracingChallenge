@@ -220,6 +220,22 @@ struct canvas
 };
 
 //------------------------------------------------------------------------------
+struct light
+{
+  tup Intensity{};  //!< Includes color.
+  tup Position{};
+};
+
+//------------------------------------------------------------------------------
+struct material
+{
+  float Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
+  float Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
+  float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
+  float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
+};
+
+//------------------------------------------------------------------------------
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
 tup Color(float const R, float const G, float const B);
@@ -356,13 +372,16 @@ tup Position(ray const &R, float t);
 ray Ray(tup const &P, tup const &V);
 ray Transform(ray const &R, matrix const &M);
 
-
 /// ---
 /// Surface normal functions
 /// ---
 tup NormalAt(object const &O, tup const &P);
 tup Reflect(tup const &In, tup const &Normal);
 
+/// ---
+/// Light functions
+/// ---
+light PointLight(tup const &Position, tup const &Intensity);
 };  // namespace ww
 
 // ---

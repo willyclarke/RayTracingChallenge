@@ -1113,6 +1113,15 @@ tup Reflect(tup const &In, tup const &Normal)
     Result = In - Normal * 2.f * Dot(In, Normal);
     return (Result);
 }
+
+//------------------------------------------------------------------------------
+light PointLight(tup const &Position, tup const &Intensity)
+{
+    light Result{};
+    Result.Position = Position;
+    Result.Intensity = Intensity;
+    return (Result);
+}
 };  // namespace ww
 
 // ---
