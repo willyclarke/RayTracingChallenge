@@ -1109,19 +1109,77 @@ tup NormalAt(object const &O, tup const &P)
 //------------------------------------------------------------------------------
 tup Reflect(tup const &In, tup const &Normal)
 {
-    tup Result{};
-    Result = In - Normal * 2.f * Dot(In, Normal);
-    return (Result);
+  tup Result{};
+  Result = In - Normal * 2.f * Dot(In, Normal);
+  return (Result);
 }
 
 //------------------------------------------------------------------------------
 light PointLight(tup const &Position, tup const &Intensity)
 {
-    light Result{};
-    Result.Position = Position;
-    Result.Intensity = Intensity;
-    return (Result);
+  light Result{};
+  Result.Position = Position;
+  Result.Intensity = Intensity;
+  return (Result);
 }
+//------------------------------------------------------------------------------
+tup Lighting(material const &Material,  //!<
+             light const &Light,        //!<
+             tup const &Position,       //!<
+             tup const &vEye,           //!<
+             tup const &vNormal         //!<
+)
+{
+  tup Result{};
+  // Combine the surface color with the light''s color/intensity.
+  tup const EffectiveColor = Material.Color * Light.Intensity;
+
+  // Find the direction to the light source.
+  tup const vLight = Normalize(Light.Position - Position);
+
+  // Compute the ambient contribution
+  tup const Ambient = EffectiveColor * Material.Ambient;
+
+  // Light dot Normal represents the cosine of the angle between the
+  // light vector and the normal vector. A negative number means that
+  // the light is on the other side of the surface.
+  float const LightDotNormal = Dot(vLight, vNormal);
+
+  tup Diffuse{};
+  tup Specular{};
+
+  if (LightDotNormal < 0.f)
+  {
+    Diffuse = Color(0.f, 0.f, 0.f);
+    Specular = Color(0.f, 0.f, 0.f);
+  }
+  else
+  {
+    // Compute the diffuse contribution
+    Diffuse = EffectiveColor * Material.Diffuse * LightDotNormal;
+
+    // Reflect dot eye represents the cosine of the angle between the
+    // reflection vector and the eye vector.
+    // A negative value means that the light reflects away from the eye.
+    tup vReflect = Reflect(-vLight, vNormal);
+    float const ReflectDotEye = Dot(vReflect, vEye);
+    if (ReflectDotEye <=0)
+    {
+        Specular = Color(0.f, 0.f, 0.f); // Black
+    }
+    else
+    {
+        // Compute the specular contribution
+        float const Factor = std::pow(ReflectDotEye, Material.Shininess);
+        Specular = Light.Intensity * Material.Specular * Factor;
+    }
+  }
+
+  // Add the three contributions together to the the final shading
+  Result = Ambient + Diffuse + Specular;
+
+  return (Result);
+};
 };  // namespace ww
 
 // ---

@@ -1238,6 +1238,9 @@ TEST(Ch6LightAndShading, MaterialInitialization)
   EXPECT_EQ(Material.Diffuse, Diffuse);
   EXPECT_EQ(Material.Specular, Specular);
   EXPECT_EQ(Material.Shininess, Shininess);
+  EXPECT_EQ(ww::Equal(Material.Color, ww::Color(1.f,1.f,1.f)), true);
+  EXPECT_EQ(ww::IsPoint(Material.Color), false);
+  EXPECT_EQ(ww::IsVector(Material.Color), true);
 }
 
 //------------------------------------------------------------------------------
@@ -1251,6 +1254,10 @@ TEST(Ch6LightAndShading, SphereMaterialInitialization)
   EXPECT_EQ(M.Diffuse, S.Material.Diffuse);
   EXPECT_EQ(M.Specular, S.Material.Specular);
   EXPECT_EQ(M.Shininess, S.Material.Shininess);
+  EXPECT_EQ(ww::Equal(M.Color, ww::Color(1.f,1.f,1.f)), true);
+  EXPECT_EQ(ww::Equal(M.Color, S.Material.Color), true);
+  EXPECT_EQ(ww::IsPoint(M.Color), false);
+  EXPECT_EQ(ww::IsVector(M.Color), true);
 }
 
 //------------------------------------------------------------------------------
@@ -1269,6 +1276,123 @@ TEST(Ch6LightAndShading, SphereMaterialAssignment)
   EXPECT_EQ(M.Shininess, S.Material.Shininess);
 }
 
+//------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, SphereLighting)
+{
+  // Background: Given the default material and a position.
+  ww::material const M{};
+  ww::tup const Position = ww::Point(0.f, 0.f, 0.f);
+
+  {
+    // Scenario: Lighting with the eye between the light and the surface.
+    //                              |
+    // sun/light O ->  eye <o   <---| Normal vector
+    //                              |
+    ww::tup const vEye = ww::Vector(0.f, 0.f, -1.f);
+    ww::tup const vN = ww::Vector(0.f, 0.f, -1.f);
+
+    ww::light const Light = ww::PointLight(ww::Point(0.f, 0.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+
+    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    EXPECT_EQ(ww::Equal(Result, ww::Color(1.9f, 1.9f, 1.9f)), true);
+  }
+
+  {
+    // Scenario: Lighting with the eye between the light and the surface, eye offset 45°.
+    //                       eye <o |
+    //                             \|
+    // sun/light O ->           <---| Normal vector
+    //                              |
+    float const Sqrt2O2 = std::sqrt(2.f) / 2.f;
+    ww::tup const vEye = ww::Vector(0.f, Sqrt2O2, -Sqrt2O2);
+    ww::tup const vN = ww::Vector(0.f, 0.f, -1.f);
+
+    ww::light const Light = ww::PointLight(ww::Point(0.f, 0.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+
+    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    EXPECT_EQ(ww::Equal(Result, ww::Color(1.0f, 1.0f, 1.0f)), true);
+  }
+
+  {
+    // Scenario: Lighting with the eye opposite surface, eye offset 45° each.
+    //                  Sun/light O |
+    //                             \|
+    //              eye <o      <---| Normal vector
+    //                              |
+    //                              |
+    float const Sqrt2O2 = std::sqrt(2.f) / 2.f;
+    float const ColorValue = 0.1f + 0.9f * Sqrt2O2 + 0.f;  // 0.7364
+    ww::tup const vEye = ww::Vector(0.f, 0.f, -1.f);
+    ww::tup const vN = ww::Vector(0.f, 0.f, -1.f);
+
+    ww::light const Light = ww::PointLight(ww::Point(0.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+
+    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+
+    // NOTE: From the book:
+    // Because the angle between the light and the normal vectors has changed the diffuse
+    // component becomes 0.9xSqrt2O2. The specular component again falls off to zero, so the total
+    // intensity becomes
+    // 0.1 + 0.9xSqrt2O2 + 0 = 0.7364
+    //
+    EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
+  }
+
+  {
+    // Scenario: Lighting with the eye opposite surface, eye/light offset 45° each.
+    //                       eye <o |
+    //                             \|
+    //                          <---| Normal vector
+    //                             /|
+    //              Sun/light     O |
+    float const Sqrt2O2 = std::sqrt(2.f) / 2.f;
+    float const ColorValue = 0.1f + 0.9f * Sqrt2O2 + 0.f;
+    ww::tup const vEye = ww::Vector(0.f, 0.f, -1.f);
+    ww::tup const vN = ww::Vector(0.f, 0.f, -1.f);
+
+    ww::light const Light = ww::PointLight(ww::Point(0.f, -10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+
+    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
+  }
+
+  {
+    // Scenario: Lighting with the eye in the path of the reflection vector.
+    //               Sun/light    O |
+    //                             \|
+    //                          <---| Normal vector
+    //                             /|
+    //                 eye       <o |
+    float const Sqrt2O2 = std::sqrt(2.f) / 2.f;
+    float const ColorValue = 0.1f + 0.9f * Sqrt2O2 + 0.9f;  // 1.6364
+    ww::tup const vEye = ww::Vector(0.f, -Sqrt2O2, -Sqrt2O2);
+    ww::tup const vN = ww::Vector(0.f, 0.f, -1.f);
+
+    ww::light const Light = ww::PointLight(ww::Point(0.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+
+    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
+  }
+
+  {
+    // Lighting with the light behind the surface.
+    //                              |
+    //                             \|
+    //                 eye <o   <---| Normal vector   <---- O Sun/light
+    //                              |
+    //                              |
+    // The light does not illuminate the surface. So the diffuse and specular components goes to zero.
+    // The total intensity should therefore be the same as the ambient color.
+    float const ColorValue = 0.1f;
+    ww::tup const vEye = ww::Vector(0.f, 0.f, -1.f);
+    ww::tup const vN = ww::Vector(0.f, 0.f, -1.f);
+
+    ww::light const Light = ww::PointLight(ww::Point(0.f, 0.f, 10.f), ww::Color(1.f, 1.f, 1.f));
+
+    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
+  }
+}
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {

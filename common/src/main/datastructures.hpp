@@ -119,6 +119,7 @@ struct material
   float Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
   float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
   float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
+  tup Color{1.f, 1.f, 1.f, 0.f};
 };
 
 /// ---
@@ -383,6 +384,12 @@ tup Reflect(tup const &In, tup const &Normal);
 /// Light functions
 /// ---
 light PointLight(tup const &Position, tup const &Intensity);
+tup Lighting(material const &Material,  //!<
+             light const &Light,        //!<
+             tup const &Position,       //!<
+             tup const &vEye,           //!<
+             tup const &vNormal         //!<
+);
 };  // namespace ww
 
 // ---
