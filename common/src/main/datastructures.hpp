@@ -112,12 +112,22 @@ union matrix {
   };
 };
 
+//------------------------------------------------------------------------------
+struct material
+{
+  float Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
+  float Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
+  float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
+  float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
+};
+
 /// ---
 /// \struct base struct for the raytracing objects
 /// ---
 struct object
 {
   tup Center{};
+  material Material{};
 
   //!< The transform of the object, initialize to identity matrix
   matrix T{
@@ -224,15 +234,6 @@ struct light
 {
   tup Intensity{};  //!< Includes color.
   tup Position{};
-};
-
-//------------------------------------------------------------------------------
-struct material
-{
-  float Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
-  float Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
-  float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
-  float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
 };
 
 //------------------------------------------------------------------------------

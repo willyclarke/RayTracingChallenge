@@ -1239,7 +1239,35 @@ TEST(Ch6LightAndShading, MaterialInitialization)
   EXPECT_EQ(Material.Specular, Specular);
   EXPECT_EQ(Material.Shininess, Shininess);
 }
-};  // namespace rtcch3
+
+//------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, SphereMaterialInitialization)
+{
+  ww::sphere const S{};
+  ww::material const M{};
+
+  // NOTE: Thest that the sphere default material is the same as the default material.
+  EXPECT_EQ(M.Ambient, S.Material.Ambient);
+  EXPECT_EQ(M.Diffuse, S.Material.Diffuse);
+  EXPECT_EQ(M.Specular, S.Material.Specular);
+  EXPECT_EQ(M.Shininess, S.Material.Shininess);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, SphereMaterialAssignment)
+{
+  ww::sphere S{};
+  ww::material M{};
+
+  // NOTE: Test assignment of material.
+  M.Ambient = 1.f;
+  S.Material = M;
+
+  EXPECT_EQ(M.Ambient, S.Material.Ambient);
+  EXPECT_EQ(M.Diffuse, S.Material.Diffuse);
+  EXPECT_EQ(M.Specular, S.Material.Specular);
+  EXPECT_EQ(M.Shininess, S.Material.Shininess);
+}
 
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
@@ -1258,6 +1286,5 @@ void RunMatrixTest(int argc, char *argv[])
     if (Result != 0) break;
   }
 }
-}
-;  // namespace rtcch3
+};  // namespace rtcch3
 #endif
