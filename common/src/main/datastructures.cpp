@@ -351,7 +351,7 @@ void WriteToPPM(canvas const &Canvas, std::string const &Filename)
     // clang-format on
     O << Output;
 
-    Assert(Output.size() < 12, __FUNCTION__, __LINE__);
+    //Assert(Output.size() < 12, __FUNCTION__, __LINE__);
   }
   O << std::endl;
   O.close();
@@ -848,7 +848,7 @@ ray Ray(tup const &O, tup const &D)
 
   ray Result{};
   Result.O = O;
-  Result.D = D;
+  Result.D = Normalize(D);
 
   return (Result);
 }
@@ -913,7 +913,7 @@ intersect IntersectSphere(sphere const &Sphere, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
-intersect Intersect(sphere const &Object, ray const &RayIn)
+intersect Intersect(sphere const &Sphere, ray const &RayIn)
 {
   intersect Result{};
 
@@ -922,7 +922,7 @@ intersect Intersect(sphere const &Object, ray const &RayIn)
   //       kind of not be placed at origin. So use its transform to 'move' the
   //       ray by calculation of the inverse.
   // ---
-  ray const Ray = Transform(RayIn, Inverse(Object.T));
+  ray const Ray = Transform(RayIn, Inverse(Sphere.T));
 
   // ---
   // NOTE: See explanation from:
@@ -944,7 +944,7 @@ intersect Intersect(sphere const &Object, ray const &RayIn)
     float const t1 = (-B - std::sqrt(Discriminant)) / (2 * A);
     float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
     intersection I{};
-    I.Object = Object;
+    I.Object = Sphere;
     if (t1 > t2)
     {
       I.t = t2;

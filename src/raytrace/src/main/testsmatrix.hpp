@@ -773,7 +773,7 @@ TEST(RaySphere, Intersect1)
   ww::tup const Direction = ww::Vector(4.f, 5.f, 6.f);
   ww::ray const Ray = ww::Ray(Origin, Direction);
   EXPECT_EQ(ww::Equal(Ray.O, Origin), true);
-  EXPECT_EQ(ww::Equal(Ray.D, Direction), true);
+  EXPECT_EQ(ww::Equal(Ray.D, ww::Normalize(Direction)), true);
 }
 
 //------------------------------------------------------------------------------
@@ -1238,7 +1238,7 @@ TEST(Ch6LightAndShading, MaterialInitialization)
   EXPECT_EQ(Material.Diffuse, Diffuse);
   EXPECT_EQ(Material.Specular, Specular);
   EXPECT_EQ(Material.Shininess, Shininess);
-  EXPECT_EQ(ww::Equal(Material.Color, ww::Color(1.f,1.f,1.f)), true);
+  EXPECT_EQ(ww::Equal(Material.Color, ww::Color(1.f, 1.f, 1.f)), true);
   EXPECT_EQ(ww::IsPoint(Material.Color), false);
   EXPECT_EQ(ww::IsVector(Material.Color), true);
 }
@@ -1254,7 +1254,7 @@ TEST(Ch6LightAndShading, SphereMaterialInitialization)
   EXPECT_EQ(M.Diffuse, S.Material.Diffuse);
   EXPECT_EQ(M.Specular, S.Material.Specular);
   EXPECT_EQ(M.Shininess, S.Material.Shininess);
-  EXPECT_EQ(ww::Equal(M.Color, ww::Color(1.f,1.f,1.f)), true);
+  EXPECT_EQ(ww::Equal(M.Color, ww::Color(1.f, 1.f, 1.f)), true);
   EXPECT_EQ(ww::Equal(M.Color, S.Material.Color), true);
   EXPECT_EQ(ww::IsPoint(M.Color), false);
   EXPECT_EQ(ww::IsVector(M.Color), true);
@@ -1393,6 +1393,94 @@ TEST(Ch6LightAndShading, SphereLighting)
     EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
   }
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch6LightAndShading, SpherePuttingItTogether)
+{
+  // ---
+  // NOTE: Create a lambda for the ray/sphere intersection.
+  //       This allows us to change the transform of the sphere
+  //       to create interesting effects, like scaling, skewing etc.
+  // ---
+  auto CreateSphere = [&](ww::sphere &S, std::string const &FileName) -> void {
+    ww::tup const RayOrigin = ww::Point(0.f, 0.f, -5.f);
+    ww::tup Color = ww::Color(1.f, 0.f, 0.f);
+    ww::tup const LightPosition = ww::Point(-10.f, 10.f, -10.f);
+    ww::tup const LightColor = ww::Color(1.f, 1.f, 1.f);
+    ww::light const Light = ww::PointLight(LightPosition, LightColor);
+
+    float const WallZ{10.f};
+    float const WallSize{7.f};  // Assume a square wall
+    float const Half{WallSize / 2.f};
+
+    int const CanvasPixels{100};
+    float const PixelSize{WallSize / CanvasPixels};
+    ww::canvas Canvas(CanvasPixels, CanvasPixels);
+
+    for (size_t IdxY = 0;          ///<!
+         IdxY < CanvasPixels - 1;  ///<!
+         ++IdxY)
+    {
+      // NOTE: Compute the world y coordinate : top = +half, bottom = -half
+      float const WorldY = Half - PixelSize * IdxY;
+
+      for (size_t IdxX = 0;          ///<!
+           IdxX < CanvasPixels - 1;  ///<!
+           ++IdxX)
+      {
+        // NOTE: Compute the world x coordinate : left = -half, right = half
+        float const WorldX = -Half + PixelSize * IdxX;
+
+        ww::tup const Position = ww::Point(WorldX, WorldY, WallZ);
+        ww::ray const R = ww::Ray(Position, ww::Normalize(Position - RayOrigin));
+
+        ww::intersect const XS = ww::Intersect(S, R);
+        if (XS.Count())
+        {
+          ww::tup const Point = ww::Position(R, XS.vI[0].t);
+          ww::tup const vNormal = ww::NormalAt(S, Point);
+          ww::tup const &vEye = -R.D;
+
+          Color = ww::Lighting(S.Material, Light, Point, vEye, vNormal);
+
+          // std::cout << "Got hit at " << WorldX << "," << WorldY << ". PixelPos:" << IdxX << "," << IdxY << std::endl;
+          ww::WritePixel(Canvas, IdxX, IdxY, Color);
+        }
+      }
+    }
+    ww::WriteToPPM(Canvas, FileName);
+    // NOTE: Just a dummy test.
+    EXPECT_EQ(WallZ, 10.f);
+  };
+
+  ww::sphere S{};
+  EXPECT_EQ(ww::Equal(S.Material.Color, ww::material().Color), true);
+
+  // Is this one really necessary
+  S.Material = ww::material();
+  S.Material.Color = ww::Color(1.f, 0.2f, 1.f);
+
+  CreateSphere(S, "SpherePuttingItTogetherCh6.ppm");
+
+#if (1)
+
+  // NOTE: Scale the sphere
+  S.T = ww::Scale(1.f, 0.5f, 1.f);
+  CreateSphere(S, "SphereScaledYCh6.ppm");
+
+  S.T = ww::Scale(0.5f, 1.0f, 1.f);
+  CreateSphere(S, "SphereScaledXCh6.ppm");
+
+  // NOTE: Scaling in the Z direction is not visible from this viewpoint.
+  //       So the end result should still be a circle.
+  S.T = ww::Scale(1.0f, 1.0f, 0.5f);
+  CreateSphere(S, "SphereScaledZCh6.ppm");
+
+  S.T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  CreateSphere(S, "SphereScaledX1Ch6.ppm");
+#endif
+}
+
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {

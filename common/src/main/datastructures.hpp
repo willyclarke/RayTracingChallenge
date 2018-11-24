@@ -186,7 +186,7 @@ struct intersection
 };
 
 /// ---
-/// \struct intersection
+/// \struct intersect
 /// \brief Collection of t values where a ray intersects an object.
 /// ---
 struct intersect
