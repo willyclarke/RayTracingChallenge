@@ -1539,6 +1539,14 @@ TEST(Ch7MakingAScene, DefaultWorld)
   }
   EXPECT_EQ(ContainsS1, true);
   EXPECT_EQ(ContainsS2, true);
+  if (W.vPtrLights.size() > 0)
+  {
+    ww::shared_ptr_light PtrLight = W.vPtrLights[0];
+    ww::light &L = *PtrLight;
+    bool const LightsAreEqual = L == Light;
+    EXPECT_EQ(LightsAreEqual, true);
+    EXPECT_EQ(bool(Light == *W.vPtrLights[0].get()), true);
+  }
 }
 
 //------------------------------------------------------------------------------

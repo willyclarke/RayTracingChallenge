@@ -1017,6 +1017,13 @@ bool Equal(intersection const &A, intersection const &B)
 }
 
 //------------------------------------------------------------------------------
+bool Equal(light const &A, light const &B)
+{
+  bool const Result = Equal(A.Intensity, B.Intensity) && Equal(A.Position, B.Position);
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
 intersection Hit1(intersections const &Intersections)
 {
   intersection Result{};
@@ -1251,11 +1258,11 @@ ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Mul(A, B)); 
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B) { return (ww::Mul(A, B)); }
 ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)); }
 ww::ray operator*(ww::matrix const &M, ww::ray const &R) { return (ww::Mul(M, R)); }
-// bool operator==(ww::sphere const &A, ww::sphere const &B) {return (ww::Equal(A, B));}
-bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::intersection const &A, ww::intersection const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::material const &A, ww::material const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::matrix const &A, ww::matrix const &B) { return (ww::Equal(A, B)); }
-bool operator==(ww::intersection const &A, ww::intersection const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::light const &A, ww::light const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
 // ---
 // NOTE: Division operator does not check for divide by zero; Who cares?
 // ---
