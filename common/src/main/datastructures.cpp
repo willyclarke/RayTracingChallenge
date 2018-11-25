@@ -351,7 +351,7 @@ void WriteToPPM(canvas const &Canvas, std::string const &Filename)
     // clang-format on
     O << Output;
 
-    //Assert(Output.size() < 12, __FUNCTION__, __LINE__);
+    // Assert(Output.size() < 12, __FUNCTION__, __LINE__);
   }
   O << std::endl;
   O.close();
