@@ -238,6 +238,20 @@ struct light
 };
 
 //------------------------------------------------------------------------------
+// \struct world :
+//                Contains a vector of the objects
+//                Contains a vector of light source's.
+//
+typedef std::shared_ptr<object> shared_ptr_object;
+typedef std::shared_ptr<light> shared_ptr_light;
+struct world
+{
+  std::vector<shared_ptr_object> vPtrObjects{};
+  std::vector<shared_ptr_light> vPtrLights{};
+  int Count() const { return static_cast<int>(vPtrObjects.size()); }
+};
+
+//------------------------------------------------------------------------------
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
 tup Color(float const R, float const G, float const B);
@@ -364,6 +378,7 @@ intersect Intersect(sphere const &Sphere, ray const &Ray);
 /// ---
 bool Equal(intersection const &A, intersection const &B);
 bool Equal(sphere const &A, sphere const &B);
+bool Equal(material const &A, material const &B);
 intersection Hit(intersections const &Intersections);
 intersection Intersection(float t, object *Object);
 intersections Intersections(intersection const &I1, intersection const &I2);
@@ -390,6 +405,13 @@ tup Lighting(material const &Material,  //!<
              tup const &vEye,           //!<
              tup const &vNormal         //!<
 );
+
+/// ---
+/// World functions.
+/// ---
+/// \fn World - Create a default world with two spheres and a light.
+world World();
+
 };  // namespace ww
 
 // ---
@@ -408,5 +430,7 @@ ww::matrix operator*(ww::matrix const &A, ww::matrix const &B);
 ww::tup operator*(ww::matrix const &A, ww::tup const &T);
 ww::ray operator*(ww::matrix const &M, ww::ray const &R);
 bool operator==(ww::sphere const &A, ww::sphere const &B);
+bool operator==(ww::material const &A, ww::material const &B);
+bool operator==(ww::matrix const &A, ww::matrix const &B);
 bool operator==(ww::intersection const &A, ww::intersection const &B);
 #endif

@@ -1482,6 +1482,66 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
 }
 
 //------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, CreateAWorld)
+{
+  // Scenario: Creating a world, an empty one...
+  ww::world const World{};
+  EXPECT_EQ(World.Count(), 0);
+  EXPECT_EQ(World.vPtrLights.size(), 0);
+  EXPECT_EQ(World.vPtrObjects.size(), World.Count());
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, DefaultWorld)
+{
+  ww::light const Light = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+  ww::sphere S1{};
+  ww::sphere S2{};
+
+  // NOTE: At this point the spheres are equal.
+  EXPECT_EQ(S1 == S2, true);
+
+  // NOTE: Set up material for sphere 1 so that it differs from sphere 2.
+  S1.Material.Color = ww::Color(0.8f, 1.0f, 0.6f);
+  S1.Material.Diffuse = 0.7f;
+  S1.Material.Specular = 0.2f;
+
+  S2.T = ww::Scale(0.5f, 0.5f, 0.5f);
+
+  // NOTE: And now the two spheres are different.
+  EXPECT_EQ(!(S1 == S2), true);
+
+  // NOTE: Assign our default world.
+  ww::world const W = ww::World();
+
+  EXPECT_EQ(W.vPtrLights.size(), 1);   //!< So now we expect there to be a light.
+  EXPECT_EQ(W.vPtrObjects.size(), 2);  //!< and some objects.
+
+  bool ContainsS1{};
+  bool ContainsS2{};
+
+  for (auto PtrObject : W.vPtrObjects)
+  {
+    if (PtrObject->isA<ww::sphere>())
+    {
+      ww::sphere *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
+      if (S1 == *pSphere)
+      {
+        ContainsS1 = true;
+      }
+      if (S2 == *pSphere)
+      {
+        ContainsS2 = true;
+      }
+    }
+    else
+      std::cerr << "Not a sphere" << std::endl;
+  }
+  EXPECT_EQ(ContainsS1, true);
+  EXPECT_EQ(ContainsS2, true);
+}
+
+//------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);

@@ -991,7 +991,21 @@ intersections &Intersections(intersections &XS, intersection const &I)
 }
 
 //------------------------------------------------------------------------------
-bool Equal(sphere const &A, sphere const &B) { return (Equal(A.Center, B.Center) && Equal(A.R, B.R)); }
+bool Equal(material const &A, material const &B)
+{
+  bool Result{};
+  Result = Equal(A.Ambient, B.Ambient) && Equal(A.Diffuse, B.Diffuse) && Equal(A.Shininess, B.Shininess) &&
+           Equal(A.Specular, B.Specular) && Equal(A.Color, B.Color);
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+bool Equal(sphere const &A, sphere const &B)
+{
+  bool const EqMaterial = A.Material == B.Material;
+  bool const EqTransform = A.T == B.T;
+  return (Equal(A.Center, B.Center) && Equal(A.R, B.R) && EqMaterial && EqTransform);
+}
 
 //------------------------------------------------------------------------------
 bool Equal(intersection const &A, intersection const &B)
@@ -1163,15 +1177,15 @@ tup Lighting(material const &Material,  //!<
     // A negative value means that the light reflects away from the eye.
     tup vReflect = Reflect(-vLight, vNormal);
     float const ReflectDotEye = Dot(vReflect, vEye);
-    if (ReflectDotEye <=0)
+    if (ReflectDotEye <= 0)
     {
-        Specular = Color(0.f, 0.f, 0.f); // Black
+      Specular = Color(0.f, 0.f, 0.f);  // Black
     }
     else
     {
-        // Compute the specular contribution
-        float const Factor = std::pow(ReflectDotEye, Material.Shininess);
-        Specular = Light.Intensity * Material.Specular * Factor;
+      // Compute the specular contribution
+      float const Factor = std::pow(ReflectDotEye, Material.Shininess);
+      Specular = Light.Intensity * Material.Specular * Factor;
     }
   }
 
@@ -1180,6 +1194,49 @@ tup Lighting(material const &Material,  //!<
 
   return (Result);
 };
+
+/// ---
+/// World functions.
+/// ---
+// \fn World - Create a default world.
+world World()
+{
+  world W{};
+
+  light Light = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+  // W.vLights.push_back(Light);
+  {
+    ww::shared_ptr_light PtrLight{};
+    PtrLight.reset(new ww::light);
+    *PtrLight = Light;
+    W.vPtrLights.push_back(PtrLight);
+  }
+
+  sphere S1{};
+  S1.Material.Color = ww::Color(0.8f, 1.0f, 0.6f);
+  S1.Material.Diffuse = 0.7f;
+  S1.Material.Specular = 0.2f;
+  // W.vObjects.push_back(S1);
+
+  {
+    ww::shared_ptr_object PtrSphere{};
+    PtrSphere.reset(new ww::sphere);
+    *PtrSphere = S1;
+    W.vPtrObjects.push_back(PtrSphere);
+  }
+
+  sphere S2{};
+  S2.T = ww::Scale(0.5f, 0.5f, 0.5f);
+  // W.vObjects.push_back(S2);
+  {
+    ww::shared_ptr_object PtrSphere{};
+    PtrSphere.reset(new ww::sphere);
+    *PtrSphere = S2;
+    W.vPtrObjects.push_back(PtrSphere);
+  }
+
+  return (W);
+}
 };  // namespace ww
 
 // ---
@@ -1196,6 +1253,8 @@ ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)
 ww::ray operator*(ww::matrix const &M, ww::ray const &R) { return (ww::Mul(M, R)); }
 // bool operator==(ww::sphere const &A, ww::sphere const &B) {return (ww::Equal(A, B));}
 bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::material const &A, ww::material const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::matrix const &A, ww::matrix const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::intersection const &A, ww::intersection const &B) { return (ww::Equal(A, B)); }
 // ---
 // NOTE: Division operator does not check for divide by zero; Who cares?
