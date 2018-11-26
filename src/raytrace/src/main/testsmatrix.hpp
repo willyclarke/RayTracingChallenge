@@ -880,16 +880,23 @@ TEST(RaySphere, IntersectSphere2Points5)
 // Scenario: An intersection encapsulates the 'time' t and the object of type T
 TEST(RaySphere, IntersectionSphere)
 {
-  ww::sphere S{};
-  ww::intersection I = ww::Intersection(3.5f, &S);
+  ww::shared_ptr_object PtrSphere{};
+  PtrSphere.reset(new ww::sphere);
+
+  ww::intersection I = ww::Intersection(3.5f, PtrSphere);
   ww::object *pObject = &S;
 
   EXPECT_EQ(3.5f, I.t);
   EXPECT_EQ(pObject->isA<ww::sphere>(), true);
-  EXPECT_EQ(I.pObject->isA<ww::sphere>(), true);
-  EXPECT_EQ(I.pObject->isA<ww::cube>(), false);
-  EXPECT_EQ(I.pObject, &S);
-  ww::sphere *pSphere = dynamic_cast<ww::sphere *>(I.pObject);
+
+  EXPECT_EQ(I.pObject.get()->isA<ww::sphere>(), true);
+  EXPECT_EQ(I.pObject.get()->isA<ww::cube>(), false);
+
+  // NOTE: We dont expect these to be at the same address at all.
+  // EXPECT_EQ(I.pObject.get(), &S);
+
+  ww::sphere *pSphere = dynamic_cast<ww::sphere *>(I.pObject.get());
+
   bool const TheSpheresAreEqual = *pSphere == S;
   EXPECT_EQ(TheSpheresAreEqual, true);
 }
@@ -899,9 +906,11 @@ TEST(RaySphere, IntersectionSphere)
 //       intersections at once.
 TEST(RaySphere, IntersectionsVector)
 {
-  ww::sphere S{};
-  ww::intersection I1 = ww::Intersection(1.f, &S);
-  ww::intersection I2 = ww::Intersection(2.f, &S);
+  ww::shared_ptr_object PtrSphere{};
+  PtrSphere.reset(new ww::sphere);
+
+  ww::intersection I1 = ww::Intersection(1.f, PtrSphere);
+  ww::intersection I2 = ww::Intersection(2.f, PtrSphere);
   ww::intersections XS = ww::Intersections(I1, I2);
   EXPECT_EQ(XS.Count(), 2);
   if (XS.Count() == 2)
@@ -915,9 +924,11 @@ TEST(RaySphere, IntersectionsVector)
 // NOTE: The hit, when all intersections have positive t.
 TEST(RaySphere, IntersectionsHit1)
 {
-  ww::sphere S{};
-  ww::intersection const I1 = ww::Intersection(1.f, &S);
-  ww::intersection const I2 = ww::Intersection(2.f, &S);
+  ww::shared_ptr_object PtrSphere{};
+  PtrSphere.reset(new ww::sphere);
+
+  ww::intersection const I1 = ww::Intersection(1.f, PtrSphere);
+  ww::intersection const I2 = ww::Intersection(2.f, PtrSphere);
   ww::intersections const XS = ww::Intersections(I1, I2);
   ww::intersection const H = ww::Hit(XS);
   EXPECT_EQ(I1 == H, true);
@@ -928,9 +939,11 @@ TEST(RaySphere, IntersectionsHit1)
 // NOTE: The hit, when some intersections have negative t.
 TEST(RaySphere, IntersectionsHit2)
 {
-  ww::sphere S{};
-  ww::intersection const I1 = ww::Intersection(-1.f, &S);
-  ww::intersection const I2 = ww::Intersection(1.f, &S);
+  ww::shared_ptr_object PtrSphere{};
+  PtrSphere.reset(new ww::sphere);
+
+  ww::intersection const I1 = ww::Intersection(-1.f, PtrSphere);
+  ww::intersection const I2 = ww::Intersection(1.f, PtrSphere);
   ww::intersections const XS = ww::Intersections(I1, I2);
   ww::intersection const H = ww::Hit(XS);
   EXPECT_EQ(I1 == H, false);
@@ -945,9 +958,11 @@ TEST(RaySphere, IntersectionsHit2)
 // NOTE: The hit, when all intersections have negative t.
 TEST(RaySphere, IntersectionsHit3)
 {
-  ww::sphere S{};
-  ww::intersection const I1 = ww::Intersection(-2.f, &S);
-  ww::intersection const I2 = ww::Intersection(-1.f, &S);
+  ww::shared_ptr_object PtrSphere{};
+  PtrSphere.reset(new ww::sphere);
+
+  ww::intersection const I1 = ww::Intersection(-2.f, PtrSphere);
+  ww::intersection const I2 = ww::Intersection(-1.f, PtrSphere);
   ww::intersections const XS = ww::Intersections(I1, I2);
   ww::intersection const H = ww::Hit(XS);
   EXPECT_EQ(I1 == H, false);
@@ -956,19 +971,21 @@ TEST(RaySphere, IntersectionsHit3)
   EXPECT_EQ(H.pObject, nullptr);
   EXPECT_EQ(H.pObject == I1.pObject, false);
   EXPECT_EQ(H.pObject == I2.pObject, false);
-  EXPECT_EQ(H.pObject->isA<ww::sphere>(), false);
-  EXPECT_EQ(H.pObject->isA<ww::cube>(), false);
+  EXPECT_EQ(H.pObject.get()->isA<ww::sphere>(), false);
+  EXPECT_EQ(H.pObject.get()->isA<ww::cube>(), false);
 }
 
 //------------------------------------------------------------------------------
 // NOTE: The hit is always the lowest non-negative intersection.
 TEST(RaySphere, IntersectionsHit4)
 {
-  ww::sphere S{};
-  ww::intersection const I1 = ww::Intersection(5.f, &S);
-  ww::intersection const I2 = ww::Intersection(7.f, &S);
-  ww::intersection const I3 = ww::Intersection(-3.f, &S);
-  ww::intersection const I4 = ww::Intersection(2.f, &S);
+  ww::shared_ptr_object PtrSphere{};
+  PtrSphere.reset(new ww::sphere);
+
+  ww::intersection const I1 = ww::Intersection(5.f, PtrSphere);
+  ww::intersection const I2 = ww::Intersection(7.f, PtrSphere);
+  ww::intersection const I3 = ww::Intersection(-3.f, PtrSphere);
+  ww::intersection const I4 = ww::Intersection(2.f, PtrSphere);
   ww::intersections XS{};
   Intersections(XS, I1);
   Intersections(XS, I2);
@@ -1552,10 +1569,10 @@ TEST(Ch7MakingAScene, DefaultWorld)
 //------------------------------------------------------------------------------
 TEST(Ch7MakingAScene, IntersectWorldWithRay)
 {
-    ww::world const World = ww::World();
-    ww::ray const Ray = ww::Ray(ww::Point(0.f, 0.f, 0.5f), ww::Vector(0.f, 0.f, 1.f));
-    ww::intersections const XS = Intersect(World, Ray);
-    EXPECT_EQ(XS.Count(), 4);
+  ww::world const World = ww::World();
+  ww::ray const Ray = ww::Ray(ww::Point(0.f, 0.f, 0.5f), ww::Vector(0.f, 0.f, 1.f));
+  ww::intersections const XS = Intersect(World, Ray);
+  EXPECT_EQ(XS.Count(), 4);
 }
 
 //------------------------------------------------------------------------------

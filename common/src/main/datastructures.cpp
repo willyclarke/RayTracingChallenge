@@ -886,7 +886,7 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
     float const t1 = (-B - std::sqrt(Discriminant)) / (2 * A);
     float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
     intersection I{};
-    I.Object = Sphere;
+
     if (t1 > t2)
     {
       I.t = t2;
@@ -937,7 +937,7 @@ intersections Intersect(sphere const &Sphere, ray const &RayIn)
     float const t1 = (-B - std::sqrt(Discriminant)) / (2 * A);
     float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
     intersection I{};
-    I.Object = Sphere;
+
     if (t1 > t2)
     {
       I.t = t2;
@@ -957,7 +957,7 @@ intersections Intersect(sphere const &Sphere, ray const &RayIn)
 }
 
 //------------------------------------------------------------------------------
-intersection Intersection(float t, object *pObject)
+intersection Intersection(float t, shared_ptr_object pObject)
 {
   intersection Result{};
   Result.t = t;

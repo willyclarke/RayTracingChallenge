@@ -176,16 +176,7 @@ typedef std::shared_ptr<object> shared_ptr_object;
 struct intersection
 {
   float t{};
-  // TODO: (Willy Clarke) Change the object pointer to a smart pointer.
-  object *pObject{};  //!< The pointer need to be cast to a valid object type.
-
-  // ---
-  // NOTE: You will lose the attributes of the derived classes
-  // since the object does not hold any info about for instance a sphere, cube etc.
-  // So; is this of any use at all?
-  // ---
-  // TODO: (Willy Clarke) Get rid of this object
-  object Object{};
+  shared_ptr_object pObject{};  //!< The pointer need to be cast to a valid object type.
 };
 
 /// ---
@@ -230,13 +221,13 @@ struct light
   tup Position{};
 };
 
+typedef std::shared_ptr<light> shared_ptr_light;
+
 //------------------------------------------------------------------------------
 // \struct world :
 //                Contains a vector of the objects
 //                Contains a vector of light source's.
 //
-typedef std::shared_ptr<object> shared_ptr_object;
-typedef std::shared_ptr<light> shared_ptr_light;
 struct world
 {
   std::vector<shared_ptr_object> vPtrObjects{};
@@ -374,10 +365,9 @@ bool Equal(sphere const &A, sphere const &B);
 bool Equal(material const &A, material const &B);
 bool Equal(light const &A, light const &B);
 intersection Hit(intersections const &Intersections);
-intersection Intersection(float t, object *Object);
+intersection Intersection(float t, shared_ptr_object pObject);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersections &Intersections(intersections &XS, intersection const &I);
-// intersect Intersect(sphere const &Object, ray const &Ray);
 ray Mul(matrix const &M, ray const &R);
 tup Position(ray const &R, float t);
 ray Ray(tup const &P, tup const &V);
