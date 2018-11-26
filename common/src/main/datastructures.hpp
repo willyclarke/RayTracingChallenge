@@ -167,14 +167,16 @@ struct cube : public object
   float L{1.f};
 };
 
+typedef std::shared_ptr<object> shared_ptr_object;
 /// ---
-/// \struct intersections
+/// \struct intersection
 /// \brief Connect the time t value with the object for intersection.
 /// \detail The pointer to the object allows us to build a vector of
 ///         objects. This is the main reason for using it.
 struct intersection
 {
   float t{};
+  // TODO: (Willy Clarke) Change the object pointer to a smart pointer.
   object *pObject{};  //!< The pointer need to be cast to a valid object type.
 
   // ---
@@ -182,17 +184,8 @@ struct intersection
   // since the object does not hold any info about for instance a sphere, cube etc.
   // So; is this of any use at all?
   // ---
+  // TODO: (Willy Clarke) Get rid of this object
   object Object{};
-};
-
-/// ---
-/// \struct intersect
-/// \brief Collection of t values where a ray intersects an object.
-/// ---
-struct intersect
-{
-  std::vector<intersection> vI{};  //!< The points of intersection.
-  int Count() const { return (int)vI.size(); }
 };
 
 /// ---
@@ -210,8 +203,8 @@ struct intersections
 /// ---
 struct ray
 {
-  tup O{};  //!< The origin.
-  tup D{};  //!< The direction.
+  tup O{};  //!< The origin. This is a point in space.
+  tup D{};  //!< The direction. This is a vector in space.
 };
 
 //------------------------------------------------------------------------------
@@ -371,7 +364,7 @@ matrix TranslateScaleRotate(                   //!<
 /// ---
 /// \fn Sphere releated functions
 /// ---
-intersect Intersect(sphere const &Sphere, ray const &Ray);
+intersections Intersect(sphere const &Sphere, ray const &Ray);
 
 /// ---
 /// Ray releated functions.
@@ -384,7 +377,7 @@ intersection Hit(intersections const &Intersections);
 intersection Intersection(float t, object *Object);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersections &Intersections(intersections &XS, intersection const &I);
-intersect Intersect(sphere const &Object, ray const &Ray);
+// intersect Intersect(sphere const &Object, ray const &Ray);
 ray Mul(matrix const &M, ray const &R);
 tup Position(ray const &R, float t);
 ray Ray(tup const &P, tup const &V);
@@ -412,6 +405,7 @@ tup Lighting(material const &Material,  //!<
 /// ---
 /// \fn World - Create a default world with two spheres and a light.
 world World();
+intersections Intersect(world const &World, ray const &Ray);
 
 };  // namespace ww
 

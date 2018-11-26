@@ -830,13 +830,6 @@ sphere Sphere(tup const &Center, float Radius)
   return (S);
 }
 
-//------------------------------------------------------------------------------
-intersect Intersect(sphere const &Sphere, ray &Ray)
-{
-  intersect Result{};
-  return (Result);
-}
-
 /// ---
 /// Ray releated functions.
 /// ---
@@ -854,7 +847,7 @@ ray Ray(tup const &O, tup const &D)
 }
 
 //------------------------------------------------------------------------------
-int Count(intersect const &I) { return I.Count(); }
+int Count(intersections const &I) { return I.Count(); }
 
 //------------------------------------------------------------------------------
 tup Position(ray const &R, float t)
@@ -871,9 +864,9 @@ tup Position(ray const &R, float t)
 // intersections Intersections(intersection const &I1, intersection const &I2);
 // intersect Intersect(object *pObject, ray const &Ray);
 //------------------------------------------------------------------------------
-intersect IntersectSphere(sphere const &Sphere, ray const &Ray)
+intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
 {
-  intersect Result{};
+  intersections Result{};
   // NOTE: See explanation from:
   // https://stackoverflow.com/questions/1073336/circle-line-segment-collision-detection-algorithm#1084899
   //
@@ -913,9 +906,9 @@ intersect IntersectSphere(sphere const &Sphere, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
-intersect Intersect(sphere const &Sphere, ray const &RayIn)
+intersections Intersect(sphere const &Sphere, ray const &RayIn)
 {
-  intersect Result{};
+  intersections Result{};
 
   // ---
   // NOTE: The object to which we are trying to calculate the intersect may
@@ -1243,6 +1236,31 @@ world World()
   }
 
   return (W);
+}
+
+//------------------------------------------------------------------------------
+intersections Intersect(world const &World, ray const &Ray)
+{
+  intersections XS{};
+
+  for (auto const PtrObject : World.vPtrObjects)
+  {
+    if (PtrObject->isA<ww::sphere>())
+    {
+      ww::sphere *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
+
+      // NOTE: There may be up to two intersections with a sphere.
+      //       So we detect and get these intersections, and then
+      //       we add them to the resulting XS's vector of intersections.
+      intersections const I = Intersect(*pSphere, Ray);
+
+      for (auto const &Element : I.vI)
+      {
+        XS.vI.push_back(Element);
+      }
+    }
+  }
+  return (XS);
 }
 };  // namespace ww
 

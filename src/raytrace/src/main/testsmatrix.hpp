@@ -805,7 +805,7 @@ TEST(RaySphere, IntersectSphere2Points1)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersect XS = ww::Intersect(S, R);
+  ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(ww::Dot(R.D, R.D), 1.f);
   EXPECT_EQ(XS.Count(), 2);
   if (XS.Count() == 2)
@@ -821,7 +821,7 @@ TEST(RaySphere, IntersectSphere2Points2)
   ww::ray const R = ww::Ray(ww::Point(0.f, 1.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersect XS = ww::Intersect(S, R);
+  ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 2);
   if (XS.Count() == 2)
   {
@@ -838,7 +838,7 @@ TEST(RaySphere, IntersectSphere2Points3)
   ww::sphere const S{};
   EXPECT_EQ(S.R, 1.f);
 
-  ww::intersect XS = ww::Intersect(S, R);
+  ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 0);
 }
 
@@ -851,7 +851,7 @@ TEST(RaySphere, IntersectSphere2Points4)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersect XS = ww::Intersect(S, R);
+  ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 2);
   if (XS.Count() == 2)
   {
@@ -867,7 +867,7 @@ TEST(RaySphere, IntersectSphere2Points5)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
 
-  ww::intersect XS = ww::Intersect(S, R);
+  ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 2);
   if (XS.Count() == 2)
   {
@@ -1037,7 +1037,7 @@ TEST(RaySphere, SphereIntersectScaled)
   ww::sphere S{};
 
   S.T = ww::Scale(2.f, 2.f, 2.f);
-  ww::intersect const XS = ww::Intersect(S, R);
+  ww::intersections const XS = ww::Intersect(S, R);
 
   EXPECT_EQ(XS.Count(), 2);
   if (XS.Count() == 2)
@@ -1054,7 +1054,7 @@ TEST(RaySphere, SphereIntersectTranslated)
   ww::sphere S{};
 
   S.T = ww::Translation(5.f, 0.f, 0.f);
-  ww::intersect const XS = ww::Intersect(S, R);
+  ww::intersections const XS = ww::Intersect(S, R);
 
   EXPECT_EQ(XS.Count(), 0);
 }
@@ -1096,7 +1096,7 @@ TEST(RaySphere, SpherePuttingItTogether)
         ww::tup const Position = ww::Point(WorldX, WorldY, WallZ);
         ww::ray const R = ww::Ray(Position, ww::Normalize(Position - RayOrigin));
 
-        ww::intersect const XS = ww::Intersect(S, R);
+        ww::intersections const XS = ww::Intersect(S, R);
         if (XS.Count())
         {
           // std::cout << "Got hit at " << WorldX << "," << WorldY << ". PixelPos:" << IdxX << "," << IdxY << std::endl;
@@ -1434,7 +1434,7 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
         ww::tup const Position = ww::Point(WorldX, WorldY, WallZ);
         ww::ray const R = ww::Ray(Position, ww::Normalize(Position - RayOrigin));
 
-        ww::intersect const XS = ww::Intersect(S, R);
+        ww::intersections const XS = ww::Intersect(S, R);
         if (XS.Count())
         {
           ww::tup const Point = ww::Position(R, XS.vI[0].t);
@@ -1547,6 +1547,15 @@ TEST(Ch7MakingAScene, DefaultWorld)
     EXPECT_EQ(LightsAreEqual, true);
     EXPECT_EQ(bool(Light == *W.vPtrLights[0].get()), true);
   }
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, IntersectWorldWithRay)
+{
+    ww::world const World = ww::World();
+    ww::ray const Ray = ww::Ray(ww::Point(0.f, 0.f, 0.5f), ww::Vector(0.f, 0.f, 1.f));
+    ww::intersections const XS = Intersect(World, Ray);
+    EXPECT_EQ(XS.Count(), 4);
 }
 
 //------------------------------------------------------------------------------
