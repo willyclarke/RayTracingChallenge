@@ -236,6 +236,25 @@ struct world
 };
 
 //------------------------------------------------------------------------------
+// \struct prepare_computation
+// \brief Holds precomputed values for the point in world space where the intersection
+//        occured, the eye vector (pointing back toward the eye, or camera), and the
+//        normal vector.
+// ---
+struct prepare_computation
+{
+  float t{};
+  bool Inside{};  //!< Set to true when the eye is inside an object. Reverses the sign of the normal vector to ensure
+                  //!< correct illumination.
+  shared_ptr_object pObject{};
+  tup Point{};
+  tup Normal{};
+  tup Eye{};
+};
+
+typedef std::shared_ptr<prepare_computation> shared_ptr_prepare_computation;
+
+//------------------------------------------------------------------------------
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
 tup Color(float const R, float const G, float const B);
@@ -369,7 +388,7 @@ intersection Intersection(float t, shared_ptr_object pObject);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersections &Intersections(intersections &XS, intersection const &I);
 ray Mul(matrix const &M, ray const &R);
-tup Position(ray const &R, float t);
+tup PositionAt(ray const &R, float t);
 ray Ray(tup const &P, tup const &V);
 ray Transform(ray const &R, matrix const &M);
 
@@ -397,6 +416,10 @@ tup Lighting(material const &Material,  //!<
 world World();
 intersections Intersect(world const &World, ray const &Ray);
 
+/// ---
+///
+/// ---
+prepare_computation PrepareComputations(intersection const &I, ray const &R);
 };  // namespace ww
 
 // ---

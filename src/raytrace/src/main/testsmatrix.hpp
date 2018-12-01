@@ -785,10 +785,10 @@ TEST(RaySphere, MoveAlongRay)
   //       Keep on moving along the ray, so at t=1 the expected position is
   //       an x value which has increased by 1.
   //       And so on...
-  EXPECT_EQ(ww::Equal(ww::Point(2.f, 3.f, 4.f), ww::Position(R, 0.f)), true);
-  EXPECT_EQ(ww::Equal(ww::Point(3.f, 3.f, 4.f), ww::Position(R, 1.f)), true);
-  EXPECT_EQ(ww::Equal(ww::Point(1.f, 3.f, 4.f), ww::Position(R, -1.f)), true);
-  EXPECT_EQ(ww::Equal(ww::Point(4.5f, 3.f, 4.f), ww::Position(R, 2.5f)), true);
+  EXPECT_EQ(ww::Equal(ww::Point(2.f, 3.f, 4.f), ww::PositionAt(R, 0.f)), true);
+  EXPECT_EQ(ww::Equal(ww::Point(3.f, 3.f, 4.f), ww::PositionAt(R, 1.f)), true);
+  EXPECT_EQ(ww::Equal(ww::Point(1.f, 3.f, 4.f), ww::PositionAt(R, -1.f)), true);
+  EXPECT_EQ(ww::Equal(ww::Point(4.5f, 3.f, 4.f), ww::PositionAt(R, 2.5f)), true);
 }
 
 //------------------------------------------------------------------------------
@@ -884,6 +884,8 @@ TEST(RaySphere, IntersectionSphere)
   PtrSphere.reset(new ww::sphere);
 
   ww::intersection I = ww::Intersection(3.5f, PtrSphere);
+
+  ww::sphere S{};
   ww::object *pObject = &S;
 
   EXPECT_EQ(3.5f, I.t);
@@ -1454,7 +1456,7 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
         ww::intersections const XS = ww::Intersect(S, R);
         if (XS.Count())
         {
-          ww::tup const Point = ww::Position(R, XS.vI[0].t);
+          ww::tup const Point = ww::PositionAt(R, XS.vI[0].t);
           ww::tup const vNormal = ww::NormalAt(S, Point);
           ww::tup const &vEye = -R.D;
 
@@ -1570,11 +1572,65 @@ TEST(Ch7MakingAScene, DefaultWorld)
 TEST(Ch7MakingAScene, IntersectWorldWithRay)
 {
   ww::world const World = ww::World();
-  ww::ray const Ray = ww::Ray(ww::Point(0.f, 0.f, 0.5f), ww::Vector(0.f, 0.f, 1.f));
+  ww::ray const Ray = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::intersections const XS = Intersect(World, Ray);
+
   EXPECT_EQ(XS.Count(), 4);
+
+  // NOTE: The expectation is that the hits are delivered in ascending order.
+  if (XS.Count() == 4)
+  {
+    EXPECT_EQ(XS.vI[0].t, 4.f);
+    EXPECT_EQ(XS.vI[1].t, 4.5f);
+    EXPECT_EQ(XS.vI[2].t, 5.5f);
+    EXPECT_EQ(XS.vI[3].t, 6.f);
+  }
 }
 
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::shared_ptr_object pSphere{};
+  pSphere.reset(new ww::sphere);
+  ww::intersection const I = ww::Intersection(4.f, pSphere);
+  ww::prepare_computation Comps = ww::PrepareComputations(I, R);
+
+  EXPECT_EQ(I.t, Comps.t);
+  EXPECT_EQ(I.pObject == Comps.pObject, true);
+  EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, -1.f)), true);
+  EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
+  EXPECT_EQ(ww::Equal(Comps.Normal, ww::Vector(0.f, 0.f, -1.f)), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, HitFromInsideOrOutsideChangesTheNormal)
+{
+  {
+    // NOTE: Scenario - The hit when an intersection occurs on the outside.
+    ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+    ww::shared_ptr_object pShape{};
+    pShape.reset(new ww::sphere);
+    ww::intersection const I = ww::Intersection(4.f, pShape);
+    ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
+    EXPECT_EQ(Comps.Inside, false);
+  }
+
+  {
+    // NOTE: Scenario - The hit when an intersection occurs on the inside.
+    ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
+    ww::shared_ptr_object pShape{};
+    pShape.reset(new ww::sphere);
+    ww::intersection const I = ww::Intersection(1.f, pShape);
+    ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
+
+    EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, 1.f)), true);
+    EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
+    EXPECT_EQ(Comps.Inside, true);
+    // NOTE: Normal would have been 0,0,1 but is inverted.
+    EXPECT_EQ(ww::Equal(Comps.Normal, ww::Vector(0.f, 0.f, -1.f)), true);
+  }
+}
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {

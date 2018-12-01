@@ -10,7 +10,7 @@
  ******************************************************************************/
 #include "datastructures.hpp"
 
-#include <algorithm>  // for std::copy
+#include <algorithm>  // for std::copy, std::sort
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -850,7 +850,7 @@ ray Ray(tup const &O, tup const &D)
 int Count(intersections const &I) { return I.Count(); }
 
 //------------------------------------------------------------------------------
-tup Position(ray const &R, float t)
+tup PositionAt(ray const &R, float t)
 {
   tup Result{};
 
@@ -1260,7 +1260,34 @@ intersections Intersect(world const &World, ray const &Ray)
       }
     }
   }
+
+  // NOTE: Keep the intersections sorted in ascending order.
+  //       Use lambda function to extract the t value for each intersection.
+  std::sort(XS.vI.begin(), XS.vI.end(), [](intersection const &A, intersection const &B) { return A.t < B.t; });
   return (XS);
+}
+
+//------------------------------------------------------------------------------
+prepare_computation PrepareComputations(intersection const &I, ray const &R)
+{
+  prepare_computation Comps{};
+
+  // NOTE: Assign values we want to keep.
+  Comps.t = I.t;
+  Comps.pObject = I.pObject;
+
+  // NOTE: Compute some useful values.
+  Comps.Point = PositionAt(R, Comps.t);
+  Comps.Eye = -R.D;
+  Comps.Normal = NormalAt(*Comps.pObject, Comps.Point);
+
+  if (Dot(Comps.Normal, Comps.Eye) < 0.f)
+  {
+    Comps.Inside = true;  // NOTE: Default for the flag is false, no need to clear it once again.
+    Comps.Normal = -Comps.Normal;
+  }
+
+  return (Comps);
 }
 };  // namespace ww
 
