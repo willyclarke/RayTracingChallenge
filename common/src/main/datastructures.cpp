@@ -85,6 +85,22 @@ std::ostream &operator<<(std::ostream &stream, const ww::matrix &M)
   return stream;
 }
 
+//------------------------------------------------------------------------------
+std::ostream &operator<<(std::ostream &stream, const ww::material &M)
+{
+  stream << "\nMaterial\nColor:" << M.Color << "\nSpecular:" << M.Specular << " Ambient:" << M.Ambient
+         << " Diffuse:" << M.Diffuse << " Shininess:" << M.Shininess << std::endl;
+  return stream;
+}
+
+//------------------------------------------------------------------------------
+std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
+{
+  stream << "\nSphere\nCenter:" << S.Center << "\nSphere Material:" << S.Material << "Sphere Radius:" << S.Radius
+         << "\nSphere Transform:" << S.T << std::endl;
+  return stream;
+}
+
 namespace ww
 {
 //------------------------------------------------------------------------------
@@ -826,7 +842,7 @@ sphere Sphere(tup const &Center, float Radius)
 {
   sphere S{};
   S.Center = Center;
-  S.R = Radius;
+  S.Radius = Radius;
   return (S);
 }
 
@@ -841,7 +857,7 @@ ray Ray(tup const &O, tup const &D)
 
   ray Result{};
   Result.O = O;
-  Result.D = Normalize(D);
+  Result.Direction = Normalize(D);
 
   return (Result);
 }
@@ -854,7 +870,7 @@ tup PositionAt(ray const &R, float t)
 {
   tup Result{};
 
-  Result = R.O + R.D * t;
+  Result = R.O + R.Direction * t;
   Assert(IsPoint(Result), __FUNCTION__, __LINE__);
 
   return (Result);
@@ -875,8 +891,8 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
   tup const Sphere2Ray = Ray.O - Point(0.f, 0.f, 0.f);
   // std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
 
-  float const A = Dot(Ray.D, Ray.D);
-  float const B = 2 * Dot(Ray.D, Sphere2Ray);
+  float const A = Dot(Ray.Direction, Ray.Direction);
+  float const B = 2 * Dot(Ray.Direction, Sphere2Ray);
   float const C = Dot(Sphere2Ray, Sphere2Ray) - 1.f;
   float const Discriminant = B * B - 4 * A * C;
   // std::cout << "A:" << A << ". B:" << B << ". C:" << C << ". Discriminant:" << Discriminant << std::endl;
@@ -926,8 +942,8 @@ intersections Intersect(sphere const &Sphere, ray const &RayIn)
   tup const Object2Ray = Ray.O - Point(0.f, 0.f, 0.f);
   // std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
 
-  float const A = Dot(Ray.D, Ray.D);
-  float const B = 2 * Dot(Ray.D, Object2Ray);
+  float const A = Dot(Ray.Direction, Ray.Direction);
+  float const B = 2 * Dot(Ray.Direction, Object2Ray);
   float const C = Dot(Object2Ray, Object2Ray) - 1.f;
   float const Discriminant = B * B - 4 * A * C;
   // std::cout << "A:" << A << ". B:" << B << ". C:" << C << ". Discriminant:" << Discriminant << std::endl;
@@ -997,7 +1013,7 @@ bool Equal(sphere const &A, sphere const &B)
 {
   bool const EqMaterial = A.Material == B.Material;
   bool const EqTransform = A.T == B.T;
-  return (Equal(A.Center, B.Center) && Equal(A.R, B.R) && EqMaterial && EqTransform);
+  return (Equal(A.Center, B.Center) && Equal(A.Radius, B.Radius) && EqMaterial && EqTransform);
 }
 
 //------------------------------------------------------------------------------
@@ -1091,7 +1107,7 @@ ray Mul(matrix const &M, ray const &R)
 {
   ray Result{};
   Result.O = M * R.O;
-  Result.D = M * R.D;
+  Result.Direction = M * R.Direction;
   return (Result);
 }
 
@@ -1159,10 +1175,12 @@ tup Lighting(material const &Material,  //!<
   // the light is on the other side of the surface.
   float const LightDotNormal = Dot(vLight, vNormal);
 
+  // Assert(LightDotNormal < 0.f, __FUNCTION__, __LINE__);
+
   tup Diffuse{};
   tup Specular{};
 
-  if (LightDotNormal < 0.f)
+  if (LightDotNormal < 0.f)  // pointing away ...
   {
     Diffuse = Color(0.f, 0.f, 0.f);
     Specular = Color(0.f, 0.f, 0.f);
@@ -1239,6 +1257,11 @@ world World()
 }
 
 //------------------------------------------------------------------------------
+void WorldAddObject(world &W, shared_ptr_object pObject) { W.vPtrObjects.push_back(pObject); }
+//------------------------------------------------------------------------------
+void WorldAddLight(world &W, shared_ptr_light pLight) { W.vPtrLights.push_back(pLight); }
+
+//------------------------------------------------------------------------------
 intersections Intersect(world const &World, ray const &Ray)
 {
   intersections XS{};
@@ -1278,9 +1301,11 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
 
   // NOTE: Compute some useful values.
   Comps.Point = PositionAt(R, Comps.t);
-  Comps.Eye = -R.D;
+  Comps.Eye = -R.Direction;
   Comps.Normal = NormalAt(*Comps.pObject, Comps.Point);
 
+  // NOTE: We use the dot product between the Normal and the Eye to figure out if the normal points
+  //       away from the Eye. If negative they are (roughly) pointing in opposite directions.
   if (Dot(Comps.Normal, Comps.Eye) < 0.f)
   {
     Comps.Inside = true;  // NOTE: Default for the flag is false, no need to clear it once again.
@@ -1288,6 +1313,28 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
   }
 
   return (Comps);
+}
+
+//------------------------------------------------------------------------------
+tup ShadeHit(world const &W, prepare_computation const &Comps)
+{
+  tup Color{};
+
+  for (auto pWorldLight : W.vPtrLights)
+  {
+    light const &WorldLight = *pWorldLight;
+
+    tup C = Lighting(Comps.pObject->Material,  //!<
+                     WorldLight,               //!<
+                     Comps.Point,              //!<
+                     Comps.Eye,                //!<
+                     Comps.Normal              //!<
+    );
+
+    // NOTE: Add the colors from the various lights.
+    Color = Color + C;
+  }
+  return (Color);
 }
 };  // namespace ww
 
@@ -1308,6 +1355,7 @@ bool operator==(ww::material const &A, ww::material const &B) { return (ww::Equa
 bool operator==(ww::matrix const &A, ww::matrix const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::light const &A, ww::light const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::tup const &A, ww::tup const &B) { return (ww::Equal(A, B)); }
 // ---
 // NOTE: Division operator does not check for divide by zero; Who cares?
 // ---

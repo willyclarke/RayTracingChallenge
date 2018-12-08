@@ -773,7 +773,7 @@ TEST(RaySphere, Intersect1)
   ww::tup const Direction = ww::Vector(4.f, 5.f, 6.f);
   ww::ray const Ray = ww::Ray(Origin, Direction);
   EXPECT_EQ(ww::Equal(Ray.O, Origin), true);
-  EXPECT_EQ(ww::Equal(Ray.D, ww::Normalize(Direction)), true);
+  EXPECT_EQ(ww::Equal(Ray.Direction, ww::Normalize(Direction)), true);
 }
 
 //------------------------------------------------------------------------------
@@ -806,7 +806,7 @@ TEST(RaySphere, IntersectSphere2Points1)
   ww::sphere const S{};
 
   ww::intersections XS = ww::Intersect(S, R);
-  EXPECT_EQ(ww::Dot(R.D, R.D), 1.f);
+  EXPECT_EQ(ww::Dot(R.Direction, R.Direction), 1.f);
   EXPECT_EQ(XS.Count(), 2);
   if (XS.Count() == 2)
   {
@@ -836,7 +836,7 @@ TEST(RaySphere, IntersectSphere2Points3)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 2.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::sphere const S{};
-  EXPECT_EQ(S.R, 1.f);
+  EXPECT_EQ(S.Radius, 1.f);
 
   ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 0);
@@ -1013,8 +1013,8 @@ TEST(RaySphere, TranslateRay)
   EXPECT_EQ(R2.O.Y, 6.f);
   EXPECT_EQ(R2.O.Z, 8.f);
   EXPECT_EQ(ww::IsPoint(R2.O), true);
-  EXPECT_EQ(ww::IsVector(R2.D), true);
-  EXPECT_EQ(ww::Equal(R2.D, ww::Vector(0.f, 1.f, 0.f)), true);
+  EXPECT_EQ(ww::IsVector(R2.Direction), true);
+  EXPECT_EQ(ww::Equal(R2.Direction, ww::Vector(0.f, 1.f, 0.f)), true);
 }
 
 //------------------------------------------------------------------------------
@@ -1030,8 +1030,8 @@ TEST(RaySphere, ScaleRay)
   EXPECT_EQ(R2.O.Y, 6.f);
   EXPECT_EQ(R2.O.Z, 12.f);
   EXPECT_EQ(ww::IsPoint(R2.O), true);
-  EXPECT_EQ(ww::IsVector(R2.D), true);
-  EXPECT_EQ(ww::Equal(R2.D, ww::Vector(0.f, 3.f, 0.f)), true);
+  EXPECT_EQ(ww::IsVector(R2.Direction), true);
+  EXPECT_EQ(ww::Equal(R2.Direction, ww::Vector(0.f, 3.f, 0.f)), true);
 }
 
 //------------------------------------------------------------------------------
@@ -1458,7 +1458,7 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
         {
           ww::tup const Point = ww::PositionAt(R, XS.vI[0].t);
           ww::tup const vNormal = ww::NormalAt(S, Point);
-          ww::tup const &vEye = -R.D;
+          ww::tup const &vEye = -R.Direction;
 
           Color = ww::Lighting(S.Material, Light, Point, vEye, vNormal);
 
@@ -1547,10 +1547,12 @@ TEST(Ch7MakingAScene, DefaultWorld)
       if (S1 == *pSphere)
       {
         ContainsS1 = true;
+        // std::cerr << "Sphere1 found.\n" << *pSphere << std::endl;
       }
       if (S2 == *pSphere)
       {
         ContainsS2 = true;
+        // std::cerr << "Sphere2 found.\n" << *pSphere << std::endl;
       }
     }
     else
@@ -1629,6 +1631,58 @@ TEST(Ch7MakingAScene, HitFromInsideOrOutsideChangesTheNormal)
     EXPECT_EQ(Comps.Inside, true);
     // NOTE: Normal would have been 0,0,1 but is inverted.
     EXPECT_EQ(ww::Equal(Comps.Normal, ww::Vector(0.f, 0.f, -1.f)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, ShadingAnIntersection)
+{
+  // NOTE: the default world consist of two spheres.
+  ww::world W = ww::World();
+
+  // NOTE: the default world should have two objects
+  EXPECT_EQ(W.vPtrObjects.size(), 2);
+  ww::tup const C1 = ww::Color(0.8f, 1.0f, 0.6f);
+  ww::tup const C2 = ww::Color(1.0f, 1.0f, 1.0f);
+  int Idx{1};
+  for (auto PtrShape : W.vPtrObjects)
+  {
+    if (1 == Idx) EXPECT_EQ(PtrShape->Material.Color == C1, true);
+    if (2 == Idx) EXPECT_EQ(PtrShape->Material.Color == C2, true);
+    ++Idx;
+  }
+
+  // Scenario - Shading an intersection
+  if (W.vPtrObjects.size() > 0)
+  {
+    ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+    ww::shared_ptr_object pShape = W.vPtrObjects[0];
+
+    ww::intersection const I = ww::Intersection(4.f, pShape);
+    ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
+
+    ww::tup const C = ww::ShadeHit(W, Comps);
+
+    EXPECT_EQ(Comps.Inside, false);
+    EXPECT_EQ(C == ww::Color(0.38066f, 0.47583f, 0.2855f), true);
+  }
+
+  // Scenario - Shading an intersection from the inside
+  if ((W.vPtrObjects.size() > 1) && (W.vPtrLights.size() > 0))
+  {
+    ww::shared_ptr_light pLight{};
+    pLight.reset(new ww::light);
+    *pLight = ww::PointLight(ww::Point(0.f, 0.25f, 0.f), ww::Color(1.f, 1.f, 1.f));
+    W.vPtrLights[0] = pLight; // Assign the new light
+
+    ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
+
+    ww::shared_ptr_object pShape = W.vPtrObjects[1];
+
+    ww::intersection const I = ww::Intersection(0.5f, pShape);
+    ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
+    ww::tup const C = ww::ShadeHit(W, Comps);
+    EXPECT_EQ(ww::Equal(C, ww::Color(0.90498, 0.90498, 0.90498)), true);
   }
 }
 //------------------------------------------------------------------------------

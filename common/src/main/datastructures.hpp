@@ -154,7 +154,7 @@ struct object
 /// ---
 struct sphere : public object
 {
-  float R{1.f};  //!< Radius.
+  float Radius{1.f};  //!< Radius.
 };
 
 /// ---
@@ -195,7 +195,7 @@ struct intersections
 struct ray
 {
   tup O{};  //!< The origin. This is a point in space.
-  tup D{};  //!< The direction. This is a vector in space.
+  tup Direction{};  //!< The direction. This is a vector in space.
 };
 
 //------------------------------------------------------------------------------
@@ -415,11 +415,24 @@ tup Lighting(material const &Material,  //!<
 /// \fn World - Create a default world with two spheres and a light.
 world World();
 intersections Intersect(world const &World, ray const &Ray);
+void WorldAddObject(world &W, shared_ptr_object pObject);
+void WorldAddLight(world &W, shared_ptr_light pLight);
 
 /// ---
-///
+/// Precomputation and shading functions.
 /// ---
+// \fn PrepareComputations
+// \brief Computes the point in world space where the intersection occured.
+//        Computes the Eye vector pointing back to the eye/camera.
+//        Computes the Normal vector and checks if the normal vector need to
+//        be reversed should the eye be inside of the object.
+// \return struct with eye and normal vector and hit point.
 prepare_computation PrepareComputations(intersection const &I, ray const &R);
+
+// \fn ShadeHit
+// \brief Calculates the color at the intersection captured by Comps.
+// \return tup with the color.
+tup ShadeHit(world const &W, prepare_computation const &Comps);
 };  // namespace ww
 
 // ---
@@ -427,6 +440,8 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R);
 // ---
 std::ostream &operator<<(std::ostream &stream, const ww::tup &T);
 std::ostream &operator<<(std::ostream &stream, const ww::matrix &M);
+std::ostream &operator<<(std::ostream &stream, const ww::material &M);
+std::ostream &operator<<(std::ostream &stream, const ww::sphere &S);
 ww::tup operator+(ww::tup const &A, ww::tup const &B);
 ww::tup operator-(ww::tup const &Tup);
 ww::tup operator-(ww::tup const &A, ww::tup const &B);
@@ -442,4 +457,5 @@ bool operator==(ww::light const &A, ww::light const &B);
 bool operator==(ww::material const &A, ww::material const &B);
 bool operator==(ww::matrix const &A, ww::matrix const &B);
 bool operator==(ww::sphere const &A, ww::sphere const &B);
+bool operator==(ww::tup const &A, ww::tup const &B);
 #endif

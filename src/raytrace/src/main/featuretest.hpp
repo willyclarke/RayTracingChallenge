@@ -442,13 +442,13 @@ TEST(ObjectPointer, Features)
 {
   ww::sphere S{};
   S.Center = ww::tup{1.f, 0.f, 0.f, 1.f};
-  S.R = 2.f;
+  S.Radius = 2.f;
 
   ww::object *pObject = &S;
   if (pObject->isA<ww::sphere>())
   {
     ww::sphere *pSphere = dynamic_cast<ww::sphere *>(pObject);
-    EXPECT_EQ(S.R, pSphere->R);
+    EXPECT_EQ(S.Radius, pSphere->Radius);
   }
 
   std::vector<ww::object> vObjects{};
