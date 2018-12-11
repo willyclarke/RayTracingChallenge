@@ -922,10 +922,12 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
-intersections Intersect(sphere const &Sphere, ray const &RayIn)
+intersections Intersect(shared_ptr_object PtrSphere, ray const &RayIn)
 {
   intersections Result{};
 
+  // NOTE: For now; let us set up a reference to a sphere
+  sphere &Sphere = *(dynamic_cast<sphere *>(PtrSphere.get()));
   // ---
   // NOTE: The object to which we are trying to calculate the intersect may
   //       kind of not be placed at origin. So use its transform to 'move' the
@@ -953,6 +955,9 @@ intersections Intersect(sphere const &Sphere, ray const &RayIn)
     float const t1 = (-B - std::sqrt(Discriminant)) / (2 * A);
     float const t2 = (-B + std::sqrt(Discriminant)) / (2 * A);
     intersection I{};
+
+    // NOTE: take a copy of the object for future reference.
+    I.pObject = PtrSphere;
 
     if (t1 > t2)
     {
@@ -1270,12 +1275,12 @@ intersections Intersect(world const &World, ray const &Ray)
   {
     if (PtrObject->isA<ww::sphere>())
     {
-      ww::sphere *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
+      // ww::sphere *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
 
       // NOTE: There may be up to two intersections with a sphere.
       //       So we detect and get these intersections, and then
       //       we add them to the resulting XS's vector of intersections.
-      intersections const I = Intersect(*pSphere, Ray);
+      intersections const I = Intersect(PtrObject, Ray);
 
       for (auto const &Element : I.vI)
       {
@@ -1288,6 +1293,14 @@ intersections Intersect(world const &World, ray const &Ray)
   //       Use lambda function to extract the t value for each intersection.
   std::sort(XS.vI.begin(), XS.vI.end(), [](intersection const &A, intersection const &B) { return A.t < B.t; });
   return (XS);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_object PtrDefaultSphere()
+{
+  shared_ptr_object pSphere{};
+  pSphere.reset(new sphere);
+  return (pSphere);
 }
 
 //------------------------------------------------------------------------------
@@ -1335,6 +1348,28 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
     Color = Color + C;
   }
   return (Color);
+}
+
+//------------------------------------------------------------------------------
+tup ColorAt(world const &World, ray const &Ray)
+{
+  tup Result{};
+  // 1. Call IntersectWorld() to find out the intersections of the given ray with the world.
+  intersections const IS = Intersect(World, Ray);
+
+  // 2. Find the Hit from the resulting intersections.
+  intersection const I = Hit(IS);
+
+  // 3. Return the Color black if there is no such intersection.
+  if (IS.Count() == 0) return Result;
+
+  // 4. Otherwise pre-compute the necessary values with PrepareComputations
+  prepare_computation const PC = PrepareComputations(I, Ray);
+
+  // 5. Call shade hit to find the color at the hit.
+  Result = ShadeHit(World, PC);
+
+  return (Result);
 }
 };  // namespace ww
 

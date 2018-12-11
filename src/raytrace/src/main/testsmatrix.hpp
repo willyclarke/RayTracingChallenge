@@ -803,7 +803,7 @@ TEST(RaySphere, MoveAlongRay)
 TEST(RaySphere, IntersectSphere2Points1)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
-  ww::sphere const S{};
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
   ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(ww::Dot(R.Direction, R.Direction), 1.f);
@@ -819,7 +819,7 @@ TEST(RaySphere, IntersectSphere2Points1)
 TEST(RaySphere, IntersectSphere2Points2)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 1.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
-  ww::sphere const S{};
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
   ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 2);
@@ -835,8 +835,11 @@ TEST(RaySphere, IntersectSphere2Points2)
 TEST(RaySphere, IntersectSphere2Points3)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 2.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
-  ww::sphere const S{};
-  EXPECT_EQ(S.Radius, 1.f);
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
+  ww::sphere *pSphere = dynamic_cast<ww::sphere *>(S.get());
+  ww::sphere &Sphere = *(dynamic_cast<ww::sphere *>(S.get()));
+  EXPECT_EQ(pSphere->Radius, 1.f);
+  EXPECT_EQ(Sphere.Radius, 1.f);
 
   ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 0);
@@ -849,7 +852,7 @@ TEST(RaySphere, IntersectSphere2Points3)
 TEST(RaySphere, IntersectSphere2Points4)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
-  ww::sphere const S{};
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
   ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 2);
@@ -865,7 +868,7 @@ TEST(RaySphere, IntersectSphere2Points4)
 TEST(RaySphere, IntersectSphere2Points5)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 5.f), ww::Vector(0.f, 0.f, 1.f));
-  ww::sphere const S{};
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
   ww::intersections XS = ww::Intersect(S, R);
   EXPECT_EQ(XS.Count(), 2);
@@ -1053,9 +1056,9 @@ TEST(RaySphere, SphereChangeTransformation)
 TEST(RaySphere, SphereIntersectScaled)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
-  ww::sphere S{};
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
-  S.T = ww::Scale(2.f, 2.f, 2.f);
+  S->T = ww::Scale(2.f, 2.f, 2.f);
   ww::intersections const XS = ww::Intersect(S, R);
 
   EXPECT_EQ(XS.Count(), 2);
@@ -1070,9 +1073,9 @@ TEST(RaySphere, SphereIntersectScaled)
 TEST(RaySphere, SphereIntersectTranslated)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
-  ww::sphere S{};
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
-  S.T = ww::Translation(5.f, 0.f, 0.f);
+  S->T = ww::Translation(5.f, 0.f, 0.f);
   ww::intersections const XS = ww::Intersect(S, R);
 
   EXPECT_EQ(XS.Count(), 0);
@@ -1086,7 +1089,7 @@ TEST(RaySphere, SpherePuttingItTogether)
   //       This allows us to change the transform of the sphere
   //       to create interesting effects, like scaling, skewing etc.
   // ---
-  auto CreateSphere = [&](ww::sphere &S, std::string const &FileName) -> void {
+  auto CreateSphere = [&](ww::shared_ptr_object S, std::string const &FileName) -> void {
     ww::tup const RayOrigin = ww::Point(0.f, 0.f, -5.f);
     ww::tup Color = ww::Color(1.f, 0.f, 0.f);
 
@@ -1128,21 +1131,21 @@ TEST(RaySphere, SpherePuttingItTogether)
     EXPECT_EQ(WallZ, 10.f);
   };
 
-  ww::sphere S{};
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
   CreateSphere(S, "SpherePuttingItTogether.ppm");
 
   // NOTE: Scale the sphere
-  S.T = ww::Scale(1.f, 0.5f, 1.f);
+  S->T = ww::Scale(1.f, 0.5f, 1.f);
   CreateSphere(S, "SphereScaledY.ppm");
-  S.T = ww::Scale(0.5f, 1.0f, 1.f);
+  S->T = ww::Scale(0.5f, 1.0f, 1.f);
   CreateSphere(S, "SphereScaledX.ppm");
 
   // NOTE: Scaling in the Z direction is not visible from this viewpoint.
   //       So the end result should still be a circle.
-  S.T = ww::Scale(1.0f, 1.0f, 0.5f);
+  S->T = ww::Scale(1.0f, 1.0f, 0.5f);
   CreateSphere(S, "SphereScaledZ.ppm");
 
-  S.T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  S->T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
   CreateSphere(S, "SphereScaledX1.ppm");
 }
 
@@ -1421,7 +1424,7 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
   //       This allows us to change the transform of the sphere
   //       to create interesting effects, like scaling, skewing etc.
   // ---
-  auto CreateSphere = [&](ww::sphere &S, std::string const &FileName) -> void {
+  auto CreateSphere = [&](ww::shared_ptr_object S, std::string const &FileName) -> void {
     ww::tup const RayOrigin = ww::Point(0.f, 0.f, -5.f);
     ww::tup Color = ww::Color(1.f, 0.f, 0.f);
     ww::tup const LightPosition = ww::Point(-10.f, 10.f, -10.f);
@@ -1457,10 +1460,10 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
         if (XS.Count())
         {
           ww::tup const Point = ww::PositionAt(R, XS.vI[0].t);
-          ww::tup const vNormal = ww::NormalAt(S, Point);
+          ww::tup const vNormal = ww::NormalAt(*S, Point);
           ww::tup const &vEye = -R.Direction;
 
-          Color = ww::Lighting(S.Material, Light, Point, vEye, vNormal);
+          Color = ww::Lighting(S->Material, Light, Point, vEye, vNormal);
 
           // std::cout << "Got hit at " << WorldX << "," << WorldY << ". PixelPos:" << IdxX << "," << IdxY << std::endl;
           ww::WritePixel(Canvas, IdxX, IdxY, Color);
@@ -1472,30 +1475,30 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
     EXPECT_EQ(WallZ, 10.f);
   };
 
-  ww::sphere S{};
-  EXPECT_EQ(ww::Equal(S.Material.Color, ww::material().Color), true);
+  ww::shared_ptr_object S = ww::PtrDefaultSphere();
+  EXPECT_EQ(ww::Equal(S->Material.Color, ww::material().Color), true);
 
   // Is this one really necessary
-  S.Material = ww::material();
-  S.Material.Color = ww::Color(1.f, 0.2f, 1.f);
+  S->Material = ww::material();
+  S->Material.Color = ww::Color(1.f, 0.2f, 1.f);
 
   CreateSphere(S, "SpherePuttingItTogetherCh6.ppm");
 
 #if (1)
 
   // NOTE: Scale the sphere
-  S.T = ww::Scale(1.f, 0.5f, 1.f);
+  S->T = ww::Scale(1.f, 0.5f, 1.f);
   CreateSphere(S, "SphereScaledYCh6.ppm");
 
-  S.T = ww::Scale(0.5f, 1.0f, 1.f);
+  S->T = ww::Scale(0.5f, 1.0f, 1.f);
   CreateSphere(S, "SphereScaledXCh6.ppm");
 
   // NOTE: Scaling in the Z direction is not visible from this viewpoint.
   //       So the end result should still be a circle.
-  S.T = ww::Scale(1.0f, 1.0f, 0.5f);
+  S->T = ww::Scale(1.0f, 1.0f, 0.5f);
   CreateSphere(S, "SphereScaledZCh6.ppm");
 
-  S.T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  S->T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
   CreateSphere(S, "SphereScaledX1Ch6.ppm");
 #endif
 }
@@ -1673,7 +1676,7 @@ TEST(Ch7MakingAScene, ShadingAnIntersection)
     ww::shared_ptr_light pLight{};
     pLight.reset(new ww::light);
     *pLight = ww::PointLight(ww::Point(0.f, 0.25f, 0.f), ww::Color(1.f, 1.f, 1.f));
-    W.vPtrLights[0] = pLight; // Assign the new light
+    W.vPtrLights[0] = pLight;  // Assign the new light
 
     ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
 
@@ -1683,6 +1686,39 @@ TEST(Ch7MakingAScene, ShadingAnIntersection)
     ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
     ww::tup const C = ww::ShadeHit(W, Comps);
     EXPECT_EQ(ww::Equal(C, ww::Color(0.90498, 0.90498, 0.90498)), true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, TheColorWhenARayMisses)
+{
+  ww::world const W = ww::World();
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 1.f, 0.f));
+  ww::tup const C = ww::ColorAt(W, R);
+  EXPECT_EQ(C == ww::Color(0.f, 0.f, 0.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, TheColorWhenARayHits)
+{
+  ww::world const W = ww::World();
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::tup const C = ww::ColorAt(W, R);
+  EXPECT_EQ(C == ww::Color(0.38066f, 0.47583f, 0.2855f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7MakingAScene, TheColorWhenIntersectionBehindTheRay)
+{
+  ww::world W = ww::World();
+  if (W.vPtrObjects.size() > 2)
+  {
+    W.vPtrObjects[0]->Material.Ambient = 1.f;  //!< The first object in the World. The outer sphere.
+    W.vPtrObjects[1]->Material.Ambient = 1.f;  //!< The second object in the World. The inner sphere.
+
+    ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.75f), ww::Vector(0.f, 0.f, -1.f));
+    ww::tup const C = ww::ColorAt(W, R);
+    EXPECT_EQ(C == W.vPtrObjects[1]->Material.Color, true);
   }
 }
 //------------------------------------------------------------------------------

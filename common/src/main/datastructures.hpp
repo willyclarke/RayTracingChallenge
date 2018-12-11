@@ -374,7 +374,12 @@ matrix TranslateScaleRotate(                   //!<
 /// ---
 /// \fn Sphere releated functions
 /// ---
-intersections Intersect(sphere const &Sphere, ray const &Ray);
+intersections Intersect(shared_ptr_object Sphere, ray const &Ray);
+
+/// ---
+/// \fn PtrDefaultSphere - Create a sphere and return shared pointer to this object.
+/// ---
+shared_ptr_object PtrDefaultSphere();
 
 /// ---
 /// Ray releated functions.
@@ -433,6 +438,12 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R);
 // \brief Calculates the color at the intersection captured by Comps.
 // \return tup with the color.
 tup ShadeHit(world const &W, prepare_computation const &Comps);
+
+// \fn ColorAt
+// \brief Intersect the given ray with the world and return the color at the resulting
+//        intersection.
+// \return tup with the color.
+tup ColorAt(world const &World, ray const &Ray);
 };  // namespace ww
 
 // ---
