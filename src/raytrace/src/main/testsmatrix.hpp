@@ -1711,14 +1711,22 @@ TEST(Ch7MakingAScene, TheColorWhenARayHits)
 TEST(Ch7MakingAScene, TheColorWhenIntersectionBehindTheRay)
 {
   ww::world W = ww::World();
-  if (W.vPtrObjects.size() > 2)
+  if (W.vPtrObjects.size() > 1)
   {
-    W.vPtrObjects[0]->Material.Ambient = 1.f;  //!< The first object in the World. The outer sphere.
-    W.vPtrObjects[1]->Material.Ambient = 1.f;  //!< The second object in the World. The inner sphere.
+    int const OUTER{0};
+    int const INNER{1};
+    W.vPtrObjects[OUTER]->Material.Ambient = 1.f;  //!< The first object in the World. The outer sphere.
+    W.vPtrObjects[INNER]->Material.Ambient = 1.f;  //!< The second object in the World. The inner sphere.
 
+    // ---
+    // NOTE: Here we put the ray inside the outer sphere, but outside the inner sphere.
+    //       Also; we are pointing at the inner sphere (z=-1). We expect the hit to be
+    //       on the inner sphere and return its color.
+    // ---
     ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.75f), ww::Vector(0.f, 0.f, -1.f));
+
     ww::tup const C = ww::ColorAt(W, R);
-    EXPECT_EQ(C == W.vPtrObjects[1]->Material.Color, true);
+    EXPECT_EQ(C == W.vPtrObjects[INNER]->Material.Color, true);
   }
 }
 //------------------------------------------------------------------------------
