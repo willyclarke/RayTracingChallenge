@@ -444,6 +444,10 @@ tup ShadeHit(world const &W, prepare_computation const &Comps);
 //        intersection.
 // \return tup with the color.
 tup ColorAt(world const &World, ray const &Ray);
+
+// \fn ViewTransform
+// \brief Orient the world releative to the eye. Line everything up to get the view we want.
+matrix ViewTransform(tup const &From, tup const &To, tup const &Up);
 };  // namespace ww
 
 // ---

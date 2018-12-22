@@ -1371,6 +1371,39 @@ tup ColorAt(world const &World, ray const &Ray)
 
   return (Result);
 }
+
+//------------------------------------------------------------------------------
+matrix ViewTransform(tup const &From, tup const &To, tup const &Up)
+{
+  // 1. Compute the Forward vector by subtracting the From from To.
+  tup const Forward = Normalize(To - From);
+
+  // 2. Compute the Left vector by taking the cross product of Forward and the
+  //    normalized Up vector.
+  tup const UpNorm = Normalize(Up);
+  tup const Left = Cross(Forward, UpNorm);
+
+  // 3. Compute the TrueUp vector by taking the cross product of Left and Forward.
+  //    This allows us to use an original Up vector to be approximately up. Framing
+  //    a scene is a lot easier when we dont have to calculate a precise up vector.
+  // tup const Left = Normalize(Cross(Forward, UpNorm));
+  tup const TrueUp = Cross(Left, Forward);
+
+  // 4. With Left, TrueUp and Forward we can now construct a matrix that represent
+  //    an orientation transformation.
+  matrix const Orientation = Matrix44(tup{Left.X, Left.Y, Left.Z, 0.f},              //!<
+                                      tup{TrueUp.X, TrueUp.Y, TrueUp.Z, 0.f},        //!<
+                                      tup{-Forward.X, -Forward.Y, -Forward.Z, 0.f},  //!<
+                                      tup{0.f, 0.f, 0.f, 1.f}                        //!<
+  );
+
+  // 5. Finally, append a translation to the transformation to move the scene into place
+  //    before orienting it. Multiply Orientation by Translation(-From.X, -From.Y, -From.Z)
+  //    and we are done.
+  matrix const Result = Orientation * Translation(-From.X, -From.Y, -From.Z);
+
+  return (Result);
+}
 };  // namespace ww
 
 // ---

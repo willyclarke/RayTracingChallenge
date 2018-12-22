@@ -1729,6 +1729,58 @@ TEST(Ch7MakingAScene, TheColorWhenIntersectionBehindTheRay)
     EXPECT_EQ(C == W.vPtrObjects[INNER]->Material.Color, true);
   }
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch7DefiningAViewTransformation, TransformationMatrixForDefaultOrientation)
+{
+  ww::tup const From = ww::Point(0.f, 0.f, 0.f);
+  ww::tup const To = ww::Point(0.f, 0.f, -1.f);
+  ww::tup const Up = ww::Vector(0.f, 1.f, 0.f);
+  ww::matrix const T = ww::ViewTransform(From, To, Up);
+  EXPECT_EQ(ww::Equal(ww::I(), T), true);
+}
+//------------------------------------------------------------------------------
+TEST(Ch7DefiningAViewTransformation, AViewTransformationMatrixInThePositiveZDirection)
+{
+  ww::tup const From = ww::Point(0.f, 0.f, 0.f);
+  ww::tup const To = ww::Point(0.f, 0.f, 1.f);
+  ww::tup const Up = ww::Vector(0.f, 1.f, 0.f);
+  ww::matrix const T = ww::ViewTransform(From, To, Up);
+  ww::matrix const CheckTransform = ww::Scale(-1.f, 1.f, -1.f);
+
+  // std::cout << "T:" << T << std::endl;
+  // std::cout << "ViewTransform:\n" << ViewTransform << std::endl;
+
+  EXPECT_EQ(ww::Equal(CheckTransform, T), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7DefiningAViewTransformation, TheViewTransformationMovesTheWorld)
+{
+  ww::tup const From = ww::Point(0.f, 0.f, 8.f);
+  ww::tup const To = ww::Point(0.f, 0.f, 0.f);
+  ww::tup const Up = ww::Vector(0.f, 1.f, 0.f);
+  ww::matrix const T = ww::ViewTransform(From, To, Up);
+  ww::matrix const CheckTransform = ww::Translation(0.f, 0.f, -8.f);
+  EXPECT_EQ(ww::Equal(CheckTransform, T), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7DefiningAViewTransformation, AnArbitraryViewTransformation)
+{
+  ww::tup const From = ww::Point(1.f, 3.f, 2.f);
+  ww::tup const To = ww::Point(4.f, -2.f, 8.f);
+  ww::tup const Up = ww::Vector(1.f, 1.f, 0.f);
+  ww::matrix const T = ww::ViewTransform(From, To, Up);
+  ww::matrix const CheckTransform = ww::Matrix44(ww::tup{-0.50709, 0.50709, 0.67612, -2.36643},     //!<
+                                                 ww::tup{0.76772f, 0.60609f, 0.12122f, -2.82843f},  //!<
+                                                 ww::tup{-0.35857f, 0.59761f, -0.71714f, 0.f},      //!<
+                                                 ww::tup{0.f, 0.f, 0.f, 1.f}                        //!<
+  );
+  //std::cout << "CheckTransform:\n" << CheckTransform << std::endl;
+
+  EXPECT_EQ(ww::Equal(CheckTransform, T), true);
+}
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
