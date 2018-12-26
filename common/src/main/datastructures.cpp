@@ -249,7 +249,7 @@ void WritePixel(canvas &Canvas, int X, int Y, tup const &Color)
   Canvas.vXY[X + Y * Canvas.W] = Color;
 }
 //------------------------------------------------------------------------------
-tup ReadPixel(canvas &Canvas, int X, int Y)
+tup PixelAt(canvas const &Canvas, int X, int Y)
 {
   Assert(Canvas.vXY.size() > (X + Y * Canvas.W), __FILE__, __LINE__);
   tup const Result = Canvas.vXY[X + Y * Canvas.W];
@@ -856,7 +856,7 @@ ray Ray(tup const &O, tup const &D)
   Assert(IsVector(D), __FUNCTION__, __LINE__);
 
   ray Result{};
-  Result.O = O;
+  Result.Origin = O;
   Result.Direction = Normalize(D);
 
   return (Result);
@@ -870,7 +870,7 @@ tup PositionAt(ray const &R, float t)
 {
   tup Result{};
 
-  Result = R.O + R.Direction * t;
+  Result = R.Origin + R.Direction * t;
   Assert(IsPoint(Result), __FUNCTION__, __LINE__);
 
   return (Result);
@@ -888,7 +888,7 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
   //
   // NOTE: The vector from the sphere's center to the ray origin
   //       Remember that the sphere is centered at the world origin
-  tup const Sphere2Ray = Ray.O - Point(0.f, 0.f, 0.f);
+  tup const Sphere2Ray = Ray.Origin - Point(0.f, 0.f, 0.f);
   // std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
 
   float const A = Dot(Ray.Direction, Ray.Direction);
@@ -941,7 +941,7 @@ intersections Intersect(shared_ptr_object PtrSphere, ray const &RayIn)
   //
   // NOTE: The vector from the sphere's center to the ray origin
   //       Remember that the sphere is centered at the world origin
-  tup const Object2Ray = Ray.O - Point(0.f, 0.f, 0.f);
+  tup const Object2Ray = Ray.Origin - Point(0.f, 0.f, 0.f);
   // std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
 
   float const A = Dot(Ray.Direction, Ray.Direction);
@@ -1111,7 +1111,7 @@ intersection Hit(intersections const &Intersections)
 ray Mul(matrix const &M, ray const &R)
 {
   ray Result{};
-  Result.O = M * R.O;
+  Result.Origin = M * R.Origin;
   Result.Direction = M * R.Direction;
   return (Result);
 }
@@ -1403,6 +1403,91 @@ matrix ViewTransform(tup const &From, tup const &To, tup const &Up)
   matrix const Result = Orientation * Translation(-From.X, -From.Y, -From.Z);
 
   return (Result);
+}
+
+//------------------------------------------------------------------------------
+camera Camera(int const HSize, int const VSize, float const FieldOfView)
+{
+  camera C{};
+
+  C.HSize = HSize;
+  C.VSize = VSize;
+  C.FieldOfView = FieldOfView;
+
+  // 1. You know the canvas is one unit away, and you know the angle of the field of view.
+  //    By cutting the field of view in half, you create a right triangle,
+  float HalfView = std::tan(C.FieldOfView / 2.f);
+
+  // 2. The aspect ratio is the ratio of the Horisontal to the Vertical size.
+  float const Aspect = float(C.HSize) / float(C.VSize);  // Who is going to create a canvas of zero height?
+
+  // 3. Now if the Horisontal size is greater than or equal to the vertical size (aspect >= 1),
+  //    then the HalfView is Half of the Width of the canvas and HalfView/Aspect is half the
+  //    canvas' Height.
+  //    If the vertial size is greater than the horizontal size (Aspect < 1), then the HalfView
+  //    is instead the height of the canvas, and the half of the canvas' Width is HalfView * Aspect.
+  if (Aspect >= 1.f)
+  {
+    C.HalfWidth = HalfView;
+    C.HalfHeight = HalfView / Aspect;
+  }
+  else
+  {
+    C.HalfWidth = HalfView * Aspect;
+    C.HalfHeight = HalfView;
+  }
+
+  // 4. Compute the size of a single pixel on the canvas by dividing the full width of the
+  //    canvas (half width * 2) by the horizontal size in pixels of the canvas (HSize).
+  //    This is the pixel size.
+  C.PixelSize = (C.HalfWidth * 2.f) / C.HSize;
+
+  return (C);
+}
+
+//------------------------------------------------------------------------------
+ray RayForPixel(camera const &Camera, int const Px, int const Py)
+{
+  // The offset from edge of the canvas to the pixel's center
+  float const XOffset = (Px + 0.5f) * Camera.PixelSize;
+  float const YOffset = (Py + 0.5f) * Camera.PixelSize;
+
+  // The untransformed coordinates of the pixel in world-space.
+  // (remember that the camera looks toward -z, so +x is toward the *left*).
+  float const WorldX = Camera.HalfWidth - XOffset;
+  float const WorldY = Camera.HalfHeight - YOffset;
+
+  // Using the camera matrix, transform the canvas point and the origin,
+  // and compute the ray's direction vector.
+  // Remember that the canvas is at z=-1.
+  tup const Pixel = Inverse(Camera.Transform) * Point(WorldX, WorldY, -1.f);
+  tup const Origin = Inverse(Camera.Transform) * Point(0.f, 0.f, 0.f);
+  tup const Direction = Normalize(Pixel - Origin);
+  ray const R = Ray(Origin, Direction);
+
+  return (R);
+}
+
+//------------------------------------------------------------------------------
+canvas Render(camera const &Camera, world const &World)
+{
+  canvas Image(Camera.HSize, Camera.VSize);
+
+  for (int Y = 0;             ///<!
+       Y < Camera.VSize - 1;  ///<!
+       ++Y)
+  {
+    for (int X = 0;             ///<!
+         X < Camera.HSize - 1;  ///<!
+         ++X)
+    {
+      ray const R = RayForPixel(Camera, X, Y);
+      tup const Color = ColorAt(World, R);
+      WritePixel(Image, X, Y, Color);
+    }
+  }
+
+  return (Image);
 }
 };  // namespace ww
 

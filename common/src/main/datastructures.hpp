@@ -194,8 +194,8 @@ struct intersections
 /// ---
 struct ray
 {
-  tup O{};  //!< The origin. This is a point in space.
-  tup Direction{};  //!< The direction. This is a vector in space.
+  tup Origin{0.f, 0.f, 0.f, 1.f};     //!< The origin. This is a point in space.
+  tup Direction{1.f, 0.f, 0.f, 0.f};  //!< The direction. This is a vector in space.
 };
 
 //------------------------------------------------------------------------------
@@ -255,6 +255,25 @@ struct prepare_computation
 typedef std::shared_ptr<prepare_computation> shared_ptr_prepare_computation;
 
 //------------------------------------------------------------------------------
+struct camera
+{
+  int HSize{160};
+  int VSize{120};
+  float FieldOfView{};
+  float PixelSize{};
+  float HalfWidth{};
+  float HalfHeight{};
+
+  //!< The transform of the object, initialize to identity matrix
+  matrix Transform{
+      tup{1.f, 0.f, 0.f, 0.f},  //!<
+      tup{0.f, 1.f, 0.f, 0.f},  //!<
+      tup{0.f, 0.f, 1.f, 0.f},  //!<
+      tup{0.f, 0.f, 0.f, 1.f}   //!<
+  };                            //!<
+};
+
+//------------------------------------------------------------------------------
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
 tup Color(float const R, float const G, float const B);
@@ -295,7 +314,7 @@ tup Vector(float A, float B, float C);
 // NOTE: Canvas declarations.
 // ---
 void WritePixel(canvas &Canvas, int X, int Y, tup const &Color);
-tup ReadPixel(canvas &Canvas, int X, int Y);
+tup PixelAt(canvas const &Canvas, int X, int Y);
 std::strstream PPMHeader(canvas const &Canvas, int X, int Y);
 std::string PPMHeader(canvas const &Canvas);
 void WriteToPPM(canvas const &Canvas, std::string const &Filename = "test.ppm");
@@ -448,6 +467,21 @@ tup ColorAt(world const &World, ray const &Ray);
 // \fn ViewTransform
 // \brief Orient the world releative to the eye. Line everything up to get the view we want.
 matrix ViewTransform(tup const &From, tup const &To, tup const &Up);
+
+// \fn Camera - Create a default camera.
+// \param HSize - Horisontal size in pixels.
+// \param VSize - Vertical size in pixels.
+// \param FieldOfView - Field of view in degrees.
+camera Camera(int const HSize, int const VSize, float const FieldOfView);
+
+// \fn RayForPixel - Return a ray that starts at the camera and passes through the indicated x,y.
+// \param X - Horizontal coordinate
+// \param Y - Vertical coordinate
+// \return Ray
+ray RayForPixel(camera const &C, int const Px, int const Py);
+
+// \fn Render - Use the camera to render an image of the given world.
+canvas Render(camera const &Camera, world const &World);
 };  // namespace ww
 
 // ---

@@ -772,7 +772,7 @@ TEST(RaySphere, Intersect1)
   ww::tup const Origin = ww::Point(1.f, 2.f, 3.f);
   ww::tup const Direction = ww::Vector(4.f, 5.f, 6.f);
   ww::ray const Ray = ww::Ray(Origin, Direction);
-  EXPECT_EQ(ww::Equal(Ray.O, Origin), true);
+  EXPECT_EQ(ww::Equal(Ray.Origin, Origin), true);
   EXPECT_EQ(ww::Equal(Ray.Direction, ww::Normalize(Direction)), true);
 }
 
@@ -1012,10 +1012,10 @@ TEST(RaySphere, TranslateRay)
 
   // NOTE: transform the ray R with matrix M. This will test the translation of a ray.
   ww::ray const R2 = ww::Transform(R, M);
-  EXPECT_EQ(R2.O.X, 4.f);
-  EXPECT_EQ(R2.O.Y, 6.f);
-  EXPECT_EQ(R2.O.Z, 8.f);
-  EXPECT_EQ(ww::IsPoint(R2.O), true);
+  EXPECT_EQ(R2.Origin.X, 4.f);
+  EXPECT_EQ(R2.Origin.Y, 6.f);
+  EXPECT_EQ(R2.Origin.Z, 8.f);
+  EXPECT_EQ(ww::IsPoint(R2.Origin), true);
   EXPECT_EQ(ww::IsVector(R2.Direction), true);
   EXPECT_EQ(ww::Equal(R2.Direction, ww::Vector(0.f, 1.f, 0.f)), true);
 }
@@ -1029,10 +1029,10 @@ TEST(RaySphere, ScaleRay)
   // NOTE: transform the ray R with matrix M. This will test the scaling of a ray.
   //       The vector is left un-normalized. This is intentional.
   ww::ray const R2 = ww::Transform(R, M);
-  EXPECT_EQ(R2.O.X, 2.f);
-  EXPECT_EQ(R2.O.Y, 6.f);
-  EXPECT_EQ(R2.O.Z, 12.f);
-  EXPECT_EQ(ww::IsPoint(R2.O), true);
+  EXPECT_EQ(R2.Origin.X, 2.f);
+  EXPECT_EQ(R2.Origin.Y, 6.f);
+  EXPECT_EQ(R2.Origin.Z, 12.f);
+  EXPECT_EQ(ww::IsPoint(R2.Origin), true);
   EXPECT_EQ(ww::IsVector(R2.Direction), true);
   EXPECT_EQ(ww::Equal(R2.Direction, ww::Vector(0.f, 3.f, 0.f)), true);
 }
@@ -1777,9 +1777,103 @@ TEST(Ch7DefiningAViewTransformation, AnArbitraryViewTransformation)
                                                  ww::tup{-0.35857f, 0.59761f, -0.71714f, 0.f},      //!<
                                                  ww::tup{0.f, 0.f, 0.f, 1.f}                        //!<
   );
-  //std::cout << "CheckTransform:\n" << CheckTransform << std::endl;
+  // std::cout << "CheckTransform:\n" << CheckTransform << std::endl;
 
   EXPECT_EQ(ww::Equal(CheckTransform, T), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7ImplementingACamera, ConstructingACamera)
+{
+  int const HSize{160};
+  int const VSize{120};
+  int const Alfa{180};
+  int const FieldOfView{Alfa / 2};
+
+  ww::camera C = ww::Camera(HSize, VSize, ww::Radians(FieldOfView));
+  EXPECT_EQ(HSize, C.HSize);
+  EXPECT_EQ(VSize, C.VSize);
+  EXPECT_EQ(ww::Radians(Alfa / 2), C.FieldOfView);
+  EXPECT_EQ(ww::Equal(ww::I(), C.Transform), true);
+  EXPECT_EQ(ww::I() == C.Transform, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7ImplementingACamera, PixelSizeForAHorisontalCanvas)
+{
+  int const Alfa{180};
+  int const FieldOfView{Alfa / 2};
+  {
+    ww::camera const C = ww::Camera(200, 125, ww::Radians(FieldOfView));
+    EXPECT_EQ(0.01f, C.PixelSize);
+  }
+  {
+    ww::camera const C = ww::Camera(125, 200, ww::Radians(FieldOfView));
+    EXPECT_EQ(0.01f, C.PixelSize);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7ImplementingACamera, ConstructingARayThroughTheCenterOfTheCanvas)
+{
+  int const Alfa{180};
+  int const FieldOfView{Alfa / 2};
+  ww::camera const C = ww::Camera(201, 101, ww::Radians(FieldOfView));
+  ww::ray const R = ww::RayForPixel(C, 100, 50);
+  EXPECT_EQ(R.Origin == ww::Point(0.f, 0.f, 0.f), true);
+
+  ww::tup const ExpectedVector = ww::Vector(0.f, 0.f, -1.f);
+  EXPECT_EQ(R.Direction == ExpectedVector, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7ImplementingACamera, ConstructingARayThroughThroughACornerOfTheCanvas)
+{
+  int const Alfa{180};
+  int const FieldOfView{Alfa / 2};
+  ww::camera const C = ww::Camera(201, 101, ww::Radians(FieldOfView));
+  ww::ray const R = ww::RayForPixel(C, 0, 0);
+
+  EXPECT_EQ(R.Origin == ww::Point(0.f, 0.f, 0.f), true);
+
+  ww::tup const ExpectedVector = ww::Vector(0.66519f, 0.33259f, -0.66851f);
+  EXPECT_EQ(R.Direction == ExpectedVector, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7ImplementingACamera, ConstructingARayWhenTheCameraIsTransformed)
+{
+  int const Alfa{180};
+  int const FieldOfView{Alfa / 2};
+  ww::camera C = ww::Camera(201, 101, ww::Radians(FieldOfView));
+  C.Transform = ww::RotateY(ww::Radians(Alfa / 4)) * ww::Translation(0.f, -2.f, 5.f);
+  ww::ray const R = ww::RayForPixel(C, 100, 50);
+
+  // NOTE: In this test the ray' origin winds up at (0,2,-5), despite the camera's
+  //       transformation including a translation of (0,-2,5). That's not a typo!
+  //       Remember that the camera's transformation describes how the world moves
+  //       relative to the camera. Further, you're transforming everything by the
+  //       inverse of that transformation. So moving the World is effectively the
+  //       the same as moving the ray's origin in the opposite direction.
+  EXPECT_EQ(R.Origin == ww::Point(0.f, 2.f, -5.f), true);
+  float const Sqrt2O2 = std::sqrt(2.f) / 2.f;
+  EXPECT_EQ(R.Direction == ww::Vector(Sqrt2O2, 0.f, -Sqrt2O2), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch7ImplementingACamera, RenderingAWorldWithACamera)
+{
+  ww::world const W = ww::World();
+
+  int const n{180};
+  int const FieldOfView{n / 2};
+  ww::camera C = ww::Camera(11, 11, ww::Radians(FieldOfView));
+  ww::tup const From = ww::Point(0.f, 0.f, -5.f);
+  ww::tup const To = ww::Point(0.f, 0.f, 0.f);
+  ww::tup const Up = ww::Vector(0.f, 1.f, 0.f);
+  C.Transform = ww::ViewTransform(From, To, Up);
+  ww::canvas const Image = ww::Render(C, W);
+  EXPECT_EQ(ww::PixelAt(Image, 5, 5) == ww::Color(0.38066f, 0.47583f, 0.2855f), true);
 }
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
