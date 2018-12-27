@@ -1041,15 +1041,15 @@ TEST(RaySphere, ScaleRay)
 TEST(RaySphere, SphereDefaultTransformation)
 {
   ww::sphere S{};
-  EXPECT_EQ(ww::Equal(S.T, ww::I()), true);
+  EXPECT_EQ(ww::Equal(S.Transform, ww::I()), true);
 }
 
 //------------------------------------------------------------------------------
 TEST(RaySphere, SphereChangeTransformation)
 {
   ww::sphere S{};
-  S.T = ww::Translation(2.f, 3.f, 4.f);  // set the transform.
-  EXPECT_EQ(ww::Equal(S.T, ww::Translation(2.f, 3.f, 4.f)), true);
+  S.Transform = ww::Translation(2.f, 3.f, 4.f);  // set the transform.
+  EXPECT_EQ(ww::Equal(S.Transform, ww::Translation(2.f, 3.f, 4.f)), true);
 }
 
 //------------------------------------------------------------------------------
@@ -1058,7 +1058,7 @@ TEST(RaySphere, SphereIntersectScaled)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
-  S->T = ww::Scale(2.f, 2.f, 2.f);
+  S->Transform = ww::Scale(2.f, 2.f, 2.f);
   ww::intersections const XS = ww::Intersect(S, R);
 
   EXPECT_EQ(XS.Count(), 2);
@@ -1075,7 +1075,7 @@ TEST(RaySphere, SphereIntersectTranslated)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
-  S->T = ww::Translation(5.f, 0.f, 0.f);
+  S->Transform = ww::Translation(5.f, 0.f, 0.f);
   ww::intersections const XS = ww::Intersect(S, R);
 
   EXPECT_EQ(XS.Count(), 0);
@@ -1135,17 +1135,17 @@ TEST(RaySphere, SpherePuttingItTogether)
   CreateSphere(S, "SpherePuttingItTogether.ppm");
 
   // NOTE: Scale the sphere
-  S->T = ww::Scale(1.f, 0.5f, 1.f);
+  S->Transform = ww::Scale(1.f, 0.5f, 1.f);
   CreateSphere(S, "SphereScaledY.ppm");
-  S->T = ww::Scale(0.5f, 1.0f, 1.f);
+  S->Transform = ww::Scale(0.5f, 1.0f, 1.f);
   CreateSphere(S, "SphereScaledX.ppm");
 
   // NOTE: Scaling in the Z direction is not visible from this viewpoint.
   //       So the end result should still be a circle.
-  S->T = ww::Scale(1.0f, 1.0f, 0.5f);
+  S->Transform = ww::Scale(1.0f, 1.0f, 0.5f);
   CreateSphere(S, "SphereScaledZ.ppm");
 
-  S->T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  S->Transform = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
   CreateSphere(S, "SphereScaledX1.ppm");
 }
 
@@ -1179,7 +1179,7 @@ TEST(Ch6LightAndShading, SphereNormalsTranslated)
 
   {
     // NOTE: Move the sphere up to +y=1
-    S.T = ww::Translation(0.f, 1.f, 0.f);
+    S.Transform = ww::Translation(0.f, 1.f, 0.f);
 
     // ---
     // Scenario: Computing the nomal on a translated sphere.
@@ -1196,7 +1196,7 @@ TEST(Ch6LightAndShading, SphereNormalsTranslated)
     EXPECT_EQ(ww::IsVector(Rot), true);
 
     // thereafter apply scaling and rotation.
-    S.T = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.0f, 0.5f, 1.0f, Rot.X, Rot.Y, Rot.Z);
+    S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.0f, 0.5f, 1.0f, Rot.X, Rot.Y, Rot.Z);
 
     // ---
     // Scenario: Computing the nomal on a translated sphere.
@@ -1487,18 +1487,18 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
 #if (1)
 
   // NOTE: Scale the sphere
-  S->T = ww::Scale(1.f, 0.5f, 1.f);
+  S->Transform = ww::Scale(1.f, 0.5f, 1.f);
   CreateSphere(S, "SphereScaledYCh6.ppm");
 
-  S->T = ww::Scale(0.5f, 1.0f, 1.f);
+  S->Transform = ww::Scale(0.5f, 1.0f, 1.f);
   CreateSphere(S, "SphereScaledXCh6.ppm");
 
   // NOTE: Scaling in the Z direction is not visible from this viewpoint.
   //       So the end result should still be a circle.
-  S->T = ww::Scale(1.0f, 1.0f, 0.5f);
+  S->Transform = ww::Scale(1.0f, 1.0f, 0.5f);
   CreateSphere(S, "SphereScaledZCh6.ppm");
 
-  S->T = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  S->Transform = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
   CreateSphere(S, "SphereScaledX1Ch6.ppm");
 #endif
 }
@@ -1528,7 +1528,7 @@ TEST(Ch7MakingAScene, DefaultWorld)
   S1.Material.Diffuse = 0.7f;
   S1.Material.Specular = 0.2f;
 
-  S2.T = ww::Scale(0.5f, 0.5f, 0.5f);
+  S2.Transform = ww::Scale(0.5f, 0.5f, 0.5f);
 
   // NOTE: And now the two spheres are different.
   EXPECT_EQ(!(S1 == S2), true);

@@ -97,7 +97,7 @@ std::ostream &operator<<(std::ostream &stream, const ww::material &M)
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
 {
   stream << "\nSphere\nCenter:" << S.Center << "\nSphere Material:" << S.Material << "Sphere Radius:" << S.Radius
-         << "\nSphere Transform:" << S.T << std::endl;
+         << "\nSphere Transform:" << S.Transform << std::endl;
   return stream;
 }
 
@@ -933,7 +933,7 @@ intersections Intersect(shared_ptr_object PtrSphere, ray const &RayIn)
   //       kind of not be placed at origin. So use its transform to 'move' the
   //       ray by calculation of the inverse.
   // ---
-  ray const Ray = Transform(RayIn, Inverse(Sphere.T));
+  ray const Ray = Transform(RayIn, Inverse(Sphere.Transform));
 
   // ---
   // NOTE: See explanation from:
@@ -1017,7 +1017,7 @@ bool Equal(material const &A, material const &B)
 bool Equal(sphere const &A, sphere const &B)
 {
   bool const EqMaterial = A.Material == B.Material;
-  bool const EqTransform = A.T == B.T;
+  bool const EqTransform = A.Transform == B.Transform;
   return (Equal(A.Center, B.Center) && Equal(A.Radius, B.Radius) && EqMaterial && EqTransform);
 }
 
@@ -1126,10 +1126,10 @@ ray Transform(ray const &R, matrix const &M) { return M * R; }
 //------------------------------------------------------------------------------
 tup NormalAt(object const &O, tup const &P)
 {
-  tup const ObjectPoint = Inverse(O.T) * P;
+  tup const ObjectPoint = Inverse(O.Transform) * P;
   tup const ObjectNormal = ObjectPoint - Point(0.f, 0.f, 0.f);
 
-  tup WorldNormal = Transpose(Inverse(O.T)) * ObjectNormal;
+  tup WorldNormal = Transpose(Inverse(O.Transform)) * ObjectNormal;
   WorldNormal.W = 0.f;
 
   tup const Result = Normalize(WorldNormal);
@@ -1249,7 +1249,7 @@ world World()
   }
 
   sphere S2{};
-  S2.T = ww::Scale(0.5f, 0.5f, 0.5f);
+  S2.Transform = ww::Scale(0.5f, 0.5f, 0.5f);
   // W.vObjects.push_back(S2);
   {
     ww::shared_ptr_object PtrSphere{};

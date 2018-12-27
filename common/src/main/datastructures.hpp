@@ -131,7 +131,7 @@ struct object
   material Material{};
 
   //!< The transform of the object, initialize to identity matrix
-  matrix T{
+  matrix Transform{
       tup{1.f, 0.f, 0.f, 0.f},  //!<
       tup{0.f, 1.f, 0.f, 0.f},  //!<
       tup{0.f, 0.f, 1.f, 0.f},  //!<
