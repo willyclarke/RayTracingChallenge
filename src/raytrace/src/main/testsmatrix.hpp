@@ -1875,6 +1875,80 @@ TEST(Ch7ImplementingACamera, RenderingAWorldWithACamera)
   ww::canvas const Image = ww::Render(C, W);
   EXPECT_EQ(ww::PixelAt(Image, 5, 5) == ww::Color(0.38066f, 0.47583f, 0.2855f), true);
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch7ImplementingACamera, PuttingItTogether)
+{
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+
+  ww::shared_ptr_object PtrFloor = ww::PtrDefaultSphere();
+  ww::object &Floor = *PtrFloor;
+  Floor.Transform = ww::Scaling(10.f, 0.01f, 10.f);
+  Floor.Material.Color = ww::Color(1.f, 0.9f, 0.9f);
+  Floor.Material.Specular = 0.f;
+  World.vPtrObjects.push_back(PtrFloor);
+
+  ww::shared_ptr_object PtrLeftWall = ww::PtrDefaultSphere();
+  ww::object &LeftWall = *PtrLeftWall;
+  // NOTE: The order in which the transformations are multiplied;
+  //       The wall need to be scaled, rotated in X, rotated in Y,
+  //       and lastly translated, so the transformations are multiplied
+  //       in reverse order.
+  LeftWall.Transform = ww::Translation(0.f, 0.f, 5.f) *  //!<
+                       ww::RotateY(-M_PI_4) *            //!<
+                       ww::RotateX(M_PI_2) *             //!<
+                       ww::Scaling(10.f, 0.01f, 10.f);
+  LeftWall.Material = Floor.Material;
+  World.vPtrObjects.push_back(PtrLeftWall);
+
+  ww::shared_ptr_object PtrRightWall = ww::PtrDefaultSphere();
+  ww::object &RightWall = *PtrRightWall;
+  RightWall.Transform = ww::Translation(0.f, 0.f, 5.f) *  //!<
+                        ww::RotateY(M_PI_4) *             //!<
+                        ww::RotateX(M_PI_2) *             //!<
+                        ww::Scaling(10.f, 0.01f, 10.f);
+  RightWall.Material = Floor.Material;
+  World.vPtrObjects.push_back(PtrRightWall);
+
+  ww::shared_ptr_object PtrMiddle = ww::PtrDefaultSphere();
+  ww::object &Middle = *PtrMiddle;
+  Middle.Transform = ww::Translation(-0.5f, 1.f, 0.5f);
+  Middle.Material.Color = ww::Color(0.1f, 1.0f, 0.5f);
+  Middle.Material.Diffuse = 0.7f;
+  Middle.Material.Specular = 0.3f;
+  World.vPtrObjects.push_back(PtrMiddle);
+
+  ww::shared_ptr_object PtrRight = ww::PtrDefaultSphere();
+  ww::object &Right = *PtrRight;
+  Right.Transform = ww::Translation(1.5f, 0.5f, -0.5f) *  //!<
+                    ww::Scaling(0.5f, 0.5f, 0.5f);
+  Right.Material.Color = ww::Color(0.5f, 1.0f, 0.1f);
+  Right.Material.Diffuse = 0.7f;
+  Right.Material.Specular = 0.3f;
+  World.vPtrObjects.push_back(PtrRight);
+
+  ww::shared_ptr_object PtrLeft = ww::PtrDefaultSphere();
+  ww::object &Left = *PtrLeft;
+  Left.Transform = ww::Translation(-1.5f, 0.33f, -0.75f) * ww::Scaling(0.33f, 0.33f, 0.33f);
+  Left.Material.Color = ww::Color(1.0f, 0.8f, 0.1f);
+  Left.Material.Diffuse = 0.7f;
+  Left.Material.Specular = 0.3f;
+  World.vPtrObjects.push_back(PtrLeft);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  ww::camera Camera = ww::Camera(100, 50, M_PI / 3.f);
+  //ww::camera Camera = ww::Camera(800, 400, M_PI / 3.f);
+  Camera.Transform = ww::ViewTransform(ww::Point(0.f, 1.5f, -5.f), ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f));
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "Ch7MakingAScene.ppm");
+}
 //------------------------------------------------------------------------------
 void RunMatrixTest(int argc, char *argv[])
 {
