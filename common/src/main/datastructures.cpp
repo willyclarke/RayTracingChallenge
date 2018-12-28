@@ -759,7 +759,7 @@ matrix Translation(float X, float Y, float Z)
 }
 
 //------------------------------------------------------------------------------
-matrix Scale(float X, float Y, float Z)
+matrix Scaling(float X, float Y, float Z)
 {
   matrix M{I()};
 
@@ -827,7 +827,7 @@ matrix TranslateScaleRotate(                   //!<
 )
 {
   matrix const M = Translation(TransX, TransY, TransZ) *             //!<
-                   Scale(ScaleX, ScaleY, ScaleZ) *                   //!<
+                   Scaling(ScaleX, ScaleY, ScaleZ) *                   //!<
                    RotateX(AlfaX) * RotateY(AlfaY) * RotateZ(AlfaZ)  //!<
       ;
 
@@ -1249,7 +1249,7 @@ world World()
   }
 
   sphere S2{};
-  S2.Transform = ww::Scale(0.5f, 0.5f, 0.5f);
+  S2.Transform = ww::Scaling(0.5f, 0.5f, 0.5f);
   // W.vObjects.push_back(S2);
   {
     ww::shared_ptr_object PtrSphere{};

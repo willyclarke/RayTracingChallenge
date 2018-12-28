@@ -480,24 +480,24 @@ TEST(Matrix, Scaling)
   // NOTE: Scaling applied to a point.
   {
     ww::tup const P = ww::Point(-4.f, 6.f, 8.f);
-    ww::tup const P2 = ww::Scale(2.f, 3.f, 4.f) * P;
+    ww::tup const P2 = ww::Scaling(2.f, 3.f, 4.f) * P;
     EXPECT_EQ(ww::Equal(P2, ww::Point(-8.f, 18.f, 32.f)), true);
   }
   // NOTE: Scaling applied to a vector.
   {
     ww::tup const V = ww::Vector(-4.f, 6.f, 8.f);
-    ww::tup const V2 = ww::Scale(2.f, 3.f, 4.f) * V;
+    ww::tup const V2 = ww::Scaling(2.f, 3.f, 4.f) * V;
     EXPECT_EQ(ww::Equal(V2, ww::Vector(-8.f, 18.f, 32.f)), true);
   }
   // NOTE: Expect the tuple to "grow" in the opposite direction when scaling with the inverse.
   {
-    ww::matrix const InvTransform = ww::Inverse(ww::Scale(2.f, 3.f, 4.f));
+    ww::matrix const InvTransform = ww::Inverse(ww::Scaling(2.f, 3.f, 4.f));
     ww::tup const V = InvTransform * ww::Vector(-4.f, 6.f, 8.f);
     EXPECT_EQ(ww::Equal(V, ww::Vector(-2.f, 2.f, 2.f)), true);
   }
   // NOTE: Test that reflection is the same a changing the sign of one axis.
   {
-    ww::tup const P = ww::Scale(-1.f, 1.f, 1.f) * ww::Point(2.f, 3.f, 4.f);
+    ww::tup const P = ww::Scaling(-1.f, 1.f, 1.f) * ww::Point(2.f, 3.f, 4.f);
     EXPECT_EQ(ww::Equal(P, ww::Point(-2.f, 3.f, 4.f)), true);
   }
 }
@@ -633,7 +633,7 @@ TEST(Matrix, RotScaleTranslate)
     ww::tup const P2 = ww::RotateX(ww::Radians(N) / 2.f) * P;
     EXPECT_EQ(ww::Equal(P2, ww::Point(1.f, -1.f, 0.f)), true);
 
-    ww::tup const P3 = ww::Scale(5.f, 5.f, 5.f) * P2;
+    ww::tup const P3 = ww::Scaling(5.f, 5.f, 5.f) * P2;
     EXPECT_EQ(ww::Equal(P3, ww::Point(5.f, -5.f, 0.f)), true);
 
     ww::tup const P4 = ww::Translation(10.f, 5.f, 7.f) * P3;
@@ -1024,7 +1024,7 @@ TEST(RaySphere, TranslateRay)
 TEST(RaySphere, ScaleRay)
 {
   ww::ray const R = ww::Ray(ww::Point(1.f, 2.f, 3.f), ww::Vector(0.f, 1.f, 0.f));
-  ww::matrix const M = ww::Scale(2.f, 3.f, 4.f);
+  ww::matrix const M = ww::Scaling(2.f, 3.f, 4.f);
 
   // NOTE: transform the ray R with matrix M. This will test the scaling of a ray.
   //       The vector is left un-normalized. This is intentional.
@@ -1058,7 +1058,7 @@ TEST(RaySphere, SphereIntersectScaled)
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_object S = ww::PtrDefaultSphere();
 
-  S->Transform = ww::Scale(2.f, 2.f, 2.f);
+  S->Transform = ww::Scaling(2.f, 2.f, 2.f);
   ww::intersections const XS = ww::Intersect(S, R);
 
   EXPECT_EQ(XS.Count(), 2);
@@ -1135,17 +1135,17 @@ TEST(RaySphere, SpherePuttingItTogether)
   CreateSphere(S, "SpherePuttingItTogether.ppm");
 
   // NOTE: Scale the sphere
-  S->Transform = ww::Scale(1.f, 0.5f, 1.f);
+  S->Transform = ww::Scaling(1.f, 0.5f, 1.f);
   CreateSphere(S, "SphereScaledY.ppm");
-  S->Transform = ww::Scale(0.5f, 1.0f, 1.f);
+  S->Transform = ww::Scaling(0.5f, 1.0f, 1.f);
   CreateSphere(S, "SphereScaledX.ppm");
 
   // NOTE: Scaling in the Z direction is not visible from this viewpoint.
   //       So the end result should still be a circle.
-  S->Transform = ww::Scale(1.0f, 1.0f, 0.5f);
+  S->Transform = ww::Scaling(1.0f, 1.0f, 0.5f);
   CreateSphere(S, "SphereScaledZ.ppm");
 
-  S->Transform = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  S->Transform = ww::RotateZ(3.1415 / 4.) * ww::Scaling(0.5f, 1.f, 1.f);
   CreateSphere(S, "SphereScaledX1.ppm");
 }
 
@@ -1487,18 +1487,18 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
 #if (1)
 
   // NOTE: Scale the sphere
-  S->Transform = ww::Scale(1.f, 0.5f, 1.f);
+  S->Transform = ww::Scaling(1.f, 0.5f, 1.f);
   CreateSphere(S, "SphereScaledYCh6.ppm");
 
-  S->Transform = ww::Scale(0.5f, 1.0f, 1.f);
+  S->Transform = ww::Scaling(0.5f, 1.0f, 1.f);
   CreateSphere(S, "SphereScaledXCh6.ppm");
 
   // NOTE: Scaling in the Z direction is not visible from this viewpoint.
   //       So the end result should still be a circle.
-  S->Transform = ww::Scale(1.0f, 1.0f, 0.5f);
+  S->Transform = ww::Scaling(1.0f, 1.0f, 0.5f);
   CreateSphere(S, "SphereScaledZCh6.ppm");
 
-  S->Transform = ww::RotateZ(3.1415 / 4.) * ww::Scale(0.5f, 1.f, 1.f);
+  S->Transform = ww::RotateZ(3.1415 / 4.) * ww::Scaling(0.5f, 1.f, 1.f);
   CreateSphere(S, "SphereScaledX1Ch6.ppm");
 #endif
 }
@@ -1528,7 +1528,7 @@ TEST(Ch7MakingAScene, DefaultWorld)
   S1.Material.Diffuse = 0.7f;
   S1.Material.Specular = 0.2f;
 
-  S2.Transform = ww::Scale(0.5f, 0.5f, 0.5f);
+  S2.Transform = ww::Scaling(0.5f, 0.5f, 0.5f);
 
   // NOTE: And now the two spheres are different.
   EXPECT_EQ(!(S1 == S2), true);
@@ -1746,7 +1746,7 @@ TEST(Ch7DefiningAViewTransformation, AViewTransformationMatrixInThePositiveZDire
   ww::tup const To = ww::Point(0.f, 0.f, 1.f);
   ww::tup const Up = ww::Vector(0.f, 1.f, 0.f);
   ww::matrix const T = ww::ViewTransform(From, To, Up);
-  ww::matrix const CheckTransform = ww::Scale(-1.f, 1.f, -1.f);
+  ww::matrix const CheckTransform = ww::Scaling(-1.f, 1.f, -1.f);
 
   // std::cout << "T:" << T << std::endl;
   // std::cout << "ViewTransform:\n" << ViewTransform << std::endl;
