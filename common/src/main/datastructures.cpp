@@ -137,7 +137,8 @@ float Dot(tup const &A, tup const &B)
 //------------------------------------------------------------------------------
 bool Equal(float const A, float const B)
 {
-  if (std::fabs(A - B) < EPSILON)
+  //if (std::fabs(A - B) < 2.f * EPSILON)
+  if (std::fabs(A - B) < 1.f * EPSILON)
   {
     return true;
   }
@@ -827,7 +828,7 @@ matrix TranslateScaleRotate(                   //!<
 )
 {
   matrix const M = Translation(TransX, TransY, TransZ) *             //!<
-                   Scaling(ScaleX, ScaleY, ScaleZ) *                   //!<
+                   Scaling(ScaleX, ScaleY, ScaleZ) *                 //!<
                    RotateX(AlfaX) * RotateY(AlfaY) * RotateZ(AlfaZ)  //!<
       ;
 
@@ -1162,7 +1163,8 @@ tup Lighting(material const &Material,  //!<
              light const &Light,        //!<
              tup const &Position,       //!<
              tup const &vEye,           //!<
-             tup const &vNormal         //!<
+             tup const &vNormal,        //!<
+             bool const InShadow        //!<
 )
 {
   tup Result{};
@@ -1213,7 +1215,15 @@ tup Lighting(material const &Material,  //!<
   }
 
   // Add the three contributions together to the the final shading
-  Result = Ambient + Diffuse + Specular;
+  // NOTE: When Inshadow we ignore the specular and diffuse component.
+  if (InShadow)
+  {
+    Result = Ambient;
+  }
+  else
+  {
+    Result = Ambient + Diffuse + Specular;
+  }
 
   return (Result);
 };
@@ -1267,7 +1277,7 @@ void WorldAddObject(world &W, shared_ptr_object pObject) { W.vPtrObjects.push_ba
 void WorldAddLight(world &W, shared_ptr_light pLight) { W.vPtrLights.push_back(pLight); }
 
 //------------------------------------------------------------------------------
-intersections Intersect(world const &World, ray const &Ray)
+intersections IntersectWorld(world const &World, ray const &Ray)
 {
   intersections XS{};
 
@@ -1317,6 +1327,9 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
   Comps.Eye = -R.Direction;
   Comps.Normal = NormalAt(*Comps.pObject, Comps.Point);
 
+  // NOTE: Adjust Point for floating point inaccuracy.
+  Comps.Point = Comps.Point + Comps.Normal * EPSILON;
+
   // NOTE: We use the dot product between the Normal and the Eye to figure out if the normal points
   //       away from the Eye. If negative they are (roughly) pointing in opposite directions.
   if (Dot(Comps.Normal, Comps.Eye) < 0.f)
@@ -1337,11 +1350,14 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
   {
     light const &WorldLight = *pWorldLight;
 
+    bool const Shadowed = IsShadowed(W, Comps.Point);
+
     tup C = Lighting(Comps.pObject->Material,  //!<
                      WorldLight,               //!<
                      Comps.Point,              //!<
                      Comps.Eye,                //!<
-                     Comps.Normal              //!<
+                     Comps.Normal,             //!<
+                     Shadowed                  //!<
     );
 
     // NOTE: Add the colors from the various lights.
@@ -1355,7 +1371,7 @@ tup ColorAt(world const &World, ray const &Ray)
 {
   tup Result{};
   // 1. Call IntersectWorld() to find out the intersections of the given ray with the world.
-  intersections const IS = Intersect(World, Ray);
+  intersections const IS = IntersectWorld(World, Ray);
 
   // 2. Find the Hit from the resulting intersections.
   intersection const I = Hit(IS);
@@ -1488,6 +1504,46 @@ canvas Render(camera const &Camera, world const &World)
   }
 
   return (Image);
+}
+
+//------------------------------------------------------------------------------
+bool IsShadowed(world const &World, tup const &Point)
+{
+  // NOTE: Count the number of times the point is in a shadow.
+  size_t ShadowCount{};
+
+  for (size_t Idx = 0;                 ///<!
+       Idx < World.vPtrLights.size();  ///<!
+       ++Idx)
+  {
+    // 1. Measure the distance from Point to the light source by subtracting
+    //    Point from the light posistion, and taking the magnitude of the
+    //    resulting vector. Call this distance.
+    tup const V = World.vPtrLights[Idx]->Position - Point;
+    Assert(IsVector(V), __FUNCTION__, __LINE__);
+    float const Distance = Mag(V);
+    tup const Direction = Normalize(V);
+
+    // 2. Create a ray from Point toward the light source by normalizing the
+    //    vector from step #1.
+    ray const R = Ray(Point, Direction);
+
+    // 3. Intersect the world with that ray.
+    intersections const Intersections = IntersectWorld(World, R);
+
+    // 4. Check to see if there was a hit, and if so, whether t is less than
+    //    distance. If so, the hit lies between the Point and the light source,
+    //    and the point is in shadow.
+    intersection const H = Hit(Intersections);
+
+    if (H.pObject && H.t < Distance)
+    {
+      ShadowCount++;
+    }
+  }
+
+  // NOTE: The Point is in shadow only when it is in shadow from all light sources.
+  return (ShadowCount == World.vPtrLights.size());
 }
 };  // namespace ww
 

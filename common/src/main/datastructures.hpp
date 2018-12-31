@@ -32,7 +32,7 @@
 
 namespace ww
 {
-constexpr float EPSILON = 0.0000100;  // 1E27 * std::numeric_limits<float>::min();
+constexpr float EPSILON = 0.0035000;  // 1E27 * std::numeric_limits<float>::min();
 constexpr double PI = 3.141592653589793238463;
 constexpr float PI_F = 3.14159265358979f;
 
@@ -426,11 +426,12 @@ tup Reflect(tup const &In, tup const &Normal);
 /// Light functions
 /// ---
 light PointLight(tup const &Position, tup const &Intensity);
-tup Lighting(material const &Material,  //!<
-             light const &Light,        //!<
-             tup const &Position,       //!<
-             tup const &vEye,           //!<
-             tup const &vNormal         //!<
+tup Lighting(material const &Material,    //!<
+             light const &Light,          //!<
+             tup const &Position,         //!<
+             tup const &vEye,             //!<
+             tup const &vNormal,          //!<
+             bool const InShadow = false  //!<
 );
 
 /// ---
@@ -438,7 +439,7 @@ tup Lighting(material const &Material,  //!<
 /// ---
 /// \fn World - Create a default world with two spheres and a light.
 world World();
-intersections Intersect(world const &World, ray const &Ray);
+intersections IntersectWorld(world const &World, ray const &Ray);
 void WorldAddObject(world &W, shared_ptr_object pObject);
 void WorldAddLight(world &W, shared_ptr_light pLight);
 
@@ -482,6 +483,11 @@ ray RayForPixel(camera const &C, int const Px, int const Py);
 
 // \fn Render - Use the camera to render an image of the given world.
 canvas Render(camera const &Camera, world const &World);
+
+//------------------------------------------------------------------------------
+// Shadow functions ------------------------------------------------------------
+//------------------------------------------------------------------------------
+bool IsShadowed(world const &World, tup const &Point);
 };  // namespace ww
 
 // ---
