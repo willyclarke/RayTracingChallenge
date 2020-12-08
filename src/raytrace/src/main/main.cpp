@@ -56,6 +56,7 @@ auto main(int argc, char *argv[]) -> int
     else if ("--test-matrix" == Argv1)
     {
       rtcch3::RunMatrixTest(argc, argv);
+      //rtcch3::Ch9Planes_AssigningATransformation_Test();
     }
   }
   else

@@ -3,3 +3,7 @@ compile_commands.json
 GPATH
 GRTAGS
 GTAGS
+.vscode/
+.LICENSE.icloud
+.clangd/
+.cache/

@@ -31,11 +31,19 @@ std::ostream &operator<<(std::ostream &stream, const ww::tup &T)
   // ---
   size_t const P{5};
   size_t const W{P + 5};
-  stream << ((T.W != 0) ? "Point:" : "Vector:");
+  stream << ((T.W != 0) ? "Point :" : "Vector:");
   stream << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.X  //<!
          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Y  //<!
          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.Z  //<!
          << " " << std::fixed << std::setprecision(P) << std::setw(W) << T.W;
+  return stream;
+}
+
+//------------------------------------------------------------------------------
+std::ostream &operator<<(std::ostream &stream, const ww::ray &R)
+{
+  stream << "Origin   : " << R.Origin << "\n"
+         << "Direction: " << R.Direction;
   return stream;
 }
 
@@ -137,7 +145,7 @@ float Dot(tup const &A, tup const &B)
 //------------------------------------------------------------------------------
 bool Equal(float const A, float const B)
 {
-  //if (std::fabs(A - B) < 2.f * EPSILON)
+  // if (std::fabs(A - B) < 2.f * EPSILON)
   if (std::fabs(A - B) < 1.f * EPSILON)
   {
     return true;
@@ -879,7 +887,7 @@ tup PositionAt(ray const &R, float t)
 
 // intersection Intersection(float t, object *Object);
 // intersections Intersections(intersection const &I1, intersection const &I2);
-// intersect Intersect(object *pObject, ray const &Ray);
+// intersect Intersect(object *pShape, ray const &Ray);
 //------------------------------------------------------------------------------
 intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
 {
@@ -923,18 +931,34 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
-intersections Intersect(shared_ptr_object PtrSphere, ray const &RayIn)
+/// \brief Local intersect for sphere
+//------------------------------------------------------------------------------
+intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &RayIn)
 {
+  Assert(PtrShape, __FUNCTION__, __LINE__);
+
   intersections Result{};
 
-  // NOTE: For now; let us set up a reference to a sphere
-  sphere &Sphere = *(dynamic_cast<sphere *>(PtrSphere.get()));
+  // ---
+  // TODO: (Willy Clarke) Create a LocalIntersect for each shapetype
+  //       When ready this needs to go ...
+  //
+  if (PtrShape->isA<ww::sphere>())
+  {
+    Assert(0 == 1, __FUNCTION__, __LINE__);
+  }
+
+  if (PtrShape->isA<ww::shape>())
+  {
+    Assert(0 == 1, __FUNCTION__, __LINE__);
+  }
+
   // ---
   // NOTE: The object to which we are trying to calculate the intersect may
   //       kind of not be placed at origin. So use its transform to 'move' the
   //       ray by calculation of the inverse.
   // ---
-  ray const Ray = Transform(RayIn, Inverse(Sphere.Transform));
+  ray const Ray = Transform(RayIn, Inverse(PtrShape->Transform));
 
   // ---
   // NOTE: See explanation from:
@@ -958,20 +982,25 @@ intersections Intersect(shared_ptr_object PtrSphere, ray const &RayIn)
     intersection I{};
 
     // NOTE: take a copy of the object for future reference.
-    I.pObject = PtrSphere;
+    I.pShape = PtrShape;
+    Assert(I.pShape, __FUNCTION__, __LINE__);
 
     if (t1 > t2)
     {
       I.t = t2;
+      Assert(I.pShape, __FUNCTION__, __LINE__);
       Result.vI.push_back(I);
       I.t = t1;
+      Assert(I.pShape, __FUNCTION__, __LINE__);
       Result.vI.push_back(I);
     }
     else
     {
       I.t = t1;
+      Assert(I.pShape, __FUNCTION__, __LINE__);
       Result.vI.push_back(I);
       I.t = t2;
+      Assert(I.pShape, __FUNCTION__, __LINE__);
       Result.vI.push_back(I);
     }
   }
@@ -979,11 +1008,57 @@ intersections Intersect(shared_ptr_object PtrSphere, ray const &RayIn)
 }
 
 //------------------------------------------------------------------------------
-intersection Intersection(float t, shared_ptr_object pObject)
+/// \brief Generic Local Intersect
+///
+///        Looks up the type of shape and calls the specific
+///        LocalIntersect for the shape
+//------------------------------------------------------------------------------
+intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
+{
+  intersections Result{};
+
+  if (PtrShape->isA<sphere>())
+  {
+    Assert(0 == 1, __FUNCTION__, __LINE__);
+    Result = LocalIntersectSphere(PtrShape, RayIn);
+  }
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocalRayOutput)
+{
+  intersections Result{};
+
+  ray const LocalRay = Transform(Ray, Inverse(PtrShape->Transform));
+
+  // TODO: (Willy Clarke) Get rid of the extra variable
+  PtrShape->SavedRay = LocalRay;
+
+  // ---
+  // NOTE: The local ray output is for testing only. It allows us to deliver the local
+  //       computation of the transformed ray.
+  // ---
+  if (PtrLocalRayOutput)
+  {
+    *PtrLocalRayOutput = LocalRay;
+  }
+
+  if (PtrShape->funcPtrLocalIntersect)
+  {
+    Result = PtrShape->funcPtrLocalIntersect(PtrShape, LocalRay);
+  }
+
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+intersection Intersection(float t, shared_ptr_shape pShape)
 {
   intersection Result{};
   Result.t = t;
-  Result.pObject = pObject;
+  Result.pShape = pShape;
 
   return (Result);
 }
@@ -1092,6 +1167,7 @@ intersection Hit(intersections const &Intersections)
 
   for (auto I : Intersections.vI)
   {
+    Assert(I.pShape, __FUNCTION__, __LINE__);
     if (I.t > 0)
     {
       if (DoFirstUpdate)
@@ -1103,12 +1179,18 @@ intersection Hit(intersections const &Intersections)
       {
         Result = I;
       }
+      Assert(Result.pShape, __FUNCTION__, __LINE__);
     }
   }
+
   return (Result);
 }
 
-//------------------------------------------------------------------------------
+/**
+  Mul
+  Multiply a matrix and a ray
+  return : ray
+*/
 ray Mul(matrix const &M, ray const &R)
 {
   ray Result{};
@@ -1120,17 +1202,16 @@ ray Mul(matrix const &M, ray const &R)
 //------------------------------------------------------------------------------
 ray Transform(ray const &R, matrix const &M) { return M * R; }
 
-//------------------------------------------------------------------------------
-// \fn NormalAt
-// \brief Calculate normal vector at given point. The resulting vector will
-//        be normalized to a length of 1.f.
-//------------------------------------------------------------------------------
-tup NormalAt(object const &O, tup const &P)
+/**
+ \fn NormalAt
+ \brief Calculate normal vector at given point. The resulting vector will
+        be normalized to a length of 1.f.
+*/
+tup NormalAt(shape const &Shape, tup const &PointInput)
 {
-  tup const ObjectPoint = Inverse(O.Transform) * P;
-  tup const ObjectNormal = ObjectPoint - Point(0.f, 0.f, 0.f);
-
-  tup WorldNormal = Transpose(Inverse(O.Transform)) * ObjectNormal;
+  tup const LocalPoint = Inverse(Shape.Transform) * PointInput;
+  tup const LocalNormal = LocalPoint - Point(0.f, 0.f, 0.f);
+  tup WorldNormal = Transpose(Inverse(Shape.Transform)) * LocalNormal;
   WorldNormal.W = 0.f;
 
   tup const Result = Normalize(WorldNormal);
@@ -1252,7 +1333,7 @@ world World()
   // W.vObjects.push_back(S1);
 
   {
-    ww::shared_ptr_object PtrSphere{};
+    ww::shared_ptr_shape PtrSphere{};
     PtrSphere.reset(new ww::sphere);
     *PtrSphere = S1;
     W.vPtrObjects.push_back(PtrSphere);
@@ -1260,11 +1341,13 @@ world World()
 
   sphere S2{};
   S2.Transform = ww::Scaling(0.5f, 0.5f, 0.5f);
+  S2.Radius = S2.Transform.R0.X;
   // W.vObjects.push_back(S2);
   {
-    ww::shared_ptr_object PtrSphere{};
-    PtrSphere.reset(new ww::sphere);
+    ww::shared_ptr_sphere PtrSphere = std::make_shared<ww::sphere>();
     *PtrSphere = S2;
+    std::cout << "S2.Radius:" << S2.Radius << ". PtrSphere->Radius:" << PtrSphere->Radius
+              << ". Is a sphere : " << PtrSphere->isA<ww::sphere>() << std::endl;
     W.vPtrObjects.push_back(PtrSphere);
   }
 
@@ -1272,7 +1355,7 @@ world World()
 }
 
 //------------------------------------------------------------------------------
-void WorldAddObject(world &W, shared_ptr_object pObject) { W.vPtrObjects.push_back(pObject); }
+void WorldAddObject(world &W, shared_ptr_shape pShape) { W.vPtrObjects.push_back(pShape); }
 //------------------------------------------------------------------------------
 void WorldAddLight(world &W, shared_ptr_light pLight) { W.vPtrLights.push_back(pLight); }
 
@@ -1281,16 +1364,23 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 {
   intersections XS{};
 
-  for (auto const PtrObject : World.vPtrObjects)
+  int Idx{};
+  for (auto const &PtrObject : World.vPtrObjects)
   {
     if (PtrObject->isA<ww::sphere>())
     {
-      // ww::sphere *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
+      ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
 
       // NOTE: There may be up to two intersections with a sphere.
       //       So we detect and get these intersections, and then
       //       we add them to the resulting XS's vector of intersections.
-      intersections const I = Intersect(PtrObject, Ray);
+
+      ww::ray LocalRayComputed{};
+
+      intersections const I = Intersect(PtrObject, Ray, &LocalRayComputed);
+
+      // std::cout << "Idx: " << ++Idx << ". Sphere has radius " << pSphere->Radius << std::endl;
+      // std::cout << "LocalRayComputed: " << LocalRayComputed << std::endl;
 
       for (auto const &Element : I.vI)
       {
@@ -1306,9 +1396,9 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
-shared_ptr_object PtrDefaultSphere()
+shared_ptr_shape PtrDefaultSphere()
 {
-  shared_ptr_object pSphere{};
+  shared_ptr_shape pSphere{};
   pSphere.reset(new sphere);
   return (pSphere);
 }
@@ -1316,16 +1406,18 @@ shared_ptr_object PtrDefaultSphere()
 //------------------------------------------------------------------------------
 prepare_computation PrepareComputations(intersection const &I, ray const &R)
 {
+  Assert(I.pShape, __FUNCTION__, __LINE__);
+
   prepare_computation Comps{};
 
   // NOTE: Assign values we want to keep.
   Comps.t = I.t;
-  Comps.pObject = I.pObject;
+  Comps.pShape = I.pShape;
 
   // NOTE: Compute some useful values.
   Comps.Point = PositionAt(R, Comps.t);
   Comps.Eye = -R.Direction;
-  Comps.Normal = NormalAt(*Comps.pObject, Comps.Point);
+  Comps.Normal = NormalAt(*Comps.pShape, Comps.Point);
 
   // NOTE: Adjust Point for floating point inaccuracy.
   Comps.Point = Comps.Point + Comps.Normal * EPSILON;
@@ -1339,6 +1431,8 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
   }
 
   return (Comps);
+
+  tup Test{};
 }
 
 //------------------------------------------------------------------------------
@@ -1352,12 +1446,12 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
 
     bool const Shadowed = IsShadowed(W, Comps.Point);
 
-    tup C = Lighting(Comps.pObject->Material,  //!<
-                     WorldLight,               //!<
-                     Comps.Point,              //!<
-                     Comps.Eye,                //!<
-                     Comps.Normal,             //!<
-                     Shadowed                  //!<
+    tup C = Lighting(Comps.pShape->Material,  //!<
+                     WorldLight,              //!<
+                     Comps.Point,             //!<
+                     Comps.Eye,               //!<
+                     Comps.Normal,            //!<
+                     Shadowed                 //!<
     );
 
     // NOTE: Add the colors from the various lights.
@@ -1378,8 +1472,11 @@ tup ColorAt(world const &World, ray const &Ray)
 
   // 3. Return the Color black if there is no such intersection.
   if (IS.Count() == 0) return Result;
+  if (I.pShape == nullptr) return Result;
+  Assert(IS.Count() != 0, __FUNCTION__, __LINE__);
 
   // 4. Otherwise pre-compute the necessary values with PrepareComputations
+  Assert(I.pShape, __FUNCTION__, __LINE__);
   prepare_computation const PC = PrepareComputations(I, Ray);
 
   // 5. Call shade hit to find the color at the hit.
@@ -1536,7 +1633,7 @@ bool IsShadowed(world const &World, tup const &Point)
     //    and the point is in shadow.
     intersection const H = Hit(Intersections);
 
-    if (H.pObject && H.t < Distance)
+    if (H.pShape && H.t < Distance)
     {
       ShadowCount++;
     }
@@ -1544,6 +1641,34 @@ bool IsShadowed(world const &World, tup const &Point)
 
   // NOTE: The Point is in shadow only when it is in shadow from all light sources.
   return (ShadowCount == World.vPtrLights.size());
+}
+
+//------------------------------------------------------------------------------
+// \brief TestShape
+// \detail Function to demonstrate the abstract behavior of the shape class.
+//         As shape itself is abstract, the TestShape instansiates and returns
+//         a special subclass of shape that we will call test_shape, that implements
+//         enough behavior to be concrete.
+//------------------------------------------------------------------------------
+shape TestShape()
+{
+  shape S{};
+  // NOTE: Test that we can use the function pointer.
+  S.funcPtrLocalIntersect = &ww::LocalIntersect;
+  return (S);
+}
+
+//------------------------------------------------------------------------------
+// \fn TestShapePtr
+// \brief create an object and return a smart pointer to the object
+// \return smart pointer to shape
+shared_ptr_shape SharedPtrShape(shape const &Shape)
+{
+  ww::shared_ptr_shape PtrShape{};
+  PtrShape.reset(new ww::shape);
+  *PtrShape = Shape;
+
+  return (PtrShape);
 }
 };  // namespace ww
 

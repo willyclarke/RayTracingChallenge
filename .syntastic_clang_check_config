@@ -1,0 +1,12 @@
+# By default you can set "ClangTidy" parameters in
+# 'g:syntastic_cpp_clang_tidy_args', and compilation parameters (defines,
+# optimisation flags, etc.) in the configuration file.
+-std=c++17
+-Wall
+-Wextra
+-I/Users/willyclarke/Development/DevelopmentMacBookPro2016/build/RayTracingChallenge3/googletest-src/googletest/include
+-I/Users/willyclarke/Development/DevelopmentMacBookPro2016/RayTracingChallenge/common/src/main
+#-g
+#-Wall
+#-fcolor-diagnostics
+#-DHANDMADE_INTERNAL
