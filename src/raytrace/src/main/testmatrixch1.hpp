@@ -668,7 +668,8 @@ TEST(Matrix, CreateClockPPM)
   // Set up pixels per meter.
   // ---
   float const HPixelMeter = Canvas.W / (2.f * HAcross);  // use Xm horisontal across.
-  auto HPixel = [&](float const Pos) -> int {
+  auto HPixel = [&](float const Pos) -> int
+  {
     // Pos = 0  -> Pixel = Canvas.W/2
     // Pos = -1 -> Pixel = 0
     // Pos = +1 -> Pixel = Canvas.W
@@ -679,7 +680,8 @@ TEST(Matrix, CreateClockPPM)
 
   // The vertical axis need to be reversed.
   float const VPixelMeter = Canvas.H / (2.f * VAcross);  // use Xm vertiacal across.
-  auto VPixel = [&](float const Pos) -> int {
+  auto VPixel = [&](float const Pos) -> int
+  {
     // Pos y = 0    -> Pixel = Canvas.H
     // Pos y = 2000 -> Pixel = 0
     // Pos y = 1000 -> Pixel = Canvas.H/2
@@ -695,7 +697,8 @@ TEST(Matrix, CreateClockPPM)
   EXPECT_EQ(HPixel(HAcross), Canvas.W - 1);
   EXPECT_EQ(VPixel(VAcross), Canvas.H - 1);
 
-  auto ClockPixel = [&](float const X, float const Y) -> void {
+  auto ClockPixel = [&](float const X, float const Y) -> void
+  {
     ww::WritePixel(Canvas, HPixel(X + 2 * 0.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
     ww::WritePixel(Canvas, HPixel(X + 2 * 1.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
     ww::WritePixel(Canvas, HPixel(X + 2 * 2.f / Canvas.W), VPixel(Y + 2 * 0.f / Canvas.H), Color);
@@ -985,6 +988,7 @@ TEST(RaySphere, IntersectionsHit4)
 }
 
 //------------------------------------------------------------------------------
+// Scenario: Translating a ray. Ch5.
 TEST(RaySphere, TranslateRay)
 {
   ww::ray const R = ww::Ray(ww::Point(1.f, 2.f, 3.f), ww::Vector(0.f, 1.f, 0.f));
@@ -1001,6 +1005,7 @@ TEST(RaySphere, TranslateRay)
 }
 
 //------------------------------------------------------------------------------
+// Scenario: Scaling a ray. Ch5.
 TEST(RaySphere, ScaleRay)
 {
   ww::ray const R = ww::Ray(ww::Point(1.f, 2.f, 3.f), ww::Vector(0.f, 1.f, 0.f));
@@ -1025,6 +1030,7 @@ TEST(RaySphere, SphereDefaultTransformation)
 }
 
 //------------------------------------------------------------------------------
+// Scenario: A sphere's default transformation. Ch5.
 TEST(RaySphere, SphereChangeTransformation)
 {
   ww::sphere S{};
@@ -1033,6 +1039,7 @@ TEST(RaySphere, SphereChangeTransformation)
 }
 
 //------------------------------------------------------------------------------
+// Scenario: Intersecting a scaled sphere with a ray. Ch5.
 TEST(RaySphere, SphereIntersectScaled)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
@@ -1052,15 +1059,12 @@ TEST(RaySphere, SphereIntersectScaled)
   EXPECT_EQ(SavedRay.Direction == ww::Vector(0.f, 0.f, 0.5f), true);
   EXPECT_EQ(XS.Count(), 2);
 
-  // ---
-  // NOTE: The calculation based on the local coordinate system does not match
-  //       with the previous test. Further checks are required.
-  // ---
-  if (XS.Count() == 2 && false)
+  if (XS.Count() == 2)
   {
     EXPECT_EQ(XS.vI[0].t, 3.f);
     EXPECT_EQ(XS.vI[1].t, 7.f);
   }
+  // Assert(XS.Count() == -1, __FUNCTION__, __LINE__); // NOTE: For debug - stop here by setting count to wrong value.
 }
 
 //------------------------------------------------------------------------------
@@ -1083,7 +1087,8 @@ TEST(RaySphere, SpherePuttingItTogether)
   //       This allows us to change the transform of the sphere
   //       to create interesting effects, like scaling, skewing etc.
   // ---
-  auto CreateSphere = [&](ww::shared_ptr_shape S, std::string const &FileName) -> void {
+  auto CreateSphere = [&](ww::shared_ptr_shape S, std::string const &FileName) -> void
+  {
     ww::tup const RayOrigin = ww::Point(0.f, 0.f, -5.f);
     ww::tup Color = ww::Color(1.f, 0.f, 0.f);
 
@@ -1142,4 +1147,3 @@ TEST(RaySphere, SpherePuttingItTogether)
   S->Transform = ww::RotateZ(3.1415 / 4.) * ww::Scaling(0.5f, 1.f, 1.f);
   CreateSphere(S, "SphereScaledX1.ppm");
 }
-
