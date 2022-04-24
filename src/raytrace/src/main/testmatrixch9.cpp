@@ -115,7 +115,7 @@ TEST(Ch9Planes, ComputingTheNormalOnATransformedSphere)
 //------------------------------------------------------------------------------
 // Scenario: Check that a sphere is a shape
 //           This is part of the checklist of chapter 9
-TEST(C9Planes, CheckThatASphereIsAShape)
+TEST(Ch9Planes, CheckThatASphereIsAShape)
 {
   ww::sphere const S{};
   ww::shared_ptr_shape ptrShape = ww::SharedPtrShape(S);
@@ -126,5 +126,17 @@ TEST(C9Planes, CheckThatASphereIsAShape)
   std::shared_ptr<ww::sphere> ptrSphere2 = ww::SharedPtrSh<ww::sphere>(S);
   EXPECT_EQ(ptrSphere2->isA<ww::sphere>(), true);
   EXPECT_EQ(ptrSphere2->isA<ww::shape>(), true);
+}
 
+//------------------------------------------------------------------------------
+// Scenario: The normal of a plane is constant everywhere
+TEST(Ch9Planes, CheckThanNormalOnPlaneIsConstant)
+{
+  ww::plane P{};
+  ww::tup N1 = ww::LocalNormalAt(P, ww::Point(0.f, 0.f, 0.f));
+  ww::tup N2 = ww::LocalNormalAt(P, ww::Point(10.f, 0.f, -10.f));
+  ww::tup N3 = ww::LocalNormalAt(P, ww::Point(-5.f, 0.f, 150.f));
+  EXPECT_EQ(N1 == ww::Vector(0.f, 1.f, 0.f), true);
+  EXPECT_EQ(N2 == ww::Vector(0.f, 1.f, 0.f), true);
+  EXPECT_EQ(N3 == ww::Vector(0.f, 1.f, 0.f), true);
 }

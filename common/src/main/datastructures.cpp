@@ -1211,6 +1211,15 @@ tup LocalNormalAt(shape const &Shape, tup const &LocalPoint)
 }
 
 /**
+ * The local normal for a plane is always 0, 1, 0.
+ */
+tup LocalNormalAt(plane const &Plane, tup const &LocalPoint)
+{
+  tup const Result{Vector(0.f, 1.f, 0.f)};
+  return Result;
+}
+
+/**
  \fn NormalAt
  \brief Calculate normal vector at given point. The resulting vector will
         be normalized to a length of 1.f.
@@ -1673,6 +1682,16 @@ shared_ptr_shape SharedPtrShape(shape const &Shape)
   *PtrShape = Shape;
 
   return (PtrShape);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Plane
+ */
+tup Plane()
+{
+  tup Result{};
+  return Result;
 }
 };  // namespace ww
 

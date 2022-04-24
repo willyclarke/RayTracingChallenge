@@ -253,6 +253,20 @@ struct cube : public shape
   }
 };
 
+/**
+struct plane
+*/
+struct plane : public shape
+{
+  float L{1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
 //------------------------------------------------------------------------------
 struct canvas
 {
@@ -477,7 +491,14 @@ ray Transform(ray const &R, matrix const &M);
 /// Surface normal functions
 /// ---
 tup NormalAt(shape const &Shape, tup const &P);
+tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
+tup LocalNormalAt(plane const &Plane, tup const &LocalPoint);
 tup Reflect(tup const &In, tup const &Normal);
+
+/// ---
+/// Plane functions
+///
+tup Plane();
 
 /// ---
 /// Light functions
