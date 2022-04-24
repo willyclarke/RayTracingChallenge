@@ -935,32 +935,13 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
  * Param: PtrShape: A ww::sphere is needed to do some actual checks for intersections.
  * Return: ww::intersections.
  **/
-ww::intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &RayIn)
+ww::intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &Ray)
 {
   Assert(PtrShape->isA<sphere>(), __FUNCTION__, __LINE__);
 
   ww::intersections Result{};
 
   if (!PtrShape->isA<ww::sphere>()) return Result;
-
-  // ---
-  // NOTE: The object to which we are trying to calculate the intersect may
-  //       kind of not be placed at origin. So use its transform to 'move' the
-  //       ray by calculation of the inverse.
-  //
-  // Excerpt From The Ray Tracer Challenge Jamis Buck This material may be protected by copyright.
-  // Another way to think about transformation matrices is to think of them as
-  // converting points between two different coordinate systems. At the scene level,
-  // everything is in world space coordinates, relative to the overall world.
-  // But at the object level, everything is in object space coordinates, relative to the object itself.
-  // Multiplying a point in object space by a transformation matrix converts that point
-  // to world space—scaling it, translating, rotating it, or whatever.
-  // Multiplying a point in world space by the inverse of the transformation matrix converts
-  // that point back to object space.
-  // ---
-  // In other words: Whatever transformation you want to apply to the sphere, apply the inverse
-  // of that transformation to the ray instead.
-  ray const Ray = RayIn;//ww::Transform(RayIn, ww::Inverse(PtrShape->Transform));
 
   // ---
   // NOTE: See explanation from:
@@ -1031,6 +1012,23 @@ intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocal
 {
   intersections Result{};
 
+  // ---
+  // NOTE: The object to which we are trying to calculate the intersect may
+  //       kind of not be placed at origin. So use its transform to 'move' the
+  //       ray by calculation of the inverse.
+  //
+  // Excerpt From The Ray Tracer Challenge Jamis Buck This material may be protected by copyright.
+  // Another way to think about transformation matrices is to think of them as
+  // converting points between two different coordinate systems. At the scene level,
+  // everything is in world space coordinates, relative to the overall world.
+  // But at the object level, everything is in object space coordinates, relative to the object itself.
+  // Multiplying a point in object space by a transformation matrix converts that point
+  // to world space—scaling it, translating, rotating it, or whatever.
+  // Multiplying a point in world space by the inverse of the transformation matrix converts
+  // that point back to object space.
+  // ---
+  // In other words: Whatever transformation you want to apply to the sphere, apply the inverse
+  // of that transformation to the ray instead.
   ray const LocalRay = Transform(Ray, Inverse(PtrShape->Transform));
 
   // TODO: (Willy Clarke) Get rid of the extra variable
