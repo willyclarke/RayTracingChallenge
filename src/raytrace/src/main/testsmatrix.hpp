@@ -20,9 +20,9 @@
 
 namespace rtcch3
 {
-//#include "testmatrixch1.hpp"
-//#include "testmatrixch6.hpp"
-//#include "testmatrixch7.hpp"
+#include "testmatrixch1.hpp"
+#include "testmatrixch6.hpp"
+#include "testmatrixch7.hpp"
 #include "testmatrixch8.hpp"
 #include "testmatrixch9.hpp"
 

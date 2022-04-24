@@ -82,12 +82,12 @@ TEST(Ch7MakingAScene, IntersectWorldWithRay)
   ww::intersections const XS = IntersectWorld(World, Ray);
 
   EXPECT_EQ(XS.Count(), 4);
-
   // NOTE: The expectation is that the hits are delivered in ascending order.
-  if (XS.Count() >= 1) EXPECT_EQ(XS.vI[0].t, 4.f);
-  if (XS.Count() >= 2) EXPECT_EQ(XS.vI[1].t, 4.5f);
-  if (XS.Count() >= 3) EXPECT_EQ(XS.vI[2].t, 5.5f);
-  if (XS.Count() >= 4) EXPECT_EQ(XS.vI[3].t, 6.f);
+  if (XS.Count() >= 1) EXPECT_FLOAT_EQ(XS.vI[0].t, 4.f);
+  if (XS.Count() >= 2) EXPECT_FLOAT_EQ(XS.vI[1].t, 4.5f);
+  if (XS.Count() >= 3) EXPECT_FLOAT_EQ(XS.vI[2].t, 5.5f);
+  if (XS.Count() >= 4) EXPECT_FLOAT_EQ(XS.vI[3].t, 6.f);
+  // Assert(XS.Count() == -1, __FUNCTION__, __LINE__); // NOTE: for debugging
 }
 
 #if 0
