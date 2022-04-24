@@ -1,5 +1,8 @@
 #include "gtest/gtest.h"
 #include <datastructures.hpp>
+
+#include <cmath>
+
 //------------------------------------------------------------------------------
 TEST(Matrix, InitializationToZero)
 {
