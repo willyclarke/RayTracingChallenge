@@ -245,6 +245,12 @@ struct sphere : public shape
 struct cube : public shape
 {
   float L{1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
 };
 
 //------------------------------------------------------------------------------
@@ -449,7 +455,7 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
 /// ---
 /// \fn PtrDefaultSphere - Create a sphere and return shared pointer to this object.
 /// ---
-shared_ptr_shape PtrDefaultSphere();
+shared_ptr_sphere PtrDefaultSphere();
 
 /// ---
 /// Ray releated functions.

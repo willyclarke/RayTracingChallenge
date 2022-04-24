@@ -930,35 +930,37 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
   return (Result);
 }
 
-//------------------------------------------------------------------------------
-/// \brief Local intersect for sphere
-//------------------------------------------------------------------------------
-intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &RayIn)
+/**
+ * Check if a ray have a local intersect with a sphere.
+ * Param: PtrShape: A ww::sphere is needed to do some actual checks for intersections.
+ * Return: ww::intersections.
+ **/
+ww::intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &RayIn)
 {
-  Assert(PtrShape, __FUNCTION__, __LINE__);
+  Assert(PtrShape->isA<sphere>(), __FUNCTION__, __LINE__);
 
-  intersections Result{};
+  ww::intersections Result{};
 
-  // ---
-  // TODO: (Willy Clarke) Create a LocalIntersect for each shapetype
-  //       When ready this needs to go ...
-  //
-  if (PtrShape->isA<ww::sphere>())
-  {
-    Assert(0 == 1, __FUNCTION__, __LINE__);
-  }
-
-  if (PtrShape->isA<ww::shape>())
-  {
-    Assert(0 == 1, __FUNCTION__, __LINE__);
-  }
+  if (!PtrShape->isA<ww::sphere>()) return Result;
 
   // ---
   // NOTE: The object to which we are trying to calculate the intersect may
   //       kind of not be placed at origin. So use its transform to 'move' the
   //       ray by calculation of the inverse.
+  //
+  // Excerpt From The Ray Tracer Challenge Jamis Buck This material may be protected by copyright.
+  // Another way to think about transformation matrices is to think of them as
+  // converting points between two different coordinate systems. At the scene level,
+  // everything is in world space coordinates, relative to the overall world.
+  // But at the object level, everything is in object space coordinates, relative to the object itself.
+  // Multiplying a point in object space by a transformation matrix converts that point
+  // to world space—scaling it, translating, rotating it, or whatever.
+  // Multiplying a point in world space by the inverse of the transformation matrix converts
+  // that point back to object space.
   // ---
-  ray const Ray = Transform(RayIn, Inverse(PtrShape->Transform));
+  // In other words: Whatever transformation you want to apply to the sphere, apply the inverse
+  // of that transformation to the ray instead.
+  ray const Ray = RayIn;//ww::Transform(RayIn, ww::Inverse(PtrShape->Transform));
 
   // ---
   // NOTE: See explanation from:
@@ -966,14 +968,12 @@ intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &RayIn)
   //
   // NOTE: The vector from the sphere's center to the ray origin
   //       Remember that the sphere is centered at the world origin
-  tup const Object2Ray = Ray.Origin - Point(0.f, 0.f, 0.f);
-  // std::cout << "Sphere2Ray : " << Sphere2Ray << std::endl;
+  tup const Sphere2Ray = Ray.Origin - Point(0.f, 0.f, 0.f);
 
-  float const A = Dot(Ray.Direction, Ray.Direction);
-  float const B = 2 * Dot(Ray.Direction, Object2Ray);
-  float const C = Dot(Object2Ray, Object2Ray) - 1.f;
+  float const A = ww::Dot(Ray.Direction, Ray.Direction);
+  float const B = 2 * ww::Dot(Ray.Direction, Sphere2Ray);
+  float const C = ww::Dot(Sphere2Ray, Sphere2Ray) - 1.f;
   float const Discriminant = B * B - 4 * A * C;
-  // std::cout << "A:" << A << ". B:" << B << ". C:" << C << ". Discriminant:" << Discriminant << std::endl;
 
   if (Discriminant >= 0)
   {
@@ -1019,7 +1019,7 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
 
   if (PtrShape->isA<sphere>())
   {
-    Assert(0 == 1, __FUNCTION__, __LINE__);
+    // Assert(0 == 1, __FUNCTION__, __LINE__);
     Result = LocalIntersectSphere(PtrShape, RayIn);
   }
 
@@ -1203,6 +1203,16 @@ ray Mul(matrix const &M, ray const &R)
 ray Transform(ray const &R, matrix const &M) { return M * R; }
 
 /**
+ * Convert the point to a vector.
+ */
+tup LocalNormalAt(shape const &Shape, tup const &LocalPoint)
+{
+  tup Result{};
+  Result = LocalPoint - Point(0.f, 0.f, 0.f);
+  return Result;
+}
+
+/**
  \fn NormalAt
  \brief Calculate normal vector at given point. The resulting vector will
         be normalized to a length of 1.f.
@@ -1210,7 +1220,7 @@ ray Transform(ray const &R, matrix const &M) { return M * R; }
 tup NormalAt(shape const &Shape, tup const &PointInput)
 {
   tup const LocalPoint = Inverse(Shape.Transform) * PointInput;
-  tup const LocalNormal = LocalPoint - Point(0.f, 0.f, 0.f);
+  tup const LocalNormal = LocalNormalAt(Shape, LocalPoint);
   tup WorldNormal = Transpose(Inverse(Shape.Transform)) * LocalNormal;
   WorldNormal.W = 0.f;
 
@@ -1330,24 +1340,19 @@ world World()
   S1.Material.Color = ww::Color(0.8f, 1.0f, 0.6f);
   S1.Material.Diffuse = 0.7f;
   S1.Material.Specular = 0.2f;
-  // W.vObjects.push_back(S1);
+  S1.funcPtrLocalIntersect = &ww::LocalIntersectSphere;
 
   {
-    ww::shared_ptr_shape PtrSphere{};
+    ww::shared_ptr_sphere PtrSphere{};
     PtrSphere.reset(new ww::sphere);
     *PtrSphere = S1;
     W.vPtrObjects.push_back(PtrSphere);
   }
 
-  sphere S2{};
-  S2.Transform = ww::Scaling(0.5f, 0.5f, 0.5f);
-  S2.Radius = S2.Transform.R0.X;
-  // W.vObjects.push_back(S2);
   {
-    ww::shared_ptr_sphere PtrSphere = std::make_shared<ww::sphere>();
-    *PtrSphere = S2;
-    std::cout << "S2.Radius:" << S2.Radius << ". PtrSphere->Radius:" << PtrSphere->Radius
-              << ". Is a sphere : " << PtrSphere->isA<ww::sphere>() << std::endl;
+    ww::shared_ptr_sphere PtrSphere = ww::PtrDefaultSphere();
+    PtrSphere->Transform = ww::Scaling(0.5f, 0.5f, 0.5f);
+    PtrSphere->Radius = PtrSphere->Transform.R0.X;
     W.vPtrObjects.push_back(PtrSphere);
   }
 
@@ -1364,13 +1369,10 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 {
   intersections XS{};
 
-  int Idx{};
   for (auto const &PtrObject : World.vPtrObjects)
   {
     if (PtrObject->isA<ww::sphere>())
     {
-      ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
-
       // NOTE: There may be up to two intersections with a sphere.
       //       So we detect and get these intersections, and then
       //       we add them to the resulting XS's vector of intersections.
@@ -1379,8 +1381,11 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 
       intersections const I = Intersect(PtrObject, Ray, &LocalRayComputed);
 
-      // std::cout << "Idx: " << ++Idx << ". Sphere has radius " << pSphere->Radius << std::endl;
-      // std::cout << "LocalRayComputed: " << LocalRayComputed << std::endl;
+#if 0
+      ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
+      std::cout << "\n\n " << __FUNCTION__ << "-> Sphere has radius " << pSphere->Radius << std::endl;
+      std::cout << "\tLocalRayComputed: " << LocalRayComputed << std::endl;
+#endif
 
       for (auto const &Element : I.vI)
       {
@@ -1396,10 +1401,11 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
-shared_ptr_shape PtrDefaultSphere()
+shared_ptr_sphere PtrDefaultSphere()
 {
-  shared_ptr_shape pSphere{};
+  shared_ptr_sphere pSphere{};
   pSphere.reset(new sphere);
+  pSphere->funcPtrLocalIntersect = &ww::LocalIntersectSphere;
   return (pSphere);
 }
 
