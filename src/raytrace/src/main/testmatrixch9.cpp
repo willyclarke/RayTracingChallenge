@@ -153,3 +153,35 @@ TEST(Ch9Planes, IntersectRayParallelToPlane)
   EXPECT_EQ(ptrPlane->isA<ww::sphere>(), false);
   EXPECT_EQ(XS.Count(), 0);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Intersecting a plane from above.
+TEST(Ch9Planes, IntersectAPlaneFromAbove)
+{
+  std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
+  ww::ray R = ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, -1.f, 0.f));
+  ww::intersections XS = ww::LocalIntersect(ptrPlane, R);
+
+  EXPECT_EQ(XS.Count(), 1);
+  if (XS.Count())
+  {
+    EXPECT_EQ(XS.vI[0].t, 1.f);
+    EXPECT_EQ(XS.vI[0].pShape == ptrPlane, true);
+  }
+}
+
+//------------------------------------------------------------------------------
+// Scenario: A ray Intersecting a plane from below.
+TEST(Ch9Planes, IntersectAPlaneFromBelow)
+{
+  std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
+  ww::ray R = ww::Ray(ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, 1.f, 0.f));
+  ww::intersections XS = ww::LocalIntersect(ptrPlane, R);
+
+  EXPECT_EQ(XS.Count(), 1);
+  if (XS.Count())
+  {
+    EXPECT_EQ(XS.vI[0].t, 1.f);
+    EXPECT_EQ(XS.vI[0].pShape == ptrPlane, true);
+  }
+}

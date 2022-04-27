@@ -945,6 +945,10 @@ ww::intersections LocalIntersectPlane(shared_ptr_shape PtrShape, ray const &Ray)
 
   if (std::abs(Ray.Direction.Y) < EPSILON) return Result;
 
+  float const t = -Ray.Origin.Y / Ray.Direction.Y;
+
+  Result.vI.push_back(Intersection(t, PtrShape));
+
   return Result;
 }
 
