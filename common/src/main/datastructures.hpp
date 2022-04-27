@@ -148,13 +148,15 @@ struct material
 /// ---
 /// \declarations
 /// ---
+struct cube;
+struct plane;
 struct shape;
 struct sphere;
-struct cube;
 
+typedef std::shared_ptr<cube> shared_ptr_cube;
+typedef std::shared_ptr<plane> shared_ptr_plane;
 typedef std::shared_ptr<shape> shared_ptr_shape;
 typedef std::shared_ptr<sphere> shared_ptr_sphere;
-typedef std::shared_ptr<cube> shared_ptr_cube;
 
 /// ---
 /// \struct intersection
@@ -467,9 +469,14 @@ intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocal
 intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
 
 /// ---
-/// \fn PtrDefaultSphere - Create a sphere and return shared pointer to this object.
+/// PtrDefaultSphere - Create a sphere and return shared pointer to this object.
 /// ---
 shared_ptr_sphere PtrDefaultSphere();
+
+/// ---
+/// PtrDefaultPlane - Create a plane and return shared pointer to this object.
+/// ---
+shared_ptr_plane PtrDefaultPlane();
 
 /// ---
 /// Ray releated functions.
@@ -596,9 +603,10 @@ std::shared_ptr<T> SharedPtrSh(T const &Sh)
   return (Ptr);
 }
 
+template std::shared_ptr<cube> SharedPtrSh<cube>(cube const &Sh);
+template std::shared_ptr<plane> SharedPtrSh<plane>(plane const &Sh);
 template std::shared_ptr<shape> SharedPtrSh<shape>(shape const &Sh);
 template std::shared_ptr<sphere> SharedPtrSh<sphere>(sphere const &Sh);
-template std::shared_ptr<cube> SharedPtrSh<cube>(cube const &Sh);
 };  // namespace ww
 
 // ---

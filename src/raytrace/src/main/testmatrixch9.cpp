@@ -140,3 +140,16 @@ TEST(Ch9Planes, CheckThanNormalOnPlaneIsConstant)
   EXPECT_EQ(N2 == ww::Vector(0.f, 1.f, 0.f), true);
   EXPECT_EQ(N3 == ww::Vector(0.f, 1.f, 0.f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Intersect with a ray parallel to the plane.
+TEST(Ch9Planes, IntersectRayParallelToPlane)
+{
+  std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
+  ww::ray R = ww::Ray(ww::Point(0.f, 10.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::intersections XS = ww::LocalIntersect(ptrPlane, R);
+
+  EXPECT_EQ(ptrPlane->isA<ww::plane>(), true);
+  EXPECT_EQ(ptrPlane->isA<ww::sphere>(), false);
+  EXPECT_EQ(XS.Count(), 0);
+}

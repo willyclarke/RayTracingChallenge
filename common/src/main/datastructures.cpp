@@ -931,6 +931,24 @@ intersections IntersectSphere(sphere const &Sphere, ray const &Ray)
 }
 
 /**
+ * Check if a ray have a local intersect with a plane.
+ * Param: PtrShape: A ww::plane is needed to do some actual checks for intersections.
+ * Return: ww::intersections.
+ **/
+ww::intersections LocalIntersectPlane(shared_ptr_shape PtrShape, ray const &Ray)
+{
+  Assert(PtrShape->isA<plane>(), __FUNCTION__, __LINE__);
+
+  ww::intersections Result{};
+
+  if (!PtrShape->isA<ww::plane>()) return Result;
+
+  if (std::abs(Ray.Direction.Y) < EPSILON) return Result;
+
+  return Result;
+}
+
+/**
  * Check if a ray have a local intersect with a sphere.
  * Param: PtrShape: A ww::sphere is needed to do some actual checks for intersections.
  * Return: ww::intersections.
@@ -1002,6 +1020,10 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
   {
     // Assert(0 == 1, __FUNCTION__, __LINE__);
     Result = LocalIntersectSphere(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<plane>())
+  {
+    Result = LocalIntersectPlane(PtrShape, RayIn);
   }
 
   return (Result);
@@ -1405,6 +1427,15 @@ intersections IntersectWorld(world const &World, ray const &Ray)
   //       Use lambda function to extract the t value for each intersection.
   std::sort(XS.vI.begin(), XS.vI.end(), [](intersection const &A, intersection const &B) { return A.t < B.t; });
   return (XS);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_plane PtrDefaultPlane()
+{
+  ww::plane P{};
+  std::shared_ptr<ww::plane> pPlane = ww::SharedPtrSh<ww::plane>(P);
+  pPlane->funcPtrLocalIntersect = &ww::LocalIntersectPlane;
+  return (pPlane);
 }
 
 //------------------------------------------------------------------------------
