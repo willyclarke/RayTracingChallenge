@@ -1404,26 +1404,22 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 
   for (auto const &PtrObject : World.vPtrObjects)
   {
-    if (PtrObject->isA<ww::sphere>())
-    {
-      // NOTE: There may be up to two intersections with a sphere.
-      //       So we detect and get these intersections, and then
-      //       we add them to the resulting XS's vector of intersections.
+    ww::ray LocalRayComputed{};
 
-      ww::ray LocalRayComputed{};
-
-      intersections const I = Intersect(PtrObject, Ray, &LocalRayComputed);
+    intersections const I = Intersect(PtrObject, Ray, &LocalRayComputed);
 
 #if 0
+    if (PtrObject->isA<ww::sphere>())
+    {
       ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
       std::cout << "\n\n " << __FUNCTION__ << "-> Sphere has radius " << pSphere->Radius << std::endl;
       std::cout << "\tLocalRayComputed: " << LocalRayComputed << std::endl;
+    }
 #endif
 
-      for (auto const &Element : I.vI)
-      {
-        XS.vI.push_back(Element);
-      }
+    for (auto const &Element : I.vI)
+    {
+      XS.vI.push_back(Element);
     }
   }
 
