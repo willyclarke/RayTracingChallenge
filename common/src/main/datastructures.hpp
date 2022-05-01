@@ -40,13 +40,18 @@ constexpr float PI_F = 3.14159265358979f;
 
 /**
   union tup   Contains four elements
-
-  Can represent
-     a 3D point
-     an RGB value or four floats
-     X Y Z W with W at 0 when tuple is a vector and 1 when tuple is point
-     R G B I with intensity at 1 at max and 0 at pitch black
-     array C four of floats
+*
+*  Can represent
+*
+*     1: A 3D point
+*
+*     2: An RGB value or four floats
+*
+*     3: X Y Z W with W at 0 when tuple is a vector and 1 when tuple is point
+*
+*     4: R G B I with intensity at 1 at max and 0 at pitch black
+*
+*     5: Array C four of floats
 */
 union tup
 {
