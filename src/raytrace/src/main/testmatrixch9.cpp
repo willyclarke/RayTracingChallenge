@@ -275,7 +275,7 @@ TEST(Ch9Planes, PuttingItTogether)
   *pLight = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
   World.vPtrLights.push_back(pLight);
 
-  ww::camera Camera = ww::Camera(1024, 1024, M_PI / 5.f);
+  ww::camera Camera = ww::Camera(256, 256, M_PI / 5.f);
 
   ww::tup const ViewFrom = ww::Point(0.f, 1.5f, -15.f);
   ww::tup const ViewTo = ww::Point(0.f, 1.f, 0.f);
@@ -284,4 +284,80 @@ TEST(Ch9Planes, PuttingItTogether)
 
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch9MakingAScene.ppm");
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch9Planes, PuttingItTogetherHexagon)
+{
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+
+  ww::shared_ptr_shape PtrRight = ww::PtrDefaultSphere();
+  ww::shape &Right = *PtrRight;
+  Right.Transform = ww::Translation(1.5f, 0.5f, -0.5f) *  //!<
+                    ww::Scaling(0.5f, 0.5f, 0.5f);
+  Right.Material.Color = ww::Color(0.5f, 1.0f, 0.1f);
+  Right.Material.Diffuse = 0.7f;
+  Right.Material.Specular = 0.3f;
+  World.vPtrObjects.push_back(PtrRight);
+
+  ww::shared_ptr_shape PtrMiddle = ww::PtrDefaultSphere();
+  ww::shape &Middle = *PtrMiddle;
+  Middle.Transform = ww::Translation(-0.5f, 1.f, 0.5f);
+  Middle.Material.Color = ww::Color(0.1f, 1.0f, 0.5f);
+  Middle.Material.Diffuse = 0.7f;
+  Middle.Material.Specular = 0.3f;
+  World.vPtrObjects.push_back(PtrMiddle);
+
+  ww::shared_ptr_shape PtrLeft = ww::PtrDefaultSphere();
+  ww::shape &Left = *PtrLeft;
+  Left.Transform = ww::Translation(-1.5f, 0.33f, -0.75f) *  //!<
+                   ww::Scaling(0.33f, 0.33f, 0.33f);
+  Left.Material.Color = ww::Color(1.0f, 0.8f, 0.1f);
+  Left.Material.Diffuse = 0.7f;
+  Left.Material.Specular = 0.3f;
+  World.vPtrObjects.push_back(PtrLeft);
+
+  // Add the first plane - the floor
+  ww::shared_ptr_plane ptrFloor = ww::PtrDefaultPlane();
+  ptrFloor->Transform = ww::Translation(0.f, 0.f, 0.f)  //!<
+                                                        // * ww::RotateX(0 * M_PI_2)       //!<
+      ;                                                 //!<
+  ptrFloor->Material.Shininess = 10.f;
+  ptrFloor->Material.Diffuse = 0.5f;
+  ptrFloor->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  World.vPtrObjects.push_back(ptrFloor);
+
+  // Assert(0 == 1, __FUNCTION__, __LINE__);
+
+  auto HexagonSide = [](float X, float Z, float Angle) -> ww::shared_ptr_plane
+  {
+    ww::shared_ptr_plane ptrPlaneHexagon = ww::PtrDefaultPlane();
+    ptrPlaneHexagon->Transform = ww::Translation(X, 0.f, Z)  //!<
+                                 * ww::RotateX(M_PI_2)       //!<
+                                 * ww::RotateY(Angle)        //!<
+        ;                                                    //!<
+    return ptrPlaneHexagon;
+  };
+
+  // float const COS_PI_3 = std::cosf(M_PI / 3.f);
+  // float const SIN_PI_3 = std::sinf(M_PI / 3.f);
+
+  World.vPtrObjects.push_back(HexagonSide(0.f, 10.f, 0.f * M_PI / 2.f));
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  ww::camera Camera = ww::Camera(256, 256, M_PI / 2.f);
+
+  ww::tup const ViewFrom = ww::Point(0.f, 10.f, -10.f);
+  ww::tup const ViewTo = ww::Point(0.f, 0.0f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "Ch9MakingASceneHexagon.ppm");
 }
