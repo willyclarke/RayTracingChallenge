@@ -444,14 +444,14 @@ TEST(ObjectPointer, Features)
   S.Center = ww::tup{1.f, 0.f, 0.f, 1.f};
   S.Radius = 2.f;
 
-  ww::object *pObject = &S;
+  ww::shape *pObject = &S;
   if (pObject->isA<ww::sphere>())
   {
     ww::sphere *pSphere = dynamic_cast<ww::sphere *>(pObject);
     EXPECT_EQ(S.Radius, pSphere->Radius);
   }
 
-  std::vector<ww::object> vObjects{};
+  std::vector<ww::shape> vObjects{};
   vObjects.push_back(*pObject);
   EXPECT_EQ(vObjects.size(), 1);
 }
@@ -466,7 +466,7 @@ void RunTupleTest(int argc, char *argv[])
 
   int Count{};
   for (size_t Idx = 0;  //<!
-       Idx < 30;        //<!
+       Idx < 1;         //<!
        ++Idx)
   {
     Count++;

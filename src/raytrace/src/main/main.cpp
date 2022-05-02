@@ -13,7 +13,7 @@
 
 #include "featuretest.hpp"
 #include "projectile.hpp"
-#include "testsmatrix.hpp"
+#include "testsmatrix.cpp"
 
 namespace
 {
@@ -55,7 +55,8 @@ auto main(int argc, char *argv[]) -> int
     }
     else if ("--test-matrix" == Argv1)
     {
-      rtcch3::RunMatrixTest(argc, argv);
+      rtcch3::run_matrix_test::RunMatrixTest(argc, argv);
+      //rtcch3::Ch9Planes_AssigningATransformation_Test();
     }
   }
   else

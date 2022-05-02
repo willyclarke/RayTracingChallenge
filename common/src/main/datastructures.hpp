@@ -37,7 +37,24 @@ constexpr double PI = 3.141592653589793238463;
 constexpr float PI_F = 3.14159265358979f;
 
 //------------------------------------------------------------------------------
-union tup {
+
+/**
+  union tup   Contains four elements
+*
+*  Can represent
+*
+*     1: A 3D point
+*
+*     2: An RGB value or four floats
+*
+*     3: X Y Z W with W at 0 when tuple is a vector and 1 when tuple is point
+*
+*     4: R G B I with intensity at 1 at max and 0 at pitch black
+*
+*     5: Array C four of floats
+*/
+union tup
+{
   tup() : X{}, Y{}, Z{}, W{} {};
   tup(float IX, float IY, float IZ, float IW) : X{IX}, Y{IY}, Z{IZ}, W{IW} {};
   tup(float IX, float IY) : X{IX}, Y{IY}, Z{}, W{} {};
@@ -79,7 +96,8 @@ struct is_invertible_return
 };
 
 //------------------------------------------------------------------------------
-union matrix {
+union matrix
+{
   matrix() : R0{}, R1{}, R2{}, R3{}, Dimension{4} {}
   matrix(tup const &Cr0, tup const &Cr1, tup const &Cr2, tup const &Cr3)
       : R0{Cr0}, R1{Cr1}, R2{Cr2}, R3{Cr3}, Dimension{4}
@@ -112,6 +130,16 @@ union matrix {
   };
 };
 
+/// ---
+/// \struct ray
+/// \brief A ray consist of an origint point and a vector for the direction.
+/// ---
+struct ray
+{
+  tup Origin{0.f, 0.f, 0.f, 1.f};     //!< The origin. This is a point in space.
+  tup Direction{1.f, 0.f, 0.f, 0.f};  //!< The direction. This is a vector in space.
+};
+
 //------------------------------------------------------------------------------
 struct material
 {
@@ -123,51 +151,18 @@ struct material
 };
 
 /// ---
-/// \struct base struct for the raytracing objects
+/// \declarations
 /// ---
-struct object
-{
-  tup Center{};
-  material Material{};
+struct cube;
+struct plane;
+struct shape;
+struct sphere;
 
-  //!< The transform of the object, initialize to identity matrix
-  matrix Transform{
-      tup{1.f, 0.f, 0.f, 0.f},  //!<
-      tup{0.f, 1.f, 0.f, 0.f},  //!<
-      tup{0.f, 0.f, 1.f, 0.f},  //!<
-      tup{0.f, 0.f, 0.f, 1.f}   //!<
-  };                            //!<
-  object() {}
-  virtual ~object() {}
-  template <typename T>
-  bool isA()
-  {
-    return (dynamic_cast<T *>(this) != NULL);
-  }
-};
+typedef std::shared_ptr<cube> shared_ptr_cube;
+typedef std::shared_ptr<plane> shared_ptr_plane;
+typedef std::shared_ptr<shape> shared_ptr_shape;
+typedef std::shared_ptr<sphere> shared_ptr_sphere;
 
-/// ---
-/// \struct sphere
-/// \brief The sphere is defined by its center and the radii.
-/// \detailed By making this struct a subclass of object we are able
-///           to set up pointers to objeects of different types.
-/// ---
-struct sphere : public object
-{
-  float Radius{1.f};  //!< Radius.
-};
-
-/// ---
-/// \struct cube
-/// \brief Placeholder/stub for an upcoming cube. For now it is used for testing
-///        of object pointers.
-/// ---
-struct cube : public object
-{
-  float L{1.f};
-};
-
-typedef std::shared_ptr<object> shared_ptr_object;
 /// ---
 /// \struct intersection
 /// \brief Connect the time t value with the object for intersection.
@@ -176,7 +171,7 @@ typedef std::shared_ptr<object> shared_ptr_object;
 struct intersection
 {
   float t{};
-  shared_ptr_object pObject{};  //!< The pointer need to be cast to a valid object type.
+  shared_ptr_shape pShape{};  //!< The pointer need to be cast to a valid object type.
 };
 
 /// ---
@@ -188,14 +183,95 @@ struct intersections
   std::vector<intersection> vI{};
   int Count() const { return (int)vI.size(); }
 };
+
 /// ---
-/// \struct ray
-/// \brief A ray consist of an origint point and a vector for the direction.
+/// \struct base struct for the raytracing objects
 /// ---
-struct ray
+// Common properties of a shape is
+// 1. A transformation matrix. Will be the identity matrix unless specifically set.
+// 2. The shape material. Defaults to whats described in the Phong reflection model.
+// 3. When intersecting the shape with a ray, all shapes will convert the ray into
+//    object space by transforming it with the inverse of the shape's transformation
+//    matrix.
+// 4. When computing the normal vector;
+//    A: All shapes convert the point to object space
+//       by multiplying the point with the inverse of the shape's transformation matrix.
+//    B: Then the normal is transformed yet again by the inverse of the transpose of the
+//       shape's transformation matrix.
+//    C: Finally the normal is normalized ( ;-) ) before returning it.
+struct shape
 {
-  tup Origin{0.f, 0.f, 0.f, 1.f};     //!< The origin. This is a point in space.
-  tup Direction{1.f, 0.f, 0.f, 0.f};  //!< The direction. This is a vector in space.
+  tup Center{};
+  material Material{};
+
+  //!< The transform of the object, initialize to identity matrix
+  matrix Transform{
+      tup{1.f, 0.f, 0.f, 0.f},  //!<
+      tup{0.f, 1.f, 0.f, 0.f},  //!<
+      tup{0.f, 0.f, 1.f, 0.f},  //!<
+      tup{0.f, 0.f, 0.f, 1.f}   //!<
+  };                            //!<
+
+  ray SavedRay{};  //!< Should be set by the LocalIntersect function
+
+  shape() {}
+  virtual ~shape() {}
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+
+  //!< Function pointer for the local intersect
+  intersections (*funcPtrLocalIntersect)(shared_ptr_shape PtrShape, ray const &RayIn){};
+};
+
+/// ---
+/// \struct sphere
+/// \brief The sphere is defined by its center and the radii.
+/// \detailed By making this struct a subclass of object we are able
+///           to set up pointers to objeects of different types.
+/// ---
+struct sphere : public shape
+{
+  float Radius{1.f};  //!< Radius.
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+/// ---
+/// \struct cube
+/// \brief Placeholder/stub for an upcoming cube. For now it is used for testing
+///        of object pointers.
+/// ---
+struct cube : public shape
+{
+  float L{1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+/**
+struct plane
+*/
+struct plane : public shape
+{
+  float L{1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
 };
 
 //------------------------------------------------------------------------------
@@ -230,7 +306,7 @@ typedef std::shared_ptr<light> shared_ptr_light;
 //
 struct world
 {
-  std::vector<shared_ptr_object> vPtrObjects{};
+  std::vector<shared_ptr_shape> vPtrObjects{};
   std::vector<shared_ptr_light> vPtrLights{};
   int Count() const { return static_cast<int>(vPtrObjects.size()); }
 };
@@ -246,7 +322,7 @@ struct prepare_computation
   float t{};
   bool Inside{};  //!< Set to true when the eye is inside an object. Reverses the sign of the normal vector to ensure
                   //!< correct illumination.
-  shared_ptr_object pObject{};
+  shared_ptr_shape pShape{};
   tup Point{};
   tup Normal{};
   tup Eye{};
@@ -391,14 +467,21 @@ matrix TranslateScaleRotate(                   //!<
 );
 
 /// ---
-/// \fn Sphere releated functions
+/// \fn Shape releated functions
+/// NOTE: For test purposes a pointer to the internally calculcated ray is set up.
 /// ---
-intersections Intersect(shared_ptr_object Sphere, ray const &Ray);
+intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocalRayOutput = nullptr);
+intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
 
 /// ---
-/// \fn PtrDefaultSphere - Create a sphere and return shared pointer to this object.
+/// PtrDefaultSphere - Create a sphere and return shared pointer to this object.
 /// ---
-shared_ptr_object PtrDefaultSphere();
+shared_ptr_sphere PtrDefaultSphere();
+
+/// ---
+/// PtrDefaultPlane - Create a plane and return shared pointer to this object.
+/// ---
+shared_ptr_plane PtrDefaultPlane();
 
 /// ---
 /// Ray releated functions.
@@ -408,7 +491,7 @@ bool Equal(sphere const &A, sphere const &B);
 bool Equal(material const &A, material const &B);
 bool Equal(light const &A, light const &B);
 intersection Hit(intersections const &Intersections);
-intersection Intersection(float t, shared_ptr_object pObject);
+intersection Intersection(float t, shared_ptr_shape pObject);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersections &Intersections(intersections &XS, intersection const &I);
 ray Mul(matrix const &M, ray const &R);
@@ -419,8 +502,15 @@ ray Transform(ray const &R, matrix const &M);
 /// ---
 /// Surface normal functions
 /// ---
-tup NormalAt(object const &O, tup const &P);
+tup NormalAt(shape const &Shape, tup const &P);
+tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
+tup LocalNormalAt(plane const &Plane, tup const &LocalPoint);
 tup Reflect(tup const &In, tup const &Normal);
+
+/// ---
+/// Plane functions
+///
+tup Plane();
 
 /// ---
 /// Light functions
@@ -440,7 +530,7 @@ tup Lighting(material const &Material,    //!<
 /// \fn World - Create a default world with two spheres and a light.
 world World();
 intersections IntersectWorld(world const &World, ray const &Ray);
-void WorldAddObject(world &W, shared_ptr_object pObject);
+void WorldAddObject(world &W, shared_ptr_shape pObject);
 void WorldAddLight(world &W, shared_ptr_light pLight);
 
 /// ---
@@ -488,6 +578,40 @@ canvas Render(camera const &Camera, world const &World);
 // Shadow functions ------------------------------------------------------------
 //------------------------------------------------------------------------------
 bool IsShadowed(world const &World, tup const &Point);
+
+//------------------------------------------------------------------------------
+// Functions for testing planes.
+//------------------------------------------------------------------------------
+shape TestShape();
+
+shared_ptr_shape SharedPtrShape(shape const &Shape);
+
+//------------------------------------------------------------------------------
+// \fn SharedPtrSh
+//
+// \brief Create shape object shared pointer updated with the content of \param Sh.
+//
+// \desc This is a templated function (oh noooo).
+//
+// Function template instantiation
+//
+// A function template by itself is not a type, or a function, or any other entity. No code is generated from a source
+// file that contains only template definitions. In order for any code to appear, a template must be instantiated: the
+// template arguments must be determined so that the compiler can generate an actual function (or class, from a class
+// template).
+//------------------------------------------------------------------------------
+template <typename T>
+std::shared_ptr<T> SharedPtrSh(T const &Sh)
+{
+  std::shared_ptr<T> Ptr = std::make_shared<T>();
+  *Ptr = Sh;
+  return (Ptr);
+}
+
+template std::shared_ptr<cube> SharedPtrSh<cube>(cube const &Sh);
+template std::shared_ptr<plane> SharedPtrSh<plane>(plane const &Sh);
+template std::shared_ptr<shape> SharedPtrSh<shape>(shape const &Sh);
+template std::shared_ptr<sphere> SharedPtrSh<sphere>(sphere const &Sh);
 };  // namespace ww
 
 // ---
@@ -496,6 +620,7 @@ bool IsShadowed(world const &World, tup const &Point);
 std::ostream &operator<<(std::ostream &stream, const ww::tup &T);
 std::ostream &operator<<(std::ostream &stream, const ww::matrix &M);
 std::ostream &operator<<(std::ostream &stream, const ww::material &M);
+std::ostream &operator<<(std::ostream &stream, const ww::ray &R);
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S);
 ww::tup operator+(ww::tup const &A, ww::tup const &B);
 ww::tup operator-(ww::tup const &Tup);

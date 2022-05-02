@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.0) # setting this is required
+cmake_policy(SET CMP0048 NEW)
+project(RayTracingChallenge VERSION 1.9.0.0)
+
 
 if(UNIX AND NOT APPLE)
     set(LINUX TRUE)
