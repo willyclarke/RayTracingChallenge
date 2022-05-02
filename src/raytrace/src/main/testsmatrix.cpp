@@ -20,12 +20,6 @@
 
 namespace rtcch3
 {
-#include "testmatrixch1.cpp"
-#include "testmatrixch6.cpp"
-#include "testmatrixch7.cpp"
-#include "testmatrixch8.cpp"
-#include "testmatrixch9.cpp"
-
 struct run_matrix_test
 {
   //------------------------------------------------------------------------------
