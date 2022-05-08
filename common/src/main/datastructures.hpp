@@ -596,6 +596,7 @@ shared_ptr_shape SharedPtrShape(shape const &Shape);
 //-Functions for testing patterns.
 //------------------------------------------------------------------------------
 pattern StripePattern(tup const &C1, tup const &C2);
+tup StripeAt(pattern const &Pattern, tup const &Point);
 
 // \fn SharedPtrSh
 //

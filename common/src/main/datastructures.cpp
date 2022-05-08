@@ -1728,9 +1728,16 @@ tup Plane()
 /**
  * StripePattern
  */
-pattern StripePattern(tup const &C1, tup const &C2)
+pattern StripePattern(tup const &C1, tup const &C2) { return pattern{C1, C2}; }
+
+/**
+ * Return the color of the Pattern at the given Point.
+ */
+tup StripeAt(pattern const &Pattern, tup const &Point)
 {
-  return pattern{C1, C2};
+  tup Color{Pattern.B};
+  if (int(std::floorf(Point.X)) % 2 == 0) Color = Pattern.A;
+  return Color;
 }
 
 };  // namespace ww
