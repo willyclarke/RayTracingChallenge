@@ -1724,6 +1724,15 @@ tup Plane()
   tup Result{};
   return Result;
 }
+
+/**
+ * StripePattern
+ */
+pattern StripePattern(tup const &C1, tup const &C2)
+{
+  return pattern{C1, C2};
+}
+
 };  // namespace ww
 
 // ---

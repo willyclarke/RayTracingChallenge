@@ -349,6 +349,12 @@ struct camera
   };                            //!<
 };
 
+struct pattern
+{
+  tup A{};
+  tup B{};
+};
+
 //------------------------------------------------------------------------------
 // NOTE: Declarations.
 tup Add(tup const &A, tup const &B);
@@ -587,6 +593,10 @@ shape TestShape();
 shared_ptr_shape SharedPtrShape(shape const &Shape);
 
 //------------------------------------------------------------------------------
+//-Functions for testing patterns.
+//------------------------------------------------------------------------------
+pattern StripePattern(tup const &C1, tup const &C2);
+
 // \fn SharedPtrSh
 //
 // \brief Create shape object shared pointer updated with the content of \param Sh.
