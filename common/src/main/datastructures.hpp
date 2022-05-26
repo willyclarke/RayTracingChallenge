@@ -141,6 +141,13 @@ struct ray
 };
 
 //------------------------------------------------------------------------------
+struct pattern
+{
+  tup A{};
+  tup B{};
+};
+
+//------------------------------------------------------------------------------
 struct material
 {
   float Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
@@ -148,6 +155,7 @@ struct material
   float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
   float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
   tup Color{1.f, 1.f, 1.f, 0.f};
+  pattern Pattern{};
 };
 
 /// ---
@@ -347,12 +355,6 @@ struct camera
       tup{0.f, 0.f, 1.f, 0.f},  //!<
       tup{0.f, 0.f, 0.f, 1.f}   //!<
   };                            //!<
-};
-
-struct pattern
-{
-  tup A{};
-  tup B{};
 };
 
 //------------------------------------------------------------------------------
@@ -647,6 +649,8 @@ bool operator==(ww::intersection const &A, ww::intersection const &B);
 bool operator==(ww::light const &A, ww::light const &B);
 bool operator==(ww::material const &A, ww::material const &B);
 bool operator==(ww::matrix const &A, ww::matrix const &B);
+bool operator==(ww::pattern const &A, ww::pattern const &B);
+bool operator!=(ww::pattern const &A, ww::pattern const &B);
 bool operator==(ww::sphere const &A, ww::sphere const &B);
 bool operator==(ww::tup const &A, ww::tup const &B);
 #endif

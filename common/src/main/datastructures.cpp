@@ -1292,8 +1292,19 @@ tup Lighting(material const &Material,  //!<
 )
 {
   tup Result{};
+
+  // ---
+  // NOTE: Initialize to the material color, then check if a pattern has been applied.
+  // ---
+  tup Color = Material.Color;
+
+  if (Material.Pattern != pattern{})
+  {
+    Color = StripeAt(Material.Pattern, Position);
+  }
+
   // Combine the surface color with the light''s color/intensity.
-  tup const EffectiveColor = Material.Color * Light.Intensity;
+  tup const EffectiveColor = Color * Light.Intensity;
 
   // Find the direction to the light source.
   tup const vLight = Normalize(Light.Position - Position);
@@ -1313,8 +1324,8 @@ tup Lighting(material const &Material,  //!<
 
   if (LightDotNormal < 0.f)  // pointing away ...
   {
-    Diffuse = Color(0.f, 0.f, 0.f);
-    Specular = Color(0.f, 0.f, 0.f);
+    Diffuse = ww::Color(0.f, 0.f, 0.f);
+    Specular = ww::Color(0.f, 0.f, 0.f);
   }
   else
   {
@@ -1328,7 +1339,7 @@ tup Lighting(material const &Material,  //!<
     float const ReflectDotEye = Dot(vReflect, vEye);
     if (ReflectDotEye <= 0)
     {
-      Specular = Color(0.f, 0.f, 0.f);  // Black
+      Specular = ww::Color(0.f, 0.f, 0.f);  // Black
     }
     else
     {
@@ -1758,6 +1769,8 @@ bool operator==(ww::intersection const &A, ww::intersection const &B) { return (
 bool operator==(ww::material const &A, ww::material const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::matrix const &A, ww::matrix const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::light const &A, ww::light const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::pattern const &A, ww::pattern const &B) { return (ww::Equal(A.A, B.A) && ww::Equal(A.B, B.B)); }
+bool operator!=(ww::pattern const &A, ww::pattern const &B) { return !(ww::Equal(A.A, B.A) && ww::Equal(A.B, B.B)); }
 bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::tup const &A, ww::tup const &B) { return (ww::Equal(A, B)); }
 // ---
