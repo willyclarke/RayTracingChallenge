@@ -533,6 +533,7 @@ tup Plane();
 /// ---
 light PointLight(tup const &Position, tup const &Intensity);
 tup Lighting(material const &Material,    //!<
+             shape const &Object,         //!<
              light const &Light,          //!<
              tup const &Position,         //!<
              tup const &vEye,             //!<

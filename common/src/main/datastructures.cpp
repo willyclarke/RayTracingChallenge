@@ -1282,8 +1282,10 @@ light PointLight(tup const &Position, tup const &Intensity)
   Result.Intensity = Intensity;
   return (Result);
 }
+
 //------------------------------------------------------------------------------
 tup Lighting(material const &Material,  //!<
+             shape const &Object,       //!<
              light const &Light,        //!<
              tup const &Position,       //!<
              tup const &vEye,           //!<
@@ -1300,7 +1302,7 @@ tup Lighting(material const &Material,  //!<
 
   if (Material.Pattern != pattern{})
   {
-    Color = StripeAt(Material.Pattern, Position);
+    Color = StripeAtObject(Material.Pattern, Object, Position);
   }
 
   // Combine the surface color with the light''s color/intensity.
@@ -1502,6 +1504,7 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
     bool const Shadowed = IsShadowed(W, Comps.Point);
 
     tup C = Lighting(Comps.pShape->Material,  //!<
+                     *Comps.pShape,           //!<
                      WorldLight,              //!<
                      Comps.Point,             //!<
                      Comps.Eye,               //!<

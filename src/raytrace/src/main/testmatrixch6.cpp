@@ -169,7 +169,7 @@ TEST(Ch6LightAndShading, SphereLighting)
 
     ww::light const Light = ww::PointLight(ww::Point(0.f, 0.f, -10.f), ww::Color(1.f, 1.f, 1.f));
 
-    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    ww::tup Result = ww::Lighting(M, ww::sphere{}, Light, Position, vEye, vN);
     EXPECT_EQ(ww::Equal(Result, ww::Color(1.9f, 1.9f, 1.9f)), true);
   }
 
@@ -185,7 +185,7 @@ TEST(Ch6LightAndShading, SphereLighting)
 
     ww::light const Light = ww::PointLight(ww::Point(0.f, 0.f, -10.f), ww::Color(1.f, 1.f, 1.f));
 
-    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    ww::tup Result = ww::Lighting(M, ww::sphere{}, Light, Position, vEye, vN);
     EXPECT_EQ(ww::Equal(Result, ww::Color(1.0f, 1.0f, 1.0f)), true);
   }
 
@@ -203,7 +203,7 @@ TEST(Ch6LightAndShading, SphereLighting)
 
     ww::light const Light = ww::PointLight(ww::Point(0.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
 
-    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    ww::tup Result = ww::Lighting(M, ww::sphere{}, Light, Position, vEye, vN);
 
     // NOTE: From the book:
     // Because the angle between the light and the normal vectors has changed the diffuse
@@ -228,7 +228,7 @@ TEST(Ch6LightAndShading, SphereLighting)
 
     ww::light const Light = ww::PointLight(ww::Point(0.f, -10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
 
-    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    ww::tup Result = ww::Lighting(M, ww::sphere{}, Light, Position, vEye, vN);
     EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
   }
 
@@ -246,7 +246,7 @@ TEST(Ch6LightAndShading, SphereLighting)
 
     ww::light const Light = ww::PointLight(ww::Point(0.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
 
-    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    ww::tup Result = ww::Lighting(M, ww::sphere{}, Light, Position, vEye, vN);
     EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
   }
 
@@ -265,7 +265,7 @@ TEST(Ch6LightAndShading, SphereLighting)
 
     ww::light const Light = ww::PointLight(ww::Point(0.f, 0.f, 10.f), ww::Color(1.f, 1.f, 1.f));
 
-    ww::tup Result = ww::Lighting(M, Light, Position, vEye, vN);
+    ww::tup Result = ww::Lighting(M, ww::sphere{}, Light, Position, vEye, vN);
     EXPECT_EQ(ww::Equal(Result, ww::Color(ColorValue, ColorValue, ColorValue)), true);
   }
 }
@@ -317,7 +317,7 @@ TEST(Ch6LightAndShading, SpherePuttingItTogether)
           ww::tup const vNormal = ww::NormalAt(*S, Point);
           ww::tup const &vEye = -R.Direction;
 
-          Color = ww::Lighting(S->Material, Light, Point, vEye, vNormal);
+          Color = ww::Lighting(S->Material, ww::sphere{}, Light, Point, vEye, vNormal);
 
           // std::cout << "Got hit at " << WorldX << "," << WorldY << ". PixelPos:" << IdxX << "," << IdxY << std::endl;
           ww::WritePixel(Canvas, IdxX, IdxY, Color);
