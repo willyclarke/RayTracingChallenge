@@ -82,3 +82,50 @@ TEST(Ch10Patterns, LightingWithAPatternApplied)
   EXPECT_EQ(C1 == ww::Color(1.f, 1.f, 1.f), true);
   EXPECT_EQ(C2 == ww::Color(0.f, 0.f, 0.f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Stripes with an object transformation
+TEST(Ch10Patterns, StripesWithAnObjectTransformation)
+{
+  ww::sphere Object{};
+  Object.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  ww::pattern const Pattern = ww::StripePattern(White, Black);
+  ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(1.5f, 0.f, 0.f));
+
+  EXPECT_EQ(C == White, true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: Stripes with a pattern transformation
+TEST(Ch10Patterns, StripesWithAPatternTransformation)
+{
+  ww::sphere Object{};
+  Object.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+
+  ww::pattern Pattern = ww::StripePattern(White, Black);
+  Pattern.Transform = ww::Scaling(2.f, 2.f, 2.f);
+
+  ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(1.5f, 0.f, 0.f));
+
+  EXPECT_EQ(C == White, true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: Stripes with both an object and a pattern transformation
+TEST(Ch10Patterns, StripesWithBothAnObjectAndAPatternTransformation)
+{
+  ww::sphere Object{};
+  Object.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  ww::pattern Pattern = ww::StripePattern(White, Black);
+  Pattern.Transform = ww::Translation(0.5f, 0.f, 0.f);
+
+  ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(2.5f, 0.f, 0.f));
+
+  EXPECT_EQ(C == White, true);
+}

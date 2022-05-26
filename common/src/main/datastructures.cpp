@@ -1751,6 +1751,31 @@ tup StripeAt(pattern const &Pattern, tup const &Point)
   return Color;
 }
 
+/**
+ * Return the color for the given pattern on  the given object, at the given
+ * world-space point. Respects the transformations on both the pattern and the
+ * object when doing so.
+ */
+tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point)
+{
+  /**
+   * Multiply the given world-space point by the inverse of the objects
+   * transformation matrix to convert the point to object space.
+   */
+  tup const ObjectPoint = Inverse(Object.Transform) * Point;
+
+  /**
+   * Multiply the object-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ObjectPoint;
+
+  /**
+   * Use the original StripeAt function to get the color.
+   */
+  tup const Color = StripeAt(Pattern, PatternPoint);
+  return Color;
+}
 };  // namespace ww
 
 // ---

@@ -145,6 +145,14 @@ struct pattern
 {
   tup A{};
   tup B{};
+
+  //!< The transform of the object, initialize to identity matrix
+  matrix Transform{
+      tup{1.f, 0.f, 0.f, 0.f},  //!<
+      tup{0.f, 1.f, 0.f, 0.f},  //!<
+      tup{0.f, 0.f, 1.f, 0.f},  //!<
+      tup{0.f, 0.f, 0.f, 1.f}   //!<
+  };                            //!<
 };
 
 //------------------------------------------------------------------------------
@@ -599,6 +607,7 @@ shared_ptr_shape SharedPtrShape(shape const &Shape);
 //------------------------------------------------------------------------------
 pattern StripePattern(tup const &C1, tup const &C2);
 tup StripeAt(pattern const &Pattern, tup const &Point);
+tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
 
 // \fn SharedPtrSh
 //
