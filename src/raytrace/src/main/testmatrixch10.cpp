@@ -205,3 +205,11 @@ TEST(Ch10Patterns, AlmostThere)
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch10AlmostThere.ppm");
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The default pattern transformation.
+TEST(Ch10Patterns, TheDefaultPatternTransformation)
+{
+  ww::pattern const Pattern{};
+  EXPECT_EQ(Pattern.Transform == ww::I(), true);
+}
