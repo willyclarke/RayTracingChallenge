@@ -1740,6 +1740,16 @@ tup Plane()
 }
 
 /**
+ * Test Pattern
+ */
+pattern TestPattern()
+{
+  pattern Pattern{};
+  Pattern.Transform = Translation(1.f, 2.f, 3.f);
+  return Pattern;
+}
+
+/**
  * StripePattern
  */
 pattern StripePattern(tup const &C1, tup const &C2) { return pattern{C1, C2}; }

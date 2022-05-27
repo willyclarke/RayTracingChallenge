@@ -213,3 +213,11 @@ TEST(Ch10Patterns, TheDefaultPatternTransformation)
   ww::pattern const Pattern{};
   EXPECT_EQ(Pattern.Transform == ww::I(), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Assigning a transformation.
+TEST(Ch10Patterns, AssigningATransformation)
+{
+  ww::pattern const Pattern = ww::TestPattern();
+  EXPECT_EQ(Pattern.Transform == ww::Translation(1.f, 2.f, 3.f), true);
+}

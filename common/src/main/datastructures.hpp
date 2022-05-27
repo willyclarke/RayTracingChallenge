@@ -609,6 +609,7 @@ shared_ptr_shape SharedPtrShape(shape const &Shape);
 pattern StripePattern(tup const &C1, tup const &C2);
 tup StripeAt(pattern const &Pattern, tup const &Point);
 tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
+pattern TestPattern();
 
 // \fn SharedPtrSh
 //
