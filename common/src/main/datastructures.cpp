@@ -546,6 +546,9 @@ matrix Inverse(matrix const &M)
 
   // NOTE: The transposed matrix is not updated with the Determinant and the IsInvertible flag.
   Result = Transpose(Result);
+  Result.ID.IsInvertible = true;
+  Result.ID.Determinant = DetM;
+  Result.ID.IsComputed = true;
 
   return (Result);
 }
