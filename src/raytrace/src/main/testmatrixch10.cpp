@@ -221,3 +221,47 @@ TEST(Ch10Patterns, AssigningATransformation)
   ww::pattern const Pattern = ww::TestPattern();
   EXPECT_EQ(Pattern.Transform == ww::Translation(1.f, 2.f, 3.f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: A pattern with an object transformation.
+// NOTE: This test will only test that the scaling works for the
+//       PatternAtShape. Tweaks in PatternAtShape is neccessary
+//       for this to work. Test is described on page 178 of the Challenge.
+TEST(Ch10Patterns, APatternWithAnObjectTransformation)
+{
+  return;
+  ww::sphere Shape = *ww::PtrDefaultSphere();
+  Shape.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  ww::pattern Pattern = ww::TestPattern();
+  ww::tup const C = ww::PatternAtShape(Pattern, Shape, ww::Point(2.f, 3.f, 4.f));
+
+  EXPECT_EQ(C == ww::Color(1.f, 1.5f, 2.f), true);
+  EXPECT_EQ(Shape.isA<ww::sphere>() == true, true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: A pattern with a pattern transformation.
+TEST(Ch10Patterns, APatternWithAPatternTransformation)
+{
+  ww::sphere Shape = *ww::PtrDefaultSphere();
+  ww::pattern Pattern = ww::TestPattern();
+  Pattern.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  ww::tup const C = ww::PatternAtShape(Pattern, Shape, ww::Point(2.f, 3.f, 4.f));
+
+  EXPECT_EQ(C == ww::Color(1.f, 1.5f, 2.f), true);
+  EXPECT_EQ(Shape.isA<ww::sphere>() == true, true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: A pattern with both an object and a pattern transformation.
+TEST(Ch10Patterns, APatternWithBothAnObjectAndAPatternTransformation)
+{
+  ww::sphere Shape = *ww::PtrDefaultSphere();
+  Shape.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  ww::pattern Pattern = ww::TestPattern();
+  Pattern.Transform = ww::Translation(0.5f, 1.f, 1.5f);
+  ww::tup const C = ww::PatternAtShape(Pattern, Shape, ww::Point(2.5f, 3.f, 3.5f));
+
+  EXPECT_EQ(C == ww::Color(0.75f, 0.5f, 0.25f), true);
+  EXPECT_EQ(Shape.isA<ww::sphere>() == true, true);
+}

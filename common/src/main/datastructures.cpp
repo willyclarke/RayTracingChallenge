@@ -1789,6 +1789,35 @@ tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point)
   tup const Color = StripeAt(Pattern, PatternPoint);
   return Color;
 }
+
+/**
+ *
+ */
+tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
+{
+  Assert(Shape.Material.Pattern.funcPtrPatternAt != nullptr, __FILE__, __LINE__);
+  /**
+   * Multiply the given world-space point by the inverse of the objects
+   * transformation matrix to convert the point to object space.
+   */
+  tup const ShapePoint = Inverse(Shape.Transform) * Point;
+
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  tup const Color = Shape.Material.Pattern.funcPtrPatternAt(Pattern, PatternPoint);
+  return Color;
+}
+
+tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point)
+{
+  tup const C = Color(Point.X, Point.Y, Point.Z);
+  return C;
+}
+
 };  // namespace ww
 
 // ---

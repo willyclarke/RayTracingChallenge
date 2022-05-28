@@ -36,6 +36,19 @@ constexpr float EPSILON = 0.0035000;  // 1E27 * std::numeric_limits<float>::min(
 constexpr double PI = 3.141592653589793238463;
 constexpr float PI_F = 3.14159265358979f;
 
+/// ---
+/// \declarations
+/// ---
+struct cube;
+struct plane;
+struct shape;
+struct sphere;
+
+typedef std::shared_ptr<cube> shared_ptr_cube;
+typedef std::shared_ptr<plane> shared_ptr_plane;
+typedef std::shared_ptr<shape> shared_ptr_shape;
+typedef std::shared_ptr<sphere> shared_ptr_sphere;
+
 //------------------------------------------------------------------------------
 
 /**
@@ -140,6 +153,9 @@ struct ray
   tup Direction{1.f, 0.f, 0.f, 0.f};  //!< The direction. This is a vector in space.
 };
 
+struct pattern;
+tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point);
+
 //------------------------------------------------------------------------------
 struct pattern
 {
@@ -153,6 +169,9 @@ struct pattern
       tup{0.f, 0.f, 1.f, 0.f},  //!<
       tup{0.f, 0.f, 0.f, 1.f}   //!<
   };                            //!<
+  //
+  // //!< Function pointer for the pattern of a particular shape.
+  tup (*funcPtrPatternAt)(pattern const &Pattern, tup const &Point){&FuncDefaultPatternAt};
 };
 
 //------------------------------------------------------------------------------
@@ -165,19 +184,6 @@ struct material
   tup Color{1.f, 1.f, 1.f, 0.f};
   pattern Pattern{};
 };
-
-/// ---
-/// \declarations
-/// ---
-struct cube;
-struct plane;
-struct shape;
-struct sphere;
-
-typedef std::shared_ptr<cube> shared_ptr_cube;
-typedef std::shared_ptr<plane> shared_ptr_plane;
-typedef std::shared_ptr<shape> shared_ptr_shape;
-typedef std::shared_ptr<sphere> shared_ptr_sphere;
 
 /// ---
 /// \struct intersection
@@ -610,6 +616,7 @@ pattern StripePattern(tup const &C1, tup const &C2);
 tup StripeAt(pattern const &Pattern, tup const &Point);
 tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
 pattern TestPattern();
+tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point);
 
 // \fn SharedPtrSh
 //
