@@ -23,11 +23,12 @@ TEST(Ch10Patterns, AStripePatternIsConstantInY)
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
 
-  ww::pattern const Pattern = ww::StripePattern(White, Black);
+  ww::pattern Pattern = ww::StripePattern(White, Black);
+  Pattern.funcPtrPatternAt = &ww::StripeAt;
 
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.f, 1.f, 0.f)) == White, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.f, 2.f, 0.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 1.f, 0.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 2.f, 0.f)) == White, true);
 }
 
 //------------------------------------------------------------------------------
@@ -37,11 +38,12 @@ TEST(Ch10Patterns, AStripePatternIsConstantInZ)
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
 
-  ww::pattern const Pattern = ww::StripePattern(White, Black);
+  ww::pattern Pattern = ww::StripePattern(White, Black);
+  Pattern.funcPtrPatternAt = &ww::StripeAt;
 
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.f, 0.f, 1.f)) == White, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.f, 0.f, 2.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 1.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 2.f)) == White, true);
 }
 
 //------------------------------------------------------------------------------
@@ -51,14 +53,15 @@ TEST(Ch10Patterns, AStripePatternAlternatesInX)
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
 
-  ww::pattern const Pattern = ww::StripePattern(White, Black);
+  ww::pattern Pattern = ww::StripePattern(White, Black);
+  Pattern.funcPtrPatternAt = &ww::StripeAt;
 
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(0.9f, 0.f, 0.f)) == White, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(1.f, 0.f, 0.f)) == Black, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(-0.1f, 0.f, 0.f)) == Black, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(-1.f, 0.f, 0.f)) == Black, true);
-  EXPECT_EQ(ww::StripeAt(Pattern, ww::Point(-1.1f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.9f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(1.f, 0.f, 0.f)) == Black, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(-0.1f, 0.f, 0.f)) == Black, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(-1.f, 0.f, 0.f)) == Black, true);
+  EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(-1.1f, 0.f, 0.f)) == White, true);
 }
 
 //------------------------------------------------------------------------------
@@ -67,6 +70,7 @@ TEST(Ch10Patterns, LightingWithAPatternApplied)
 {
   ww::material Material{};
   Material.Pattern = ww::StripePattern(ww::Color(1.f, 1.f, 1.f), ww::Color(0.f, 0.f, 0.f));
+  Material.Pattern.funcPtrPatternAt = &ww::StripeAt;
   Material.Ambient = 1.f;
   Material.Diffuse = 0.f;
   Material.Specular = 0.f;
@@ -91,7 +95,8 @@ TEST(Ch10Patterns, StripesWithAnObjectTransformation)
   Object.Transform = ww::Scaling(2.f, 2.f, 2.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
-  ww::pattern const Pattern = ww::StripePattern(White, Black);
+  ww::pattern Pattern = ww::StripePattern(White, Black);
+  Pattern.funcPtrPatternAt = ww::StripeAt;
   ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(1.5f, 0.f, 0.f));
 
   EXPECT_EQ(C == White, true);
@@ -108,6 +113,7 @@ TEST(Ch10Patterns, StripesWithAPatternTransformation)
 
   ww::pattern Pattern = ww::StripePattern(White, Black);
   Pattern.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  Pattern.funcPtrPatternAt = ww::StripeAt;
 
   ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(1.5f, 0.f, 0.f));
 
@@ -124,6 +130,7 @@ TEST(Ch10Patterns, StripesWithBothAnObjectAndAPatternTransformation)
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::pattern Pattern = ww::StripePattern(White, Black);
   Pattern.Transform = ww::Translation(0.5f, 0.f, 0.f);
+  Pattern.funcPtrPatternAt = ww::StripeAt;
 
   ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(2.5f, 0.f, 0.f));
 
@@ -157,6 +164,7 @@ TEST(Ch10Patterns, AlmostThere)
   Middle.Material.Specular = 0.3f;
   Middle.Material.Pattern = ww::StripePattern(White, Black);
   Middle.Material.Pattern.Transform = ww::Scaling(0.15f, 0.5f, 0.5f) * ww::RotateZ(0.78);
+  Middle.Material.Pattern.funcPtrPatternAt = ww::StripeAt;
   World.vPtrObjects.push_back(PtrMiddle);
 
   ww::shared_ptr_shape PtrLeft = ww::PtrDefaultSphere();

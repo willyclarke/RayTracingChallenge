@@ -653,6 +653,7 @@ std::ostream &operator<<(std::ostream &stream, const ww::matrix &M);
 std::ostream &operator<<(std::ostream &stream, const ww::material &M);
 std::ostream &operator<<(std::ostream &stream, const ww::ray &R);
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S);
+std::ostream &operator<<(std::ostream &stream, const ww::pattern &P);
 ww::tup operator+(ww::tup const &A, ww::tup const &B);
 ww::tup operator-(ww::tup const &Tup);
 ww::tup operator-(ww::tup const &A, ww::tup const &B);

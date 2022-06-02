@@ -109,6 +109,12 @@ std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
   return stream;
 }
 
+std::ostream &operator<<(std::ostream &stream, const ww::pattern &P)
+{
+  stream << "\nPattern\nC1:" << P.A << ". C2:" << P.B << "\nTransform:\n" << P.Transform << "\n-----" << std::endl;
+  return stream;
+}
+
 namespace ww
 {
 //------------------------------------------------------------------------------
@@ -1305,7 +1311,7 @@ tup Lighting(material const &Material,  //!<
 
   if (Material.Pattern != pattern{})
   {
-    Color = StripeAtObject(Material.Pattern, Object, Position);
+    Color = Material.Pattern.funcPtrPatternAt(Material.Pattern, Position);
   }
 
   // Combine the surface color with the light''s color/intensity.
@@ -1771,25 +1777,12 @@ tup StripeAt(pattern const &Pattern, tup const &Point)
  * Return the color for the given pattern on  the given object, at the given
  * world-space point. Respects the transformations on both the pattern and the
  * object when doing so.
+ * This function works by calling PatternAtShape. The Object referenced need
+ * to have its material set up with a proper function to a pattern.
  */
 tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point)
 {
-  /**
-   * Multiply the given world-space point by the inverse of the objects
-   * transformation matrix to convert the point to object space.
-   */
-  tup const ObjectPoint = Inverse(Object.Transform) * Point;
-
-  /**
-   * Multiply the object-space point by the inverse of the pattern's
-   * transformation matrix to convert that point to the Pattern space.
-   */
-  tup const PatternPoint = Inverse(Pattern.Transform) * ObjectPoint;
-
-  /**
-   * Use the original StripeAt function to get the color.
-   */
-  tup const Color = StripeAt(Pattern, PatternPoint);
+  tup const Color = PatternAtShape(Pattern, Object, Point);
   return Color;
 }
 
@@ -1811,10 +1804,13 @@ tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
    */
   tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
 
-  tup const Color = Shape.Material.Pattern.funcPtrPatternAt(Pattern, PatternPoint);
+  tup const Color = Pattern.funcPtrPatternAt(Pattern, PatternPoint);
   return Color;
 }
 
+/**
+ * Default function for pattern, used as initializer in CTOR.
+ */
 tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point)
 {
   tup const C = Color(Point.X, Point.Y, Point.Z);
