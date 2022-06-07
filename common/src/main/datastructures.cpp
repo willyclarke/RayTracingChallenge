@@ -1817,6 +1817,29 @@ tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point)
   return C;
 }
 
+/**
+ */
+tup PatternAt(pattern const &Pattern, tup const &Point)
+{
+  return Pattern.funcPtrPatternAt(Pattern, Point);
+}
+
+/**
+ * A Linear extrapolation pattern, LERP.
+ * Calculate a distance beetween the two colors and use the Distance
+ * in the X direction to compute a fraction that multiplied with the
+ * Distance will produce a color in between the two colors of the
+ * gradient.
+ */
+tup GradientPatternAt(pattern const &Pattern, tup const &Point)
+{
+  pattern const &Gradient = Pattern;
+  tup const Distance = Gradient.B - Gradient.A;
+  float const Fraction = Point.X - std::floorf(Point.X);
+  tup const Color = Gradient.A + Distance * Fraction;
+  return Color;
+}
+
 };  // namespace ww
 
 // ---

@@ -617,6 +617,8 @@ tup StripeAt(pattern const &Pattern, tup const &Point);
 tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
 pattern TestPattern();
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point);
+tup PatternAt(pattern const &Pattern, tup const &Point);
+tup GradientPatternAt(pattern const &Pattern, tup const &Point);
 
 // \fn SharedPtrSh
 //

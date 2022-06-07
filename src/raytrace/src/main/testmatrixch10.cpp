@@ -273,3 +273,17 @@ TEST(Ch10Patterns, APatternWithBothAnObjectAndAPatternTransformation)
   EXPECT_EQ(C == ww::Color(0.75f, 0.5f, 0.25f), true);
   EXPECT_EQ(Shape.isA<ww::sphere>() == true, true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: A gradient lineaerly interpolates between colors.
+TEST(Ch10Patterns, AGradientLinearlyInterpolatesBetweenColors)
+{
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  ww::pattern Pattern{White, Black};
+  Pattern.funcPtrPatternAt = &ww::GradientPatternAt;
+  EXPECT_EQ(ww::PatternAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(Pattern, ww::Point(0.25f, 0.f, 0.f)) == ww::Color(0.75f, 0.75f, 0.75f), true);
+  EXPECT_EQ(ww::PatternAt(Pattern, ww::Point(0.5f, 0.f, 0.f)) == ww::Color(0.5f, 0.5f, 0.5f), true);
+  EXPECT_EQ(ww::PatternAt(Pattern, ww::Point(0.75f, 0.f, 0.f)) == ww::Color(0.25f, 0.25f, 0.25f), true);
+}
