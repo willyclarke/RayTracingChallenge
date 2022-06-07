@@ -619,6 +619,7 @@ pattern TestPattern();
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point);
 tup PatternAt(pattern const &Pattern, tup const &Point);
 tup GradientPatternAt(pattern const &Pattern, tup const &Point);
+tup RingPatternAt(pattern const &Pattern, tup const &Point);
 
 // \fn SharedPtrSh
 //

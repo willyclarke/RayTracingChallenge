@@ -287,3 +287,23 @@ TEST(Ch10Patterns, AGradientLinearlyInterpolatesBetweenColors)
   EXPECT_EQ(ww::PatternAt(Pattern, ww::Point(0.5f, 0.f, 0.f)) == ww::Color(0.5f, 0.5f, 0.5f), true);
   EXPECT_EQ(ww::PatternAt(Pattern, ww::Point(0.75f, 0.f, 0.f)) == ww::Color(0.25f, 0.25f, 0.25f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: A ring should extend in both x and z.
+TEST(Ch10Patterns, ARingShouldExtendInBothXandZ)
+{
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+
+  ww::pattern RingPattern{White, Black};
+  RingPattern.funcPtrPatternAt = &ww::RingPatternAt;
+
+  EXPECT_EQ(ww::PatternAt(RingPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(RingPattern, ww::Point(1.f, 0.f, 0.f)) == Black, true);
+  EXPECT_EQ(ww::PatternAt(RingPattern, ww::Point(0.f, 0.f, 1.f)) == Black, true);
+
+  // ---
+  // NOTE: 0.708 is slightly more than sqrt(2)/2.
+  // ---
+  EXPECT_EQ(ww::PatternAt(RingPattern, ww::Point(0.708f, 0.f, 0.708f)) == Black, true);
+}

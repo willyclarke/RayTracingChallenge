@@ -1819,10 +1819,7 @@ tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point)
 
 /**
  */
-tup PatternAt(pattern const &Pattern, tup const &Point)
-{
-  return Pattern.funcPtrPatternAt(Pattern, Point);
-}
+tup PatternAt(pattern const &Pattern, tup const &Point) { return Pattern.funcPtrPatternAt(Pattern, Point); }
 
 /**
  * A Linear extrapolation pattern, LERP.
@@ -1840,6 +1837,16 @@ tup GradientPatternAt(pattern const &Pattern, tup const &Point)
   return Color;
 }
 
+/**
+ * A ring pattern depends on the X and Z dimension.
+ */
+tup RingPatternAt(pattern const &Pattern, tup const &Point)
+{
+  float const Hyp = std::sqrtf(Point.X * Point.X + Point.Z * Point.Z);
+  int const Floor = int(std::floorf(Hyp)) % 2;
+  tup const Color = Floor == 0 ? Pattern.A : Pattern.B;
+  return Color;
+}
 };  // namespace ww
 
 // ---
