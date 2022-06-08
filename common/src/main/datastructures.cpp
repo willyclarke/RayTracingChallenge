@@ -1847,6 +1847,16 @@ tup RingPatternAt(pattern const &Pattern, tup const &Point)
   tup const Color = Floor == 0 ? Pattern.A : Pattern.B;
   return Color;
 }
+
+/**
+ * Get a pattern of alternating cubes by taking the sum of all directions mod 2.
+ */
+tup CheckersPatternAt(pattern const &Pattern, tup const &Point)
+{
+  int const Floor = int(std::floorf(Point.X)) + int(std::floorf(Point.Y)) + int(std::floorf(Point.Z));
+  tup const Color = (0 == Floor % 2) ? Pattern.A : Pattern.B;
+  return Color;
+}
 };  // namespace ww
 
 // ---

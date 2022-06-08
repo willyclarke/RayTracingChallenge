@@ -307,3 +307,51 @@ TEST(Ch10Patterns, ARingShouldExtendInBothXandZ)
   // ---
   EXPECT_EQ(ww::PatternAt(RingPattern, ww::Point(0.708f, 0.f, 0.708f)) == Black, true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Checkers should repeat in x.
+TEST(Ch10Patterns, CheckersShouldRepeatInX)
+{
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+
+  // ---
+  // NOTE: Use default CTOR to set up pointer to function.
+  // ---
+  ww::pattern CheckersPattern{White, Black, ww::I(), &ww::CheckersPatternAt};
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.99f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(1.01f, 0.f, 0.f)) == Black, true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: Checkers should repeat in y.
+TEST(Ch10Patterns, CheckersShouldRepeatInY)
+{
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+
+  // ---
+  // NOTE: Use default CTOR to set up pointer to function.
+  // ---
+  ww::pattern CheckersPattern{White, Black, ww::I(), &ww::CheckersPatternAt};
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.99f, 0.f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 1.01f, 0.f)) == Black, true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: Checkers should repeat in z.
+TEST(Ch10Patterns, CheckersShouldRepeatInZ)
+{
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+
+  // ---
+  // NOTE: Use default CTOR to set up pointer to function.
+  // ---
+  ww::pattern CheckersPattern{White, Black, ww::I(), &ww::CheckersPatternAt};
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.99f)) == White, true);
+  EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 1.01f)) == Black, true);
+}
