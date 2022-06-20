@@ -1759,9 +1759,58 @@ pattern TestPattern()
 }
 
 /**
- * StripePattern
  */
-pattern StripePattern(tup const &C1, tup const &C2) { return pattern{C1, C2}; }
+pattern StripePattern(tup const &C1, tup const &C2)
+{
+  pattern P{C1, C2};
+  P.funcPtrPatternAt = StripeAt;
+  return P;
+}
+
+/**
+ */
+pattern CheckersPattern(tup const &C1, tup const &C2)
+{
+  pattern P{C1, C2};
+  P.funcPtrPatternAt = CheckersPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern CheckersGradientPattern(tup const &C1, tup const &C2)
+{
+  pattern P{C1, C2};
+  P.funcPtrPatternAt = CheckersGradientPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern RingPattern(tup const &C1, tup const &C2)
+{
+  pattern P{C1, C2};
+  P.funcPtrPatternAt = RingPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern RadialGradientPattern(tup const &C1, tup const &C2)
+{
+  pattern P{C1, C2};
+  P.funcPtrPatternAt = RadialGradientPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern GradientPattern(tup const &C1, tup const &C2)
+{
+  pattern P{C1, C2};
+  P.funcPtrPatternAt = GradientPatternAt;
+  return P;
+}
 
 /**
  * Return the color of the Pattern at the given Point.
@@ -1849,12 +1898,33 @@ tup RingPatternAt(pattern const &Pattern, tup const &Point)
 }
 
 /**
+ * A radial/ring pattern with a gradient. Depends on the X and Z dimension.
+ */
+tup RadialGradientPatternAt(pattern const &Pattern, tup const &Point)
+{
+  float const Hyp = std::sqrtf(Point.X * Point.X + Point.Z * Point.Z);
+  int const Floor = int(std::floorf(Hyp)) % 2;
+  tup const Color = Floor == 0 ? RingPatternAt(Pattern, Point) : GradientPatternAt(Pattern, Point);
+  return Color;
+}
+
+/**
  * Get a pattern of alternating cubes by taking the sum of all directions mod 2.
  */
 tup CheckersPatternAt(pattern const &Pattern, tup const &Point)
 {
   int const Floor = int(std::floorf(Point.X)) + int(std::floorf(Point.Y)) + int(std::floorf(Point.Z));
   tup const Color = (0 == Floor % 2) ? Pattern.A : Pattern.B;
+  return Color;
+}
+
+/**
+ * Get a pattern with gradient of alternating cubes by taking the sum of all directions mod 2.
+ */
+tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point)
+{
+  int const Floor = int(std::floorf(Point.X)) + int(std::floorf(Point.Y)) + int(std::floorf(Point.Z));
+  tup const Color = (0 == Floor % 2) ? CheckersPatternAt(Pattern, Point) : GradientPatternAt(Pattern, Point);
   return Color;
 }
 };  // namespace ww

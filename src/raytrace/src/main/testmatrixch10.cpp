@@ -24,7 +24,6 @@ TEST(Ch10Patterns, AStripePatternIsConstantInY)
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
 
   ww::pattern Pattern = ww::StripePattern(White, Black);
-  Pattern.funcPtrPatternAt = &ww::StripeAt;
 
   EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 1.f, 0.f)) == White, true);
@@ -39,7 +38,6 @@ TEST(Ch10Patterns, AStripePatternIsConstantInZ)
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
 
   ww::pattern Pattern = ww::StripePattern(White, Black);
-  Pattern.funcPtrPatternAt = &ww::StripeAt;
 
   EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 1.f)) == White, true);
@@ -54,7 +52,6 @@ TEST(Ch10Patterns, AStripePatternAlternatesInX)
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
 
   ww::pattern Pattern = ww::StripePattern(White, Black);
-  Pattern.funcPtrPatternAt = &ww::StripeAt;
 
   EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(Pattern.funcPtrPatternAt(Pattern, ww::Point(0.9f, 0.f, 0.f)) == White, true);
@@ -70,7 +67,6 @@ TEST(Ch10Patterns, LightingWithAPatternApplied)
 {
   ww::material Material{};
   Material.Pattern = ww::StripePattern(ww::Color(1.f, 1.f, 1.f), ww::Color(0.f, 0.f, 0.f));
-  Material.Pattern.funcPtrPatternAt = &ww::StripeAt;
   Material.Ambient = 1.f;
   Material.Diffuse = 0.f;
   Material.Specular = 0.f;
@@ -96,7 +92,6 @@ TEST(Ch10Patterns, StripesWithAnObjectTransformation)
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::pattern Pattern = ww::StripePattern(White, Black);
-  Pattern.funcPtrPatternAt = ww::StripeAt;
   ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(1.5f, 0.f, 0.f));
 
   EXPECT_EQ(C == White, true);
@@ -113,7 +108,6 @@ TEST(Ch10Patterns, StripesWithAPatternTransformation)
 
   ww::pattern Pattern = ww::StripePattern(White, Black);
   Pattern.Transform = ww::Scaling(2.f, 2.f, 2.f);
-  Pattern.funcPtrPatternAt = ww::StripeAt;
 
   ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(1.5f, 0.f, 0.f));
 
@@ -130,7 +124,6 @@ TEST(Ch10Patterns, StripesWithBothAnObjectAndAPatternTransformation)
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::pattern Pattern = ww::StripePattern(White, Black);
   Pattern.Transform = ww::Translation(0.5f, 0.f, 0.f);
-  Pattern.funcPtrPatternAt = ww::StripeAt;
 
   ww::tup const C = ww::StripeAtObject(Pattern, Object, ww::Point(2.5f, 0.f, 0.f));
 
@@ -164,7 +157,6 @@ TEST(Ch10Patterns, AlmostThere)
   Middle.Material.Specular = 0.3f;
   Middle.Material.Pattern = ww::StripePattern(White, Black);
   Middle.Material.Pattern.Transform = ww::Scaling(0.15f, 0.5f, 0.5f) * ww::RotateZ(0.78);
-  Middle.Material.Pattern.funcPtrPatternAt = ww::StripeAt;
   World.vPtrObjects.push_back(PtrMiddle);
 
   ww::shared_ptr_shape PtrLeft = ww::PtrDefaultSphere();
@@ -354,4 +346,89 @@ TEST(Ch10Patterns, CheckersShouldRepeatInZ)
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.99f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 1.01f)) == Black, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch10Patterns, PuttingItTogether)
+{
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  ww::tup const Red = ww::Color(1.f, 0.f, 0.f);
+  ww::tup const Green = ww::Color(0.f, 1.f, 0.f);
+  ww::tup const Blue = ww::Color(0.f, 0.f, 1.f);
+  ww::tup const Yellow = ww::Color(0.f, .5f, .5f);
+
+  ww::shared_ptr_shape PtrRight = ww::PtrDefaultSphere();
+  ww::shape &Right = *PtrRight;
+  Right.Transform = ww::Translation(1.5f, 2.5f, -1.0f) *  //!<
+                    ww::Scaling(0.5f, 0.5f, 0.5f);
+  Right.Material.Color = ww::Color(0.5f, 1.0f, 0.1f);
+  Right.Material.Diffuse = 0.7f;
+  Right.Material.Specular = 0.3f;
+  Right.Material.Pattern = ww::GradientPattern(Blue, Red);
+  World.vPtrObjects.push_back(PtrRight);
+
+  ww::shared_ptr_shape PtrMiddle = ww::PtrDefaultSphere();
+  ww::shape &Middle = *PtrMiddle;
+  Middle.Transform = ww::Translation(0.f, 1.f, 0.0f);
+  Middle.Material.Color = ww::Color(0.1f, 1.0f, 0.5f);
+  Middle.Material.Diffuse = 0.7f;
+  Middle.Material.Specular = 0.3f;
+  Middle.Material.Pattern = ww::CheckersPattern(White, Green);
+  Middle.Material.Pattern.Transform = ww::Scaling(0.15f, 0.5f, 0.5f) * ww::RotateZ(0.78);
+  World.vPtrObjects.push_back(PtrMiddle);
+
+  ww::shared_ptr_shape PtrLeft = ww::PtrDefaultSphere();
+  ww::shape &Left = *PtrLeft;
+  Left.Transform = ww::Translation(-2.66f, 1.33f, 0.f) *  //!<
+                   ww::Scaling(1.33f, 1.33f, 1.33f);
+  Left.Material.Color = ww::Color(0.0f, 0.8f, 0.1f);
+  Left.Material.Diffuse = 0.7f;
+  Left.Material.Specular = 0.3f;
+  Left.Material.Pattern = ww::RingPattern(White, Blue);
+  World.vPtrObjects.push_back(PtrLeft);
+
+  // Add the first plane
+  ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
+  ptrPlane->Transform = ww::Translation(0.f, 0.f, 0.f)  //!<
+                                                        // * ww::RotateX(0 * M_PI_2)       //!<
+      ;                                                 //!<
+  ptrPlane->Material.Shininess = 10.f;
+  ptrPlane->Material.Diffuse = 0.5f;
+  ptrPlane->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  ptrPlane->Material.Pattern = ww::RadialGradientPattern(Red, Green);
+  World.vPtrObjects.push_back(ptrPlane);
+
+  // Add a second plane - this will act as the backdrop.
+  ww::shared_ptr_plane ptrPlane2 = ww::PtrDefaultPlane();
+  ptrPlane2->Transform = ww::Translation(0.f, 0.f, 10.f)  //!<
+                                                          // ww::RotateY(M_PI_4) *             //!<
+                         * ww::RotateX(1 * M_PI_2)        //!<
+      ;                                                   //!<
+  ptrPlane2->Material.Shininess = 100.f;
+  ptrPlane2->Material.Diffuse = 0.7f;
+  ptrPlane2->Material.Color =
+      ww::Color(float(0x2f) / float(0xff), float(0xb5) / float(0xff), float(0xff) / float(0xff));
+  ptrPlane2->Material.Pattern = ww::CheckersGradientPattern(White, Yellow);
+  World.vPtrObjects.push_back(ptrPlane2);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(0.f, 5.f, -5.f), ww::Color(2.f, 2.f, 2.f));
+  World.vPtrLights.push_back(pLight);
+
+  float const FieldOfView = 75.f / 180.f * M_PI;
+  ww::camera Camera = ww::Camera(256, 256, FieldOfView);
+
+  ww::tup const ViewFrom = ww::Point(0.f, 1.5f, -5.f);
+  ww::tup const ViewTo = ww::Point(0.f, 0.f, 2.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "Ch10PuttingItTogether.ppm");
 }

@@ -612,15 +612,22 @@ shared_ptr_shape SharedPtrShape(shape const &Shape);
 //------------------------------------------------------------------------------
 //-Functions for testing patterns.
 //------------------------------------------------------------------------------
+pattern CheckersPattern(tup const &C1, tup const &C2);
+pattern CheckersGradientPattern(tup const &C1, tup const &C2);
+pattern GradientPattern(tup const &C1, tup const &C2);
+pattern RingPattern(tup const &C1, tup const &C2);
+pattern RadialGradientPattern(tup const &C1, tup const &C2);
 pattern StripePattern(tup const &C1, tup const &C2);
+pattern TestPattern();
 tup StripeAt(pattern const &Pattern, tup const &Point);
 tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
-pattern TestPattern();
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point);
 tup PatternAt(pattern const &Pattern, tup const &Point);
 tup GradientPatternAt(pattern const &Pattern, tup const &Point);
 tup RingPatternAt(pattern const &Pattern, tup const &Point);
+tup RadialGradientPatternAt(pattern const &Pattern, tup const &Point);
 tup CheckersPatternAt(pattern const &Pattern, tup const &Point);
+tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point);
 
 // \fn SharedPtrSh
 //
