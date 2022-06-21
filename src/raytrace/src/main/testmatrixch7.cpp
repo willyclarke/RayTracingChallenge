@@ -1,5 +1,8 @@
 #include "gtest/gtest.h"
 #include <datastructures.hpp>
+
+#include <cmath>
+
 //------------------------------------------------------------------------------
 // Scenario: Creating a world, an empty one...
 TEST(Ch7MakingAScene, CreateAWorld)
@@ -90,7 +93,7 @@ TEST(Ch7MakingAScene, IntersectWorldWithRay)
   // Assert(XS.Count() == -1, __FUNCTION__, __LINE__); // NOTE: for debugging
 }
 
-#if 0
+#if 1
 //------------------------------------------------------------------------------
 TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
 {
