@@ -156,6 +156,14 @@ struct ray
 struct pattern;
 tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point);
 
+/// ---
+/// Surface normal functions
+/// ---
+tup NormalAt(shape const &Shape, tup const &P);
+tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
+tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint);
+tup Reflect(tup const &In, tup const &Normal);
+
 //------------------------------------------------------------------------------
 struct pattern
 {
@@ -247,6 +255,9 @@ struct shape
 
   //!< Function pointer for the local intersect
   intersections (*funcPtrLocalIntersect)(shared_ptr_shape PtrShape, ray const &RayIn){};
+
+  //!< Function pointer for the Local Normal at a point. Defaults to normal of sphere.
+  tup (*funcPtrLocalNormalAt)(shape const &Shape, tup const &PointIn){&LocalNormalAt};
 };
 
 /// ---
@@ -520,14 +531,6 @@ ray Mul(matrix const &M, ray const &R);
 tup PositionAt(ray const &R, float t);
 ray Ray(tup const &P, tup const &V);
 ray Transform(ray const &R, matrix const &M);
-
-/// ---
-/// Surface normal functions
-/// ---
-tup NormalAt(shape const &Shape, tup const &P);
-tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
-tup LocalNormalAt(plane const &Plane, tup const &LocalPoint);
-tup Reflect(tup const &In, tup const &Normal);
 
 /// ---
 /// Plane functions

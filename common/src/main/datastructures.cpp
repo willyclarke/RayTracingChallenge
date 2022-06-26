@@ -1248,7 +1248,7 @@ tup LocalNormalAt(shape const &Shape, tup const &LocalPoint)
 /**
  * The local normal for a plane is always 0, 1, 0.
  */
-tup LocalNormalAt(plane const &Plane, tup const &LocalPoint)
+tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
 {
   tup const Result{Vector(0.f, 1.f, 0.f)};
   return Result;
@@ -1262,7 +1262,8 @@ tup LocalNormalAt(plane const &Plane, tup const &LocalPoint)
 tup NormalAt(shape const &Shape, tup const &PointInput)
 {
   tup const LocalPoint = Inverse(Shape.Transform) * PointInput;
-  tup const LocalNormal = LocalNormalAt(Shape, LocalPoint);
+  // tup const LocalNormal = LocalNormalAt(Shape, LocalPoint);
+  tup const LocalNormal = Shape.funcPtrLocalNormalAt(Shape, LocalPoint);
   tup WorldNormal = Transpose(Inverse(Shape.Transform)) * LocalNormal;
   WorldNormal.W = 0.f;
 
@@ -1457,6 +1458,7 @@ shared_ptr_plane PtrDefaultPlane()
   ww::plane P{};
   std::shared_ptr<ww::plane> pPlane = ww::SharedPtrSh<ww::plane>(P);
   pPlane->funcPtrLocalIntersect = &ww::LocalIntersectPlane;
+  pPlane->funcPtrLocalNormalAt = &ww::LocalNormalAtPlane;
   return (pPlane);
 }
 

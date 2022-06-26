@@ -133,12 +133,30 @@ TEST(Ch9Planes, CheckThatASphereIsAShape)
 TEST(Ch9Planes, CheckThanNormalOnPlaneIsConstant)
 {
   ww::plane P{};
-  ww::tup N1 = ww::LocalNormalAt(P, ww::Point(0.f, 0.f, 0.f));
-  ww::tup N2 = ww::LocalNormalAt(P, ww::Point(10.f, 0.f, -10.f));
-  ww::tup N3 = ww::LocalNormalAt(P, ww::Point(-5.f, 0.f, 150.f));
+  P.funcPtrLocalNormalAt = ww::LocalNormalAtPlane;
+  ww::tup N1 = ww::LocalNormalAtPlane(P, ww::Point(0.f, 0.f, 0.f));
+  ww::tup N2 = ww::LocalNormalAtPlane(P, ww::Point(10.f, 0.f, -10.f));
+  ww::tup N3 = ww::LocalNormalAtPlane(P, ww::Point(-5.f, 0.f, 150.f));
   EXPECT_EQ(N1 == ww::Vector(0.f, 1.f, 0.f), true);
   EXPECT_EQ(N2 == ww::Vector(0.f, 1.f, 0.f), true);
   EXPECT_EQ(N3 == ww::Vector(0.f, 1.f, 0.f), true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: Test that the shape's local NormalAt can be assigned.
+TEST(Ch9Planes, CheckThatNormaFuncPointerOfShapeCanBeAssigned)
+{
+  ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
+  ww::plane &P = *ptrPlane;
+  ww::tup N1 = ww::NormalAt(P, ww::Point(0.f, 0.f, 0.f));
+  ww::tup N2 = ww::NormalAt(P, ww::Point(10.f, 0.f, -10.f));
+  ww::tup N3 = ww::NormalAt(P, ww::Point(-5.f, 0.f, 150.f));
+  ww::tup N4 = ww::NormalAt(P, ww::Point(0.f, 0.f, 0.f));
+
+  EXPECT_EQ(N1 == ww::Vector(0.f, 1.f, 0.f), true);
+  EXPECT_EQ(N2 == ww::Vector(0.f, 1.f, 0.f), true);
+  EXPECT_EQ(N3 == ww::Vector(0.f, 1.f, 0.f), true);
+  EXPECT_EQ(N4 == ww::Vector(0.f, 1.f, 0.f), true);
 }
 
 //------------------------------------------------------------------------------
