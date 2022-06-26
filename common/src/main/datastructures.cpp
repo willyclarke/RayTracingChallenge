@@ -1761,6 +1761,15 @@ pattern TestPattern()
 }
 
 /**
+ * Solid Pattern - Return the same color for every point.
+ */
+pattern SolidPattern(tup const &Color)
+{
+  pattern Pattern{Color, Color};
+  return Pattern;
+}
+
+/**
  */
 pattern StripePattern(tup const &C1, tup const &C2)
 {
@@ -1811,6 +1820,16 @@ pattern GradientPattern(tup const &C1, tup const &C2)
 {
   pattern P{C1, C2};
   P.funcPtrPatternAt = GradientPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern NestedPattern(pattern const &P1, pattern const &P2)
+{
+  pattern P = P1;
+  P.ptrNext = std::make_shared<pattern>();
+  *P.ptrNext = P2;
   return P;
 }
 
@@ -1906,7 +1925,9 @@ tup RadialGradientPatternAt(pattern const &Pattern, tup const &Point)
 {
   float const Hyp = std::sqrtf(Point.X * Point.X + Point.Z * Point.Z);
   int const Floor = int(std::floorf(Hyp)) % 2;
-  tup const Color = Floor == 0 ? RingPatternAt(Pattern, Point) : GradientPatternAt(Pattern, Point);
+  tup const Color1 = Floor == 0 ? RingPatternAt(Pattern, Point) : GradientPatternAt(Pattern, Point);
+  tup const Color2 = Pattern.ptrNext ? Pattern.ptrNext->funcPtrPatternAt(Pattern, Point) : ww::Color(0.f, 0.f, 0.f);
+  tup const Color = Color1 + Color2;
   return Color;
 }
 

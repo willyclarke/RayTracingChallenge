@@ -432,3 +432,51 @@ TEST(Ch10Patterns, PuttingItTogether)
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch10PuttingItTogether.ppm");
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch10Patterns, PuttingItTogetherNestedPattern)
+{
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  ww::tup const Red = ww::Color(1.f, 0.f, 0.f);
+  ww::tup const Green = ww::Color(0.f, 1.f, 0.f);
+  ww::tup const Blue = ww::Color(0.f, 0.f, 1.f);
+  ww::tup const Yellow = ww::Color(0.f, .5f, .5f);
+
+  // Add the first plane
+  ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
+  ptrPlane->Transform = ww::Translation(0.f, 0.f, 0.f)  //!<
+                                                        // * ww::RotateY(0.5 * M_PI_2)       //!<
+      ;                                                 //!<
+  ptrPlane->Material.Shininess = 1.f;
+  ptrPlane->Material.Diffuse = 0.5f;
+  ptrPlane->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  ww::pattern P1 = ww::RadialGradientPattern(Red, Green);
+  ww::pattern P2 = ww::CheckersPattern(Blue, Yellow);
+  // ww::pattern P2 = ww::StripePattern(Red, Green);
+  P2.Transform = ww::RotateY(float(45.f / 180.f));
+  // ptrPlane->Material.Pattern = ww::NestedPattern(P1, P2);
+  ptrPlane->Material.Pattern = P2;
+  World.vPtrObjects.push_back(ptrPlane);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(-2.f, 5.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  float const FieldOfView = 75.f / 180.f * M_PI;
+  ww::camera Camera = ww::Camera(256, 256, FieldOfView);
+
+  ww::tup const ViewFrom = ww::Point(0.f, 5.f, -5.f);
+  ww::tup const ViewTo = ww::Point(0.f, 0.f, 2.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  // Assert(false, __FUNCTION__, __LINE__);
+  ww::WriteToPPM(Canvas, "Ch10PuttingItTogetherNestedPattern.ppm");
+}

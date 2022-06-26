@@ -180,6 +180,7 @@ struct pattern
   //
   // //!< Function pointer for the pattern of a particular shape.
   tup (*funcPtrPatternAt)(pattern const &Pattern, tup const &Point){&FuncDefaultPatternAt};
+  std::shared_ptr<pattern> ptrNext{nullptr};
 };
 
 //------------------------------------------------------------------------------
@@ -621,7 +622,9 @@ pattern GradientPattern(tup const &C1, tup const &C2);
 pattern RingPattern(tup const &C1, tup const &C2);
 pattern RadialGradientPattern(tup const &C1, tup const &C2);
 pattern StripePattern(tup const &C1, tup const &C2);
+pattern NestedPattern(pattern const &P1, pattern const &P2);
 pattern TestPattern();
+pattern SolidPattern();
 tup StripeAt(pattern const &Pattern, tup const &Point);
 tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point);
