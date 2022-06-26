@@ -49,6 +49,7 @@ TEST(Ch9Planes, AssignAMaterial)
   S.Material = M;
 
   EXPECT_EQ(S.Material == M, true);
+  EXPECT_EQ(S.Material.Ambient == 1.f, true);
 }
 
 //------------------------------------------------------------------------------
