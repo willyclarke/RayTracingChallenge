@@ -310,7 +310,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInX)
   // ---
   // NOTE: Use default CTOR to set up pointer to function.
   // ---
-  ww::pattern CheckersPattern{White, Black, ww::I(), &ww::CheckersPatternAt};
+  ww::pattern CheckersPattern{White, Black, ww::I(), true, &ww::CheckersPatternAt};
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.99f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(1.01f, 0.f, 0.f)) == Black, true);
@@ -326,7 +326,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInY)
   // ---
   // NOTE: Use default CTOR to set up pointer to function.
   // ---
-  ww::pattern CheckersPattern{White, Black, ww::I(), &ww::CheckersPatternAt};
+  ww::pattern CheckersPattern{White, Black, ww::I(), true, &ww::CheckersPatternAt};
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.99f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 1.01f, 0.f)) == Black, true);
@@ -342,7 +342,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInZ)
   // ---
   // NOTE: Use default CTOR to set up pointer to function.
   // ---
-  ww::pattern CheckersPattern{White, Black, ww::I(), &ww::CheckersPatternAt};
+  ww::pattern CheckersPattern{White, Black, ww::I(), true, &ww::CheckersPatternAt};
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.99f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 1.01f)) == Black, true);
@@ -442,25 +442,32 @@ TEST(Ch10Patterns, PuttingItTogetherNestedPattern)
 
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  ww::tup const Grey = ww::Color(float(84.f / 255.f), float(84.f / 255.f), float(84.f / 255.f));
+  ww::tup const Grey2 = ww::Color(float(44.f / 255.f), float(44.f / 255.f), float(44.f / 255.f));
   ww::tup const Red = ww::Color(1.f, 0.f, 0.f);
+  ww::tup const Red2 = ww::Color(1.f, .4f, 0.f);
   ww::tup const Green = ww::Color(0.f, 1.f, 0.f);
   ww::tup const Blue = ww::Color(0.f, 0.f, 1.f);
-  ww::tup const Yellow = ww::Color(0.f, .5f, .5f);
+  ww::tup const Yellow = ww::Color(1.f, 1.f, .0f);
 
   // Add the first plane
   ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
   ptrPlane->Transform = ww::Translation(0.f, 0.f, 0.f)  //!<
                                                         // * ww::RotateY(0.5 * M_PI_2)       //!<
       ;                                                 //!<
+
+  float const Alpha = M_PI * float(45.f / 180.f);
   ptrPlane->Material.Shininess = 1.f;
   ptrPlane->Material.Diffuse = 0.5f;
   ptrPlane->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
-  ww::pattern P1 = ww::RadialGradientPattern(Red, Green);
-  ww::pattern P2 = ww::CheckersPattern(Blue, Yellow);
-  // ww::pattern P2 = ww::StripePattern(Red, Green);
-  P2.Transform = ww::RotateY(float(45.f / 180.f));
-  // ptrPlane->Material.Pattern = ww::NestedPattern(P1, P2);
-  ptrPlane->Material.Pattern = P2;
+  ww::pattern PM = ww::CheckersPattern(Blue, Yellow);
+  ww::pattern P1 = ww::GradientPattern(Grey, Grey2);
+  ww::pattern P2 = ww::GradientPattern(Red, Red2);
+  // P1.Continue = false;
+  PM.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 4.f, 4.f, 4.f, 0.f, Alpha, 0.f);
+  P1.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, .25f, 1.f, .25f, 0.f, .5f * Alpha, 0.f);
+  P2.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 0.1f, .1f, 1.0f, 0.f, Alpha, 0.f);
+  ptrPlane->Material.Pattern = ww::NestedPattern(PM, P1, P2);
   World.vPtrObjects.push_back(ptrPlane);
 
   ww::shared_ptr_light pLight{};

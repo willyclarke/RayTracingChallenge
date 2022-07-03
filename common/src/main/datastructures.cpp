@@ -1312,7 +1312,7 @@ tup Lighting(material const &Material,  //!<
 
   if (Material.Pattern != pattern{})
   {
-    Color = Material.Pattern.funcPtrPatternAt(Material.Pattern, Position);
+    Color = PatternAtShape(Material.Pattern, Object, Position);
   }
 
   // Combine the surface color with the light''s color/intensity.
@@ -1755,9 +1755,9 @@ tup Plane()
  */
 pattern TestPattern()
 {
-  pattern Pattern{};
-  Pattern.Transform = Translation(1.f, 2.f, 3.f);
-  return Pattern;
+  pattern P{};
+  P.Transform = Translation(1.f, 2.f, 3.f);
+  return P;
 }
 
 /**
@@ -1765,8 +1765,8 @@ pattern TestPattern()
  */
 pattern SolidPattern(tup const &Color)
 {
-  pattern Pattern{Color, Color};
-  return Pattern;
+  pattern P{Color, Color};
+  return P;
 }
 
 /**
@@ -1834,13 +1834,46 @@ pattern NestedPattern(pattern const &P1, pattern const &P2)
 }
 
 /**
- * Return the color of the Pattern at the given Point.
+ * Set up a linked list with three patterns.
+ * @Param: PMain - The main pattern. e.g Checkers.
+ * @Param: P1 - Pattern used when selector 1 triggers.
+ * @Param: P2 - Pattern used when selector 2 triggers.
+ * @Note: The nested patterns can not be of the same type as the
+ *        main pattern since that would lead to an infinite
+ *        recursion.
+ * @Return: A pattern that has a linked list to two other patterns.
  */
-tup StripeAt(pattern const &Pattern, tup const &Point)
+pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2)
 {
-  tup Color{Pattern.B};
-  if (int(std::floorf(Point.X)) % 2 == 0) Color = Pattern.A;
-  return Color;
+  pattern Result = PMain;
+
+  Result.ptrNext = std::make_shared<pattern>();
+  *Result.ptrNext = P1;
+  Result.ptrNext->ptrNext = std::make_shared<pattern>();
+  *Result.ptrNext->ptrNext = P2;
+
+  if (Result.ptrNext == nullptr || Result.ptrNext->ptrNext == nullptr)
+  {
+    std::cerr << __FUNCTION__ << ". ERROR: Could not create shared pointers to <pattern>." << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
+  // ---
+  // NOTE: Check that the function pointers are not pointing to the Main pattern funcPtrPatternAt.
+  // ---
+  auto const ptrMainFunc = PMain.funcPtrPatternAt;
+  auto const ptrP1Func = P1.funcPtrPatternAt;
+  auto const ptrP2Func = P2.funcPtrPatternAt;
+  if (ptrMainFunc == ptrP1Func || ptrMainFunc == ptrP2Func)
+  {
+    std::cerr << "ERROR: " << __PRETTY_FUNCTION__ << ": Nested <pattern> functions would lead to infinite recursion"
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
+  return Result;
 }
 
 /**
@@ -1857,7 +1890,10 @@ tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point)
 }
 
 /**
- *
+ * Compute a Shape local point by calculating the inverse of the transform.
+ * Use  the shape local point when calculating the Pattern point.
+ * Then use  the function pointer to get the pattern at the specific point.
+ * @Return: A tuple representing the color at the point.
  */
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
 {
@@ -1868,22 +1904,22 @@ tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
    */
   tup const ShapePoint = Inverse(Shape.Transform) * Point;
 
-  /**
-   * Multiply the shape-space point by the inverse of the pattern's
-   * transformation matrix to convert that point to the Pattern space.
-   */
-  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
-
-  tup const Color = Pattern.funcPtrPatternAt(Pattern, PatternPoint);
+  tup const Color = Pattern.funcPtrPatternAt(Pattern, ShapePoint);
   return Color;
 }
 
 /**
  * Default function for pattern, used as initializer in CTOR.
  */
-tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point)
+tup FuncDefaultPatternAt(pattern const &Pattern, tup const &ShapePoint)
 {
-  tup const C = Color(Point.X, Point.Y, Point.Z);
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  tup const C = Color(PatternPoint.X, PatternPoint.Y, PatternPoint.Z);
   return C;
 }
 
@@ -1892,17 +1928,40 @@ tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point)
 tup PatternAt(pattern const &Pattern, tup const &Point) { return Pattern.funcPtrPatternAt(Pattern, Point); }
 
 /**
+ * Return the color of the Pattern at the given Point.
+ */
+tup StripeAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  tup Color{Pattern.B};
+  if (int(std::floorf(PatternPoint.X)) % 2 == 0) Color = Pattern.A;
+  Assert(Pattern.Continue, __FUNCTION__, __LINE__);
+  return Color;
+}
+
+/**
  * A Linear extrapolation pattern, LERP.
  * Calculate a distance beetween the two colors and use the Distance
  * in the X direction to compute a fraction that multiplied with the
  * Distance will produce a color in between the two colors of the
  * gradient.
  */
-tup GradientPatternAt(pattern const &Pattern, tup const &Point)
+tup GradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
 {
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
   pattern const &Gradient = Pattern;
   tup const Distance = Gradient.B - Gradient.A;
-  float const Fraction = Point.X - std::floorf(Point.X);
+  float const Fraction = PatternPoint.X - std::floorf(PatternPoint.X);
   tup const Color = Gradient.A + Distance * Fraction;
   return Color;
 }
@@ -1910,9 +1969,15 @@ tup GradientPatternAt(pattern const &Pattern, tup const &Point)
 /**
  * A ring pattern depends on the X and Z dimension.
  */
-tup RingPatternAt(pattern const &Pattern, tup const &Point)
+tup RingPatternAt(pattern const &Pattern, tup const &ShapePoint)
 {
-  float const Hyp = std::sqrtf(Point.X * Point.X + Point.Z * Point.Z);
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  float const Hyp = std::sqrtf(PatternPoint.X * PatternPoint.X + PatternPoint.Z * PatternPoint.Z);
   int const Floor = int(std::floorf(Hyp)) % 2;
   tup const Color = Floor == 0 ? Pattern.A : Pattern.B;
   return Color;
@@ -1921,33 +1986,67 @@ tup RingPatternAt(pattern const &Pattern, tup const &Point)
 /**
  * A radial/ring pattern with a gradient. Depends on the X and Z dimension.
  */
-tup RadialGradientPatternAt(pattern const &Pattern, tup const &Point)
+tup RadialGradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
 {
-  float const Hyp = std::sqrtf(Point.X * Point.X + Point.Z * Point.Z);
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  float const Hyp = std::sqrtf(PatternPoint.X * PatternPoint.X + PatternPoint.Z * PatternPoint.Z);
   int const Floor = int(std::floorf(Hyp)) % 2;
-  tup const Color1 = Floor == 0 ? RingPatternAt(Pattern, Point) : GradientPatternAt(Pattern, Point);
-  tup const Color2 = Pattern.ptrNext ? Pattern.ptrNext->funcPtrPatternAt(Pattern, Point) : ww::Color(0.f, 0.f, 0.f);
+  tup const Color1 = Floor == 0 ? RingPatternAt(Pattern, PatternPoint) : GradientPatternAt(Pattern, PatternPoint);
+  tup const Color2 =
+      Pattern.ptrNext ? Pattern.ptrNext->funcPtrPatternAt(Pattern, PatternPoint) : ww::Color(0.f, 0.f, 0.f);
   tup const Color = Color1 + Color2;
   return Color;
 }
 
 /**
  * Get a pattern of alternating cubes by taking the sum of all directions mod 2.
+ * Note: Point - In local coordinates.
  */
-tup CheckersPatternAt(pattern const &Pattern, tup const &Point)
+tup CheckersPatternAt(pattern const &Pattern, tup const &ShapePoint)
 {
-  int const Floor = int(std::floorf(Point.X)) + int(std::floorf(Point.Y)) + int(std::floorf(Point.Z));
-  tup const Color = (0 == Floor % 2) ? Pattern.A : Pattern.B;
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  int const Floor =
+      int(std::floorf(PatternPoint.X)) + int(std::floorf(PatternPoint.Y)) + int(std::floorf(PatternPoint.Z));
+
+  // tup const Color = (0 == Floor % 2) ? Pattern.A : Pattern.B;
+
+  // ---
+  // NOTE: Support nested patterns by checking for pointers to next pattern.
+  // ---
+  tup const Color =
+      (0 == Floor % 2)
+          ? (Pattern.ptrNext ? Pattern.ptrNext->funcPtrPatternAt(*Pattern.ptrNext, PatternPoint) : Pattern.A)
+          : (Pattern.ptrNext && Pattern.ptrNext->ptrNext
+                 ? Pattern.ptrNext->ptrNext->funcPtrPatternAt(*Pattern.ptrNext->ptrNext, PatternPoint)
+                 : Pattern.B);
   return Color;
 }
 
 /**
  * Get a pattern with gradient of alternating cubes by taking the sum of all directions mod 2.
  */
-tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point)
+tup CheckersGradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
 {
-  int const Floor = int(std::floorf(Point.X)) + int(std::floorf(Point.Y)) + int(std::floorf(Point.Z));
-  tup const Color = (0 == Floor % 2) ? CheckersPatternAt(Pattern, Point) : GradientPatternAt(Pattern, Point);
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  int const Floor =
+      int(std::floorf(PatternPoint.X)) + int(std::floorf(PatternPoint.Y)) + int(std::floorf(PatternPoint.Z));
+  tup const Color =
+      (0 == Floor % 2) ? CheckersPatternAt(Pattern, PatternPoint) : GradientPatternAt(Pattern, PatternPoint);
   return Color;
 }
 };  // namespace ww

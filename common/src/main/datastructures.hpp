@@ -177,6 +177,8 @@ struct pattern
       tup{0.f, 0.f, 1.f, 0.f},  //!<
       tup{0.f, 0.f, 0.f, 1.f}   //!<
   };                            //!<
+
+  bool Continue{true};
   //
   // //!< Function pointer for the pattern of a particular shape.
   tup (*funcPtrPatternAt)(pattern const &Pattern, tup const &Point){&FuncDefaultPatternAt};
@@ -623,11 +625,17 @@ pattern RingPattern(tup const &C1, tup const &C2);
 pattern RadialGradientPattern(tup const &C1, tup const &C2);
 pattern StripePattern(tup const &C1, tup const &C2);
 pattern NestedPattern(pattern const &P1, pattern const &P2);
+pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2);
+pattern SolidPattern(tup const &Color);
 pattern TestPattern();
-pattern SolidPattern();
-tup StripeAt(pattern const &Pattern, tup const &Point);
+
+/**
+ * Functions for pattern at a shape or object.
+ */
 tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point);
+
+tup StripeAt(pattern const &Pattern, tup const &Point);
 tup PatternAt(pattern const &Pattern, tup const &Point);
 tup GradientPatternAt(pattern const &Pattern, tup const &Point);
 tup RingPatternAt(pattern const &Pattern, tup const &Point);
