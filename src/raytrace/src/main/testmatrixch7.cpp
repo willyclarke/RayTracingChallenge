@@ -106,8 +106,6 @@ TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
   EXPECT_EQ(I.t, Comps.t);
   EXPECT_EQ(I.pShape == Comps.pShape, true);
   EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, -1.f)), true);
-  std::cout << Comps.Point << "\n" << std::endl;
-
   EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
   EXPECT_EQ(ww::Equal(Comps.Normal, ww::Vector(0.f, 0.f, -1.f)), true);
 }

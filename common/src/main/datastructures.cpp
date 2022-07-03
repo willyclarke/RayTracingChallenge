@@ -1763,9 +1763,31 @@ pattern TestPattern()
 /**
  * Solid Pattern - Return the same color for every point.
  */
-pattern SolidPattern(tup const &Color)
+pattern SolidPattern(tup const &Color, char const *ptr)
 {
+#if 0
+  std::cout << __PRETTY_FUNCTION__ << "." << __LINE__ << ". Called from " << std::string(ptr) << std::endl;
+#endif
+
   pattern P{Color, Color};
+  P.funcPtrPatternAt = SolidPatternAt;
+
+  // ---
+  // NOTE: Now create a new pattern based on P1 which will call whatever
+  //       funcPtrPatternAt that has been set up for it.
+  // ---
+  P.ptrNext = std::make_shared<pattern>();
+  if (P.ptrNext != nullptr)
+  {
+    *P.ptrNext = P;
+
+    // ---
+    // NOTE: The end of the linked list of patterns is set up to whatever
+    // ---   funcPtrPatternAt has been set up for P.
+    P.ptrNext->ptrNext = std::make_shared<pattern>();
+
+    if (P.ptrNext->ptrNext != nullptr) *P.ptrNext->ptrNext = P;
+  }
   return P;
 }
 
@@ -1773,7 +1795,9 @@ pattern SolidPattern(tup const &Color)
  */
 pattern StripePattern(tup const &C1, tup const &C2)
 {
-  pattern P{C1, C2};
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
   P.funcPtrPatternAt = StripeAt;
   return P;
 }
@@ -1782,7 +1806,9 @@ pattern StripePattern(tup const &C1, tup const &C2)
  */
 pattern CheckersPattern(tup const &C1, tup const &C2)
 {
-  pattern P{C1, C2};
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
   P.funcPtrPatternAt = CheckersPatternAt;
   return P;
 }
@@ -1791,7 +1817,9 @@ pattern CheckersPattern(tup const &C1, tup const &C2)
  */
 pattern CheckersGradientPattern(tup const &C1, tup const &C2)
 {
-  pattern P{C1, C2};
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
   P.funcPtrPatternAt = CheckersGradientPatternAt;
   return P;
 }
@@ -1800,7 +1828,9 @@ pattern CheckersGradientPattern(tup const &C1, tup const &C2)
  */
 pattern RingPattern(tup const &C1, tup const &C2)
 {
-  pattern P{C1, C2};
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
   P.funcPtrPatternAt = RingPatternAt;
   return P;
 }
@@ -1809,7 +1839,9 @@ pattern RingPattern(tup const &C1, tup const &C2)
  */
 pattern RadialGradientPattern(tup const &C1, tup const &C2)
 {
-  pattern P{C1, C2};
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
   P.funcPtrPatternAt = RadialGradientPatternAt;
   return P;
 }
@@ -1818,18 +1850,48 @@ pattern RadialGradientPattern(tup const &C1, tup const &C2)
  */
 pattern GradientPattern(tup const &C1, tup const &C2)
 {
-  pattern P{C1, C2};
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
   P.funcPtrPatternAt = GradientPatternAt;
   return P;
 }
 
 /**
+ * Set up function pointers for blending two patterns.
+ * @Param: P1 is used for the first link pattern.
+ * @Param: P2 is used for the second link pattern.
+ * @Return: P which is set up to call BlendedPatternAt.
+ * @Note: Input patterns may not use BlendedPattern as funcPtrPatternAt
+ *        since that would lead to an infinite recursion.
  */
-pattern NestedPattern(pattern const &P1, pattern const &P2)
+pattern BlendedPattern(pattern const &P1, pattern const &P2)
 {
-  pattern P = P1;
-  P.ptrNext = std::make_shared<pattern>();
-  *P.ptrNext = P2;
+  pattern P = SolidPattern(P1.A, __PRETTY_FUNCTION__);
+  P.A = P1.A;
+  P.B = P1.B;
+
+  // ---
+  // NOTE: Set up the resulting pattern to call the blended pattern function.
+  // ---
+  P.funcPtrPatternAt = BlendedPatternAt;
+  *P.ptrNext = P1;
+  *P.ptrNext->ptrNext = P2;
+
+  // ---
+  // NOTE: Check that the function pointers are not pointing to the BlendedPattern for its funcPtrPatternAt.
+  // ---
+  auto const ptrResultFunc = P.funcPtrPatternAt;
+  auto const ptrP1Func = P1.funcPtrPatternAt;
+  auto const ptrP2Func = P2.funcPtrPatternAt;
+  if (ptrResultFunc == ptrP1Func || ptrResultFunc == ptrP2Func)
+  {
+    std::cerr << "ERROR: " << __PRETTY_FUNCTION__ << ": Nested <pattern> functions would lead to infinite recursion"
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
   return P;
 }
 
@@ -1852,7 +1914,7 @@ pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2
   Result.ptrNext->ptrNext = std::make_shared<pattern>();
   *Result.ptrNext->ptrNext = P2;
 
-  if (Result.ptrNext == nullptr || Result.ptrNext->ptrNext == nullptr)
+  if (Result.ptrNext == nullptr || ((Result.ptrNext != nullptr) && (Result.ptrNext->ptrNext == nullptr)))
   {
     std::cerr << __FUNCTION__ << ". ERROR: Could not create shared pointers to <pattern>." << std::endl;
     Assert(false, __FUNCTION__, __LINE__);
@@ -1930,6 +1992,15 @@ tup PatternAt(pattern const &Pattern, tup const &Point) { return Pattern.funcPtr
 /**
  * Return the color of the Pattern at the given Point.
  */
+tup SolidPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  tup const Color = Pattern.A;
+  return Color;
+}
+
+/**
+ * Return the color of the Pattern at the given Point.
+ */
 tup StripeAt(pattern const &Pattern, tup const &ShapePoint)
 {
   /**
@@ -1940,6 +2011,18 @@ tup StripeAt(pattern const &Pattern, tup const &ShapePoint)
 
   tup Color{Pattern.B};
   if (int(std::floorf(PatternPoint.X)) % 2 == 0) Color = Pattern.A;
+  Assert(Pattern.Continue, __FUNCTION__, __LINE__);
+  return Color;
+}
+
+/**
+ * Return a blend of the two patterns at the given Point.
+ */
+tup BlendedPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  tup const Color1 = Pattern.ptrNext->funcPtrPatternAt(Pattern, ShapePoint);
+  tup const Color2 = Pattern.ptrNext->ptrNext->funcPtrPatternAt(*Pattern.ptrNext, ShapePoint);
+  tup const Color = 0.5f * Color1 + 0.5f * Color2;
   Assert(Pattern.Continue, __FUNCTION__, __LINE__);
   return Color;
 }

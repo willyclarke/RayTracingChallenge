@@ -624,9 +624,10 @@ pattern GradientPattern(tup const &C1, tup const &C2);
 pattern RingPattern(tup const &C1, tup const &C2);
 pattern RadialGradientPattern(tup const &C1, tup const &C2);
 pattern StripePattern(tup const &C1, tup const &C2);
-pattern NestedPattern(pattern const &P1, pattern const &P2);
+pattern BlendedPattern(pattern const &P1, pattern const &P2);
 pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2);
-pattern SolidPattern(tup const &Color);
+pattern SolidPattern(tup const &Color, char const *ptr=nullptr);
+// pattern SolidPattern(tup const &Color);
 pattern TestPattern();
 
 /**
@@ -637,11 +638,13 @@ tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
 
 tup StripeAt(pattern const &Pattern, tup const &Point);
 tup PatternAt(pattern const &Pattern, tup const &Point);
+tup BlendedPatternAt(pattern const &Pattern, tup const &Point);
 tup GradientPatternAt(pattern const &Pattern, tup const &Point);
 tup RingPatternAt(pattern const &Pattern, tup const &Point);
 tup RadialGradientPatternAt(pattern const &Pattern, tup const &Point);
 tup CheckersPatternAt(pattern const &Pattern, tup const &Point);
 tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point);
+tup SolidPatternAt(pattern const &Pattern, tup const &Point);
 
 // \fn SharedPtrSh
 //

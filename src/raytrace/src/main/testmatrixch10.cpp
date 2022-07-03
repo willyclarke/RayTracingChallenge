@@ -487,3 +487,57 @@ TEST(Ch10Patterns, PuttingItTogetherNestedPattern)
   // Assert(false, __FUNCTION__, __LINE__);
   ww::WriteToPPM(Canvas, "Ch10PuttingItTogetherNestedPattern.ppm");
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch10Patterns, PuttingItTogetherBlendedPattern)
+{
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+
+  ww::tup const White = ww::Color(1.f, 1.f, 1.f);
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  ww::tup const Grey = ww::Color(float(84.f / 255.f), float(84.f / 255.f), float(84.f / 255.f));
+  ww::tup const Grey2 = ww::Color(float(44.f / 255.f), float(44.f / 255.f), float(44.f / 255.f));
+  ww::tup const Red = ww::Color(1.f, 0.f, 0.f);
+  ww::tup const Red2 = ww::Color(1.f, .4f, 0.f);
+  ww::tup const Green = ww::Color(0.2982f, 0.6039f, 0.2348f);
+  ww::tup const Green2 = ww::Color(.2471, 0.4399f, 0.f);
+  ww::tup const Blue = ww::Color(0.f, 0.f, 1.f);
+  ww::tup const Yellow = ww::Color(1.f, 1.f, .0f);
+
+  // Add the first plane
+  ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
+  ptrPlane->Transform = ww::Translation(0.f, 0.f, 0.f)  //!<
+                                                        * ww::RotateY(0.25f * M_PI_2)       //!<
+      ;                                                 //!<
+
+  float const Alpha = M_PI * float(45.f / 180.f);
+  ptrPlane->Material.Shininess = 1.f;
+  ptrPlane->Material.Diffuse = 0.5f;
+  ptrPlane->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  ww::pattern P1 = ww::StripePattern(Green, White);
+  ww::pattern P2 = ww::StripePattern(Green, Green2);
+  // P1.Continue = false;
+  P1.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, 1.f * Alpha, 0.f);
+  P2.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, -1.f * Alpha, 0.f);
+  ptrPlane->Material.Pattern = ww::BlendedPattern(P1, P2);
+  World.vPtrObjects.push_back(ptrPlane);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(0.f, 50.f, 0.f), ww::Color(.7f, .7f, .7f));
+  World.vPtrLights.push_back(pLight);
+
+  float const FieldOfView = 75.f / 180.f * M_PI;
+  ww::camera Camera = ww::Camera(256, 256, FieldOfView);
+
+  ww::tup const ViewFrom = ww::Point(0.f, 1.5f, -5.f);
+  ww::tup const ViewTo = ww::Point(0.f, 0.f, 25.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  // Assert(false, __FUNCTION__, __LINE__);
+  ww::WriteToPPM(Canvas, "Ch10PuttingItTogetherBlendedPattern.ppm");
+}
