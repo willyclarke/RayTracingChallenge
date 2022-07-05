@@ -36,6 +36,19 @@ constexpr float EPSILON = 0.0035000;  // 1E27 * std::numeric_limits<float>::min(
 constexpr double PI = 3.141592653589793238463;
 constexpr float PI_F = 3.14159265358979f;
 
+/// ---
+/// \declarations
+/// ---
+struct cube;
+struct plane;
+struct shape;
+struct sphere;
+
+typedef std::shared_ptr<cube> shared_ptr_cube;
+typedef std::shared_ptr<plane> shared_ptr_plane;
+typedef std::shared_ptr<shape> shared_ptr_shape;
+typedef std::shared_ptr<sphere> shared_ptr_sphere;
+
 //------------------------------------------------------------------------------
 
 /**
@@ -140,6 +153,38 @@ struct ray
   tup Direction{1.f, 0.f, 0.f, 0.f};  //!< The direction. This is a vector in space.
 };
 
+struct pattern;
+tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point);
+
+/// ---
+/// Surface normal functions
+/// ---
+tup NormalAt(shape const &Shape, tup const &P);
+tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
+tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint);
+tup Reflect(tup const &In, tup const &Normal);
+
+//------------------------------------------------------------------------------
+struct pattern
+{
+  tup A{};
+  tup B{};
+
+  //!< The transform of the object, initialize to identity matrix
+  matrix Transform{
+      tup{1.f, 0.f, 0.f, 0.f},  //!<
+      tup{0.f, 1.f, 0.f, 0.f},  //!<
+      tup{0.f, 0.f, 1.f, 0.f},  //!<
+      tup{0.f, 0.f, 0.f, 1.f}   //!<
+  };                            //!<
+
+  bool Continue{true};
+  //
+  // //!< Function pointer for the pattern of a particular shape.
+  tup (*funcPtrPatternAt)(pattern const &Pattern, tup const &Point){&FuncDefaultPatternAt};
+  std::shared_ptr<pattern> ptrNext{nullptr};
+};
+
 //------------------------------------------------------------------------------
 struct material
 {
@@ -148,20 +193,8 @@ struct material
   float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
   float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
   tup Color{1.f, 1.f, 1.f, 0.f};
+  pattern Pattern{};
 };
-
-/// ---
-/// \declarations
-/// ---
-struct cube;
-struct plane;
-struct shape;
-struct sphere;
-
-typedef std::shared_ptr<cube> shared_ptr_cube;
-typedef std::shared_ptr<plane> shared_ptr_plane;
-typedef std::shared_ptr<shape> shared_ptr_shape;
-typedef std::shared_ptr<sphere> shared_ptr_sphere;
 
 /// ---
 /// \struct intersection
@@ -225,6 +258,9 @@ struct shape
 
   //!< Function pointer for the local intersect
   intersections (*funcPtrLocalIntersect)(shared_ptr_shape PtrShape, ray const &RayIn){};
+
+  //!< Function pointer for the Local Normal at a point. Defaults to normal of sphere.
+  tup (*funcPtrLocalNormalAt)(shape const &Shape, tup const &PointIn){&LocalNormalAt};
 };
 
 /// ---
@@ -500,14 +536,6 @@ ray Ray(tup const &P, tup const &V);
 ray Transform(ray const &R, matrix const &M);
 
 /// ---
-/// Surface normal functions
-/// ---
-tup NormalAt(shape const &Shape, tup const &P);
-tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
-tup LocalNormalAt(plane const &Plane, tup const &LocalPoint);
-tup Reflect(tup const &In, tup const &Normal);
-
-/// ---
 /// Plane functions
 ///
 tup Plane();
@@ -517,6 +545,7 @@ tup Plane();
 /// ---
 light PointLight(tup const &Position, tup const &Intensity);
 tup Lighting(material const &Material,    //!<
+             shape const &Object,         //!<
              light const &Light,          //!<
              tup const &Position,         //!<
              tup const &vEye,             //!<
@@ -587,6 +616,38 @@ shape TestShape();
 shared_ptr_shape SharedPtrShape(shape const &Shape);
 
 //------------------------------------------------------------------------------
+//-Functions for testing patterns.
+//------------------------------------------------------------------------------
+pattern CheckersPattern(tup const &C1, tup const &C2);
+pattern CheckersGradientPattern(tup const &C1, tup const &C2);
+pattern GradientPattern(tup const &C1, tup const &C2);
+pattern RingPattern(tup const &C1, tup const &C2);
+pattern RadialGradientPattern(tup const &C1, tup const &C2);
+pattern StripePattern(tup const &C1, tup const &C2);
+pattern BlendedPattern(pattern const &P1, pattern const &P2);
+pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2);
+pattern PerturbPattern(pattern const &P1);
+pattern SolidPattern(tup const &Color, char const *ptr=nullptr);
+// pattern SolidPattern(tup const &Color);
+pattern TestPattern();
+
+/**
+ * Functions for pattern at a shape or object.
+ */
+tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point);
+tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point);
+
+tup StripeAt(pattern const &Pattern, tup const &Point);
+tup PatternAt(pattern const &Pattern, tup const &Point);
+tup BlendedPatternAt(pattern const &Pattern, tup const &Point);
+tup GradientPatternAt(pattern const &Pattern, tup const &Point);
+tup RingPatternAt(pattern const &Pattern, tup const &Point);
+tup RadialGradientPatternAt(pattern const &Pattern, tup const &Point);
+tup CheckersPatternAt(pattern const &Pattern, tup const &Point);
+tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point);
+tup PerturbPatternAt(pattern const &Pattern, tup const &Point);
+tup SolidPatternAt(pattern const &Pattern, tup const &Point);
+
 // \fn SharedPtrSh
 //
 // \brief Create shape object shared pointer updated with the content of \param Sh.
@@ -622,6 +683,7 @@ std::ostream &operator<<(std::ostream &stream, const ww::matrix &M);
 std::ostream &operator<<(std::ostream &stream, const ww::material &M);
 std::ostream &operator<<(std::ostream &stream, const ww::ray &R);
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S);
+std::ostream &operator<<(std::ostream &stream, const ww::pattern &P);
 ww::tup operator+(ww::tup const &A, ww::tup const &B);
 ww::tup operator-(ww::tup const &Tup);
 ww::tup operator-(ww::tup const &A, ww::tup const &B);
@@ -636,6 +698,8 @@ bool operator==(ww::intersection const &A, ww::intersection const &B);
 bool operator==(ww::light const &A, ww::light const &B);
 bool operator==(ww::material const &A, ww::material const &B);
 bool operator==(ww::matrix const &A, ww::matrix const &B);
+bool operator==(ww::pattern const &A, ww::pattern const &B);
+bool operator!=(ww::pattern const &A, ww::pattern const &B);
 bool operator==(ww::sphere const &A, ww::sphere const &B);
 bool operator==(ww::tup const &A, ww::tup const &B);
 #endif

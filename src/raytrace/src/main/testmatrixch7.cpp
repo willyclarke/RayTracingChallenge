@@ -1,5 +1,8 @@
 #include "gtest/gtest.h"
 #include <datastructures.hpp>
+
+#include <cmath>
+
 //------------------------------------------------------------------------------
 // Scenario: Creating a world, an empty one...
 TEST(Ch7MakingAScene, CreateAWorld)
@@ -90,7 +93,7 @@ TEST(Ch7MakingAScene, IntersectWorldWithRay)
   // Assert(XS.Count() == -1, __FUNCTION__, __LINE__); // NOTE: for debugging
 }
 
-#if 0
+#if 1
 //------------------------------------------------------------------------------
 TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
 {
@@ -103,8 +106,6 @@ TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
   EXPECT_EQ(I.t, Comps.t);
   EXPECT_EQ(I.pShape == Comps.pShape, true);
   EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, -1.f)), true);
-  std::cout << Comps.Point << "\n" << std::endl;
-
   EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
   EXPECT_EQ(ww::Equal(Comps.Normal, ww::Vector(0.f, 0.f, -1.f)), true);
 }
