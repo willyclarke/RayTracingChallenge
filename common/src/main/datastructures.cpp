@@ -21,6 +21,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "perlinnoise.hpp"
+
 // ---
 // NOTE: Stream operator
 // ---
@@ -1806,9 +1809,7 @@ pattern StripePattern(tup const &C1, tup const &C2)
  */
 pattern CheckersPattern(tup const &C1, tup const &C2)
 {
-  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
-  P.A = C1;
-  P.B = C2;
+  pattern P{C1, C2};
   P.funcPtrPatternAt = CheckersPatternAt;
   return P;
 }
@@ -1939,6 +1940,35 @@ pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2
 }
 
 /**
+ * Set up a perturbed pattern so that the input pattern is disturbed by noise.
+ */
+pattern PerturbPattern(pattern const &P1)
+{
+  pattern P = SolidPattern(P1.A);
+  P.funcPtrPatternAt = PerturbPatternAt;
+  *P.ptrNext = P1;
+
+  // ---
+  // NOTE: Reset here so that it is possible to check for nullpointer
+  //       in the actual pattern.
+  // ---
+  P.ptrNext->ptrNext.reset();
+
+  // ---
+  // NOTE: Check that the function pointers are not pointing to the Main pattern funcPtrPatternAt.
+  // ---
+  if (P1.funcPtrPatternAt == PerturbPatternAt)
+  {
+    std::cerr << "ERROR: " << __PRETTY_FUNCTION__ << ": Nested <pattern> functions would lead to infinite recursion"
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
+  return P;
+}
+
+/**
  * Return the color for the given pattern on  the given object, at the given
  * world-space point. Respects the transformations on both the pattern and the
  * object when doing so.
@@ -1995,6 +2025,27 @@ tup PatternAt(pattern const &Pattern, tup const &Point) { return Pattern.funcPtr
 tup SolidPatternAt(pattern const &Pattern, tup const &ShapePoint)
 {
   tup const Color = Pattern.A;
+  return Color;
+}
+
+/**
+ * Apply Perlin noise to the shape point prior the normal pattern computation.
+ *
+ * @Param Pattern: The actual pattern that will get the noise applied to.
+ * @Param ShapePoint: World coordinate
+ */
+tup PerturbPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  tup const NoiseX = rtc::perlinnoise::improved_noise::Noise(ShapePoint.X, ShapePoint.X, ShapePoint.X) * .20f *
+                     tup{1.f, 0.f, 0.f, 0.f};
+  tup const NoiseY = rtc::perlinnoise::improved_noise::Noise(ShapePoint.Y, ShapePoint.Y, ShapePoint.Y) * 0.10f *
+                     tup{0.f, 1.f, 0.f, 0.f};
+  tup const NoiseZ = rtc::perlinnoise::improved_noise::Noise(ShapePoint.Z, ShapePoint.Z, ShapePoint.Z) * .20f *
+                     tup{0.f, 0.f, 1.f, 0.f};
+  tup const NoisyShapePoint = ShapePoint + NoiseX + NoiseY + NoiseZ;
+
+  tup const Color = Pattern.ptrNext->funcPtrPatternAt(*Pattern.ptrNext, NoisyShapePoint);
+  Assert(Pattern.Continue, __FUNCTION__, __LINE__);
   return Color;
 }
 
@@ -2103,9 +2154,6 @@ tup CheckersPatternAt(pattern const &Pattern, tup const &ShapePoint)
 
   // tup const Color = (0 == Floor % 2) ? Pattern.A : Pattern.B;
 
-  // ---
-  // NOTE: Support nested patterns by checking for pointers to next pattern.
-  // ---
   tup const Color =
       (0 == Floor % 2)
           ? (Pattern.ptrNext ? Pattern.ptrNext->funcPtrPatternAt(*Pattern.ptrNext, PatternPoint) : Pattern.A)

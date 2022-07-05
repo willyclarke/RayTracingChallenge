@@ -626,6 +626,7 @@ pattern RadialGradientPattern(tup const &C1, tup const &C2);
 pattern StripePattern(tup const &C1, tup const &C2);
 pattern BlendedPattern(pattern const &P1, pattern const &P2);
 pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2);
+pattern PerturbPattern(pattern const &P1);
 pattern SolidPattern(tup const &Color, char const *ptr=nullptr);
 // pattern SolidPattern(tup const &Color);
 pattern TestPattern();
@@ -644,6 +645,7 @@ tup RingPatternAt(pattern const &Pattern, tup const &Point);
 tup RadialGradientPatternAt(pattern const &Pattern, tup const &Point);
 tup CheckersPatternAt(pattern const &Pattern, tup const &Point);
 tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point);
+tup PerturbPatternAt(pattern const &Pattern, tup const &Point);
 tup SolidPatternAt(pattern const &Pattern, tup const &Point);
 
 // \fn SharedPtrSh
