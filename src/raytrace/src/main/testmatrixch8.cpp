@@ -12,7 +12,7 @@ TEST(Ch8Shadows, LightingWithTheSurfaceInShadow)
   ww::tup Position = ww::Point(0.f, 0.f, 0.f);
   bool const InShadow{true};
 
-  ww::tup Result = ww::Lighting(M, Light, Position, vEye, vNormal, InShadow);
+  ww::tup Result = ww::Lighting(M, ww::sphere{}, Light, Position, vEye, vNormal, InShadow);
 
   EXPECT_EQ(Result == ww::Color(0.1f, 0.1f, 0.1f), true);
 }

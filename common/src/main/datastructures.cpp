@@ -21,6 +21,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "perlinnoise.hpp"
+
 // ---
 // NOTE: Stream operator
 // ---
@@ -106,6 +109,12 @@ std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
 {
   stream << "\nSphere\nCenter:" << S.Center << "\nSphere Material:" << S.Material << "Sphere Radius:" << S.Radius
          << "\nSphere Transform:" << S.Transform << std::endl;
+  return stream;
+}
+
+std::ostream &operator<<(std::ostream &stream, const ww::pattern &P)
+{
+  stream << "\nPattern\nC1:" << P.A << ". C2:" << P.B << "\nTransform:\n" << P.Transform << "\n-----" << std::endl;
   return stream;
 }
 
@@ -546,6 +555,9 @@ matrix Inverse(matrix const &M)
 
   // NOTE: The transposed matrix is not updated with the Determinant and the IsInvertible flag.
   Result = Transpose(Result);
+  Result.ID.IsInvertible = true;
+  Result.ID.Determinant = DetM;
+  Result.ID.IsComputed = true;
 
   return (Result);
 }
@@ -1239,7 +1251,7 @@ tup LocalNormalAt(shape const &Shape, tup const &LocalPoint)
 /**
  * The local normal for a plane is always 0, 1, 0.
  */
-tup LocalNormalAt(plane const &Plane, tup const &LocalPoint)
+tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
 {
   tup const Result{Vector(0.f, 1.f, 0.f)};
   return Result;
@@ -1253,7 +1265,8 @@ tup LocalNormalAt(plane const &Plane, tup const &LocalPoint)
 tup NormalAt(shape const &Shape, tup const &PointInput)
 {
   tup const LocalPoint = Inverse(Shape.Transform) * PointInput;
-  tup const LocalNormal = LocalNormalAt(Shape, LocalPoint);
+  // tup const LocalNormal = LocalNormalAt(Shape, LocalPoint);
+  tup const LocalNormal = Shape.funcPtrLocalNormalAt(Shape, LocalPoint);
   tup WorldNormal = Transpose(Inverse(Shape.Transform)) * LocalNormal;
   WorldNormal.W = 0.f;
 
@@ -1282,8 +1295,10 @@ light PointLight(tup const &Position, tup const &Intensity)
   Result.Intensity = Intensity;
   return (Result);
 }
+
 //------------------------------------------------------------------------------
 tup Lighting(material const &Material,  //!<
+             shape const &Object,       //!<
              light const &Light,        //!<
              tup const &Position,       //!<
              tup const &vEye,           //!<
@@ -1292,8 +1307,19 @@ tup Lighting(material const &Material,  //!<
 )
 {
   tup Result{};
+
+  // ---
+  // NOTE: Initialize to the material color, then check if a pattern has been applied.
+  // ---
+  tup Color = Material.Color;
+
+  if (Material.Pattern != pattern{})
+  {
+    Color = PatternAtShape(Material.Pattern, Object, Position);
+  }
+
   // Combine the surface color with the light''s color/intensity.
-  tup const EffectiveColor = Material.Color * Light.Intensity;
+  tup const EffectiveColor = Color * Light.Intensity;
 
   // Find the direction to the light source.
   tup const vLight = Normalize(Light.Position - Position);
@@ -1313,8 +1339,8 @@ tup Lighting(material const &Material,  //!<
 
   if (LightDotNormal < 0.f)  // pointing away ...
   {
-    Diffuse = Color(0.f, 0.f, 0.f);
-    Specular = Color(0.f, 0.f, 0.f);
+    Diffuse = ww::Color(0.f, 0.f, 0.f);
+    Specular = ww::Color(0.f, 0.f, 0.f);
   }
   else
   {
@@ -1328,7 +1354,7 @@ tup Lighting(material const &Material,  //!<
     float const ReflectDotEye = Dot(vReflect, vEye);
     if (ReflectDotEye <= 0)
     {
-      Specular = Color(0.f, 0.f, 0.f);  // Black
+      Specular = ww::Color(0.f, 0.f, 0.f);  // Black
     }
     else
     {
@@ -1435,6 +1461,7 @@ shared_ptr_plane PtrDefaultPlane()
   ww::plane P{};
   std::shared_ptr<ww::plane> pPlane = ww::SharedPtrSh<ww::plane>(P);
   pPlane->funcPtrLocalIntersect = &ww::LocalIntersectPlane;
+  pPlane->funcPtrLocalNormalAt = &ww::LocalNormalAtPlane;
   return (pPlane);
 }
 
@@ -1491,6 +1518,7 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
     bool const Shadowed = IsShadowed(W, Comps.Point);
 
     tup C = Lighting(Comps.pShape->Material,  //!<
+                     *Comps.pShape,           //!<
                      WorldLight,              //!<
                      Comps.Point,             //!<
                      Comps.Eye,               //!<
@@ -1724,6 +1752,434 @@ tup Plane()
   tup Result{};
   return Result;
 }
+
+/**
+ * Test Pattern
+ */
+pattern TestPattern()
+{
+  pattern P{};
+  P.Transform = Translation(1.f, 2.f, 3.f);
+  return P;
+}
+
+/**
+ * Solid Pattern - Return the same color for every point.
+ */
+pattern SolidPattern(tup const &Color, char const *ptr)
+{
+#if 0
+  std::cout << __PRETTY_FUNCTION__ << "." << __LINE__ << ". Called from " << std::string(ptr) << std::endl;
+#endif
+
+  pattern P{Color, Color};
+  P.funcPtrPatternAt = SolidPatternAt;
+
+  // ---
+  // NOTE: Now create a new pattern based on P1 which will call whatever
+  //       funcPtrPatternAt that has been set up for it.
+  // ---
+  P.ptrNext = std::make_shared<pattern>();
+  if (P.ptrNext != nullptr)
+  {
+    *P.ptrNext = P;
+
+    // ---
+    // NOTE: The end of the linked list of patterns is set up to whatever
+    // ---   funcPtrPatternAt has been set up for P.
+    P.ptrNext->ptrNext = std::make_shared<pattern>();
+
+    if (P.ptrNext->ptrNext != nullptr) *P.ptrNext->ptrNext = P;
+  }
+  return P;
+}
+
+/**
+ */
+pattern StripePattern(tup const &C1, tup const &C2)
+{
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
+  P.funcPtrPatternAt = StripeAt;
+  return P;
+}
+
+/**
+ */
+pattern CheckersPattern(tup const &C1, tup const &C2)
+{
+  pattern P{C1, C2};
+  P.funcPtrPatternAt = CheckersPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern CheckersGradientPattern(tup const &C1, tup const &C2)
+{
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
+  P.funcPtrPatternAt = CheckersGradientPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern RingPattern(tup const &C1, tup const &C2)
+{
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
+  P.funcPtrPatternAt = RingPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern RadialGradientPattern(tup const &C1, tup const &C2)
+{
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
+  P.funcPtrPatternAt = RadialGradientPatternAt;
+  return P;
+}
+
+/**
+ */
+pattern GradientPattern(tup const &C1, tup const &C2)
+{
+  pattern P = SolidPattern(C1, __PRETTY_FUNCTION__);
+  P.A = C1;
+  P.B = C2;
+  P.funcPtrPatternAt = GradientPatternAt;
+  return P;
+}
+
+/**
+ * Set up function pointers for blending two patterns.
+ * @Param: P1 is used for the first link pattern.
+ * @Param: P2 is used for the second link pattern.
+ * @Return: P which is set up to call BlendedPatternAt.
+ * @Note: Input patterns may not use BlendedPattern as funcPtrPatternAt
+ *        since that would lead to an infinite recursion.
+ */
+pattern BlendedPattern(pattern const &P1, pattern const &P2)
+{
+  pattern P = SolidPattern(P1.A, __PRETTY_FUNCTION__);
+  P.A = P1.A;
+  P.B = P1.B;
+
+  // ---
+  // NOTE: Set up the resulting pattern to call the blended pattern function.
+  // ---
+  P.funcPtrPatternAt = BlendedPatternAt;
+  *P.ptrNext = P1;
+  *P.ptrNext->ptrNext = P2;
+
+  // ---
+  // NOTE: Check that the function pointers are not pointing to the BlendedPattern for its funcPtrPatternAt.
+  // ---
+  auto const ptrResultFunc = P.funcPtrPatternAt;
+  auto const ptrP1Func = P1.funcPtrPatternAt;
+  auto const ptrP2Func = P2.funcPtrPatternAt;
+  if (ptrResultFunc == ptrP1Func || ptrResultFunc == ptrP2Func)
+  {
+    std::cerr << "ERROR: " << __PRETTY_FUNCTION__ << ": Nested <pattern> functions would lead to infinite recursion"
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
+  return P;
+}
+
+/**
+ * Set up a linked list with three patterns.
+ * @Param: PMain - The main pattern. e.g Checkers.
+ * @Param: P1 - Pattern used when selector 1 triggers.
+ * @Param: P2 - Pattern used when selector 2 triggers.
+ * @Note: The nested patterns can not be of the same type as the
+ *        main pattern since that would lead to an infinite
+ *        recursion.
+ * @Return: A pattern that has a linked list to two other patterns.
+ */
+pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2)
+{
+  pattern Result = PMain;
+
+  Result.ptrNext = std::make_shared<pattern>();
+  *Result.ptrNext = P1;
+  Result.ptrNext->ptrNext = std::make_shared<pattern>();
+  *Result.ptrNext->ptrNext = P2;
+
+  if (Result.ptrNext == nullptr || ((Result.ptrNext != nullptr) && (Result.ptrNext->ptrNext == nullptr)))
+  {
+    std::cerr << __FUNCTION__ << ". ERROR: Could not create shared pointers to <pattern>." << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
+  // ---
+  // NOTE: Check that the function pointers are not pointing to the Main pattern funcPtrPatternAt.
+  // ---
+  auto const ptrMainFunc = PMain.funcPtrPatternAt;
+  auto const ptrP1Func = P1.funcPtrPatternAt;
+  auto const ptrP2Func = P2.funcPtrPatternAt;
+  if (ptrMainFunc == ptrP1Func || ptrMainFunc == ptrP2Func)
+  {
+    std::cerr << "ERROR: " << __PRETTY_FUNCTION__ << ": Nested <pattern> functions would lead to infinite recursion"
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
+  return Result;
+}
+
+/**
+ * Set up a perturbed pattern so that the input pattern is disturbed by noise.
+ */
+pattern PerturbPattern(pattern const &P1)
+{
+  pattern P = SolidPattern(P1.A);
+  P.funcPtrPatternAt = PerturbPatternAt;
+  *P.ptrNext = P1;
+
+  // ---
+  // NOTE: Reset here so that it is possible to check for nullpointer
+  //       in the actual pattern.
+  // ---
+  P.ptrNext->ptrNext.reset();
+
+  // ---
+  // NOTE: Check that the function pointers are not pointing to the Main pattern funcPtrPatternAt.
+  // ---
+  if (P1.funcPtrPatternAt == PerturbPatternAt)
+  {
+    std::cerr << "ERROR: " << __PRETTY_FUNCTION__ << ": Nested <pattern> functions would lead to infinite recursion"
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+    return {};
+  }
+
+  return P;
+}
+
+/**
+ * Return the color for the given pattern on  the given object, at the given
+ * world-space point. Respects the transformations on both the pattern and the
+ * object when doing so.
+ * This function works by calling PatternAtShape. The Object referenced need
+ * to have its material set up with a proper function to a pattern.
+ */
+tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point)
+{
+  tup const Color = PatternAtShape(Pattern, Object, Point);
+  return Color;
+}
+
+/**
+ * Compute a Shape local point by calculating the inverse of the transform.
+ * Use  the shape local point when calculating the Pattern point.
+ * Then use  the function pointer to get the pattern at the specific point.
+ * @Return: A tuple representing the color at the point.
+ */
+tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
+{
+  Assert(Shape.Material.Pattern.funcPtrPatternAt != nullptr, __FILE__, __LINE__);
+  /**
+   * Multiply the given world-space point by the inverse of the objects
+   * transformation matrix to convert the point to object space.
+   */
+  tup const ShapePoint = Inverse(Shape.Transform) * Point;
+
+  tup const Color = Pattern.funcPtrPatternAt(Pattern, ShapePoint);
+  return Color;
+}
+
+/**
+ * Default function for pattern, used as initializer in CTOR.
+ */
+tup FuncDefaultPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  tup const C = Color(PatternPoint.X, PatternPoint.Y, PatternPoint.Z);
+  return C;
+}
+
+/**
+ */
+tup PatternAt(pattern const &Pattern, tup const &Point) { return Pattern.funcPtrPatternAt(Pattern, Point); }
+
+/**
+ * Return the color of the Pattern at the given Point.
+ */
+tup SolidPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  tup const Color = Pattern.A;
+  return Color;
+}
+
+/**
+ * Apply Perlin noise to the shape point prior the normal pattern computation.
+ *
+ * @Param Pattern: The actual pattern that will get the noise applied to.
+ * @Param ShapePoint: World coordinate
+ */
+tup PerturbPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  tup const NoiseX = rtc::perlinnoise::improved_noise::Noise(ShapePoint.X, ShapePoint.X, ShapePoint.X) * .20f *
+                     tup{1.f, 0.f, 0.f, 0.f};
+  tup const NoiseY = rtc::perlinnoise::improved_noise::Noise(ShapePoint.Y, ShapePoint.Y, ShapePoint.Y) * 0.10f *
+                     tup{0.f, 1.f, 0.f, 0.f};
+  tup const NoiseZ = rtc::perlinnoise::improved_noise::Noise(ShapePoint.Z, ShapePoint.Z, ShapePoint.Z) * .20f *
+                     tup{0.f, 0.f, 1.f, 0.f};
+  tup const NoisyShapePoint = ShapePoint + NoiseX + NoiseY + NoiseZ;
+
+  tup const Color = Pattern.ptrNext->funcPtrPatternAt(*Pattern.ptrNext, NoisyShapePoint);
+  Assert(Pattern.Continue, __FUNCTION__, __LINE__);
+  return Color;
+}
+
+/**
+ * Return the color of the Pattern at the given Point.
+ */
+tup StripeAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  tup Color{Pattern.B};
+  if (int(std::floorf(PatternPoint.X)) % 2 == 0) Color = Pattern.A;
+  Assert(Pattern.Continue, __FUNCTION__, __LINE__);
+  return Color;
+}
+
+/**
+ * Return a blend of the two patterns at the given Point.
+ */
+tup BlendedPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  tup const Color1 = Pattern.ptrNext->funcPtrPatternAt(Pattern, ShapePoint);
+  tup const Color2 = Pattern.ptrNext->ptrNext->funcPtrPatternAt(*Pattern.ptrNext, ShapePoint);
+  tup const Color = 0.5f * Color1 + 0.5f * Color2;
+  Assert(Pattern.Continue, __FUNCTION__, __LINE__);
+  return Color;
+}
+
+/**
+ * A Linear extrapolation pattern, LERP.
+ * Calculate a distance beetween the two colors and use the Distance
+ * in the X direction to compute a fraction that multiplied with the
+ * Distance will produce a color in between the two colors of the
+ * gradient.
+ */
+tup GradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  pattern const &Gradient = Pattern;
+  tup const Distance = Gradient.B - Gradient.A;
+  float const Fraction = PatternPoint.X - std::floorf(PatternPoint.X);
+  tup const Color = Gradient.A + Distance * Fraction;
+  return Color;
+}
+
+/**
+ * A ring pattern depends on the X and Z dimension.
+ */
+tup RingPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  float const Hyp = std::sqrtf(PatternPoint.X * PatternPoint.X + PatternPoint.Z * PatternPoint.Z);
+  int const Floor = int(std::floorf(Hyp)) % 2;
+  tup const Color = Floor == 0 ? Pattern.A : Pattern.B;
+  return Color;
+}
+
+/**
+ * A radial/ring pattern with a gradient. Depends on the X and Z dimension.
+ */
+tup RadialGradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  float const Hyp = std::sqrtf(PatternPoint.X * PatternPoint.X + PatternPoint.Z * PatternPoint.Z);
+  int const Floor = int(std::floorf(Hyp)) % 2;
+  tup const Color1 = Floor == 0 ? RingPatternAt(Pattern, PatternPoint) : GradientPatternAt(Pattern, PatternPoint);
+  tup const Color2 =
+      Pattern.ptrNext ? Pattern.ptrNext->funcPtrPatternAt(Pattern, PatternPoint) : ww::Color(0.f, 0.f, 0.f);
+  tup const Color = Color1 + Color2;
+  return Color;
+}
+
+/**
+ * Get a pattern of alternating cubes by taking the sum of all directions mod 2.
+ * Note: Point - In local coordinates.
+ */
+tup CheckersPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  int const Floor =
+      int(std::floorf(PatternPoint.X)) + int(std::floorf(PatternPoint.Y)) + int(std::floorf(PatternPoint.Z));
+
+  // tup const Color = (0 == Floor % 2) ? Pattern.A : Pattern.B;
+
+  tup const Color =
+      (0 == Floor % 2)
+          ? (Pattern.ptrNext ? Pattern.ptrNext->funcPtrPatternAt(*Pattern.ptrNext, PatternPoint) : Pattern.A)
+          : (Pattern.ptrNext && Pattern.ptrNext->ptrNext
+                 ? Pattern.ptrNext->ptrNext->funcPtrPatternAt(*Pattern.ptrNext->ptrNext, PatternPoint)
+                 : Pattern.B);
+  return Color;
+}
+
+/**
+ * Get a pattern with gradient of alternating cubes by taking the sum of all directions mod 2.
+ */
+tup CheckersGradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
+{
+  /**
+   * Multiply the shape-space point by the inverse of the pattern's
+   * transformation matrix to convert that point to the Pattern space.
+   */
+  tup const PatternPoint = Inverse(Pattern.Transform) * ShapePoint;
+
+  int const Floor =
+      int(std::floorf(PatternPoint.X)) + int(std::floorf(PatternPoint.Y)) + int(std::floorf(PatternPoint.Z));
+  tup const Color =
+      (0 == Floor % 2) ? CheckersPatternAt(Pattern, PatternPoint) : GradientPatternAt(Pattern, PatternPoint);
+  return Color;
+}
 };  // namespace ww
 
 // ---
@@ -1742,6 +2198,8 @@ bool operator==(ww::intersection const &A, ww::intersection const &B) { return (
 bool operator==(ww::material const &A, ww::material const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::matrix const &A, ww::matrix const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::light const &A, ww::light const &B) { return (ww::Equal(A, B)); }
+bool operator==(ww::pattern const &A, ww::pattern const &B) { return (ww::Equal(A.A, B.A) && ww::Equal(A.B, B.B)); }
+bool operator!=(ww::pattern const &A, ww::pattern const &B) { return !(ww::Equal(A.A, B.A) && ww::Equal(A.B, B.B)); }
 bool operator==(ww::sphere const &A, ww::sphere const &B) { return (ww::Equal(A, B)); }
 bool operator==(ww::tup const &A, ww::tup const &B) { return (ww::Equal(A, B)); }
 // ---
