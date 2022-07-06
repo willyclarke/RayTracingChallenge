@@ -628,7 +628,7 @@ pattern StripePattern(tup const &C1, tup const &C2);
 pattern BlendedPattern(pattern const &P1, pattern const &P2);
 pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2);
 pattern PerturbPattern(pattern const &P1);
-pattern SolidPattern(tup const &Color, char const *ptr=nullptr);
+pattern SolidPattern(tup const &Color, char const *ptr = nullptr);
 // pattern SolidPattern(tup const &Color);
 pattern TestPattern();
 
