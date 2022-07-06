@@ -363,6 +363,7 @@ struct prepare_computation
   tup Point{};
   tup Normal{};
   tup Eye{};
+  tup Reflect{};
 };
 
 typedef std::shared_ptr<prepare_computation> shared_ptr_prepare_computation;

@@ -1489,6 +1489,7 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
   Comps.Point = PositionAt(R, Comps.t);
   Comps.Eye = -R.Direction;
   Comps.Normal = NormalAt(*Comps.pShape, Comps.Point);
+  Comps.Reflect = Reflect(R.Direction, Comps.Normal);
 
   // NOTE: Adjust Point for floating point inaccuracy.
   Comps.Point = Comps.Point + Comps.Normal * EPSILON;
