@@ -192,6 +192,7 @@ struct material
   float Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
   float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
   float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
+  float Reflective{0.f};   //!< 0 at completely non reflective and 1 when a perfect mirror.
   tup Color{1.f, 1.f, 1.f, 0.f};
   pattern Pattern{};
 };
