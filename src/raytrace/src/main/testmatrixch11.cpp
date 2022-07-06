@@ -21,3 +21,21 @@ TEST(CH11ReflectionAndRefraction, PrecomputingTheReflectiveVector)
   ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
   EXPECT_EQ(Comps.Reflect == ww::Vector(0.f, M_SQRT2 / 2.f, M_SQRT2 / 2.f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The reflected color for a nonreflective material
+TEST(CH11ReflectionAndRefraction, TheReflectedColorForANonReflectiveMaterial)
+{
+  ww::world W = ww::World();
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
+
+  if (W.vPtrObjects.size() > 1)
+  {
+    ww::shared_ptr_shape Shape = W.vPtrObjects[1];
+    Shape->Material.Ambient = 1.f;
+    ww::intersection const I = ww::intersection{1.f, Shape};
+    ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
+    ww::tup const Color = ww::ReflectedColor(W, Comps);
+    EXPECT_EQ(Color == ww::Color(0.f, 0.f, 0.f), true);
+  }
+}

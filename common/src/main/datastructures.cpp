@@ -1716,6 +1716,21 @@ bool IsShadowed(world const &World, tup const &Point)
   return (ShadowCount == World.vPtrLights.size());
 }
 
+/**
+ * Use the prepare_computation Reflect vector to calculate the color to return.
+ * When the Reflect is 0 the color will be black.
+ */
+tup ReflectedColor(world const &World, prepare_computation const &Comps)
+{
+  if (Comps.pShape->Material.Reflective < EPSILON)
+  {
+    return ww::Color(0.f, 0.f, 0.f);
+  }
+
+  tup Color = ww::Color(0.f, 0.f, 0.f);
+  return Color;
+}
+
 //------------------------------------------------------------------------------
 // \brief TestShape
 // \detail Function to demonstrate the abstract behavior of the shape class.

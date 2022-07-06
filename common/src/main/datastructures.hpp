@@ -611,6 +611,11 @@ canvas Render(camera const &Camera, world const &World);
 bool IsShadowed(world const &World, tup const &Point);
 
 //------------------------------------------------------------------------------
+// Reflection functions --------------------------------------------------------
+//------------------------------------------------------------------------------
+tup ReflectedColor(world const &World, prepare_computation const &Comps);
+
+//------------------------------------------------------------------------------
 // Functions for testing planes.
 //------------------------------------------------------------------------------
 shape TestShape();
