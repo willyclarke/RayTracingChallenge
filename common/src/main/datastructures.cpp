@@ -1514,7 +1514,7 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
 
     bool const Shadowed = IsShadowed(W, Comps.OverPoint);
 
-    tup C = Lighting(Comps.pShape->Material,  //!<
+    tup const Surface = Lighting(Comps.pShape->Material,  //!<
                      *Comps.pShape,           //!<
                      WorldLight,              //!<
                      Comps.OverPoint,         //!<
@@ -1523,8 +1523,12 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
                      Shadowed                 //!<
     );
 
+    tup const Reflected = ReflectedColor(W, Comps);
+
+    // ---
     // NOTE: Add the colors from the various lights.
-    Color = Color + C;
+    // ---
+    Color = Color + Surface + Reflected;
   }
   return (Color);
 }
