@@ -361,6 +361,7 @@ struct prepare_computation
                   //!< correct illumination.
   shared_ptr_shape pShape{};
   tup Point{};
+  tup OverPoint{};
   tup Normal{};
   tup Eye{};
   tup Reflect{};
