@@ -119,3 +119,73 @@ TEST(CH11ReflectionAndRefraction, ShadeHitWithAReflectiveMaterial)
   ww::canvas Canvas = ww::Render(Camera, W);
   ww::WriteToPPM(Canvas, "Ch11ShadeHitWithAReflectiveMaterial.ppm");
 }
+
+//------------------------------------------------------------------------------
+// Scenario: color_at() with mutually reflective surface
+TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
+{
+  ww::world W{};
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  ww::WorldAddLight(W, pLight);
+
+  // ---
+  // Add the first plane
+  // ---
+  ww::shared_ptr_plane Lower = ww::PtrDefaultPlane();
+  Lower->Material.Reflective = 1.0f;
+  Lower->Transform = ww::Translation(0.f, -1.f, 0.f);
+  // Lower->Print = true;
+  ww::WorldAddObject(W, Lower);
+
+  // ---
+  // Add the second plane
+  // ---
+  ww::shared_ptr_plane Upper = ww::PtrDefaultPlane();
+  Upper->Material.Reflective = 1.0f;
+  Upper->Transform = ww::Translation(0.f, 1.f, 0.f);
+  // Upper->Print = true;
+  ww::WorldAddObject(W, Upper);
+
+  EXPECT_EQ(W.Count(), 2);
+
+  // W.Print = true;
+  W.CallCnt = 0;
+
+  // ---
+  // NOTE: Check that a ray pointing to the lower plane intersects.
+  // ---
+  {
+    ww::ray const R{ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)};
+    ww::intersections const XS = ww::LocalIntersect(Lower, R);
+
+    EXPECT_EQ(XS.Count(), 1);
+    if (XS.Count())
+    {
+      EXPECT_EQ(XS.vI[0].t, 1.f);
+      EXPECT_EQ(XS.vI[0].pShape == Lower, true);
+    }
+  }
+
+  // ---
+  // NOTE: Check that a ray pointing to the upper plane intersects.
+  // ---
+  {
+    ww::ray const R{ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)};
+    ww::intersections const XS = ww::LocalIntersect(Upper, R);
+
+    EXPECT_EQ(XS.Count(), 1);
+    if (XS.Count())
+    {
+      EXPECT_EQ(XS.vI[0].t, 1.f);
+      EXPECT_EQ(XS.vI[0].pShape == Upper, true);
+    }
+  }
+
+  std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". \nUpper plane: " << Upper << "\nLower plane: " << Lower
+            << "\n------------------------------------------------------------------------------" << std::endl;
+  ww::ray const R{ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 1.f, 0.f)};
+  ww::tup const Color = ww::ColorAt(W, R);
+}

@@ -955,11 +955,21 @@ ww::intersections LocalIntersectPlane(shared_ptr_shape PtrShape, ray const &Ray)
 
   if (!PtrShape->isA<ww::plane>()) return Result;
 
-  if (std::abs(Ray.Direction.Y) < EPSILON) return Result;
+  if (std::abs(Ray.Direction.Y) < EPSILON)
+  {
+    return Result;
+  }
 
   float const t = -Ray.Origin.Y / Ray.Direction.Y;
 
-  Result.vI.push_back(Intersection(t, PtrShape));
+  // ---
+  // NOTE: Keep negative and positive t-hits. But avoid the ones where the ray has penetrated the plane.
+  //       Ref RTC page 95: Identifying hits.
+  // ---
+  if (std::abs(t) > EPSILON)
+  {
+    Result.vI.push_back(Intersection(t, PtrShape));
+  }
 
   return Result;
 }
@@ -1430,16 +1440,25 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 
   for (auto const &PtrObject : World.vPtrObjects)
   {
-    ww::ray LocalRayComputed{};
+    ww::ray &LocalRayComputed = World.LocalRayComputed;
 
     intersections const I = Intersect(PtrObject, Ray, &LocalRayComputed);
 
 #if 0
-    if (PtrObject->isA<ww::sphere>())
+    if (World.Print)
     {
-      ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
-      std::cout << "\n\n " << __FUNCTION__ << "-> Sphere has radius " << pSphere->Radius << std::endl;
-      std::cout << "\tLocalRayComputed: " << LocalRayComputed << std::endl;
+      if (PtrObject->isA<ww::sphere>())
+      {
+        ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
+        std::cout << "\n\n " << __FUNCTION__ << "-> Sphere has radius " << pSphere->Radius << std::endl;
+        std::cout << "\tLocalRayComputed: " << LocalRayComputed << std::endl;
+      }
+      if (PtrObject->isA<ww::plane>())
+      {
+        ww::plane const *pPlane = dynamic_cast<ww::plane *>(PtrObject.get());
+        std::cout << "\n\n " << __FUNCTION__ << "-> SavedRay:\n" << pPlane->SavedRay << std::endl;
+        std::cout << "\tLocalRayComputed: \n" << LocalRayComputed << std::endl;
+      }
     }
 #endif
 
@@ -1504,26 +1523,26 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
 }
 
 //------------------------------------------------------------------------------
-tup ShadeHit(world const &W, prepare_computation const &Comps)
+tup ShadeHit(world const &World, prepare_computation const &Comps)
 {
   tup Color{};
 
-  for (auto pWorldLight : W.vPtrLights)
+  for (auto pWorldLight : World.vPtrLights)
   {
     light const &WorldLight = *pWorldLight;
 
-    bool const Shadowed = IsShadowed(W, Comps.OverPoint);
+    bool const Shadowed = IsShadowed(World, Comps.OverPoint);
 
     tup const Surface = Lighting(Comps.pShape->Material,  //!<
-                     *Comps.pShape,           //!<
-                     WorldLight,              //!<
-                     Comps.OverPoint,         //!<
-                     Comps.Eye,               //!<
-                     Comps.Normal,            //!<
-                     Shadowed                 //!<
+                                 *Comps.pShape,           //!<
+                                 WorldLight,              //!<
+                                 Comps.OverPoint,         //!<
+                                 Comps.Eye,               //!<
+                                 Comps.Normal,            //!<
+                                 Shadowed                 //!<
     );
 
-    tup const Reflected = ReflectedColor(W, Comps);
+    tup const Reflected = ReflectedColor(World, Comps);
 
     // ---
     // NOTE: Add the colors from the various lights.
@@ -1536,6 +1555,9 @@ tup ShadeHit(world const &W, prepare_computation const &Comps)
 //------------------------------------------------------------------------------
 tup ColorAt(world const &World, ray const &Ray)
 {
+  int &CallCnt = World.CallCnt;
+  ++CallCnt;
+
   tup Result{};
   // 1. Call IntersectWorld() to find out the intersections of the given ray with the world.
   intersections const IS = IntersectWorld(World, Ray);
@@ -1544,8 +1566,15 @@ tup ColorAt(world const &World, ray const &Ray)
   intersection const I = Hit(IS);
 
   // 3. Return the Color black if there is no such intersection.
-  if (IS.Count() == 0) return Result;
-  if (I.pShape == nullptr) return Result;
+  if (IS.Count() == 0)
+  {
+    return Result;
+  }
+
+  if (I.pShape == nullptr)
+  {
+    return Result;
+  }
   Assert(IS.Count() != 0, __FUNCTION__, __LINE__);
 
   // 4. Otherwise pre-compute the necessary values with PrepareComputations
@@ -1722,8 +1751,11 @@ bool IsShadowed(world const &World, tup const &Point)
  */
 tup ReflectedColor(world const &World, prepare_computation const &Comps)
 {
-  if (Comps.pShape->Material.Reflective < EPSILON)
+  if ((World.CallCnt > 50) || (Comps.pShape->Material.Reflective < EPSILON))
   {
+    if (World.Print)
+      std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". EARLY RETURN: " << World.CallCnt
+                << ". Reflective: " << Comps.pShape->Material.Reflective << std::endl;
     return ww::Color(0.f, 0.f, 0.f);
   }
 

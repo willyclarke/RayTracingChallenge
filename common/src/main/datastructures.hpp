@@ -247,6 +247,7 @@ struct shape
   };                            //!<
 
   ray SavedRay{};  //!< Should be set by the LocalIntersect function
+  bool Print{};
 
   shape() {}
   virtual ~shape() {}
@@ -346,6 +347,9 @@ struct world
   std::vector<shared_ptr_shape> vPtrObjects{};
   std::vector<shared_ptr_light> vPtrLights{};
   int Count() const { return static_cast<int>(vPtrObjects.size()); }
+  bool Print{};
+  mutable int CallCnt{};           //!< Used to limit recursion.
+  mutable ray LocalRayComputed{};  //!< For debugging purpose, storage for later printout.
 };
 
 //------------------------------------------------------------------------------
