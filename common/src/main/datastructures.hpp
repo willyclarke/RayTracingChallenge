@@ -348,7 +348,7 @@ struct world
   std::vector<shared_ptr_light> vPtrLights{};
   int Count() const { return static_cast<int>(vPtrObjects.size()); }
   bool Print{};
-  mutable int CallCnt{};           //!< Used to limit recursion.
+  mutable int ColorAtCallCnt{};           //!< Used to limit recursion.
   mutable ray LocalRayComputed{};  //!< For debugging purpose, storage for later printout.
 };
 

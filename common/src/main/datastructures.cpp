@@ -1555,7 +1555,7 @@ tup ShadeHit(world const &World, prepare_computation const &Comps)
 //------------------------------------------------------------------------------
 tup ColorAt(world const &World, ray const &Ray)
 {
-  int &CallCnt = World.CallCnt;
+  int &CallCnt = World.ColorAtCallCnt;
   ++CallCnt;
 
   tup Result{};
@@ -1751,10 +1751,10 @@ bool IsShadowed(world const &World, tup const &Point)
  */
 tup ReflectedColor(world const &World, prepare_computation const &Comps)
 {
-  if ((World.CallCnt > 50) || (Comps.pShape->Material.Reflective < EPSILON))
+  if ((World.ColorAtCallCnt > 50) || (Comps.pShape->Material.Reflective < EPSILON))
   {
     if (World.Print)
-      std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". EARLY RETURN: " << World.CallCnt
+      std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". EARLY RETURN: " << World.ColorAtCallCnt
                 << ". Reflective: " << Comps.pShape->Material.Reflective << std::endl;
     return ww::Color(0.f, 0.f, 0.f);
   }

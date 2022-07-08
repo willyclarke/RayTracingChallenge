@@ -152,7 +152,7 @@ TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
   EXPECT_EQ(W.Count(), 2);
 
   // W.Print = true;
-  W.CallCnt = 0;
+  W.ColorAtCallCnt = 0;
 
   // ---
   // NOTE: Check that a ray pointing to the lower plane intersects.
