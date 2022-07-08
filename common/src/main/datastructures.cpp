@@ -213,7 +213,7 @@ float MagSquared(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
-float Mag(tup const &Tup) { return (std::sqrt(MagSquared(Tup))); }
+float Mag(tup const &Tup) { return (std::sqrtf(MagSquared(Tup))); }
 
 //------------------------------------------------------------------------------
 tup Negate(tup const &Tup)
