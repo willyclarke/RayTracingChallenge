@@ -317,5 +317,4 @@ TEST(CH11ReflectionAndRefraction, TransparencyAndRefractiveIndexForTheDefaultMat
   ww::material M = ww::material{};
   EXPECT_EQ(M.Transparency, 0.f);
   EXPECT_EQ(M.RefractiveIndex, 1.f);
-
 }

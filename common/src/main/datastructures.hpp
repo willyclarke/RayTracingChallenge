@@ -584,13 +584,13 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R);
 // \fn ShadeHit
 // \brief Calculates the color at the intersection captured by Comps.
 // \return tup with the color.
-tup ShadeHit(world const &W, prepare_computation const &Comps, int const Remaining=5);
+tup ShadeHit(world const &W, prepare_computation const &Comps, int const Remaining = 5);
 
 // \fn ColorAt
 // \brief Intersect the given ray with the world and return the color at the resulting
 //        intersection.
 // \return tup with the color.
-tup ColorAt(world const &World, ray const &Ray, int const Remaining=5);
+tup ColorAt(world const &World, ray const &Ray, int const Remaining = 5);
 
 // \fn ViewTransform
 // \brief Orient the world releative to the eye. Line everything up to get the view we want.
@@ -619,7 +619,7 @@ bool IsShadowed(world const &World, tup const &Point);
 //------------------------------------------------------------------------------
 // Reflection functions --------------------------------------------------------
 //------------------------------------------------------------------------------
-tup ReflectedColor(world const &World, prepare_computation const &Comps, int const Remaining=5);
+tup ReflectedColor(world const &World, prepare_computation const &Comps, int const Remaining = 5);
 
 //------------------------------------------------------------------------------
 // Functions for testing planes.
