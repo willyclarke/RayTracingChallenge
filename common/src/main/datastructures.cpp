@@ -251,18 +251,24 @@ tup Vector(float A, float B, float C)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * Convert from degrees to radians.
+ */
 float Radians(float Deg) { return (PI_F * Deg / 180.f); }
 // ---
 // NOTE: Canvas methods/functions.
 // ---
+
+//------------------------------------------------------------------------------
+/**
+ * Write a pixel color to the XY vector of the Canvas.
+ * @Param Canvas: Destination for receiving the color.
+ * @Param X: Offset in the X direction.
+ * @Param Y: Offset in the Y direction.
+ * @Param Color: Tuple containing the color.
+ */
 void WritePixel(canvas &Canvas, int X, int Y, tup const &Color)
 {
-  // std::cout << "X:" << X                       //!<
-  //          << ". Y:" << Y                     //!<
-  //          << ". clc:" << (X + Y * Canvas.W)  //!<
-  //          << ". size:" << Canvas.vXY.size()  //!<
-  //          << std::endl;
-
   Assert(Canvas.vXY.size() > (X + Y * Canvas.W), __FILE__, __LINE__);
   Canvas.vXY[X + Y * Canvas.W] = Color;
 }
