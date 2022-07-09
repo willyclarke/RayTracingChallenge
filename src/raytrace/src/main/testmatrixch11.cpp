@@ -222,3 +222,90 @@ TEST(CH11ReflectionAndRefraction, TheReflectedColorAtTheMaximumRecursiveDepth)
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   EXPECT_EQ(Color == Black, true);
 }
+
+//------------------------------------------------------------------------------
+TEST(CH11ReflectionAndRefraction, PuttingItTogether)
+{
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+
+  ww::shared_ptr_shape PtrRight = ww::PtrDefaultSphere();
+  ww::shape &Right = *PtrRight;
+  Right.Transform = ww::Translation(1.5f, 0.5f, -0.5f) *  //!<
+                    ww::Scaling(0.5f, 0.5f, 0.5f);
+  Right.Material.Color = ww::Color(0.5f, 1.0f, 0.1f);
+  Right.Material.Diffuse = 0.7f;
+  Right.Material.Specular = 0.3f;
+  Right.Material.Reflective = 0.4f;
+  World.vPtrObjects.push_back(PtrRight);
+
+  ww::shared_ptr_shape PtrMiddle = ww::PtrDefaultSphere();
+  ww::shape &Middle = *PtrMiddle;
+  Middle.Transform = ww::Translation(-0.5f, 1.f, 0.5f);
+  Middle.Material.Color = ww::Color(0.1f, 1.0f, 0.5f);
+  Middle.Material.Diffuse = 0.7f;
+  Middle.Material.Specular = 0.3f;
+  Middle.Material.Reflective = 0.9f;
+  // Middle.Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  // Middle.Material.Pattern.Transform = ww::Scaling(0.4f, 0.4f, 0.4f);
+  World.vPtrObjects.push_back(PtrMiddle);
+
+  ww::shared_ptr_shape PtrLeft = ww::PtrDefaultSphere();
+  ww::shape &Left = *PtrLeft;
+  Left.Transform = ww::Translation(-1.5f, 0.33f, -0.75f) *  //!<
+                   ww::Scaling(0.33f, 0.33f, 0.33f);
+  Left.Material.Color = ww::Color(1.0f, 0.8f, 0.1f);
+  Left.Material.Diffuse = 0.7f;
+  Left.Material.Specular = 0.3f;
+  Left.Material.Reflective = 0.4f;
+  World.vPtrObjects.push_back(PtrLeft);
+
+  // Add the first plane
+  ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
+  ptrPlane->Transform = ww::TranslateScaleRotate(0.f, 0.f, 00.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  ptrPlane->Material.Shininess = 10.f;
+  ptrPlane->Material.Diffuse = 0.5f;
+  // ptrPlane->Material.Reflective = 1.f;
+  ptrPlane->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  ptrPlane->Transform = ww::RotateY(ww::Radians(45.f));
+  ptrPlane->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  World.vPtrObjects.push_back(ptrPlane);
+
+  // Add a second plane - this will act as the backdrop.
+  ww::shared_ptr_plane ptrPlane2 = ww::PtrDefaultPlane();
+  ptrPlane2->Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 10.f, 1.f, 1.f, 1.f, ww::Radians(90.f), 0.f, ww::Radians(45.f));
+  ptrPlane2->Material.Shininess = 100.f;
+  ptrPlane2->Material.Diffuse = 0.7f;
+  ptrPlane2->Material.Color =
+      ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  ptrPlane2->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrObjects.push_back(ptrPlane2);
+
+  // Add a third plane - this will act as the backdrop.
+  ww::shared_ptr_plane ptrPlane3 = ww::PtrDefaultPlane();
+  ptrPlane3->Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 10.f, 1.f, 1.f, 1.f, ww::Radians(90.f), 0.f, ww::Radians(-45.f));
+  ptrPlane3->Material.Shininess = 100.f;
+  ptrPlane3->Material.Diffuse = 0.7f;
+  ptrPlane3->Material.Color =
+      ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  ptrPlane3->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrObjects.push_back(ptrPlane3);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
+
+  ww::tup const ViewFrom = ww::Point(0.f, 3.5f, -5.f);
+  ww::tup const ViewTo = ww::Point(0.f, 1.f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "Ch11MakingAScene.ppm");
+}
