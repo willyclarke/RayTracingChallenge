@@ -188,12 +188,14 @@ struct pattern
 //------------------------------------------------------------------------------
 struct material
 {
-  float Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
-  float Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
-  float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
-  float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
-  float Reflective{0.f};   //!< 0 at completely non reflective and 1 when a perfect mirror.
-  tup Color{1.f, 1.f, 1.f, 0.f};
+  float Ambient{0.1f};            //!< Typical value between 0 and 1. Non-negative.
+  float Diffuse{0.9f};            //!< Typical value between 0 and 1. Non-negative.
+  float Specular{0.9f};           //!< Typical value between 0 and 1. Non-negative.
+  float Shininess{200.f};         //!< Typical value between 10 and 200. Non-negative.
+  float Reflective{0.f};          //!< 0 at completely non reflective and 1 when a perfect mirror.
+  float Transparency{0.f};        //!< 0 makes the surface opaque.
+  float RefractiveIndex{1.f};     //!< 1 makes the object empty with vacuum inside.
+  tup Color{1.f, 1.f, 1.f, 0.f};  //!< Defaults to Black.
   pattern Pattern{};
 };
 

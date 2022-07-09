@@ -309,3 +309,13 @@ TEST(CH11ReflectionAndRefraction, PuttingItTogether)
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch11MakingAScene.ppm");
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Transparency and Refractive index for the default material.
+TEST(CH11ReflectionAndRefraction, TransparencyAndRefractiveIndexForTheDefaultMaterial)
+{
+  ww::material M = ww::material{};
+  EXPECT_EQ(M.Transparency, 0.f);
+  EXPECT_EQ(M.RefractiveIndex, 1.f);
+
+}
