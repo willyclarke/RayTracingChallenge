@@ -151,7 +151,7 @@ TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
 
   EXPECT_EQ(W.Count(), 2);
 
-  W.Print = true;
+  // W.Print = true;
 
   // ---
   // NOTE: Check that a ray pointing to the lower plane intersects.
@@ -183,8 +183,8 @@ TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
     }
   }
 
-  std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". \nUpper plane: " << Upper << "\nLower plane: " << Lower
-            << "\n------------------------------------------------------------------------------" << std::endl;
+  // std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". \nUpper plane: " << Upper << "\nLower plane: " << Lower
+  //           << "\n------------------------------------------------------------------------------" << std::endl;
 
   // ---
   // NOTE: The test here checks that the recursion ends after a finite number of calls.
@@ -193,8 +193,8 @@ TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
   ww::ray const R{ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 1.f, 0.f)};
   ww::tup const Color = ww::ColorAt(W, R);
 
-  std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". \nUpper plane: " << Upper << "\nLower plane: " << Lower
-            << "\n------------------------------------------------------------------------------" << std::endl;
+  // std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". \nUpper plane: " << Upper << "\nLower plane: " << Lower
+  //           << "\n------------------------------------------------------------------------------" << std::endl;
 }
 
 //------------------------------------------------------------------------------

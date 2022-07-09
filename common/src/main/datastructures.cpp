@@ -1555,8 +1555,6 @@ tup ShadeHit(world const &World, prepare_computation const &Comps, int const Rem
 //------------------------------------------------------------------------------
 tup ColorAt(world const &World, ray const &Ray, int const Remaining)
 {
-  if (World.Print) std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". Remaining: " << Remaining << std::endl;
-
   tup Result{};
   // 1. Call IntersectWorld() to find out the intersections of the given ray with the world.
   intersections const IS = IntersectWorld(World, Ray);
@@ -1752,19 +1750,6 @@ tup ReflectedColor(world const &World, prepare_computation const &Comps, int con
 {
   if ((Remaining <= 0) || (Comps.pShape->Material.Reflective < EPSILON))
   {
-    if (World.Print)
-    {
-      std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". EARLY RETURN.";
-      if (Remaining <= 0)
-      {
-        std::cout << "\nRemaining: " << Remaining;
-      }
-      if (Comps.pShape->Material.Reflective < EPSILON)
-      {
-        std::cout << "\nReflective < " << EPSILON << " (EPSILON)";
-      }
-      std::cout << "." << std::endl;
-    }
     return ww::Color(0.f, 0.f, 0.f);
   }
 
