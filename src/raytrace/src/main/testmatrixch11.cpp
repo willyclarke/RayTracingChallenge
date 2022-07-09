@@ -209,8 +209,6 @@ TEST(CH11ReflectionAndRefraction, TheReflectedColorAtTheMaximumRecursiveDepth)
   // Add the first plane
   // ---
   ww::shared_ptr_plane Shape = ww::PtrDefaultPlane();
-  Shape->Material.Reflective = 1.0f;
-  Shape->Transform = ww::Translation(0.f, -1.f, 0.f);
   Shape->Material.Reflective = 0.5f;
   Shape->Transform = ww::Translation(0.f, -1.f, 0.f);
   Shape->Print = true;
