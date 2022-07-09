@@ -1523,7 +1523,7 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
 }
 
 //------------------------------------------------------------------------------
-tup ShadeHit(world const &World, prepare_computation const &Comps)
+tup ShadeHit(world const &World, prepare_computation const &Comps, int const Remaining)
 {
   tup Color{};
 
@@ -1542,7 +1542,7 @@ tup ShadeHit(world const &World, prepare_computation const &Comps)
                                  Shadowed                 //!<
     );
 
-    tup const Reflected = ReflectedColor(World, Comps);
+    tup const Reflected = ReflectedColor(World, Comps, Remaining);
 
     // ---
     // NOTE: Add the colors from the various lights.
@@ -1553,10 +1553,9 @@ tup ShadeHit(world const &World, prepare_computation const &Comps)
 }
 
 //------------------------------------------------------------------------------
-tup ColorAt(world const &World, ray const &Ray)
+tup ColorAt(world const &World, ray const &Ray, int const Remaining)
 {
-  int &CallCnt = World.ColorAtCallCnt;
-  ++CallCnt;
+  if (World.Print) std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". Remaining: " << Remaining << std::endl;
 
   tup Result{};
   // 1. Call IntersectWorld() to find out the intersections of the given ray with the world.
@@ -1582,7 +1581,7 @@ tup ColorAt(world const &World, ray const &Ray)
   prepare_computation const PC = PrepareComputations(I, Ray);
 
   // 5. Call shade hit to find the color at the hit.
-  Result = ShadeHit(World, PC);
+  Result = ShadeHit(World, PC, Remaining);
 
   return (Result);
 }
@@ -1749,18 +1748,28 @@ bool IsShadowed(world const &World, tup const &Point)
  * Use the prepare_computation Reflect vector to calculate the color to return.
  * When the Reflect is 0 the color will be black.
  */
-tup ReflectedColor(world const &World, prepare_computation const &Comps)
+tup ReflectedColor(world const &World, prepare_computation const &Comps, int const Remaining)
 {
-  if ((World.ColorAtCallCnt > 50) || (Comps.pShape->Material.Reflective < EPSILON))
+  if ((Remaining <= 0) || (Comps.pShape->Material.Reflective < EPSILON))
   {
     if (World.Print)
-      std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". EARLY RETURN: " << World.ColorAtCallCnt
-                << ". Reflective: " << Comps.pShape->Material.Reflective << std::endl;
+    {
+      std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". EARLY RETURN.";
+      if (Remaining <= 0)
+      {
+        std::cout << "\nRemaining: " << Remaining;
+      }
+      if (Comps.pShape->Material.Reflective < EPSILON)
+      {
+        std::cout << "\nReflective < " << EPSILON << " (EPSILON)";
+      }
+      std::cout << "." << std::endl;
+    }
     return ww::Color(0.f, 0.f, 0.f);
   }
 
   ray const ReflectRay = ray{Comps.OverPoint, Comps.Reflect};
-  tup Color = ColorAt(World, ReflectRay) * Comps.pShape->Material.Reflective;
+  tup Color = ColorAt(World, ReflectRay, Remaining - 1) * Comps.pShape->Material.Reflective;
   return Color;
 }
 

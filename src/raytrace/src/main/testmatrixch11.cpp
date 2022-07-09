@@ -151,8 +151,7 @@ TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
 
   EXPECT_EQ(W.Count(), 2);
 
-  // W.Print = true;
-  W.ColorAtCallCnt = 0;
+  W.Print = true;
 
   // ---
   // NOTE: Check that a ray pointing to the lower plane intersects.
@@ -186,6 +185,42 @@ TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
 
   std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". \nUpper plane: " << Upper << "\nLower plane: " << Lower
             << "\n------------------------------------------------------------------------------" << std::endl;
+
+  // ---
+  // NOTE: The test here checks that the recursion ends after a finite number of calls.
+  //       If this test runs to finish it means success.
+  // ---
   ww::ray const R{ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 1.f, 0.f)};
   ww::tup const Color = ww::ColorAt(W, R);
+
+  std::cout << __FUNCTION__ << ". Line: " << __LINE__ << ". \nUpper plane: " << Upper << "\nLower plane: " << Lower
+            << "\n------------------------------------------------------------------------------" << std::endl;
+}
+
+//------------------------------------------------------------------------------
+// Scenario: The reflected color at the maximum recursive depth.
+TEST(CH11ReflectionAndRefraction, TheReflectedColorAtTheMaximumRecursiveDepth)
+{
+  ww::world W = ww::World();
+
+  W.Print = true;
+
+  // ---
+  // Add the first plane
+  // ---
+  ww::shared_ptr_plane Shape = ww::PtrDefaultPlane();
+  Shape->Material.Reflective = 1.0f;
+  Shape->Transform = ww::Translation(0.f, -1.f, 0.f);
+  Shape->Material.Reflective = 0.5f;
+  Shape->Transform = ww::Translation(0.f, -1.f, 0.f);
+  Shape->Print = true;
+  ww::WorldAddObject(W, Shape);
+
+  ww::ray const R{ww::Point(0.f, 0.f, -3.f), ww::Vector(0.f, -M_SQRT2 / 2.f, M_SQRT2 / 2.f)};
+  ww::intersection const I = ww::intersection{M_SQRT2, Shape};
+  ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
+  ww::tup const Color = ww::ReflectedColor(W, Comps, 0);
+
+  ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
+  EXPECT_EQ(Color == Black, true);
 }
