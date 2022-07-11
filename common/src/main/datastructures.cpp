@@ -1117,13 +1117,26 @@ intersection Intersection(float t, shared_ptr_shape pShape)
 }
 
 //------------------------------------------------------------------------------
+intersections Intersections(intersection const &I)
+{
+  intersections XS{};
+  XS.vI.push_back(I);
+  Assert(I.pShape, __FUNCTION__, __LINE__);
+  return (XS);
+}
+
+//------------------------------------------------------------------------------
 intersections Intersections(intersection const &I1, intersection const &I2)
 {
-  intersections Result{};
-  Result.vI.push_back(I1);
-  Result.vI.push_back(I2);
+  intersections XS{};
 
-  return (Result);
+  Assert(I1.pShape, __FUNCTION__, __LINE__);
+  Assert(I2.pShape, __FUNCTION__, __LINE__);
+
+  XS.vI.push_back(I1);
+  XS.vI.push_back(I2);
+
+  return (XS);
 }
 
 //------------------------------------------------------------------------------
@@ -1528,6 +1541,7 @@ prepare_computation PrepareComputations(intersection const &Hit, ray const &R, i
   Comps.Normal = NormalAt(*Comps.pShape, Comps.Point);
   Comps.Reflect = Reflect(R.Direction, Comps.Normal);
   Comps.OverPoint = Comps.Point + Comps.Normal * EPSILON;
+  Comps.UnderPoint = Comps.Point - Comps.Normal * EPSILON;
 
   // NOTE: We use the dot product between the Normal and the Eye to figure out if the normal points
   //       away from the Eye. If negative they are (roughly) pointing in opposite directions.

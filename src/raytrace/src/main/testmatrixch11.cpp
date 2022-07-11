@@ -387,3 +387,19 @@ TEST(CH11ReflectionAndRefraction, FindingN1AndN2AtVariousIntersections)
     EXPECT_EQ(ww::PrepareComputations(XS.vI[Idx], R, &XS).n2, vRefr[Idx].n2);
   }
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The under point is offset below the surface.
+TEST(CH11ReflectionAndRefraction, TheUnderPointIsOffsetBelowTheSurface)
+{
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
+  Shape->Transform = ww::TranslateScaleRotate(0.f, 0.f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  EXPECT_FLOAT_EQ(Shape->Material.RefractiveIndex, 1.5f);
+
+  ww::intersection const I{5.f, Shape};
+  ww::intersections const XS = ww::Intersections(I);
+  ww::prepare_computation const Comps = ww::PrepareComputations(I, R, &XS);
+  EXPECT_GT(Comps.UnderPoint.Z, ww::EPSILON / 2.f);
+  EXPECT_LT(Comps.Point.Z, Comps.UnderPoint.Z);
+}

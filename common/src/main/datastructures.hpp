@@ -369,6 +369,7 @@ struct prepare_computation
   shared_ptr_shape pShape{};
   tup Point{};
   tup OverPoint{};
+  tup UnderPoint{};
   tup Normal{};
   tup Eye{};
   tup Reflect{};
@@ -539,6 +540,7 @@ bool Equal(material const &A, material const &B);
 bool Equal(light const &A, light const &B);
 intersection Hit(intersections const &Intersections);
 intersection Intersection(float t, shared_ptr_shape pObject);
+intersections Intersections(intersection const &I);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersections &Intersections(intersections &XS, intersection const &I);
 ray Mul(matrix const &M, ray const &R);
