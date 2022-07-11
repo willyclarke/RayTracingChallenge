@@ -1868,7 +1868,24 @@ tup ReflectedColor(world const &World, prepare_computation const &Comps, int con
  */
 tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining)
 {
-  if ((0 >= Remaining) || (Comps.pShape->Material.Transparency == 0.f))
+  // ---
+  // NOTE: Find the ratio of the first index to the second.
+  // ---
+  float const nRatio = Comps.n1 / Comps.n2;  //!< This is the inverted defintion from Snells law.
+
+  // ---
+  // NOTE: Snell law ->
+  //                      sin(ThetaI)       n2
+  //                      -------------  = -----
+  //                      sin(ThetaT)       n1
+  // ---
+  // NOTE: Cosine(thetaI) is the same as the dot product between the vectors.
+  // ---
+  float const CosI = Dot(Comps.vEye, Comps.vNormal);
+  float const Sin2T = nRatio * nRatio * (1.f - CosI * CosI);
+  bool const TotalReflection = Sin2T > 1;
+
+  if (TotalReflection || (0 >= Remaining) || (Comps.pShape->Material.Transparency == 0.f))
   {
     return {};  //!< Return Black when ...
   }

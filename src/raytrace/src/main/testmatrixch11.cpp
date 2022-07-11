@@ -443,3 +443,27 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorAtTheMaximumRecursiveDepth)
   ww::tup const Color = ww::RefractedColor(W, Comps, 0);
   EXPECT_EQ(Color == ww::Color(0.f, 0.f, 0.f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The refracted color under total internal reflection.
+TEST(CH11ReflectionAndRefraction, TheRefractedColorUnderTotalInternalReflection)
+{
+  ww::world W = ww::World();
+  ww::shared_ptr_shape Shape = W.vPtrObjects[0];
+  Shape->Material.Transparency = 1.f;
+  Shape->Material.RefractiveIndex = 1.5;
+  EXPECT_EQ(Shape->Material.Transparency, 1.f);
+  EXPECT_EQ(Shape->Material.RefractiveIndex, 1.5f);
+
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, M_SQRT2 / 2.f), ww::Vector(0.f, 1.f, 0.f));
+
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {-M_SQRT2 / 2.f, Shape});
+  XS = ww::Intersections(XS, {M_SQRT2 / 2.f, Shape});
+  // NOTE: this time youre inside the sphere, so you need
+  //       to look at the second intersection, XS[1] and not XS[0].
+
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[1], R, &XS);
+  ww::tup const Color = ww::RefractedColor(W, Comps, 5);
+  EXPECT_EQ(Color == ww::Color(0.f, 0.f, 0.f), true);
+}
