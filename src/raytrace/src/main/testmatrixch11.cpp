@@ -318,3 +318,72 @@ TEST(CH11ReflectionAndRefraction, TransparencyAndRefractiveIndexForTheDefaultMat
   EXPECT_EQ(M.Transparency, 0.f);
   EXPECT_EQ(M.RefractiveIndex, 1.f);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: A helper for producing a sphere with a glassy material.
+TEST(CH11ReflectionAndRefraction, AHelperForProducingASphereWithAGlassyMaterial)
+{
+  ww::shared_ptr_sphere Sphere = ww::PtrGlassSphere();
+  EXPECT_EQ(Sphere->Transform == ww::I(), true);
+  EXPECT_FLOAT_EQ(Sphere->Material.Transparency, 1.f);
+  EXPECT_FLOAT_EQ(Sphere->Material.RefractiveIndex, 1.5f);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: Finding n1 and n2 at various intersections.
+TEST(CH11ReflectionAndRefraction, FindingN1AndN2AtVariousIntersections)
+{
+  ww::shared_ptr_sphere A = ww::PtrGlassSphere();
+  A->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+  EXPECT_FLOAT_EQ(A->Material.RefractiveIndex, 1.5f);
+
+  ww::shared_ptr_sphere B = ww::PtrGlassSphere();
+  B->Transform = ww::TranslateScaleRotate(0.f, 0.f, -0.25f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  B->Material.RefractiveIndex = 2.f;
+  EXPECT_FLOAT_EQ(B->Material.RefractiveIndex, 2.f);
+
+  ww::shared_ptr_sphere C = ww::PtrGlassSphere();
+  C->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.25f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  C->Material.RefractiveIndex = 2.5f;
+  EXPECT_FLOAT_EQ(C->Material.RefractiveIndex, 2.5f);
+
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -4.f), ww::Vector(0.f, 0.f, 1.f));
+
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {2.00f, A});
+  XS = ww::Intersections(XS, {2.75f, B});
+  XS = ww::Intersections(XS, {3.25f, C});
+  XS = ww::Intersections(XS, {4.75f, B});
+  XS = ww::Intersections(XS, {5.25f, C});
+  XS = ww::Intersections(XS, {6.00f, A});
+
+  struct refractive_index_for_test
+  {
+    float n1{1.f};
+    float n2{1.f};
+  };
+
+  // ---
+  // NOTE: Create a test vector of refractive indexes.
+  // ---
+  std::vector<refractive_index_for_test> vRefr{};
+  vRefr.push_back(refractive_index_for_test{1.0f, 1.5f});
+  vRefr.push_back(refractive_index_for_test{1.5f, 2.0f});
+  vRefr.push_back(refractive_index_for_test{2.0f, 2.5f});
+  vRefr.push_back(refractive_index_for_test{2.5f, 2.5f});
+  vRefr.push_back(refractive_index_for_test{2.5f, 1.5f});
+  vRefr.push_back(refractive_index_for_test{1.5f, 1.0f});
+
+  // ---
+  // NOTE: The vector need to be of the same lenght.
+  // ---
+  EXPECT_EQ(vRefr.size(), XS.Count());
+
+  for (size_t Idx = 0;                          //!<
+       Idx < vRefr.size() && Idx < XS.Count();  //!<
+       ++Idx)
+  {
+    EXPECT_EQ(ww::PrepareComputations(XS.vI[Idx], R, &XS).n1, vRefr[Idx].n1);
+    EXPECT_EQ(ww::PrepareComputations(XS.vI[Idx], R, &XS).n2, vRefr[Idx].n2);
+  }
+}

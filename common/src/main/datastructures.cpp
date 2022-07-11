@@ -17,6 +17,7 @@
 #include <iomanip>  // for std::setprecision
 #include <iostream>
 #include <iterator>
+#include <list>    // for std::list
 #include <memory>  // for shared pointer.
 #include <sstream>
 #include <string>
@@ -1064,7 +1065,7 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
 //------------------------------------------------------------------------------
 intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocalRayOutput)
 {
-  intersections Result{};
+  intersections XS{};
 
   // ---
   // NOTE: The object to which we are trying to calculate the intersect may
@@ -1099,10 +1100,10 @@ intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocal
 
   if (PtrShape->funcPtrLocalIntersect)
   {
-    Result = PtrShape->funcPtrLocalIntersect(PtrShape, LocalRay);
+    XS = PtrShape->funcPtrLocalIntersect(PtrShape, LocalRay);
   }
 
-  return (Result);
+  return (XS);
 }
 
 //------------------------------------------------------------------------------
@@ -1448,7 +1449,7 @@ intersections IntersectWorld(world const &World, ray const &Ray)
   {
     ww::ray &LocalRayComputed = World.LocalRayComputed;
 
-    intersections const I = Intersect(PtrObject, Ray, &LocalRayComputed);
+    intersections const XSPerObject = Intersect(PtrObject, Ray, &LocalRayComputed);
 
 #if 0
     if (World.Print)
@@ -1468,9 +1469,9 @@ intersections IntersectWorld(world const &World, ray const &Ray)
     }
 #endif
 
-    for (auto const &Element : I.vI)
+    for (auto const &I : XSPerObject.vI)
     {
-      XS.vI.push_back(Element);
+      if (I.pShape) XS.vI.push_back(I);
     }
   }
 
@@ -1500,15 +1501,26 @@ shared_ptr_sphere PtrDefaultSphere()
 }
 
 //------------------------------------------------------------------------------
-prepare_computation PrepareComputations(intersection const &I, ray const &R)
+shared_ptr_sphere PtrGlassSphere()
 {
-  Assert(I.pShape, __FUNCTION__, __LINE__);
+  shared_ptr_sphere pSphere{};
+  pSphere.reset(new sphere);
+  pSphere->Material.Transparency = 1.f;
+  pSphere->Material.RefractiveIndex = 1.5f;
+  pSphere->funcPtrLocalIntersect = &ww::LocalIntersectSphere;
+  return (pSphere);
+}
+
+//------------------------------------------------------------------------------
+prepare_computation PrepareComputations(intersection const &Hit, ray const &R, intersections const *ptrXS)
+{
+  Assert(Hit.pShape, __FUNCTION__, __LINE__);
 
   prepare_computation Comps{};
 
   // NOTE: Assign values we want to keep.
-  Comps.t = I.t;
-  Comps.pShape = I.pShape;
+  Comps.t = Hit.t;
+  Comps.pShape = Hit.pShape;
 
   // NOTE: Compute some useful values.
   Comps.Point = PositionAt(R, Comps.t);
@@ -1524,6 +1536,80 @@ prepare_computation PrepareComputations(intersection const &I, ray const &R)
     Comps.Inside = true;  // NOTE: Default for the flag is false, no need to clear it once again.
     Comps.Normal = -Comps.Normal;
   }
+
+  // ---
+  // NOTE: Determine the refractive index.
+  //       The variables n1 and n2 is the refractive index at either side of a ray-object
+  //       intersection.
+  // ---
+  if (ptrXS)
+  {
+    std::list<shared_ptr_shape> Container{};
+
+    for (size_t Idx = 0;        //!<
+         Idx < ptrXS->Count();  //!<
+         ++Idx)
+    {
+      intersection const &I = ptrXS->vI[Idx];
+      // ---
+      // NOTE: 1. If the intersection is the hit, set the refractive index to the refractive index of the last object in
+      // the
+      //          containers list. If that list is empty, then there is no containing object and n1 should be set to 1.
+      // ---
+      if (I == Hit)
+      {
+        if (Container.empty())
+        {
+          Comps.n1 = 1.f;
+        }
+        else
+        {
+          Comps.n1 = Container.back()->Material.RefractiveIndex;
+        }
+      }
+
+      // ---
+      // NOTE: 2. If the intersection's object is already in the Containers list, then this intersection must be exiting
+      //          the object. Remove the object from the Containers list in this case. Otherwise, the intersection is
+      //          entering the object, and the object should be added to the end of the list.
+      // ---
+      //
+      // ---
+      // NOTE: Look for intersection I in the Container with all the shapes.
+      // ---
+      Assert(I.pShape, __FUNCTION__, __LINE__);
+      auto it = std::find(Container.begin(), Container.end(), I.pShape);
+      if (it != Container.end())  // found it so now delete the intersection.
+      {
+        Container.remove(*it);
+      }
+      else  // it was not there so add the object with the intersection.
+      {
+        Container.push_back(I.pShape);
+      }
+
+      // ---
+      // NOTE: 3. If the intersection is the Hit, set n2 to the refractive index of the last object in the containers
+      //          list. If that list is empty, then again, there is no containing object and n2 should be set to 1.
+      // ---
+      if (I == Hit)
+      {
+        if (Container.empty())
+        {
+          Comps.n2 = 1.f;
+        }
+        else
+        {
+          Comps.n2 = Container.back()->Material.RefractiveIndex;
+        }
+
+        // ---
+        // NOTE: Since the Intersection is the Hit; break here.
+        // ---
+        break;
+      }
+    }  // end for
+  }    // end ptrXS
 
   return (Comps);
 }
@@ -1563,13 +1649,13 @@ tup ColorAt(world const &World, ray const &Ray, int const Remaining)
 {
   tup Result{};
   // 1. Call IntersectWorld() to find out the intersections of the given ray with the world.
-  intersections const IS = IntersectWorld(World, Ray);
+  intersections const XS = IntersectWorld(World, Ray);
 
   // 2. Find the Hit from the resulting intersections.
-  intersection const I = Hit(IS);
+  intersection const I = Hit(XS);
 
   // 3. Return the Color black if there is no such intersection.
-  if (IS.Count() == 0)
+  if (XS.Count() == 0)
   {
     return Result;
   }
@@ -1578,14 +1664,14 @@ tup ColorAt(world const &World, ray const &Ray, int const Remaining)
   {
     return Result;
   }
-  Assert(IS.Count() != 0, __FUNCTION__, __LINE__);
+  Assert(XS.Count() != 0, __FUNCTION__, __LINE__);
 
   // 4. Otherwise pre-compute the necessary values with PrepareComputations
   Assert(I.pShape, __FUNCTION__, __LINE__);
-  prepare_computation const PC = PrepareComputations(I, Ray);
+  prepare_computation const Comps = PrepareComputations(I, Ray, &XS);
 
   // 5. Call shade hit to find the color at the hit.
-  Result = ShadeHit(World, PC, Remaining);
+  Result = ShadeHit(World, Comps, Remaining);
 
   return (Result);
 }

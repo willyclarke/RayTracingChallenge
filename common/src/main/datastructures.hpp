@@ -362,6 +362,8 @@ struct world
 struct prepare_computation
 {
   float t{};
+  float n1{1.f};  //!< Refractive index of material that is beeing exited. 1 equals vacum.
+  float n2{1.f};  //!< Refractive index of material that is beeing entered. 1 equals vacum.
   bool Inside{};  //!< Set to true when the eye is inside an object. Reverses the sign of the normal vector to ensure
                   //!< correct illumination.
   shared_ptr_shape pShape{};
@@ -521,6 +523,7 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
 /// PtrDefaultSphere - Create a sphere and return shared pointer to this object.
 /// ---
 shared_ptr_sphere PtrDefaultSphere();
+shared_ptr_sphere PtrGlassSphere();
 
 /// ---
 /// PtrDefaultPlane - Create a plane and return shared pointer to this object.
@@ -579,7 +582,7 @@ void WorldAddLight(world &W, shared_ptr_light pLight);
 //        Computes the Normal vector and checks if the normal vector need to
 //        be reversed should the eye be inside of the object.
 // \return struct with eye and normal vector and hit point.
-prepare_computation PrepareComputations(intersection const &I, ray const &R);
+prepare_computation PrepareComputations(intersection const &I, ray const &R, intersections const *ptrXS = nullptr);
 
 // \fn ShadeHit
 // \brief Calculates the color at the intersection captured by Comps.
