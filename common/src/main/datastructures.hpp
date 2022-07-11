@@ -370,7 +370,7 @@ struct prepare_computation
   tup Point{};
   tup OverPoint{};
   tup UnderPoint{};
-  tup Normal{};
+  tup vNormal{};
   tup Eye{};
   tup Reflect{};
 };

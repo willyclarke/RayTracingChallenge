@@ -1538,17 +1538,17 @@ prepare_computation PrepareComputations(intersection const &Hit, ray const &R, i
   // NOTE: Compute some useful values.
   Comps.Point = PositionAt(R, Comps.t);
   Comps.Eye = -R.Direction;
-  Comps.Normal = NormalAt(*Comps.pShape, Comps.Point);
-  Comps.Reflect = Reflect(R.Direction, Comps.Normal);
-  Comps.OverPoint = Comps.Point + Comps.Normal * EPSILON;
-  Comps.UnderPoint = Comps.Point - Comps.Normal * EPSILON;
+  Comps.vNormal = NormalAt(*Comps.pShape, Comps.Point);
+  Comps.Reflect = Reflect(R.Direction, Comps.vNormal);
+  Comps.OverPoint = Comps.Point + Comps.vNormal * EPSILON;
+  Comps.UnderPoint = Comps.Point - Comps.vNormal * EPSILON;
 
   // NOTE: We use the dot product between the Normal and the Eye to figure out if the normal points
   //       away from the Eye. If negative they are (roughly) pointing in opposite directions.
-  if (Dot(Comps.Normal, Comps.Eye) < 0.f)
+  if (Dot(Comps.vNormal, Comps.Eye) < 0.f)
   {
     Comps.Inside = true;  // NOTE: Default for the flag is false, no need to clear it once again.
-    Comps.Normal = -Comps.Normal;
+    Comps.vNormal = -Comps.vNormal;
   }
 
   // ---
@@ -1644,7 +1644,7 @@ tup ShadeHit(world const &World, prepare_computation const &Comps, int const Rem
                                  WorldLight,              //!<
                                  Comps.OverPoint,         //!<
                                  Comps.Eye,               //!<
-                                 Comps.Normal,            //!<
+                                 Comps.vNormal,            //!<
                                  Shadowed                 //!<
     );
 
