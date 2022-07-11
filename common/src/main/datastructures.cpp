@@ -1868,9 +1868,9 @@ tup ReflectedColor(world const &World, prepare_computation const &Comps, int con
  */
 tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining)
 {
-  if (Comps.pShape->Material.Transparency == 0.f)
+  if ((0 >= Remaining) || (Comps.pShape->Material.Transparency == 0.f))
   {
-    return {}; //!< Return Black when ...
+    return {};  //!< Return Black when ...
   }
   tup const Color = ww::Color(1.f, 1.f, 1.f);
   return Color;

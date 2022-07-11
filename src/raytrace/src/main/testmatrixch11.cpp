@@ -421,3 +421,25 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorWithAnOpaqueSurface)
   ww::tup const Color = ww::RefractedColor(W, Comps);
   EXPECT_EQ(Color == ww::Color(0.f, 0.f, 0.f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The refracted color at the maximum recursive depth.
+TEST(CH11ReflectionAndRefraction, TheRefractedColorAtTheMaximumRecursiveDepth)
+{
+  ww::world W = ww::World();
+  ww::shared_ptr_shape Shape = W.vPtrObjects[0];
+  Shape->Material.Transparency = 1.f;
+  Shape->Material.RefractiveIndex = 1.5;
+  EXPECT_EQ(Shape->Material.Transparency, 1.f);
+  EXPECT_EQ(Shape->Material.RefractiveIndex, 1.5f);
+
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {4.f, Shape});
+  XS = ww::Intersections(XS, {6.f, Shape});
+
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[0], R, &XS);
+  ww::tup const Color = ww::RefractedColor(W, Comps, 0);
+  EXPECT_EQ(Color == ww::Color(0.f, 0.f, 0.f), true);
+}
