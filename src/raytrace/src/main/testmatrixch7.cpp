@@ -106,7 +106,7 @@ TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
   EXPECT_EQ(I.t, Comps.t);
   EXPECT_EQ(I.pShape == Comps.pShape, true);
   EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, -1.f)), true);
-  EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
+  EXPECT_EQ(ww::Equal(Comps.vEye, ww::Vector(0.f, 0.f, -1.f)), true);
   EXPECT_EQ(ww::Equal(Comps.vNormal, ww::Vector(0.f, 0.f, -1.f)), true);
 }
 
@@ -132,7 +132,7 @@ TEST(Ch7MakingAScene, HitFromInsideOrOutsideChangesTheNormal)
     ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
 
     EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, 1.f)), true);
-    EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
+    EXPECT_EQ(ww::Equal(Comps.vEye, ww::Vector(0.f, 0.f, -1.f)), true);
     EXPECT_EQ(Comps.Inside, true);
     // NOTE: Normal would have been 0,0,1 but is inverted.
     EXPECT_EQ(ww::Equal(Comps.vNormal, ww::Vector(0.f, 0.f, -1.f)), true);

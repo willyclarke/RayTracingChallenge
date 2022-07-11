@@ -19,7 +19,7 @@ TEST(CH11ReflectionAndRefraction, PrecomputingTheReflectiveVector)
   ww::ray const R = ww::Ray(ww::Point(0.f, 1.f, -1.f), ww::Vector(0.f, -M_SQRT2 / 2.f, M_SQRT2 / 2.f));
   ww::intersection const I = ww::intersection{M_SQRT2, Shape};
   ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
-  EXPECT_EQ(Comps.Reflect == ww::Vector(0.f, M_SQRT2 / 2.f, M_SQRT2 / 2.f), true);
+  EXPECT_EQ(Comps.vReflect == ww::Vector(0.f, M_SQRT2 / 2.f, M_SQRT2 / 2.f), true);
 }
 
 //------------------------------------------------------------------------------

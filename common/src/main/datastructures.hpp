@@ -371,8 +371,8 @@ struct prepare_computation
   tup OverPoint{};
   tup UnderPoint{};
   tup vNormal{};
-  tup Eye{};
-  tup Reflect{};
+  tup vEye{};
+  tup vReflect{};
 };
 
 typedef std::shared_ptr<prepare_computation> shared_ptr_prepare_computation;

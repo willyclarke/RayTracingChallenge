@@ -1537,15 +1537,15 @@ prepare_computation PrepareComputations(intersection const &Hit, ray const &R, i
 
   // NOTE: Compute some useful values.
   Comps.Point = PositionAt(R, Comps.t);
-  Comps.Eye = -R.Direction;
+  Comps.vEye = -R.Direction;
   Comps.vNormal = NormalAt(*Comps.pShape, Comps.Point);
-  Comps.Reflect = Reflect(R.Direction, Comps.vNormal);
+  Comps.vReflect = Reflect(R.Direction, Comps.vNormal);
   Comps.OverPoint = Comps.Point + Comps.vNormal * EPSILON;
   Comps.UnderPoint = Comps.Point - Comps.vNormal * EPSILON;
 
   // NOTE: We use the dot product between the Normal and the Eye to figure out if the normal points
   //       away from the Eye. If negative they are (roughly) pointing in opposite directions.
-  if (Dot(Comps.vNormal, Comps.Eye) < 0.f)
+  if (Dot(Comps.vNormal, Comps.vEye) < 0.f)
   {
     Comps.Inside = true;  // NOTE: Default for the flag is false, no need to clear it once again.
     Comps.vNormal = -Comps.vNormal;
@@ -1643,7 +1643,7 @@ tup ShadeHit(world const &World, prepare_computation const &Comps, int const Rem
                                  *Comps.pShape,           //!<
                                  WorldLight,              //!<
                                  Comps.OverPoint,         //!<
-                                 Comps.Eye,               //!<
+                                 Comps.vEye,               //!<
                                  Comps.vNormal,            //!<
                                  Shadowed                 //!<
     );
@@ -1859,7 +1859,7 @@ tup ReflectedColor(world const &World, prepare_computation const &Comps, int con
     return ww::Color(0.f, 0.f, 0.f);
   }
 
-  ray const ReflectRay = ray{Comps.OverPoint, Comps.Reflect};
+  ray const ReflectRay = ray{Comps.OverPoint, Comps.vReflect};
   tup Color = ColorAt(World, ReflectRay, Remaining - 1) * Comps.pShape->Material.Reflective;
   return Color;
 }
