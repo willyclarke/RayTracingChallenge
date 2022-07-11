@@ -403,3 +403,21 @@ TEST(CH11ReflectionAndRefraction, TheUnderPointIsOffsetBelowTheSurface)
   EXPECT_GT(Comps.UnderPoint.Z, ww::EPSILON / 2.f);
   EXPECT_LT(Comps.Point.Z, Comps.UnderPoint.Z);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The refracted color with an opaque surface.
+TEST(CH11ReflectionAndRefraction, TheRefractedColorWithAnOpaqueSurface)
+{
+  ww::world W = ww::World();
+  ww::shared_ptr_shape Shape = W.vPtrObjects[0];
+
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {4.f, Shape});
+  XS = ww::Intersections(XS, {6.f, Shape});
+
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[0], R, &XS);
+  ww::tup const Color = ww::RefractedColor(W, Comps);
+  EXPECT_EQ(Color == ww::Color(0.f, 0.f, 0.f), true);
+}

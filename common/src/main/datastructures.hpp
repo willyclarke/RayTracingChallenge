@@ -626,6 +626,11 @@ bool IsShadowed(world const &World, tup const &Point);
 //------------------------------------------------------------------------------
 tup ReflectedColor(world const &World, prepare_computation const &Comps, int const Remaining = 5);
 
+/**
+ * RefractedColor - Returns the color black when the hit applies to an opaque object.
+ */
+tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining = 5);
+
 //------------------------------------------------------------------------------
 // Functions for testing planes.
 //------------------------------------------------------------------------------

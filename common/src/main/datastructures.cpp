@@ -1643,8 +1643,8 @@ tup ShadeHit(world const &World, prepare_computation const &Comps, int const Rem
                                  *Comps.pShape,           //!<
                                  WorldLight,              //!<
                                  Comps.OverPoint,         //!<
-                                 Comps.vEye,               //!<
-                                 Comps.vNormal,            //!<
+                                 Comps.vEye,              //!<
+                                 Comps.vNormal,           //!<
                                  Shadowed                 //!<
     );
 
@@ -1861,6 +1861,18 @@ tup ReflectedColor(world const &World, prepare_computation const &Comps, int con
 
   ray const ReflectRay = ray{Comps.OverPoint, Comps.vReflect};
   tup Color = ColorAt(World, ReflectRay, Remaining - 1) * Comps.pShape->Material.Reflective;
+  return Color;
+}
+
+/**
+ */
+tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining)
+{
+  if (Comps.pShape->Material.Transparency == 0.f)
+  {
+    return {}; //!< Return Black when ...
+  }
+  tup const Color = ww::Color(1.f, 1.f, 1.f);
   return Color;
 }
 
