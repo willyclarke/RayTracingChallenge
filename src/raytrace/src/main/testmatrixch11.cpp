@@ -547,4 +547,33 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorWithARefractedRay)
 TEST(CH11ReflectionAndRefraction, ShadeHitWithATransparentMaterial)
 {
   ww::world W = ww::World();
+
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -3.f), ww::Vector(0.f, -M_SQRT2 / 2.f, M_SQRT2 / 2.f));
+  ww::shared_ptr_shape Floor = W.vPtrObjects[2];
+
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {M_SQRT2, Floor});
+
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[0], R, &XS);
+  ww::tup Color = ww::ShadeHit(W, Comps);
+  EXPECT_EQ(Color == ww::Color(0.93642f, 0.68642f, 0.68648f), true);
+#if 0
+  std::cout << "\n---\n" << std::endl;
+  std::cout << "Input Intersections:\n" << XS << std::endl;
+  std::cout << "Computed Color:" << Color << std::endl;
+  std::cout << "Expected Color:" << ww::Color(0.93642f, 0.68642f, 0.68648f) << std::endl;
+#endif
+
+  // ---
+  // NOTE: Write out the result so that it is possible to see whats going on.
+  // ---
+  ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
+
+  ww::tup const ViewFrom = ww::Point(0.f, 3.5f, -10.f);
+  ww::tup const ViewTo = ww::Point(0.f, 1.f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, W);
+  ww::WriteToPPM(Canvas, "Ch11ShadeHitWithATransparentMaterial.ppm");
 }

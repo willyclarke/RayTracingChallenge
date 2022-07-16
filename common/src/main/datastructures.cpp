@@ -1746,7 +1746,7 @@ tup ShadeHit(world const &World, prepare_computation const &Comps, int const Rem
     );
 
     tup const Reflected = ReflectedColor(World, Comps, Remaining);
-    tup const Refracted{};  //= RefractedColor(World, Comps, Remaining);
+    tup const Refracted = RefractedColor(World, Comps, Remaining);
 
     // ---
     // NOTE: Add the colors from the various lights.
