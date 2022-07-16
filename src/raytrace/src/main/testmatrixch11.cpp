@@ -467,3 +467,77 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorUnderTotalInternalReflection)
   ww::tup const Color = ww::RefractedColor(W, Comps, 5);
   EXPECT_EQ(Color == ww::Color(0.f, 0.f, 0.f), true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The refracted color with a refracted ray.
+TEST(CH11ReflectionAndRefraction, TheRefractedColorWithARefractedRay)
+{
+  ww::world W = ww::World();
+
+  ww::shared_ptr_shape A = W.vPtrObjects[0];
+  A->Material.Ambient = 1.f;
+  A->Material.Pattern = ww::TestPattern();
+  A->Material.Pattern.Print = true;
+  EXPECT_EQ(A->Material.Ambient, 1.f);
+
+  ww::shared_ptr_shape B = W.vPtrObjects[1];
+  B->Material.Transparency = 1.f;
+  B->Material.RefractiveIndex = 1.5f;
+  B->Material.Pattern = ww::TestPattern();
+  B->Material.Pattern.Print = true;
+  EXPECT_EQ(B->Material.Transparency, 1.f);
+  EXPECT_EQ(B->Material.RefractiveIndex, 1.5f);
+
+  EXPECT_EQ(W.vPtrObjects[0] == A, true);
+  EXPECT_EQ(W.vPtrObjects[1] == B, true);
+
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.1f), ww::Vector(0.f, 1.f, 0.f));
+
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {-0.9899f, A});
+  XS = ww::Intersections(XS, {-0.4899f, B});
+  XS = ww::Intersections(XS, {0.4899f, B});
+  XS = ww::Intersections(XS, {0.9899f, A});
+
+  W.Print = true;
+
+  ww::prepare_computation Comps{};
+// Comps.PrintDebug = true;
+#if 0
+  std::cout << "Init::Comps.n1: " << Comps.n1 << std::endl;
+  std::cout << "Init::Comps.n2: " << Comps.n2 << std::endl;
+#endif
+
+  Comps = ww::PrepareComputations(XS.vI[2], R, &XS);
+  // Comps.PrintDebug = true;
+  // std::cout << "Comps:\n" << Comps << std::endl;
+
+#if 0
+  std::cout << "\n---\n" << std::endl;
+  std::cout << "\n---\n" << std::endl;
+  std::cout << "Hit to examine: " << XS.vI[2].pShape << " with t=" << XS.vI[2].t << std::endl;
+  std::cout << "Calc::Comps.n1: " << Comps.n1 << std::endl;
+  std::cout << "Calc::Comps.n2: " << Comps.n2 << std::endl;
+#endif
+
+  ww::tup const Color = ww::RefractedColor(W, Comps, 5);
+
+#if 0
+  std::cout << "\n---\n" << std::endl;
+  std::cout << "Input Intersections:\n" << XS << std::endl;
+  std::cout << "Computed Color:" << Color << std::endl;
+  std::cout << "Expected Color:" << ww::Color(0.f, 0.99888f, 0.04725f) << std::endl;
+#endif
+
+  EXPECT_EQ(Color == ww::Color(0.f, 0.99888f, 0.04725f), true);
+
+  ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
+
+  ww::tup const ViewFrom = ww::Point(0.f, 3.5f, -5.f);
+  ww::tup const ViewTo = ww::Point(0.f, 1.f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, W);
+  ww::WriteToPPM(Canvas, "Ch11RefractColorRefractRay.ppm");
+}

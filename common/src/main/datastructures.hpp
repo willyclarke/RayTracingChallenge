@@ -179,6 +179,7 @@ struct pattern
   };                            //!<
 
   bool Continue{true};
+  bool Print{};
   //
   // //!< Function pointer for the pattern of a particular shape.
   tup (*funcPtrPatternAt)(pattern const &Pattern, tup const &Point){&FuncDefaultPatternAt};
@@ -366,6 +367,7 @@ struct prepare_computation
   float n2{1.f};  //!< Refractive index of material that is beeing entered. 1 equals vacum.
   bool Inside{};  //!< Set to true when the eye is inside an object. Reverses the sign of the normal vector to ensure
                   //!< correct illumination.
+  bool PrintDebug{};
   shared_ptr_shape pShape{};
   tup Point{};
   tup OverPoint{};
@@ -651,6 +653,7 @@ pattern BlendedPattern(pattern const &P1, pattern const &P2);
 pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2);
 pattern PerturbPattern(pattern const &P1);
 pattern SolidPattern(tup const &Color, char const *ptr = nullptr);
+pattern &SetPatternTransform(pattern &P, matrix const &T);
 // pattern SolidPattern(tup const &Color);
 pattern TestPattern();
 
@@ -705,8 +708,11 @@ std::ostream &operator<<(std::ostream &stream, const ww::tup &T);
 std::ostream &operator<<(std::ostream &stream, const ww::matrix &M);
 std::ostream &operator<<(std::ostream &stream, const ww::material &M);
 std::ostream &operator<<(std::ostream &stream, const ww::ray &R);
+std::ostream &operator<<(std::ostream &stream, const ww::shape &S);
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S);
 std::ostream &operator<<(std::ostream &stream, const ww::pattern &P);
+std::ostream &operator<<(std::ostream &stream, const ww::intersections &XS);
+std::ostream &operator<<(std::ostream &stream, const ww::prepare_computation &Comps);
 ww::tup operator+(ww::tup const &A, ww::tup const &B);
 ww::tup operator-(ww::tup const &Tup);
 ww::tup operator-(ww::tup const &A, ww::tup const &B);

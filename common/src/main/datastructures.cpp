@@ -106,6 +106,14 @@ std::ostream &operator<<(std::ostream &stream, const ww::material &M)
 }
 
 //------------------------------------------------------------------------------
+std::ostream &operator<<(std::ostream &stream, const ww::shape &S)
+{
+  stream << "\nShape:"
+         << "\nShape Material:" << S.Material << "\nShape Transform:" << S.Transform << std::endl;
+  return stream;
+}
+
+//------------------------------------------------------------------------------
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
 {
   stream << "\nSphere\nCenter:" << S.Center << "\nSphere Material:" << S.Material << "Sphere Radius:" << S.Radius
@@ -115,7 +123,73 @@ std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
 
 std::ostream &operator<<(std::ostream &stream, const ww::pattern &P)
 {
-  stream << "\nPattern\nC1:" << P.A << ". C2:" << P.B << "\nTransform:\n" << P.Transform << "\n-----" << std::endl;
+  stream << "\n----\nPattern contents\nC1:" << P.A << "\nC2:" << P.B << "\nPrint: " << (P.Print ? "YES" : "NO")
+         << "\nTransform:\n"
+         << P.Transform << "\n-----" << std::endl;
+  return stream;
+}
+
+std::ostream &operator<<(std::ostream &stream, const ww::intersections &XS)
+{
+  stream << "\nIntersections\n";
+  int Idx{};
+  for (auto const &I : XS.vI)
+  {
+    stream << "XS.vI[" << Idx << "]."
+           << "I:" << I.pShape << ". t: " << I.t;
+    if (I.pShape->isA<ww::sphere>())
+    {
+      stream << ". Sphere. Center: " << I.pShape->Center;
+    }
+    else if (I.pShape->isA<ww::cube>())
+      stream << ". Cube";
+    else if (I.pShape->isA<ww::plane>())
+      stream << ". Plane";
+    else if (I.pShape->isA<ww::shape>())
+      stream << ". Shape";
+    else
+      stream << ". Undefinded shape type";
+
+    stream << ". T:" << I.pShape->Transform;
+    stream << std::endl;
+
+    ++Idx;
+  }
+  return stream;
+}
+
+std::ostream &operator<<(std::ostream &stream, const ww::prepare_computation &Comps)
+{
+  stream << "\n---\nPrepareComputation. Address:" << Comps.pShape << std::endl;
+
+  if (Comps.pShape->isA<ww::sphere>())
+  {
+    ww::sphere *ptrSphere = dynamic_cast<ww::sphere *>(Comps.pShape.get());
+    if (ptrSphere)
+    {
+      stream << "\nSphere\nradius:" << ptrSphere->Radius;
+      stream << "\ncenter:" << ptrSphere->Center << std::endl;
+    }
+  }
+  stream << "\nn1:" << Comps.n1 << " (refration factor from where ray is leaving)."  //!<
+         << "\nn2:" << Comps.n2 << " (refraction factor to where ray is entering)."  //!<
+         << "\nHit at   t=" << Comps.t                                               //!<
+         << "\nInside    :" << (Comps.Inside ? "Yes" : "No")                         //!<
+         << "\n     Point:" << Comps.Point                                           //!<
+         << "\nUnderPoint:" << Comps.UnderPoint                                      //!<
+         << "\nOverPoint :" << Comps.OverPoint                                       //!<
+         << "\nEye       :" << Comps.vEye                                            //!<
+         << "\nNormal    :" << Comps.vNormal                                         //!<
+         << "\nReflect   :" << Comps.vReflect << std::endl;
+  if (Comps.pShape.get())
+  {
+    if (Comps.pShape->Material.Pattern.funcPtrPatternAt == &ww::FuncDefaultPatternAt)
+      stream << "\nPattern: FuncDefaultPatternAt";
+    else
+      stream << "\nPattern: Unknown";
+  }
+  stream << "\n---" << std::endl;
+
   return stream;
 }
 
@@ -878,6 +952,12 @@ sphere Sphere(tup const &Center, float Radius)
 /// Ray releated functions.
 /// ---
 //------------------------------------------------------------------------------
+
+/**
+ * @Param: O - Origin
+ * @Param: D - Direction
+ * @Return: ray with normalized direction.
+ */
 ray Ray(tup const &O, tup const &D)
 {
   Assert(IsPoint(O), __FUNCTION__, __LINE__);
@@ -1471,14 +1551,16 @@ intersections IntersectWorld(world const &World, ray const &Ray)
       {
         ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
         std::cout << "\n\n " << __FUNCTION__ << "-> Sphere has radius " << pSphere->Radius << std::endl;
-        std::cout << "\tLocalRayComputed: " << LocalRayComputed << std::endl;
+        std::cout << "\nLocalRayComputed:\n" << LocalRayComputed << std::endl;
       }
       if (PtrObject->isA<ww::plane>())
       {
         ww::plane const *pPlane = dynamic_cast<ww::plane *>(PtrObject.get());
         std::cout << "\n\n " << __FUNCTION__ << "-> SavedRay:\n" << pPlane->SavedRay << std::endl;
-        std::cout << "\tLocalRayComputed: \n" << LocalRayComputed << std::endl;
+        std::cout << "\nLocalRayComputed:\n" << LocalRayComputed << std::endl;
       }
+      std::cout << "Material.Pattern.A: " << PtrObject->Material.Pattern.A << std::endl;
+      std::cout << "Material.Pattern.B: " << PtrObject->Material.Pattern.B << std::endl;
     }
 #endif
 
@@ -1649,11 +1731,12 @@ tup ShadeHit(world const &World, prepare_computation const &Comps, int const Rem
     );
 
     tup const Reflected = ReflectedColor(World, Comps, Remaining);
+    tup const Refracted{};  //= RefractedColor(World, Comps, Remaining);
 
     // ---
     // NOTE: Add the colors from the various lights.
     // ---
-    Color = Color + Surface + Reflected;
+    Color = Color + Surface + Reflected + Refracted;
   }
   return (Color);
 }
@@ -1864,9 +1947,70 @@ tup ReflectedColor(world const &World, prepare_computation const &Comps, int con
   return Color;
 }
 
+namespace
+{
+
 /**
  */
-tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining)
+tup RefractedColorVectorBased(world const &World, prepare_computation const &Comps, int const Remaining)
+{
+  // ---
+  // NOTE: Find the ratio of the first index to the second.
+  // ---
+  float const nRatio = Comps.n1 / Comps.n2;  //!< This is the inverted defintion from Snells law.
+
+  float const CosI = Dot(Comps.vEye, Comps.vNormal);  //!< Cosine(thetaI) : the dot product between the vectors.
+  Assert(CosI > 0.f, __FUNCTION__, __LINE__);  //!< CosI must be positive when the normal points to the light source.
+
+  float const Sin2T = nRatio * nRatio * (1.f - CosI * CosI);  //!< Find sin(ThetaT)^2 by trigonometric identity.
+
+  bool const TotalReflection = Sin2T > 1.f;  //!< There is total reflection going on ?
+  if (TotalReflection || (0 >= Remaining) || (Comps.pShape->Material.Transparency == 0.f))
+  {
+    return {};  //!< Return Black when ...
+  }
+
+  // ---
+  // NOTE: alternative calc - from Wikipedia.
+  // ---
+  float const c = -Dot(Comps.vNormal, Comps.vEye);
+  float const r = Comps.n1 / Comps.n2;
+  tup const &l = Comps.vEye;
+  tup const &n = Comps.vNormal;
+  tup vRefract = r * l + (r * c - std::sqrtf(1 - r * r * (1 - c * c))) * n;
+  vRefract.W = 0.f;
+  // ---
+  //
+  if (Comps.PrintDebug)
+  {
+    std::cout << __FUNCTION__ << "." << __LINE__ << std::endl;
+    std::cout << Comps << std::endl;
+    std::cout << "\nvRefract (Wikipedia): " << vRefract << std::endl;
+  }
+
+  // ---
+  // NOTE: Create the refracted ray.
+  // ---
+  ray const RefractRay = Ray(Comps.Inside ? Comps.OverPoint : Comps.UnderPoint, vRefract);
+
+  if (Comps.PrintDebug)
+  {
+    std::cout << __FUNCTION__ << "." << __LINE__ << ": RefractedRay:\n" << RefractRay << std::endl;
+  }
+
+  // ---
+  // NOTE: Find the color of the refracted ray making sure to multiply
+  //       with the transparency value to account for any opacity.
+  // ---
+  tup const Color = ColorAt(World, RefractRay, Remaining - 1) * Comps.pShape->Material.Transparency;
+  std::cout << __FUNCTION__ << "." << __LINE__ << ". Color (Wikipedia):" << Color << std::endl;
+  std::cout << "xxxxxxxx" << std::endl;
+  return Color;
+}
+
+/**
+ */
+tup RefractedColorCosineBased(world const &World, prepare_computation const &Comps, int const Remaining)
 {
   // ---
   // NOTE: Find the ratio of the first index to the second.
@@ -1878,19 +2022,48 @@ tup RefractedColor(world const &World, prepare_computation const &Comps, int con
   //                      sin(ThetaI)       n2
   //                      -------------  = -----
   //                      sin(ThetaT)       n1
-  // ---
-  // NOTE: Cosine(thetaI) is the same as the dot product between the vectors.
-  // ---
-  float const CosI = Dot(Comps.vEye, Comps.vNormal);
-  float const Sin2T = nRatio * nRatio * (1.f - CosI * CosI);
-  bool const TotalReflection = Sin2T > 1;
 
+  float const CosI = Dot(Comps.vEye, Comps.vNormal);  //!< Cosine(thetaI) : the dot product between the vectors.
+  Assert(CosI > 0.f, __FUNCTION__, __LINE__);  //!< CosI must be positive when the normal points to the light source.
+
+  float const Sin2T = nRatio * nRatio * (1.f - CosI * CosI);  //!< Find sin(ThetaT)^2 by trigonometric identity.
+
+  bool const TotalReflection = Sin2T > 1.f;  //!< There is total reflection going on ?
   if (TotalReflection || (0 >= Remaining) || (Comps.pShape->Material.Transparency == 0.f))
   {
     return {};  //!< Return Black when ...
   }
-  tup const Color = ww::Color(1.f, 1.f, 1.f);
+
+  float const CosT = std::sqrtf(1.f - Sin2T);  //!< Find cos(ThetaT) via trigonometric identity.
+
+  // ---
+  // NOTE: Compute the direction of the refracted ray.
+  // ---
+  tup const vDirection = Comps.vNormal * (nRatio * CosI - CosT) - Comps.vEye * nRatio;
+
+  // ---
+  // NOTE: Create the refracted ray.
+  // ---
+  // ray const RefractRay = Ray(Comps.Point, vDirection);
+  // ray const RefractRay = Ray(Comps.UnderPoint, vDirection);
+  ray const RefractRay = Ray(Comps.Inside ? Comps.OverPoint : Comps.UnderPoint, vDirection);
+
+  // ---
+  // NOTE: Find the color of the refracted ray making sure to multiply
+  //       with the transparency value to account for any opacity.
+  // ---
+  tup const Color = ColorAt(World, RefractRay, Remaining - 1) * Comps.pShape->Material.Transparency;
   return Color;
+}
+};  // end of anonymous namespace
+
+/**
+ */
+tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining)
+{
+  tup Color = RefractedColorCosineBased(World, Comps, Remaining);
+  return Color;
+  Color = RefractedColorVectorBased(World, Comps, Remaining);
 }
 
 //------------------------------------------------------------------------------
@@ -1937,7 +2110,17 @@ tup Plane()
 pattern TestPattern()
 {
   pattern P{};
-  P.Transform = Translation(1.f, 2.f, 3.f);
+  P.A = ww::Color(1.f, 1.f, 1.f);
+  P.B = ww::Color(1.f, 1.f, 1.f);
+  return P;
+}
+
+/**
+ * Set the transform into the pattern and return a reference.
+ */
+pattern &SetPatternTransform(pattern &P, matrix const &T)
+{
+  P.Transform = T;
   return P;
 }
 
