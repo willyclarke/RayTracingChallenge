@@ -1525,6 +1525,21 @@ world World()
     W.vPtrObjects.push_back(PtrSphere);
   }
 
+  {
+    ww::shared_ptr_plane Floor = ww::PtrDefaultPlane();
+    Floor->Transform = ww::Translation(0.f, -1.f, 0.f);
+    Floor->Material.Transparency = 0.5f;
+    Floor->Material.RefractiveIndex = 1.5f;  //!< Glass
+    W.vPtrObjects.push_back(Floor);
+  }
+
+  {
+    ww::shared_ptr_sphere Ball = ww::PtrDefaultSphere();
+    Ball->Material.Color = ww::Color(1.f, 0.f, 0.f);
+    Ball->Material.Ambient = 0.5f;
+    Ball->Transform = ww::Translation(0.f, -3.5f, -0.5f);
+    W.vPtrObjects.push_back(Ball);
+  }
   return (W);
 }
 

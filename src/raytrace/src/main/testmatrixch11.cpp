@@ -541,3 +541,10 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorWithARefractedRay)
   ww::canvas Canvas = ww::Render(Camera, W);
   ww::WriteToPPM(Canvas, "Ch11RefractColorRefractRay.ppm");
 }
+
+//------------------------------------------------------------------------------
+// Scenario: ShadeHit with a transparent material.
+TEST(CH11ReflectionAndRefraction, ShadeHitWithATransparentMaterial)
+{
+  ww::world W = ww::World();
+}
