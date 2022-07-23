@@ -624,5 +624,5 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2
 
   float const Reflectance = ww::Schlick(Comps);
   EXPECT_EQ(Comps.n1 < Comps.n2, true);
-  EXPECT_FLOAT_EQ(ww::Equal(Reflectance, 0.48873), true);
+  EXPECT_EQ(ww::Equal(Reflectance, 0.48873), true);
 }
