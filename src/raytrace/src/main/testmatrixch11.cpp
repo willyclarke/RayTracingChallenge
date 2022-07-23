@@ -577,3 +577,51 @@ TEST(CH11ReflectionAndRefraction, ShadeHitWithATransparentMaterial)
   ww::canvas Canvas = ww::Render(Camera, W);
   ww::WriteToPPM(Canvas, "Ch11ShadeHitWithATransparentMaterial.ppm");
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The Schlick approximation under total internal reflection.
+TEST(CH11ReflectionAndRefraction, TheSchlickApproximationUnderTotalInternalReflection)
+{
+  ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, M_SQRT2 / 2.f), ww::Vector(0.f, 1.f, 0.f));
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {-M_SQRT2 / 2.f, Shape});
+  XS = ww::Intersections(XS, {M_SQRT2 / 2.f, Shape});
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[1], R, &XS);
+
+  EXPECT_EQ(Comps.n1, 1.5f);
+  EXPECT_EQ(Comps.n2, 1.f);
+  float const Reflectance = ww::Schlick(Comps);
+  std::cout << __PRETTY_FUNCTION__ << "." << __LINE__ << "-> Reflectance:" << Reflectance << std::endl;
+
+  EXPECT_FLOAT_EQ(Reflectance, 1.f);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: The Schlick approximation with a perpendicular viewing angle.
+TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithAPerpendicularViewingAngle)
+{
+  ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 1.f, 0.f));
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {-1.f, Shape});
+  XS = ww::Intersections(XS, {1.f, Shape});
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[1], R, &XS);
+
+  float const Reflectance = ww::Schlick(Comps);
+  EXPECT_FLOAT_EQ(Reflectance, 0.04f);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: The Schlick approximation with small angle and n1 > n2 .
+TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2)
+{
+  ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.99f, -2.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {1.8589f, Shape});
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[0], R, &XS);
+
+  float const Reflectance = ww::Schlick(Comps);
+  EXPECT_FLOAT_EQ(ww::Equal(Reflectance, 0.48873), true);
+}

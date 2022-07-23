@@ -633,6 +633,13 @@ tup ReflectedColor(world const &World, prepare_computation const &Comps, int con
  */
 tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining = 5);
 
+/**
+ * Schlick - Return a number between 0 and 1 (inclusive) called Reflectance.
+ *           The Reflectance is a measure of how much light (a fraction) is
+ *           reflected.
+ */
+float Schlick(prepare_computation const &Comps);
+
 //------------------------------------------------------------------------------
 // Functions for testing planes.
 //------------------------------------------------------------------------------

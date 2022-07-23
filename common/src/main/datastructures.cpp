@@ -2081,6 +2081,47 @@ tup RefractedColor(world const &World, prepare_computation const &Comps, int con
   Color = RefractedColorVectorBased(World, Comps, Remaining);
 }
 
+/**
+ */
+float Schlick(prepare_computation const &Comps)
+{
+  float Result{};
+
+  // ---
+  // NOTE: Find the cosine between the Eye and the Normal vector.
+  // ---
+  float Cos = Dot(Comps.vEye, Comps.vNormal);
+
+  // ---
+  // NOTE: Total internal reflection can only occur if n1 > n2.
+  // ---
+
+  if (Comps.n1 > Comps.n2)
+  {
+    float const n = Comps.n1 / Comps.n2;
+    float const Sin2T = n * n * (1.f - Cos * Cos);
+    if (Sin2T > 1.f) return 1.f;
+
+    // ---
+    // NOTE: Compute the cosine of ThetaT by using trig identity.
+    // ---
+    float const CosT = std::sqrtf(1.f - Sin2T);
+
+    // ---
+    // NOTE: When n1 > n2 use CosT as Cos instead.
+    // ---
+    Cos = CosT;
+  }
+
+  float const r = ((Comps.n1 - Comps.n2) / (Comps.n1 + Comps.n2));
+  float const r0 = r * r;
+  float const OneMinCos = 1.f - Cos;
+  float const OneMinCosPow5 = OneMinCos * OneMinCos * OneMinCos * OneMinCos * OneMinCos;
+  Result = r0 + (1.f - r0) * OneMinCosPow5;
+
+  return Result;
+}
+
 //------------------------------------------------------------------------------
 // \brief TestShape
 // \detail Function to demonstrate the abstract behavior of the shape class.
