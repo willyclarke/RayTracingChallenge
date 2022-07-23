@@ -613,7 +613,7 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithAPerpendicularViewi
 }
 
 //------------------------------------------------------------------------------
-// Scenario: The Schlick approximation with small angle and n1 > n2 .
+// Scenario: The Schlick approximation with small angle and n2 > n1 .
 TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2)
 {
   ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
@@ -623,5 +623,6 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2
   ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[0], R, &XS);
 
   float const Reflectance = ww::Schlick(Comps);
+  EXPECT_EQ(Comps.n1 < Comps.n2, true);
   EXPECT_FLOAT_EQ(ww::Equal(Reflectance, 0.48873), true);
 }
