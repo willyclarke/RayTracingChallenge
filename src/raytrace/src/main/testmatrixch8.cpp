@@ -89,7 +89,8 @@ TEST(Ch8Shadows, TheHitShouldOffsetThePoint)
 
   // NOTE: The point compares to z component to half of -EPSILON to make sure that the point
   //       has been adjusted in the correct direction.
-  EXPECT_EQ(Comps.Point.Z < -ww::EPSILON / 2.f, true);
+  EXPECT_EQ(Comps.OverPoint.Z < -ww::EPSILON / 2.f, true);
+  EXPECT_EQ(Comps.Point.Z > Comps.OverPoint.Z, true);
 }
 
 //------------------------------------------------------------------------------

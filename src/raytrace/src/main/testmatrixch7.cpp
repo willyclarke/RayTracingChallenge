@@ -40,7 +40,7 @@ TEST(Ch7MakingAScene, DefaultWorld)
   ww::world const W = ww::World();
 
   EXPECT_EQ(W.vPtrLights.size(), 1);   //!< So now we expect there to be a light.
-  EXPECT_EQ(W.vPtrObjects.size(), 2);  //!< and some objects.
+  EXPECT_EQ(W.vPtrObjects.size(), 4);  //!< and some objects.
 
   bool ContainsS1{};
   bool ContainsS2{};
@@ -106,8 +106,8 @@ TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
   EXPECT_EQ(I.t, Comps.t);
   EXPECT_EQ(I.pShape == Comps.pShape, true);
   EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, -1.f)), true);
-  EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
-  EXPECT_EQ(ww::Equal(Comps.Normal, ww::Vector(0.f, 0.f, -1.f)), true);
+  EXPECT_EQ(ww::Equal(Comps.vEye, ww::Vector(0.f, 0.f, -1.f)), true);
+  EXPECT_EQ(ww::Equal(Comps.vNormal, ww::Vector(0.f, 0.f, -1.f)), true);
 }
 
 //------------------------------------------------------------------------------
@@ -132,10 +132,10 @@ TEST(Ch7MakingAScene, HitFromInsideOrOutsideChangesTheNormal)
     ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
 
     EXPECT_EQ(ww::Equal(Comps.Point, ww::Point(0.f, 0.f, 1.f)), true);
-    EXPECT_EQ(ww::Equal(Comps.Eye, ww::Vector(0.f, 0.f, -1.f)), true);
+    EXPECT_EQ(ww::Equal(Comps.vEye, ww::Vector(0.f, 0.f, -1.f)), true);
     EXPECT_EQ(Comps.Inside, true);
     // NOTE: Normal would have been 0,0,1 but is inverted.
-    EXPECT_EQ(ww::Equal(Comps.Normal, ww::Vector(0.f, 0.f, -1.f)), true);
+    EXPECT_EQ(ww::Equal(Comps.vNormal, ww::Vector(0.f, 0.f, -1.f)), true);
   }
 }
 
@@ -146,7 +146,7 @@ TEST(Ch7MakingAScene, ShadingAnIntersection)
   ww::world W = ww::World();
 
   // NOTE: the default world should have two objects
-  EXPECT_EQ(W.vPtrObjects.size(), 2);
+  EXPECT_EQ(W.vPtrObjects.size(), 4);
   ww::tup const C1 = ww::Color(0.8f, 1.0f, 0.6f);
   ww::tup const C2 = ww::Color(1.0f, 1.0f, 1.0f);
   int Idx{1};

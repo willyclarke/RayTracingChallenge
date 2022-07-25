@@ -210,7 +210,7 @@ TEST(Ch10Patterns, AlmostThere)
 // Scenario: The default pattern transformation.
 TEST(Ch10Patterns, TheDefaultPatternTransformation)
 {
-  ww::pattern const Pattern{};
+  ww::pattern const Pattern = ww::TestPattern();
   EXPECT_EQ(Pattern.Transform == ww::I(), true);
 }
 
@@ -218,8 +218,18 @@ TEST(Ch10Patterns, TheDefaultPatternTransformation)
 // Scenario: Assigning a transformation.
 TEST(Ch10Patterns, AssigningATransformation)
 {
-  ww::pattern const Pattern = ww::TestPattern();
+  ww::pattern Pattern = ww::TestPattern();
+  ww::SetPatternTransform(Pattern, ww::Translation(1.f, 2.f, 3.f));
   EXPECT_EQ(Pattern.Transform == ww::Translation(1.f, 2.f, 3.f), true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: The default pattern is different from the testpattern.
+TEST(Ch10Patterns, TheDefaultPatternIsDifferentFromTheTestPattern)
+{
+  ww::pattern const Pattern = ww::TestPattern();
+  bool const IsEqual = Pattern == ww::pattern{};
+  EXPECT_EQ(IsEqual, false);
 }
 
 //------------------------------------------------------------------------------
@@ -310,7 +320,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInX)
   // ---
   // NOTE: Use default CTOR to set up pointer to function.
   // ---
-  ww::pattern CheckersPattern{White, Black, ww::I(), true, &ww::CheckersPatternAt};
+  ww::pattern CheckersPattern{White, Black, ww::I(), true, true, &ww::CheckersPatternAt};
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.99f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(1.01f, 0.f, 0.f)) == Black, true);
@@ -326,7 +336,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInY)
   // ---
   // NOTE: Use default CTOR to set up pointer to function.
   // ---
-  ww::pattern CheckersPattern{White, Black, ww::I(), true, &ww::CheckersPatternAt};
+  ww::pattern CheckersPattern{White, Black, ww::I(), true, true, &ww::CheckersPatternAt};
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.99f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 1.01f, 0.f)) == Black, true);
@@ -342,7 +352,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInZ)
   // ---
   // NOTE: Use default CTOR to set up pointer to function.
   // ---
-  ww::pattern CheckersPattern{White, Black, ww::I(), true, &ww::CheckersPatternAt};
+  ww::pattern CheckersPattern{White, Black, ww::I(), true, true, &ww::CheckersPatternAt};
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 0.99f)) == White, true);
   EXPECT_EQ(ww::PatternAt(CheckersPattern, ww::Point(0.f, 0.f, 1.01f)) == Black, true);

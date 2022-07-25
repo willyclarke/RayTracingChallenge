@@ -179,6 +179,7 @@ struct pattern
   };                            //!<
 
   bool Continue{true};
+  bool Print{};
   //
   // //!< Function pointer for the pattern of a particular shape.
   tup (*funcPtrPatternAt)(pattern const &Pattern, tup const &Point){&FuncDefaultPatternAt};
@@ -188,11 +189,14 @@ struct pattern
 //------------------------------------------------------------------------------
 struct material
 {
-  float Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
-  float Diffuse{0.9f};     //!< Typical value between 0 and 1. Non-negative.
-  float Specular{0.9f};    //!< Typical value between 0 and 1. Non-negative.
-  float Shininess{200.f};  //!< Typical value between 10 and 200. Non-negative.
-  tup Color{1.f, 1.f, 1.f, 0.f};
+  float Ambient{0.1f};            //!< Typical value between 0 and 1. Non-negative.
+  float Diffuse{0.9f};            //!< Typical value between 0 and 1. Non-negative.
+  float Specular{0.9f};           //!< Typical value between 0 and 1. Non-negative.
+  float Shininess{200.f};         //!< Typical value between 10 and 200. Non-negative.
+  float Reflective{0.f};          //!< 0 at completely non reflective and 1 when a perfect mirror.
+  float Transparency{0.f};        //!< 0 makes the surface opaque.
+  float RefractiveIndex{1.f};     //!< 1 makes the object empty with vacuum inside.
+  tup Color{1.f, 1.f, 1.f, 0.f};  //!< Defaults to Black.
   pattern Pattern{};
 };
 
@@ -246,6 +250,7 @@ struct shape
   };                            //!<
 
   ray SavedRay{};  //!< Should be set by the LocalIntersect function
+  bool Print{};
 
   shape() {}
   virtual ~shape() {}
@@ -345,6 +350,8 @@ struct world
   std::vector<shared_ptr_shape> vPtrObjects{};
   std::vector<shared_ptr_light> vPtrLights{};
   int Count() const { return static_cast<int>(vPtrObjects.size()); }
+  bool Print{};
+  mutable ray LocalRayComputed{};  //!< For debugging purpose, storage for later printout.
 };
 
 //------------------------------------------------------------------------------
@@ -356,12 +363,18 @@ struct world
 struct prepare_computation
 {
   float t{};
+  float n1{1.f};  //!< Refractive index of material that is beeing exited. 1 equals vacum.
+  float n2{1.f};  //!< Refractive index of material that is beeing entered. 1 equals vacum.
   bool Inside{};  //!< Set to true when the eye is inside an object. Reverses the sign of the normal vector to ensure
                   //!< correct illumination.
+  bool PrintDebug{};
   shared_ptr_shape pShape{};
   tup Point{};
-  tup Normal{};
-  tup Eye{};
+  tup OverPoint{};
+  tup UnderPoint{};
+  tup vNormal{};
+  tup vEye{};
+  tup vReflect{};
 };
 
 typedef std::shared_ptr<prepare_computation> shared_ptr_prepare_computation;
@@ -513,6 +526,7 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
 /// PtrDefaultSphere - Create a sphere and return shared pointer to this object.
 /// ---
 shared_ptr_sphere PtrDefaultSphere();
+shared_ptr_sphere PtrGlassSphere();
 
 /// ---
 /// PtrDefaultPlane - Create a plane and return shared pointer to this object.
@@ -528,6 +542,7 @@ bool Equal(material const &A, material const &B);
 bool Equal(light const &A, light const &B);
 intersection Hit(intersections const &Intersections);
 intersection Intersection(float t, shared_ptr_shape pObject);
+intersections Intersections(intersection const &I);
 intersections Intersections(intersection const &I1, intersection const &I2);
 intersections &Intersections(intersections &XS, intersection const &I);
 ray Mul(matrix const &M, ray const &R);
@@ -571,18 +586,18 @@ void WorldAddLight(world &W, shared_ptr_light pLight);
 //        Computes the Normal vector and checks if the normal vector need to
 //        be reversed should the eye be inside of the object.
 // \return struct with eye and normal vector and hit point.
-prepare_computation PrepareComputations(intersection const &I, ray const &R);
+prepare_computation PrepareComputations(intersection const &I, ray const &R, intersections const *ptrXS = nullptr);
 
 // \fn ShadeHit
 // \brief Calculates the color at the intersection captured by Comps.
 // \return tup with the color.
-tup ShadeHit(world const &W, prepare_computation const &Comps);
+tup ShadeHit(world const &W, prepare_computation const &Comps, int const Remaining = 5);
 
 // \fn ColorAt
 // \brief Intersect the given ray with the world and return the color at the resulting
 //        intersection.
 // \return tup with the color.
-tup ColorAt(world const &World, ray const &Ray);
+tup ColorAt(world const &World, ray const &Ray, int const Remaining = 5);
 
 // \fn ViewTransform
 // \brief Orient the world releative to the eye. Line everything up to get the view we want.
@@ -609,6 +624,23 @@ canvas Render(camera const &Camera, world const &World);
 bool IsShadowed(world const &World, tup const &Point);
 
 //------------------------------------------------------------------------------
+// Reflection functions --------------------------------------------------------
+//------------------------------------------------------------------------------
+tup ReflectedColor(world const &World, prepare_computation const &Comps, int const Remaining = 5);
+
+/**
+ * RefractedColor - Returns the color black when the hit applies to an opaque object.
+ */
+tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining = 5);
+
+/**
+ * Schlick - Return a number between 0 and 1 (inclusive) called Reflectance.
+ *           The Reflectance is a measure of how much light (a fraction) is
+ *           reflected.
+ */
+float Schlick(prepare_computation const &Comps);
+
+//------------------------------------------------------------------------------
 // Functions for testing planes.
 //------------------------------------------------------------------------------
 shape TestShape();
@@ -627,7 +659,8 @@ pattern StripePattern(tup const &C1, tup const &C2);
 pattern BlendedPattern(pattern const &P1, pattern const &P2);
 pattern NestedPattern(pattern const &PMain, pattern const &P1, pattern const &P2);
 pattern PerturbPattern(pattern const &P1);
-pattern SolidPattern(tup const &Color, char const *ptr=nullptr);
+pattern SolidPattern(tup const &Color, char const *ptr = nullptr);
+pattern &SetPatternTransform(pattern &P, matrix const &T);
 // pattern SolidPattern(tup const &Color);
 pattern TestPattern();
 
@@ -682,8 +715,11 @@ std::ostream &operator<<(std::ostream &stream, const ww::tup &T);
 std::ostream &operator<<(std::ostream &stream, const ww::matrix &M);
 std::ostream &operator<<(std::ostream &stream, const ww::material &M);
 std::ostream &operator<<(std::ostream &stream, const ww::ray &R);
+std::ostream &operator<<(std::ostream &stream, const ww::shape &S);
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S);
 std::ostream &operator<<(std::ostream &stream, const ww::pattern &P);
+std::ostream &operator<<(std::ostream &stream, const ww::intersections &XS);
+std::ostream &operator<<(std::ostream &stream, const ww::prepare_computation &Comps);
 ww::tup operator+(ww::tup const &A, ww::tup const &B);
 ww::tup operator-(ww::tup const &Tup);
 ww::tup operator-(ww::tup const &A, ww::tup const &B);
