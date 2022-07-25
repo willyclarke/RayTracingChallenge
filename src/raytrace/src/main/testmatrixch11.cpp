@@ -271,9 +271,32 @@ TEST(CH11ReflectionAndRefraction, PuttingItTogether)
   Left.Material.Reflective = 0.4f;
   World.vPtrObjects.push_back(PtrLeft);
 
+  ww::shared_ptr_shape PtrGlass = ww::PtrGlassSphere();
+  ww::shape &Glass = *PtrGlass;
+  Glass.Transform = ww::Translation(0.f, 0.33f, -1.75f) *  //!<
+                    ww::Scaling(0.5f, 0.5f, 0.5f);
+  Glass.Material.Color = ww::Color(0.09f, 0.09f, 0.09f);
+  Glass.Material.Diffuse = 0.2f;
+  Glass.Material.Ambient = 0.4f;
+  Glass.Material.Specular = 0.3f;
+  Glass.Material.Reflective = 1.0f;
+  World.vPtrObjects.push_back(PtrGlass);
+
+  // Add a second glass sphere
+  ww::shared_ptr_shape PtrGlass2 = ww::PtrGlassSphere();
+  ww::shape &Glass2 = *PtrGlass2;
+  Glass2.Transform = ww::Translation(2.f, 1.0, 2.75f) *  //!<
+                     ww::Scaling(1.f, 1.f, 1.f);
+  Glass2.Material.Color = ww::Color(0.09f, 0.19f, 0.09f);
+  Glass2.Material.Diffuse = 0.2f;
+  Glass2.Material.Ambient = 0.4f;
+  Glass2.Material.Specular = 0.3f;
+  Glass2.Material.Reflective = 1.0f;
+  World.vPtrObjects.push_back(PtrGlass2);
+
   // Add the first plane
   ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
-  ptrPlane->Transform = ww::TranslateScaleRotate(0.f, 0.f, 00.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  ptrPlane->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
   ptrPlane->Material.Shininess = 10.f;
   ptrPlane->Material.Diffuse = 0.5f;
   // ptrPlane->Material.Reflective = 1.f;
@@ -301,7 +324,8 @@ TEST(CH11ReflectionAndRefraction, PuttingItTogether)
   ptrPlane3->Material.Diffuse = 0.7f;
   ptrPlane3->Material.Color =
       ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
-  ptrPlane3->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  ptrPlane3->Material.Reflective = 1.f;
+  // ptrPlane3->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
   World.vPtrObjects.push_back(ptrPlane3);
 
   ww::shared_ptr_light pLight{};
