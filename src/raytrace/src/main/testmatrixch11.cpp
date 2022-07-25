@@ -87,18 +87,28 @@ TEST(CH11ReflectionAndRefraction, ShadeHitWithAReflectiveMaterial)
   ww::world W = ww::World();
 
   // ---
-  // Add the first plane
+  // NOTE: The floor should be element 2 in the default world.
   // ---
-  ww::shared_ptr_plane Shape = ww::PtrDefaultPlane();
-  Shape->Material.Reflective = 0.5f;
-  Shape->Transform = ww::TranslateScaleRotate(0.f, -1.f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
-  ww::WorldAddObject(W, Shape);
+  ww::shared_ptr_shape Shape{};
+  if (W.vPtrObjects.size() > 2)
+  {
+    Shape = W.vPtrObjects[2];
+    Shape->Material.Reflective = 0.5f;
+    Shape->Material.Transparency = 0.f;
+    EXPECT_EQ(Shape->isA<ww::plane>(), true);
+  }
 
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -3.f), ww::Vector(0.f, -M_SQRT2 / 2.f, M_SQRT2 / 2.f));
   ww::intersection const I = ww::intersection{M_SQRT2, Shape};
   ww::prepare_computation const Comps = ww::PrepareComputations(I, R);
   ww::tup const Color = ww::ShadeHit(W, Comps);
   EXPECT_EQ(Color == ww::Color(0.87677f, 0.92436f, 0.82918), true);
+
+#if 0
+  std::cout << "\n---\n" << std::endl;
+  std::cout << "Computed Color:" << Color << std::endl;
+  std::cout << "Expected Color:" << ww::Color(0.87677f, 0.92436f, 0.82918) << std::endl;
+#endif
 
   // ---
   // NOTE: Write the result to file.
@@ -111,8 +121,8 @@ TEST(CH11ReflectionAndRefraction, ShadeHitWithAReflectiveMaterial)
   float const FieldOfView = 75.f / 180.f * M_PI;
   ww::camera Camera = ww::Camera(256, 256, FieldOfView);
 
-  ww::tup const ViewFrom = ww::Point(0.f, 1.5f, -3.5f);
-  ww::tup const ViewTo = ww::Point(0.f, 0.f, 25.f);
+  ww::tup const ViewFrom = ww::Point(0.f, 3.5f, -10.f);
+  ww::tup const ViewTo = ww::Point(0.f, 1.f, 0.f);
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 
@@ -625,4 +635,47 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2
   float const Reflectance = ww::Schlick(Comps);
   EXPECT_EQ(Comps.n1 < Comps.n2, true);
   EXPECT_EQ(ww::Equal(Reflectance, 0.48873), true);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: shade_hit() with a reflective, transparent material.
+TEST(CH11ReflectionAndRefraction, ShadeHitWithAReflectiveTranparentMaterial)
+{
+  ww::world W = ww::World();
+
+  ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -3.f), ww::Vector(0.f, -M_SQRT2 / 2.f, M_SQRT2 / 2.f));
+
+  ww::shared_ptr_shape Floor{};
+  if (W.vPtrObjects.size() > 2)
+  {
+    Floor = W.vPtrObjects[2];
+    Floor->Material.Reflective = 0.5f;
+  }
+
+  ww::intersections XS{};
+  XS = ww::Intersections(XS, {M_SQRT2, Floor});
+
+  ww::prepare_computation const Comps = ww::PrepareComputations(XS.vI[0], R, &XS);
+  ww::tup Color = ww::ShadeHit(W, Comps);
+  EXPECT_EQ(Color == ww::Color(0.93391f, 0.69643f, 0.69243f), true);
+
+#if 0
+  std::cout << "\n---\n" << std::endl;
+  std::cout << "Input Intersections:\n" << XS << std::endl;
+  std::cout << "Computed Color:" << Color << std::endl;
+  std::cout << "Expected Color:" << ww::Color(0.93391f, 0.69643f, 0.69243f) << std::endl;
+#endif
+
+  // ---
+  // NOTE: Write out the result so that it is possible to see whats going on.
+  // ---
+  ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
+
+  ww::tup const ViewFrom = ww::Point(0.f, 3.5f, -10.f);
+  ww::tup const ViewTo = ww::Point(0.f, 1.f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, W);
+  ww::WriteToPPM(Canvas, "Ch11ShadeHitWithAReflectiveTransparentMaterial.ppm");
 }

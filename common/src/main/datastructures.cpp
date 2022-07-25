@@ -1751,7 +1751,16 @@ tup ShadeHit(world const &World, prepare_computation const &Comps, int const Rem
     // ---
     // NOTE: Add the colors from the various lights.
     // ---
-    Color = Color + Surface + Reflected + Refracted;
+    material const &Material = Comps.pShape->Material;
+    if (Material.Reflective > 0.f && Material.Transparency > 0.f)
+    {
+      float const Reflectance = Schlick(Comps);
+      Color = Color + Surface + Reflected * Reflectance + Refracted * (1.f - Reflectance);
+    }
+    else
+    {
+      Color = Color + Surface + Reflected + Refracted;
+    }
   }
   return (Color);
 }
