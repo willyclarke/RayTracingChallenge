@@ -174,6 +174,16 @@ TEST(Ch9Planes, IntersectRayParallelToPlane)
 }
 
 //------------------------------------------------------------------------------
+// Scenario: Intersect with a coplanar ray.
+TEST(Ch9Planes, IntersectWithACoplanarRay)
+{
+  std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
+  ww::ray R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
+  ww::intersections XS = ww::LocalIntersect(ptrPlane, R);
+  EXPECT_EQ(XS.Count(), 0);
+}
+
+//------------------------------------------------------------------------------
 // Scenario: Intersecting a plane from above.
 TEST(Ch9Planes, IntersectAPlaneFromAbove)
 {

@@ -17,6 +17,7 @@
 #include <iomanip>  // for std::setprecision
 #include <iostream>
 #include <iterator>
+#include <list>    // for std::list
 #include <memory>  // for shared pointer.
 #include <sstream>
 #include <string>
@@ -105,6 +106,14 @@ std::ostream &operator<<(std::ostream &stream, const ww::material &M)
 }
 
 //------------------------------------------------------------------------------
+std::ostream &operator<<(std::ostream &stream, const ww::shape &S)
+{
+  stream << "\nShape:"
+         << "\nShape Material:" << S.Material << "\nShape Transform:" << S.Transform << std::endl;
+  return stream;
+}
+
+//------------------------------------------------------------------------------
 std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
 {
   stream << "\nSphere\nCenter:" << S.Center << "\nSphere Material:" << S.Material << "Sphere Radius:" << S.Radius
@@ -114,7 +123,73 @@ std::ostream &operator<<(std::ostream &stream, const ww::sphere &S)
 
 std::ostream &operator<<(std::ostream &stream, const ww::pattern &P)
 {
-  stream << "\nPattern\nC1:" << P.A << ". C2:" << P.B << "\nTransform:\n" << P.Transform << "\n-----" << std::endl;
+  stream << "\n----\nPattern contents\nC1:" << P.A << "\nC2:" << P.B << "\nPrint: " << (P.Print ? "YES" : "NO")
+         << "\nTransform:\n"
+         << P.Transform << "\n-----" << std::endl;
+  return stream;
+}
+
+std::ostream &operator<<(std::ostream &stream, const ww::intersections &XS)
+{
+  stream << "\nIntersections\n";
+  int Idx{};
+  for (auto const &I : XS.vI)
+  {
+    stream << "XS.vI[" << Idx << "]."
+           << "I:" << I.pShape << ". t: " << I.t;
+    if (I.pShape->isA<ww::sphere>())
+    {
+      stream << ". Sphere. Center: " << I.pShape->Center;
+    }
+    else if (I.pShape->isA<ww::cube>())
+      stream << ". Cube";
+    else if (I.pShape->isA<ww::plane>())
+      stream << ". Plane";
+    else if (I.pShape->isA<ww::shape>())
+      stream << ". Shape";
+    else
+      stream << ". Undefinded shape type";
+
+    stream << ". T:" << I.pShape->Transform;
+    stream << std::endl;
+
+    ++Idx;
+  }
+  return stream;
+}
+
+std::ostream &operator<<(std::ostream &stream, const ww::prepare_computation &Comps)
+{
+  stream << "\n---\nPrepareComputation. Address:" << Comps.pShape << std::endl;
+
+  if (Comps.pShape->isA<ww::sphere>())
+  {
+    ww::sphere *ptrSphere = dynamic_cast<ww::sphere *>(Comps.pShape.get());
+    if (ptrSphere)
+    {
+      stream << "\nSphere\nradius:" << ptrSphere->Radius;
+      stream << "\ncenter:" << ptrSphere->Center << std::endl;
+    }
+  }
+  stream << "\nn1:" << Comps.n1 << " (refration factor from where ray is leaving)."  //!<
+         << "\nn2:" << Comps.n2 << " (refraction factor to where ray is entering)."  //!<
+         << "\nHit at   t=" << Comps.t                                               //!<
+         << "\nInside    :" << (Comps.Inside ? "Yes" : "No")                         //!<
+         << "\n     Point:" << Comps.Point                                           //!<
+         << "\nUnderPoint:" << Comps.UnderPoint                                      //!<
+         << "\nOverPoint :" << Comps.OverPoint                                       //!<
+         << "\nEye       :" << Comps.vEye                                            //!<
+         << "\nNormal    :" << Comps.vNormal                                         //!<
+         << "\nReflect   :" << Comps.vReflect << std::endl;
+  if (Comps.pShape.get())
+  {
+    if (Comps.pShape->Material.Pattern.funcPtrPatternAt == &ww::FuncDefaultPatternAt)
+      stream << "\nPattern: FuncDefaultPatternAt";
+    else
+      stream << "\nPattern: Unknown";
+  }
+  stream << "\n---" << std::endl;
+
   return stream;
 }
 
@@ -213,7 +288,7 @@ float MagSquared(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
-float Mag(tup const &Tup) { return (std::sqrt(MagSquared(Tup))); }
+float Mag(tup const &Tup) { return (std::sqrtf(MagSquared(Tup))); }
 
 //------------------------------------------------------------------------------
 tup Negate(tup const &Tup)
@@ -251,18 +326,24 @@ tup Vector(float A, float B, float C)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * Convert from degrees to radians.
+ */
 float Radians(float Deg) { return (PI_F * Deg / 180.f); }
 // ---
 // NOTE: Canvas methods/functions.
 // ---
+
+//------------------------------------------------------------------------------
+/**
+ * Write a pixel color to the XY vector of the Canvas.
+ * @Param Canvas: Destination for receiving the color.
+ * @Param X: Offset in the X direction.
+ * @Param Y: Offset in the Y direction.
+ * @Param Color: Tuple containing the color.
+ */
 void WritePixel(canvas &Canvas, int X, int Y, tup const &Color)
 {
-  // std::cout << "X:" << X                       //!<
-  //          << ". Y:" << Y                     //!<
-  //          << ". clc:" << (X + Y * Canvas.W)  //!<
-  //          << ". size:" << Canvas.vXY.size()  //!<
-  //          << std::endl;
-
   Assert(Canvas.vXY.size() > (X + Y * Canvas.W), __FILE__, __LINE__);
   Canvas.vXY[X + Y * Canvas.W] = Color;
 }
@@ -871,6 +952,12 @@ sphere Sphere(tup const &Center, float Radius)
 /// Ray releated functions.
 /// ---
 //------------------------------------------------------------------------------
+
+/**
+ * @Param: O - Origin
+ * @Param: D - Direction
+ * @Return: ray with normalized direction.
+ */
 ray Ray(tup const &O, tup const &D)
 {
   Assert(IsPoint(O), __FUNCTION__, __LINE__);
@@ -955,11 +1042,21 @@ ww::intersections LocalIntersectPlane(shared_ptr_shape PtrShape, ray const &Ray)
 
   if (!PtrShape->isA<ww::plane>()) return Result;
 
-  if (std::abs(Ray.Direction.Y) < EPSILON) return Result;
+  if (std::abs(Ray.Direction.Y) < EPSILON)
+  {
+    return Result;
+  }
 
   float const t = -Ray.Origin.Y / Ray.Direction.Y;
 
-  Result.vI.push_back(Intersection(t, PtrShape));
+  // ---
+  // NOTE: Keep negative and positive t-hits. But avoid the ones where the ray has penetrated the plane.
+  //       Ref RTC page 95: Identifying hits.
+  // ---
+  if (std::abs(t) > EPSILON)
+  {
+    Result.vI.push_back(Intersection(t, PtrShape));
+  }
 
   return Result;
 }
@@ -1048,7 +1145,7 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
 //------------------------------------------------------------------------------
 intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocalRayOutput)
 {
-  intersections Result{};
+  intersections XS{};
 
   // ---
   // NOTE: The object to which we are trying to calculate the intersect may
@@ -1083,10 +1180,10 @@ intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocal
 
   if (PtrShape->funcPtrLocalIntersect)
   {
-    Result = PtrShape->funcPtrLocalIntersect(PtrShape, LocalRay);
+    XS = PtrShape->funcPtrLocalIntersect(PtrShape, LocalRay);
   }
 
-  return (Result);
+  return (XS);
 }
 
 //------------------------------------------------------------------------------
@@ -1100,13 +1197,26 @@ intersection Intersection(float t, shared_ptr_shape pShape)
 }
 
 //------------------------------------------------------------------------------
+intersections Intersections(intersection const &I)
+{
+  intersections XS{};
+  XS.vI.push_back(I);
+  Assert(I.pShape, __FUNCTION__, __LINE__);
+  return (XS);
+}
+
+//------------------------------------------------------------------------------
 intersections Intersections(intersection const &I1, intersection const &I2)
 {
-  intersections Result{};
-  Result.vI.push_back(I1);
-  Result.vI.push_back(I2);
+  intersections XS{};
 
-  return (Result);
+  Assert(I1.pShape, __FUNCTION__, __LINE__);
+  Assert(I2.pShape, __FUNCTION__, __LINE__);
+
+  XS.vI.push_back(I1);
+  XS.vI.push_back(I2);
+
+  return (XS);
 }
 
 //------------------------------------------------------------------------------
@@ -1415,6 +1525,21 @@ world World()
     W.vPtrObjects.push_back(PtrSphere);
   }
 
+  {
+    ww::shared_ptr_plane Floor = ww::PtrDefaultPlane();
+    Floor->Transform = ww::Translation(0.f, -1.f, 0.f);
+    Floor->Material.Transparency = 0.5f;
+    Floor->Material.RefractiveIndex = 1.5f;  //!< Glass
+    W.vPtrObjects.push_back(Floor);
+  }
+
+  {
+    ww::shared_ptr_sphere Ball = ww::PtrDefaultSphere();
+    Ball->Material.Color = ww::Color(1.f, 0.f, 0.f);
+    Ball->Material.Ambient = 0.5f;
+    Ball->Transform = ww::Translation(0.f, -3.5f, -0.5f);
+    W.vPtrObjects.push_back(Ball);
+  }
   return (W);
 }
 
@@ -1430,22 +1555,33 @@ intersections IntersectWorld(world const &World, ray const &Ray)
 
   for (auto const &PtrObject : World.vPtrObjects)
   {
-    ww::ray LocalRayComputed{};
+    ww::ray &LocalRayComputed = World.LocalRayComputed;
 
-    intersections const I = Intersect(PtrObject, Ray, &LocalRayComputed);
+    intersections const XSPerObject = Intersect(PtrObject, Ray, &LocalRayComputed);
 
 #if 0
-    if (PtrObject->isA<ww::sphere>())
+    if (World.Print)
     {
-      ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
-      std::cout << "\n\n " << __FUNCTION__ << "-> Sphere has radius " << pSphere->Radius << std::endl;
-      std::cout << "\tLocalRayComputed: " << LocalRayComputed << std::endl;
+      if (PtrObject->isA<ww::sphere>())
+      {
+        ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrObject.get());
+        std::cout << "\n\n " << __FUNCTION__ << "-> Sphere has radius " << pSphere->Radius << std::endl;
+        std::cout << "\nLocalRayComputed:\n" << LocalRayComputed << std::endl;
+      }
+      if (PtrObject->isA<ww::plane>())
+      {
+        ww::plane const *pPlane = dynamic_cast<ww::plane *>(PtrObject.get());
+        std::cout << "\n\n " << __FUNCTION__ << "-> SavedRay:\n" << pPlane->SavedRay << std::endl;
+        std::cout << "\nLocalRayComputed:\n" << LocalRayComputed << std::endl;
+      }
+      std::cout << "Material.Pattern.A: " << PtrObject->Material.Pattern.A << std::endl;
+      std::cout << "Material.Pattern.B: " << PtrObject->Material.Pattern.B << std::endl;
     }
 #endif
 
-    for (auto const &Element : I.vI)
+    for (auto const &I : XSPerObject.vI)
     {
-      XS.vI.push_back(Element);
+      if (I.pShape) XS.vI.push_back(I);
     }
   }
 
@@ -1475,84 +1611,188 @@ shared_ptr_sphere PtrDefaultSphere()
 }
 
 //------------------------------------------------------------------------------
-prepare_computation PrepareComputations(intersection const &I, ray const &R)
+shared_ptr_sphere PtrGlassSphere()
 {
-  Assert(I.pShape, __FUNCTION__, __LINE__);
+  shared_ptr_sphere pSphere{};
+  pSphere.reset(new sphere);
+  pSphere->Material.Transparency = 1.f;
+  pSphere->Material.RefractiveIndex = 1.5f;
+  pSphere->funcPtrLocalIntersect = &ww::LocalIntersectSphere;
+  return (pSphere);
+}
+
+//------------------------------------------------------------------------------
+prepare_computation PrepareComputations(intersection const &Hit, ray const &R, intersections const *ptrXS)
+{
+  Assert(Hit.pShape, __FUNCTION__, __LINE__);
 
   prepare_computation Comps{};
 
   // NOTE: Assign values we want to keep.
-  Comps.t = I.t;
-  Comps.pShape = I.pShape;
+  Comps.t = Hit.t;
+  Comps.pShape = Hit.pShape;
 
   // NOTE: Compute some useful values.
   Comps.Point = PositionAt(R, Comps.t);
-  Comps.Eye = -R.Direction;
-  Comps.Normal = NormalAt(*Comps.pShape, Comps.Point);
-
-  // NOTE: Adjust Point for floating point inaccuracy.
-  Comps.Point = Comps.Point + Comps.Normal * EPSILON;
+  Comps.vEye = -R.Direction;
+  Comps.vNormal = NormalAt(*Comps.pShape, Comps.Point);
+  Comps.vReflect = Reflect(R.Direction, Comps.vNormal);
+  Comps.OverPoint = Comps.Point + Comps.vNormal * EPSILON;
+  Comps.UnderPoint = Comps.Point - Comps.vNormal * EPSILON;
 
   // NOTE: We use the dot product between the Normal and the Eye to figure out if the normal points
   //       away from the Eye. If negative they are (roughly) pointing in opposite directions.
-  if (Dot(Comps.Normal, Comps.Eye) < 0.f)
+  if (Dot(Comps.vNormal, Comps.vEye) < 0.f)
   {
     Comps.Inside = true;  // NOTE: Default for the flag is false, no need to clear it once again.
-    Comps.Normal = -Comps.Normal;
+    Comps.vNormal = -Comps.vNormal;
   }
 
-  return (Comps);
+  // ---
+  // NOTE: Determine the refractive index.
+  //       The variables n1 and n2 is the refractive index at either side of a ray-object
+  //       intersection.
+  // ---
+  if (ptrXS)
+  {
+    std::list<shared_ptr_shape> Container{};
 
-  tup Test{};
+    for (size_t Idx = 0;        //!<
+         Idx < ptrXS->Count();  //!<
+         ++Idx)
+    {
+      intersection const &I = ptrXS->vI[Idx];
+      // ---
+      // NOTE: 1. If the intersection is the hit, set the refractive index to the refractive index of the last object in
+      // the
+      //          containers list. If that list is empty, then there is no containing object and n1 should be set to 1.
+      // ---
+      if (I == Hit)
+      {
+        if (Container.empty())
+        {
+          Comps.n1 = 1.f;
+        }
+        else
+        {
+          Comps.n1 = Container.back()->Material.RefractiveIndex;
+        }
+      }
+
+      // ---
+      // NOTE: 2. If the intersection's object is already in the Containers list, then this intersection must be exiting
+      //          the object. Remove the object from the Containers list in this case. Otherwise, the intersection is
+      //          entering the object, and the object should be added to the end of the list.
+      // ---
+      //
+      // ---
+      // NOTE: Look for intersection I in the Container with all the shapes.
+      // ---
+      Assert(I.pShape, __FUNCTION__, __LINE__);
+      auto it = std::find(Container.begin(), Container.end(), I.pShape);
+      if (it != Container.end())  // found it so now delete the intersection.
+      {
+        Container.remove(*it);
+      }
+      else  // it was not there so add the object with the intersection.
+      {
+        Container.push_back(I.pShape);
+      }
+
+      // ---
+      // NOTE: 3. If the intersection is the Hit, set n2 to the refractive index of the last object in the containers
+      //          list. If that list is empty, then again, there is no containing object and n2 should be set to 1.
+      // ---
+      if (I == Hit)
+      {
+        if (Container.empty())
+        {
+          Comps.n2 = 1.f;
+        }
+        else
+        {
+          Comps.n2 = Container.back()->Material.RefractiveIndex;
+        }
+
+        // ---
+        // NOTE: Since the Intersection is the Hit; break here.
+        // ---
+        break;
+      }
+    }  // end for
+  }    // end ptrXS
+
+  return (Comps);
 }
 
 //------------------------------------------------------------------------------
-tup ShadeHit(world const &W, prepare_computation const &Comps)
+tup ShadeHit(world const &World, prepare_computation const &Comps, int const Remaining)
 {
   tup Color{};
 
-  for (auto pWorldLight : W.vPtrLights)
+  for (auto pWorldLight : World.vPtrLights)
   {
     light const &WorldLight = *pWorldLight;
 
-    bool const Shadowed = IsShadowed(W, Comps.Point);
+    bool const Shadowed = IsShadowed(World, Comps.OverPoint);
 
-    tup C = Lighting(Comps.pShape->Material,  //!<
-                     *Comps.pShape,           //!<
-                     WorldLight,              //!<
-                     Comps.Point,             //!<
-                     Comps.Eye,               //!<
-                     Comps.Normal,            //!<
-                     Shadowed                 //!<
+    tup const Surface = Lighting(Comps.pShape->Material,  //!<
+                                 *Comps.pShape,           //!<
+                                 WorldLight,              //!<
+                                 Comps.OverPoint,         //!<
+                                 Comps.vEye,              //!<
+                                 Comps.vNormal,           //!<
+                                 Shadowed                 //!<
     );
 
+    tup const Reflected = ReflectedColor(World, Comps, Remaining);
+    tup const Refracted = RefractedColor(World, Comps, Remaining);
+
+    // ---
     // NOTE: Add the colors from the various lights.
-    Color = Color + C;
+    // ---
+    material const &Material = Comps.pShape->Material;
+    if (Material.Reflective > 0.f && Material.Transparency > 0.f)
+    {
+      float const Reflectance = Schlick(Comps);
+      Color = Color + Surface + Reflected * Reflectance + Refracted * (1.f - Reflectance);
+    }
+    else
+    {
+      Color = Color + Surface + Reflected + Refracted;
+    }
   }
   return (Color);
 }
 
 //------------------------------------------------------------------------------
-tup ColorAt(world const &World, ray const &Ray)
+tup ColorAt(world const &World, ray const &Ray, int const Remaining)
 {
   tup Result{};
   // 1. Call IntersectWorld() to find out the intersections of the given ray with the world.
-  intersections const IS = IntersectWorld(World, Ray);
+  intersections const XS = IntersectWorld(World, Ray);
 
   // 2. Find the Hit from the resulting intersections.
-  intersection const I = Hit(IS);
+  intersection const I = Hit(XS);
 
   // 3. Return the Color black if there is no such intersection.
-  if (IS.Count() == 0) return Result;
-  if (I.pShape == nullptr) return Result;
-  Assert(IS.Count() != 0, __FUNCTION__, __LINE__);
+  if (XS.Count() == 0)
+  {
+    return Result;
+  }
+
+  if (I.pShape == nullptr)
+  {
+    return Result;
+  }
+  Assert(XS.Count() != 0, __FUNCTION__, __LINE__);
 
   // 4. Otherwise pre-compute the necessary values with PrepareComputations
   Assert(I.pShape, __FUNCTION__, __LINE__);
-  prepare_computation const PC = PrepareComputations(I, Ray);
+  prepare_computation const Comps = PrepareComputations(I, Ray, &XS);
 
   // 5. Call shade hit to find the color at the hit.
-  Result = ShadeHit(World, PC);
+  Result = ShadeHit(World, Comps, Remaining);
 
   return (Result);
 }
@@ -1715,6 +1955,182 @@ bool IsShadowed(world const &World, tup const &Point)
   return (ShadowCount == World.vPtrLights.size());
 }
 
+/**
+ * Use the prepare_computation Reflect vector to calculate the color to return.
+ * When the Reflect is 0 the color will be black.
+ */
+tup ReflectedColor(world const &World, prepare_computation const &Comps, int const Remaining)
+{
+  if ((Remaining <= 0) || (Comps.pShape->Material.Reflective < EPSILON))
+  {
+    return ww::Color(0.f, 0.f, 0.f);
+  }
+
+  ray const ReflectRay = ray{Comps.OverPoint, Comps.vReflect};
+  tup Color = ColorAt(World, ReflectRay, Remaining - 1) * Comps.pShape->Material.Reflective;
+  return Color;
+}
+
+namespace
+{
+
+/**
+ */
+tup RefractedColorVectorBased(world const &World, prepare_computation const &Comps, int const Remaining)
+{
+  // ---
+  // NOTE: Find the ratio of the first index to the second.
+  // ---
+  float const nRatio = Comps.n1 / Comps.n2;  //!< This is the inverted defintion from Snells law.
+
+  float const CosI = Dot(Comps.vEye, Comps.vNormal);  //!< Cosine(thetaI) : the dot product between the vectors.
+  Assert(CosI > 0.f, __FUNCTION__, __LINE__);  //!< CosI must be positive when the normal points to the light source.
+
+  float const Sin2T = nRatio * nRatio * (1.f - CosI * CosI);  //!< Find sin(ThetaT)^2 by trigonometric identity.
+
+  bool const TotalReflection = Sin2T > 1.f;  //!< There is total reflection going on ?
+  if (TotalReflection || (0 >= Remaining) || (Comps.pShape->Material.Transparency == 0.f))
+  {
+    return {};  //!< Return Black when ...
+  }
+
+  // ---
+  // NOTE: alternative calc - from Wikipedia.
+  // ---
+  float const c = -Dot(Comps.vNormal, Comps.vEye);
+  float const r = Comps.n1 / Comps.n2;
+  tup const &l = Comps.vEye;
+  tup const &n = Comps.vNormal;
+  tup vRefract = r * l + (r * c - std::sqrtf(1 - r * r * (1 - c * c))) * n;
+  vRefract.W = 0.f;
+  // ---
+  //
+  if (Comps.PrintDebug)
+  {
+    std::cout << __FUNCTION__ << "." << __LINE__ << std::endl;
+    std::cout << Comps << std::endl;
+    std::cout << "\nvRefract (Wikipedia): " << vRefract << std::endl;
+  }
+
+  // ---
+  // NOTE: Create the refracted ray.
+  // ---
+  ray const RefractRay = Ray(Comps.Inside ? Comps.OverPoint : Comps.UnderPoint, vRefract);
+
+  if (Comps.PrintDebug)
+  {
+    std::cout << __FUNCTION__ << "." << __LINE__ << ": RefractedRay:\n" << RefractRay << std::endl;
+  }
+
+  // ---
+  // NOTE: Find the color of the refracted ray making sure to multiply
+  //       with the transparency value to account for any opacity.
+  // ---
+  tup const Color = ColorAt(World, RefractRay, Remaining - 1) * Comps.pShape->Material.Transparency;
+  std::cout << __FUNCTION__ << "." << __LINE__ << ". Color (Wikipedia):" << Color << std::endl;
+  std::cout << "xxxxxxxx" << std::endl;
+  return Color;
+}
+
+/**
+ */
+tup RefractedColorCosineBased(world const &World, prepare_computation const &Comps, int const Remaining)
+{
+  // ---
+  // NOTE: Find the ratio of the first index to the second.
+  // ---
+  float const nRatio = Comps.n1 / Comps.n2;  //!< This is the inverted defintion from Snells law.
+
+  // ---
+  // NOTE: Snell law ->
+  //                      sin(ThetaI)       n2
+  //                      -------------  = -----
+  //                      sin(ThetaT)       n1
+
+  float const CosI = Dot(Comps.vEye, Comps.vNormal);  //!< Cosine(thetaI) : the dot product between the vectors.
+  Assert(CosI > 0.f, __FUNCTION__, __LINE__);  //!< CosI must be positive when the normal points to the light source.
+
+  float const Sin2T = nRatio * nRatio * (1.f - CosI * CosI);  //!< Find sin(ThetaT)^2 by trigonometric identity.
+
+  bool const TotalReflection = Sin2T > 1.f;  //!< There is total reflection going on ?
+  if (TotalReflection || (0 >= Remaining) || (Comps.pShape->Material.Transparency == 0.f))
+  {
+    return {};  //!< Return Black when ...
+  }
+
+  float const CosT = std::sqrtf(1.f - Sin2T);  //!< Find cos(ThetaT) via trigonometric identity.
+
+  // ---
+  // NOTE: Compute the direction of the refracted ray.
+  // ---
+  tup const vDirection = Comps.vNormal * (nRatio * CosI - CosT) - Comps.vEye * nRatio;
+
+  // ---
+  // NOTE: Create the refracted ray.
+  // ---
+  // ray const RefractRay = Ray(Comps.Point, vDirection);
+  // ray const RefractRay = Ray(Comps.UnderPoint, vDirection);
+  ray const RefractRay = Ray(Comps.Inside ? Comps.OverPoint : Comps.UnderPoint, vDirection);
+
+  // ---
+  // NOTE: Find the color of the refracted ray making sure to multiply
+  //       with the transparency value to account for any opacity.
+  // ---
+  tup const Color = ColorAt(World, RefractRay, Remaining - 1) * Comps.pShape->Material.Transparency;
+  return Color;
+}
+};  // end of anonymous namespace
+
+/**
+ */
+tup RefractedColor(world const &World, prepare_computation const &Comps, int const Remaining)
+{
+  tup Color = RefractedColorCosineBased(World, Comps, Remaining);
+  return Color;
+  Color = RefractedColorVectorBased(World, Comps, Remaining);
+}
+
+/**
+ */
+float Schlick(prepare_computation const &Comps)
+{
+  float Result{};
+
+  // ---
+  // NOTE: Find the cosine between the Eye and the Normal vector.
+  // ---
+  float Cos = Dot(Comps.vEye, Comps.vNormal);
+
+  // ---
+  // NOTE: Total internal reflection can only occur if n1 > n2.
+  // ---
+
+  if (Comps.n1 > Comps.n2)
+  {
+    float const n = Comps.n1 / Comps.n2;
+    float const Sin2T = n * n * (1.f - Cos * Cos);
+    if (Sin2T > 1.f) return 1.f;
+
+    // ---
+    // NOTE: Compute the cosine of ThetaT by using trig identity.
+    // ---
+    float const CosT = std::sqrtf(1.f - Sin2T);
+
+    // ---
+    // NOTE: When n1 > n2 use CosT as Cos instead.
+    // ---
+    Cos = CosT;
+  }
+
+  float const r = ((Comps.n1 - Comps.n2) / (Comps.n1 + Comps.n2));
+  float const r0 = r * r;
+  float const OneMinCos = 1.f - Cos;
+  float const OneMinCosPow5 = OneMinCos * OneMinCos * OneMinCos * OneMinCos * OneMinCos;
+  Result = r0 + (1.f - r0) * OneMinCosPow5;
+
+  return Result;
+}
+
 //------------------------------------------------------------------------------
 // \brief TestShape
 // \detail Function to demonstrate the abstract behavior of the shape class.
@@ -1759,7 +2175,17 @@ tup Plane()
 pattern TestPattern()
 {
   pattern P{};
-  P.Transform = Translation(1.f, 2.f, 3.f);
+  P.A = ww::Color(1.f, 1.f, 1.f);
+  P.B = ww::Color(1.f, 1.f, 1.f);
+  return P;
+}
+
+/**
+ * Set the transform into the pattern and return a reference.
+ */
+pattern &SetPatternTransform(pattern &P, matrix const &T)
+{
+  P.Transform = T;
   return P;
 }
 
