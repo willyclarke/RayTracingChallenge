@@ -57,3 +57,22 @@ TEST(Ch12Cubes, ARayMissesACube)
   MissesCube(ww::Ray(ww::Point(0.f, 2.f, 2.f), ww::Vector(0.f, -1.f, 0.f)));
   MissesCube(ww::Ray(ww::Point(2.f, 2.f, 0.f), ww::Vector(-1.f, 0.f, 0.f)));
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The normal on the surface of a cube.
+TEST(Ch12Cubes, TheNormalOnTheSurfaceOfACube)
+{
+  ww::shared_ptr_cube C = ww::PtrDefaultCube();
+
+  auto const CheckLocalNormalAt = [&](ww::tup const &Point, ww::tup const &NormalExpected)
+  { EXPECT_EQ(ww::LocalNormalAtCube(*C, Point) == NormalExpected, true); };
+
+  CheckLocalNormalAt(ww::Point(1.f, 0.5f, -0.8f), ww::Vector(1.f, 0.f, 0.f));
+  CheckLocalNormalAt(ww::Point(-1.f, -0.2f, 0.9f), ww::Vector(-1.f, 0.f, 0.f));
+  CheckLocalNormalAt(ww::Point(-0.4f, 1.0f, 0.1f), ww::Vector(0.f, 1.f, 0.f));
+  CheckLocalNormalAt(ww::Point(0.3f, -1.0f, -0.7f), ww::Vector(0.f, -1.f, 0.f));
+  CheckLocalNormalAt(ww::Point(-0.6f, 0.3f, 1.f), ww::Vector(0.f, 0.f, 1.f));
+  CheckLocalNormalAt(ww::Point(0.4f, 0.4f, -1.f), ww::Vector(0.f, 0.f, -1.f));
+  CheckLocalNormalAt(ww::Point(1.f, 1.0f, 1.f), ww::Vector(1.f, 0.f, 0.f));
+  CheckLocalNormalAt(ww::Point(-1.f, -1.0f, -1.f), ww::Vector(-1.f, 0.f, 0.f));
+}

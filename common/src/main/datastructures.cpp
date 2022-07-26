@@ -1439,6 +1439,29 @@ tup LocalNormalAt(shape const &Shape, tup const &LocalPoint)
 }
 
 /**
+ * The local normal for a cube is the side that has absolute value of (1).
+ * If none of the x,y,z components are 1 the point is not on the cube.
+ */
+tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint)
+{
+  tup Result = Vector(0.f, 0.f, LocalPoint.Z);
+
+  float MaxC = std::max<float>(std::abs(LocalPoint.X), std::abs(LocalPoint.Y));
+  MaxC = std::max<float>(MaxC, std::abs(LocalPoint.Z));
+
+  if (MaxC == std::abs(LocalPoint.X))
+  {
+    Result = Vector(LocalPoint.X, 0.f, 0.f);
+  }
+  else if (MaxC == std::abs(LocalPoint.Y))
+  {
+    Result = Vector(0.f, LocalPoint.Y, 0.f);
+  }
+
+  return Result;
+}
+
+/**
  * The local normal for a plane is always 0, 1, 0.
  */
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
@@ -1707,6 +1730,7 @@ shared_ptr_cube PtrDefaultCube()
   shared_ptr_cube pCube{};
   pCube.reset(new cube);
   pCube->funcPtrLocalIntersect = &ww::LocalIntersectCube;
+  pCube->funcPtrLocalNormalAt = &ww::LocalNormalAtCube;
   return (pCube);
 }
 
