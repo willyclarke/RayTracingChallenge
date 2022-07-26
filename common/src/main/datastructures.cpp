@@ -1154,7 +1154,6 @@ ww::intersections LocalIntersectCube(shared_ptr_shape PtrShape, ray const &Ray)
 
     // ---
     // Swap when needed ...
-    // TODO: (Willy Clarke) Can I use an XOR instead ?
     // ---
     if (TMin > TMax)
     {
