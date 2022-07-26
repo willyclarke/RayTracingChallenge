@@ -37,3 +37,23 @@ TEST(Ch12Cubes, ARayIntersectsACube)
   IntersectCube(RMinuZ, 4.f, 6.f);
   IntersectCube(RInside, -1.f, 1.f);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: A ray misses a cube.
+TEST(Ch12Cubes, ARayMissesACube)
+{
+  ww::shared_ptr_cube C = ww::PtrDefaultCube();
+
+  auto const MissesCube = [&](ww::ray const &Ray)
+  {
+    ww::intersections const XS = ww::LocalIntersect(C, Ray);
+    EXPECT_EQ(XS.Count(), 0);
+  };
+
+  MissesCube(ww::Ray(ww::Point(-2.f, 0.f, 0.f), ww::Vector(0.2673f, 0.5345f, 0.8018f)));
+  MissesCube(ww::Ray(ww::Point(0.f, -2.f, 0.f), ww::Vector(0.8018f, 0.2673f, 0.5345f)));
+  MissesCube(ww::Ray(ww::Point(0.f, 0.f, -2.f), ww::Vector(0.5345f, 0.8018f, 0.2673f)));
+  MissesCube(ww::Ray(ww::Point(2.f, 0.f, 2.f), ww::Vector(0.f, 0.f, -1.f)));
+  MissesCube(ww::Ray(ww::Point(0.f, 2.f, 2.f), ww::Vector(0.f, -1.f, 0.f)));
+  MissesCube(ww::Ray(ww::Point(2.f, 2.f, 0.f), ww::Vector(-1.f, 0.f, 0.f)));
+}

@@ -1181,6 +1181,11 @@ ww::intersections LocalIntersectCube(shared_ptr_shape PtrShape, ray const &Ray)
   float TMax = std::min<float>(XtMinMax.second, YtMinMax.second);
   TMax = std::min<float>(TMax, ZtMinMax.second);
 
+  // ---
+  // NOTE: Return no intersections when the ray misses the cube.
+  // ---
+  if (TMin > TMax) return {};
+
   intersection I0{TMin, PtrShape};
   intersection I1{TMax, PtrShape};
 
