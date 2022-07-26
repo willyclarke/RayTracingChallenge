@@ -1062,7 +1062,7 @@ ww::intersections LocalIntersectPlane(shared_ptr_shape PtrShape, ray const &Ray)
 }
 
 /**
- * Check if a ray have a local intersect with a sphere.
+ * Check if a ray has a local intersect with a sphere.
  * Param: PtrShape: A ww::sphere is needed to do some actual checks for intersections.
  * Return: ww::intersections.
  **/
@@ -1119,6 +1119,78 @@ ww::intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &Ray
   return (Result);
 }
 
+/**
+ * Check if a ray has a local intersect with a cube.
+ * Param: PtrShape: A ww::cube is needed to do some actual checks for intersections.
+ * Return: ww::intersections.
+ **/
+ww::intersections LocalIntersectCube(shared_ptr_shape PtrShape, ray const &Ray)
+{
+  Assert(PtrShape->isA<cube>(), __FUNCTION__, __LINE__);
+
+  ww::intersections XS{};
+
+  if (!PtrShape->isA<ww::cube>()) return XS;
+
+  auto const CheckAxis = [](float const Origin, float const Direction) -> std::pair<float, float>
+  {
+    std::pair<float, float> Result{};
+    float &TMin = Result.first;
+    float &TMax = Result.second;
+
+    float const TMinNumerator = (-1.f - Origin);
+    float const TMaxNumerator = (1.f - Origin);
+
+    if (std::abs(Direction) >= EPSILON)
+    {
+      TMin = TMinNumerator / Direction;
+      TMax = TMaxNumerator / Direction;
+    }
+    else
+    {
+      TMin = TMinNumerator * INIFINITY;
+      TMax = TMaxNumerator * INIFINITY;
+    }
+
+    // ---
+    // Swap when needed ...
+    // TODO: (Willy Clarke) Can I use an XOR instead ?
+    // ---
+    if (TMin > TMax)
+    {
+      float const Tmp = TMin;
+      TMin = TMax;
+      TMax = Tmp;
+    }
+
+    return Result;
+  };
+
+  std::pair<float, float> const XtMinMax = CheckAxis(Ray.Origin.X, Ray.Direction.X);
+  std::pair<float, float> const YtMinMax = CheckAxis(Ray.Origin.Y, Ray.Direction.Y);
+  std::pair<float, float> const ZtMinMax = CheckAxis(Ray.Origin.Z, Ray.Direction.Z);
+
+  // ---
+  // Get the maximum value of minimums.
+  // ---
+  float TMin = std::max<float>(XtMinMax.first, YtMinMax.first);
+  TMin = std::max<float>(TMin, ZtMinMax.first);
+
+  // ---
+  // Get the minimum value of the maximums.
+  // ---
+  float TMax = std::min<float>(XtMinMax.second, YtMinMax.second);
+  TMax = std::min<float>(TMax, ZtMinMax.second);
+
+  intersection I0{TMin, PtrShape};
+  intersection I1{TMax, PtrShape};
+
+  XS.vI.push_back(I0);
+  XS.vI.push_back(I1);
+
+  return XS;
+}
+
 //------------------------------------------------------------------------------
 /// \brief Generic Local Intersect
 ///
@@ -1137,6 +1209,10 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
   else if (PtrShape->isA<plane>())
   {
     Result = LocalIntersectPlane(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<cube>())
+  {
+    Result = LocalIntersectCube(PtrShape, RayIn);
   }
 
   return (Result);
@@ -1619,6 +1695,15 @@ shared_ptr_sphere PtrGlassSphere()
   pSphere->Material.RefractiveIndex = 1.5f;
   pSphere->funcPtrLocalIntersect = &ww::LocalIntersectSphere;
   return (pSphere);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cube PtrDefaultCube()
+{
+  shared_ptr_cube pCube{};
+  pCube.reset(new cube);
+  pCube->funcPtrLocalIntersect = &ww::LocalIntersectCube;
+  return (pCube);
 }
 
 //------------------------------------------------------------------------------

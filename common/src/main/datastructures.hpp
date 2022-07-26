@@ -33,6 +33,7 @@
 namespace ww
 {
 constexpr float EPSILON = 0.0035000;  // 1E27 * std::numeric_limits<float>::min();
+constexpr float INIFINITY = std::numeric_limits<float>::max() - 1.f;
 constexpr double PI = 3.141592653589793238463;
 constexpr float PI_F = 3.14159265358979f;
 
@@ -532,6 +533,11 @@ shared_ptr_sphere PtrGlassSphere();
 /// PtrDefaultPlane - Create a plane and return shared pointer to this object.
 /// ---
 shared_ptr_plane PtrDefaultPlane();
+
+/// ---
+/// PtrDefaultCube - Create a cube and return a shared pointer to this object.
+/// ---
+shared_ptr_cube PtrDefaultCube();
 
 /// ---
 /// Ray releated functions.
