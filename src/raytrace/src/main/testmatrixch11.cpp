@@ -626,7 +626,6 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationUnderTotalInternalRefle
   EXPECT_EQ(Comps.n1, 1.5f);
   EXPECT_EQ(Comps.n2, 1.f);
   float const Reflectance = ww::Schlick(Comps);
-  std::cout << __PRETTY_FUNCTION__ << "." << __LINE__ << "-> Reflectance:" << Reflectance << std::endl;
 
   EXPECT_FLOAT_EQ(Reflectance, 1.f);
 }
