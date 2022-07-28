@@ -4,7 +4,7 @@
 #include <cmath>
 
 //------------------------------------------------------------------------------
-TEST(Matrix, InitializationToZero)
+TEST(DISABLED_Matrix, InitializationToZero)
 {
   ww::matrix M{};
   EXPECT_EQ(M.Dimension, 4);
@@ -25,7 +25,7 @@ TEST(Matrix, InitializationToZero)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, InitializationToValue)
+TEST(DISABLED_Matrix, InitializationToValue)
 {
   ww::matrix M{ww::tup{0.f, 1.f, 2.f, 3.f},    //!<
                ww::tup{4.f, 5.f, 6.f, 7.f},    //!<
@@ -51,7 +51,7 @@ TEST(Matrix, InitializationToValue)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, InitializationAndInspection)
+TEST(DISABLED_Matrix, InitializationAndInspection)
 {
   ww::matrix const M{ww::tup{1.f, 2.f, 3.f, 4.f},      //!<
                      ww::tup{5.5f, 6.5f, 7.5f, 8.5f},  //!<
@@ -69,7 +69,7 @@ TEST(Matrix, InitializationAndInspection)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, TwoByTwo)
+TEST(DISABLED_Matrix, TwoByTwo)
 {
   ww::matrix M22 = Matrix22(ww::tup{1.f, 2.f}, ww::tup{3.f, 4.f});
   EXPECT_EQ(Get(M22, 0, 0), 1.f);
@@ -80,7 +80,7 @@ TEST(Matrix, TwoByTwo)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, ThreeByThree)
+TEST(DISABLED_Matrix, ThreeByThree)
 {
   ww::matrix M33 = Matrix33(ww::tup{1.f, 2.f, 3.f}, ww::tup{4.f, 5.f, 6.f}, ww::tup{7.f, 8.f, 9.f});
   EXPECT_EQ(Get(M33, 0, 0), 1.f);
@@ -97,7 +97,7 @@ TEST(Matrix, ThreeByThree)
   // std::cout << M33 << std::endl;
 }
 //------------------------------------------------------------------------------
-TEST(Matrix, Multiply)
+TEST(DISABLED_Matrix, Multiply)
 {
   ww::matrix const M{ww::tup{1.f, 2.f, 3.f, 4.f},  //!<
                      ww::tup{2.f, 4.f, 4.f, 2.f},  //!<
@@ -111,7 +111,7 @@ TEST(Matrix, Multiply)
   EXPECT_EQ(Result.C[3], 1.f);
 }
 //------------------------------------------------------------------------------
-TEST(Matrix, Identity)
+TEST(DISABLED_Matrix, Identity)
 {
   {
     // ---
@@ -136,7 +136,7 @@ TEST(Matrix, Identity)
   }
 }
 //------------------------------------------------------------------------------
-TEST(Matrix, Transpose)
+TEST(DISABLED_Matrix, Transpose)
 {
   ww::matrix const M{
       ww::tup{0.f, 9.f, 3.f, 0.f},  //
@@ -151,14 +151,14 @@ TEST(Matrix, Transpose)
   EXPECT_EQ(ww::Equal(AT, ww::I()), true);
 }
 //------------------------------------------------------------------------------
-TEST(Matrix, Determinant22)
+TEST(DISABLED_Matrix, Determinant22)
 {
   ww::matrix M22 = ww::Matrix22(ww::tup{1.f, 5.f, 0.f, 0.f}, ww::tup{-3.f, 2.f, 0.f, 0.f});
   float Det = ww::Determinant22(M22);
   EXPECT_EQ(ww::Equal(Det, 17.f), true);
 }
 //------------------------------------------------------------------------------
-TEST(Matrix, Submatrix33)
+TEST(DISABLED_Matrix, Submatrix33)
 {
   {
     ww::matrix const M{
@@ -191,7 +191,7 @@ TEST(Matrix, Submatrix33)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Submatrix22)
+TEST(DISABLED_Matrix, Submatrix22)
 {
   {
     ww::matrix const M = ww::Matrix33(ww::tup{1.f, 5.f, 0.f, 0.f},   //
@@ -205,7 +205,7 @@ TEST(Matrix, Submatrix22)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Minorx33)
+TEST(DISABLED_Matrix, Minorx33)
 {
   ww::matrix const A = ww::Matrix33(ww::tup{3.f, 5.f, 0.f, 0.f},    //
                                     ww::tup{2.f, -1.f, -7.f, 0.f},  //
@@ -223,7 +223,7 @@ TEST(Matrix, Minorx33)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Cofactor)
+TEST(DISABLED_Matrix, Cofactor)
 {
   {
     ww::matrix const A = ww::Matrix33(ww::tup{3.f, 5.f, 0.f, 0.f},    //
@@ -238,7 +238,7 @@ TEST(Matrix, Cofactor)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Determinant33)
+TEST(DISABLED_Matrix, Determinant33)
 {
   {
     ww::matrix const A = ww::Matrix33(ww::tup{1.f, 2.f, 6.f, 0.f},    //
@@ -276,7 +276,7 @@ TEST(Matrix, Determinant33)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Inversion)
+TEST(DISABLED_Matrix, Inversion)
 {
   {
     ww::matrix const A = ww::Matrix44(ww::tup{6.f, 4.f, 4.f, 4.f},    //
@@ -367,7 +367,7 @@ TEST(Matrix, Inversion)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, PuttingItTogether)
+TEST(DISABLED_Matrix, PuttingItTogether)
 {
   // NOTE: 1. Invert the identity matrix.
   {
@@ -429,7 +429,7 @@ TEST(Matrix, PuttingItTogether)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Translation)
+TEST(DISABLED_Matrix, Translation)
 {
   // NOTE: A simple translation.
   // from X:-3 -> X:2 is a translation of 5 units.
@@ -458,7 +458,7 @@ TEST(Matrix, Translation)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Scaling)
+TEST(DISABLED_Matrix, Scaling)
 {
   // NOTE: Scaling applied to a point.
   {
@@ -486,7 +486,7 @@ TEST(Matrix, Scaling)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, RotationX)
+TEST(DISABLED_Matrix, RotationX)
 {
   // NOTE: Rotating a point around the X-axis
   {
@@ -500,7 +500,7 @@ TEST(Matrix, RotationX)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, RotationY)
+TEST(DISABLED_Matrix, RotationY)
 {  // NOTE: Rotating a point around the Y-axis
   {
     ww::tup const P = ww::Point(0.f, 0.f, 1.f);
@@ -513,7 +513,7 @@ TEST(Matrix, RotationY)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, RotationZ)
+TEST(DISABLED_Matrix, RotationZ)
 {  // NOTE: Rotating a point around the Z-axis
   {
     ww::tup const P = ww::Point(0.f, 1.f, 0.f);
@@ -526,7 +526,7 @@ TEST(Matrix, RotationZ)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Shearing1)
+TEST(DISABLED_Matrix, Shearing1)
 {
   {
     // NOTE: Check shearing by checking point after calculation.
@@ -540,7 +540,7 @@ TEST(Matrix, Shearing1)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Shearing2)
+TEST(DISABLED_Matrix, Shearing2)
 {
   {
     EXPECT_EQ(                                                                      //!<
@@ -553,7 +553,7 @@ TEST(Matrix, Shearing2)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Shearing3)
+TEST(DISABLED_Matrix, Shearing3)
 {
   {
     EXPECT_EQ(                                                                      //!<
@@ -566,7 +566,7 @@ TEST(Matrix, Shearing3)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Shearing4)
+TEST(DISABLED_Matrix, Shearing4)
 {
   {
     EXPECT_EQ(                                                                      //!<
@@ -579,7 +579,7 @@ TEST(Matrix, Shearing4)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Shearing5)
+TEST(DISABLED_Matrix, Shearing5)
 {
   {
     EXPECT_EQ(                                                                      //!<
@@ -592,7 +592,7 @@ TEST(Matrix, Shearing5)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, Shearing6)
+TEST(DISABLED_Matrix, Shearing6)
 {
   {
     EXPECT_EQ(                                                                      //!<
@@ -605,7 +605,7 @@ TEST(Matrix, Shearing6)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, RotScaleTranslate)
+TEST(DISABLED_Matrix, RotScaleTranslate)
 {
   // NOTE: First check that the simple approach works. Do the single transformations
   //       one by one and verify the result as we move along.
@@ -658,7 +658,7 @@ TEST(Matrix, RotScaleTranslate)
 }
 
 //------------------------------------------------------------------------------
-TEST(Matrix, CreateClockPPM)
+TEST(DISABLED_Matrix, CreateClockPPM)
 {
   ww::canvas Canvas(900, 900);
   ww::tup Color = ww::Color(1.f, 0.f, 0.f);
@@ -753,7 +753,7 @@ TEST(Matrix, CreateClockPPM)
 }
 
 //------------------------------------------------------------------------------
-TEST(RaySphere, Intersect1)
+TEST(DISABLED_RaySphere, Intersect1)
 {
   ww::tup const Origin = ww::Point(1.f, 2.f, 3.f);
   ww::tup const Direction = ww::Vector(4.f, 5.f, 6.f);
@@ -763,7 +763,7 @@ TEST(RaySphere, Intersect1)
 }
 
 //------------------------------------------------------------------------------
-TEST(RaySphere, MoveAlongRay)
+TEST(DISABLED_RaySphere, MoveAlongRay)
 {
   ww::ray const R = Ray(ww::Point(2.f, 3.f, 4.f), ww::Vector(1.f, 0.f, 0.f));
 
@@ -786,7 +786,7 @@ TEST(RaySphere, MoveAlongRay)
 // Ray >>>>                    x  x
 //                              xx
 //
-TEST(RaySphere, IntersectSphere2Points1)
+TEST(DISABLED_RaySphere, IntersectSphere2Points1)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape S = ww::PtrDefaultSphere();
@@ -802,7 +802,7 @@ TEST(RaySphere, IntersectSphere2Points1)
 }
 //------------------------------------------------------------------------------
 // NOTE: Test that the ray kind of just touches, tangents, the sphere.
-TEST(RaySphere, IntersectSphere2Points2)
+TEST(DISABLED_RaySphere, IntersectSphere2Points2)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 1.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape S = ww::PtrDefaultSphere();
@@ -818,7 +818,7 @@ TEST(RaySphere, IntersectSphere2Points2)
 
 //------------------------------------------------------------------------------
 // NOTE: Test that the ray misses the sphere.
-TEST(RaySphere, IntersectSphere2Points3)
+TEST(DISABLED_RaySphere, IntersectSphere2Points3)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 2.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape S = ww::PtrDefaultSphere();
@@ -835,7 +835,7 @@ TEST(RaySphere, IntersectSphere2Points3)
 // NOTE: Test that the ray when it originates from inside the sphere intersects
 //       behind and in the direction of the sphere. i.e. the ray is infinite in
 //       both directions.
-TEST(RaySphere, IntersectSphere2Points4)
+TEST(DISABLED_RaySphere, IntersectSphere2Points4)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape S = ww::PtrDefaultSphere();
@@ -851,7 +851,7 @@ TEST(RaySphere, IntersectSphere2Points4)
 
 //------------------------------------------------------------------------------
 // NOTE: Test that the sphere may be behind the origin of the ray.
-TEST(RaySphere, IntersectSphere2Points5)
+TEST(DISABLED_RaySphere, IntersectSphere2Points5)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape S = ww::PtrDefaultSphere();
@@ -867,7 +867,7 @@ TEST(RaySphere, IntersectSphere2Points5)
 
 //------------------------------------------------------------------------------
 // Scenario: An intersection encapsulates the 'time' t and the object of type T
-TEST(RaySphere, IntersectionSphere)
+TEST(DISABLED_RaySphere, IntersectionSphere)
 {
   ww::shared_ptr_shape PtrSphere{};
   PtrSphere.reset(new ww::sphere);
@@ -895,7 +895,7 @@ TEST(RaySphere, IntersectionSphere)
 //------------------------------------------------------------------------------
 // NOTE: Aggregate intersection objects together so that we can work with multiple
 //       intersections at once.
-TEST(RaySphere, IntersectionsVector)
+TEST(DISABLED_RaySphere, IntersectionsVector)
 {
   ww::shared_ptr_shape PtrSphere{};
   PtrSphere.reset(new ww::sphere);
@@ -913,7 +913,7 @@ TEST(RaySphere, IntersectionsVector)
 
 //------------------------------------------------------------------------------
 // NOTE: The hit, when all intersections have positive t.
-TEST(RaySphere, IntersectionsHit1)
+TEST(DISABLED_RaySphere, IntersectionsHit1)
 {
   ww::shared_ptr_shape PtrSphere{};
   PtrSphere.reset(new ww::sphere);
@@ -928,7 +928,7 @@ TEST(RaySphere, IntersectionsHit1)
 
 //------------------------------------------------------------------------------
 // NOTE: The hit, when some intersections have negative t.
-TEST(RaySphere, IntersectionsHit2)
+TEST(DISABLED_RaySphere, IntersectionsHit2)
 {
   ww::shared_ptr_shape PtrSphere{};
   PtrSphere.reset(new ww::sphere);
@@ -947,7 +947,7 @@ TEST(RaySphere, IntersectionsHit2)
 
 //------------------------------------------------------------------------------
 // NOTE: The hit, when all intersections have negative t.
-TEST(RaySphere, IntersectionsHit3)
+TEST(DISABLED_RaySphere, IntersectionsHit3)
 {
   ww::shared_ptr_shape PtrSphere{};
   PtrSphere.reset(new ww::sphere);
@@ -968,7 +968,7 @@ TEST(RaySphere, IntersectionsHit3)
 
 //------------------------------------------------------------------------------
 // NOTE: The hit is always the lowest non-negative intersection.
-TEST(RaySphere, IntersectionsHit4)
+TEST(DISABLED_RaySphere, IntersectionsHit4)
 {
   ww::shared_ptr_shape PtrSphere{};
   PtrSphere.reset(new ww::sphere);
@@ -992,7 +992,7 @@ TEST(RaySphere, IntersectionsHit4)
 
 //------------------------------------------------------------------------------
 // Scenario: Translating a ray. Ch5.
-TEST(RaySphere, TranslateRay)
+TEST(DISABLED_RaySphere, TranslateRay)
 {
   ww::ray const R = ww::Ray(ww::Point(1.f, 2.f, 3.f), ww::Vector(0.f, 1.f, 0.f));
   ww::matrix const M = ww::Translation(3.f, 4.f, 5.f);
@@ -1009,7 +1009,7 @@ TEST(RaySphere, TranslateRay)
 
 //------------------------------------------------------------------------------
 // Scenario: Scaling a ray. Ch5.
-TEST(RaySphere, ScaleRay)
+TEST(DISABLED_RaySphere, ScaleRay)
 {
   ww::ray const R = ww::Ray(ww::Point(1.f, 2.f, 3.f), ww::Vector(0.f, 1.f, 0.f));
   ww::matrix const M = ww::Scaling(2.f, 3.f, 4.f);
@@ -1026,7 +1026,7 @@ TEST(RaySphere, ScaleRay)
 }
 
 //------------------------------------------------------------------------------
-TEST(RaySphere, SphereDefaultTransformation)
+TEST(DISABLED_RaySphere, SphereDefaultTransformation)
 {
   ww::sphere S{};
   EXPECT_EQ(ww::Equal(S.Transform, ww::I()), true);
@@ -1034,7 +1034,7 @@ TEST(RaySphere, SphereDefaultTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: A sphere's default transformation. Ch5.
-TEST(RaySphere, SphereChangeTransformation)
+TEST(DISABLED_RaySphere, SphereChangeTransformation)
 {
   ww::sphere S{};
   S.Transform = ww::Translation(2.f, 3.f, 4.f);  // set the transform.
@@ -1043,7 +1043,7 @@ TEST(RaySphere, SphereChangeTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: Intersecting a scaled sphere with a ray. Ch5.
-TEST(RaySphere, SphereIntersectScaled)
+TEST(DISABLED_RaySphere, SphereIntersectScaled)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape S = ww::PtrDefaultSphere();
@@ -1071,7 +1071,7 @@ TEST(RaySphere, SphereIntersectScaled)
 }
 
 //------------------------------------------------------------------------------
-TEST(RaySphere, SphereIntersectTranslated)
+TEST(DISABLED_RaySphere, SphereIntersectTranslated)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape S = ww::PtrDefaultSphere();
@@ -1083,7 +1083,7 @@ TEST(RaySphere, SphereIntersectTranslated)
 }
 
 //------------------------------------------------------------------------------
-TEST(RaySphere, SpherePuttingItTogether)
+TEST(DISABLED_RaySphere, SpherePuttingItTogether)
 {
   // ---
   // NOTE: Create a lambda for the ray/sphere intersection.

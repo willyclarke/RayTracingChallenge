@@ -29,6 +29,21 @@ The intention is to use out of source build. So I normally do the following:
 
  * ninja
 
+== Executing the tests
+
+Execute the tests by running the following command from the build directory:
+
+[source,bash]
+./src/raytrace/raytrace --test-matrix
+// ----
+
+
+Some tests may be disabled. In order to run all tests issue the following command from the build directory:
+
+[source,bash]
+./src/raytrace/raytrace --test-matrix --gtest_also_run_disabled_tests
+// ----
+
 == Credits
 
 Thanks to Casey Muratori for creating the https://handmadehero.org/[Handmade Hero] series on youtube.

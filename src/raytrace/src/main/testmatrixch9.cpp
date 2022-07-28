@@ -5,7 +5,7 @@
 #include <memory>
 //------------------------------------------------------------------------------
 // Scenario: The default transformation
-TEST(Ch9Planes, TheDefaultTransformation)
+TEST(DISABLED_Ch9Planes, TheDefaultTransformation)
 {
   ww::shape S = ww::TestShape();
   EXPECT_EQ(S.Transform == ww::I(), true);
@@ -13,7 +13,7 @@ TEST(Ch9Planes, TheDefaultTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: Assigning a transformation
-TEST(Ch9Planes, AssigningATransformation)
+TEST(DISABLED_Ch9Planes, AssigningATransformation)
 {
   ww::shape S = ww::TestShape();
 
@@ -25,7 +25,7 @@ TEST(Ch9Planes, AssigningATransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: The default material
-TEST(Ch9Planes, TheDefaultMaterial)
+TEST(DISABLED_Ch9Planes, TheDefaultMaterial)
 {
   ww::shape S = ww::TestShape();
 
@@ -35,7 +35,7 @@ TEST(Ch9Planes, TheDefaultMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: Assigning a material
-TEST(Ch9Planes, AssignAMaterial)
+TEST(DISABLED_Ch9Planes, AssignAMaterial)
 {
   ww::shape S = ww::TestShape();
   ww::material M{};
@@ -54,7 +54,7 @@ TEST(Ch9Planes, AssignAMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: Intersecting a scaled shape with a ray
-TEST(Ch9Planes, IntersectingAScaledAShapeWithRay)
+TEST(DISABLED_Ch9Planes, IntersectingAScaledAShapeWithRay)
 {
   ww::ray R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shape S = ww::TestShape();
@@ -73,7 +73,7 @@ TEST(Ch9Planes, IntersectingAScaledAShapeWithRay)
 
 //------------------------------------------------------------------------------
 // Scenario: Intersecting a translated shape with a ray
-TEST(Ch9Planes, IntersectingATranslatedShapeWithARay)
+TEST(DISABLED_Ch9Planes, IntersectingATranslatedShapeWithARay)
 {
   ww::ray R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shape S = ww::TestShape();
@@ -92,7 +92,7 @@ TEST(Ch9Planes, IntersectingATranslatedShapeWithARay)
 
 //------------------------------------------------------------------------------
 // Scenario: Computing the normal on a translated shape
-TEST(Ch9Planes, ComputingTheNormalOnATranslatedSphere)
+TEST(DISABLED_Ch9Planes, ComputingTheNormalOnATranslatedSphere)
 {
   ww::shape S = ww::TestShape();
   S.Transform = ww::Translation(0.f, 1.f, 0.f);
@@ -103,7 +103,7 @@ TEST(Ch9Planes, ComputingTheNormalOnATranslatedSphere)
 
 //------------------------------------------------------------------------------
 // Scenario: Computing the normal on a transformed shape
-TEST(Ch9Planes, ComputingTheNormalOnATransformedSphere)
+TEST(DISABLED_Ch9Planes, ComputingTheNormalOnATransformedSphere)
 {
   ww::shape S = ww::TestShape();
   S.Transform = ww::Scaling(1.f, 0.5f, 1.f) * ww::RotateZ(M_PI / 5.f);
@@ -116,7 +116,7 @@ TEST(Ch9Planes, ComputingTheNormalOnATransformedSphere)
 //------------------------------------------------------------------------------
 // Scenario: Check that a sphere is a shape
 //           This is part of the checklist of chapter 9
-TEST(Ch9Planes, CheckThatASphereIsAShape)
+TEST(DISABLED_Ch9Planes, CheckThatASphereIsAShape)
 {
   ww::sphere const S{};
   ww::shared_ptr_shape ptrShape = ww::SharedPtrShape(S);
@@ -131,7 +131,7 @@ TEST(Ch9Planes, CheckThatASphereIsAShape)
 
 //------------------------------------------------------------------------------
 // Scenario: The normal of a plane is constant everywhere
-TEST(Ch9Planes, CheckThanNormalOnPlaneIsConstant)
+TEST(DISABLED_Ch9Planes, CheckThanNormalOnPlaneIsConstant)
 {
   ww::plane P{};
   P.funcPtrLocalNormalAt = ww::LocalNormalAtPlane;
@@ -145,7 +145,7 @@ TEST(Ch9Planes, CheckThanNormalOnPlaneIsConstant)
 
 //------------------------------------------------------------------------------
 // Scenario: Test that the shape's local NormalAt can be assigned.
-TEST(Ch9Planes, CheckThatNormaFuncPointerOfShapeCanBeAssigned)
+TEST(DISABLED_Ch9Planes, CheckThatNormaFuncPointerOfShapeCanBeAssigned)
 {
   ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
   ww::plane &P = *ptrPlane;
@@ -162,7 +162,7 @@ TEST(Ch9Planes, CheckThatNormaFuncPointerOfShapeCanBeAssigned)
 
 //------------------------------------------------------------------------------
 // Scenario: Intersect with a ray parallel to the plane.
-TEST(Ch9Planes, IntersectRayParallelToPlane)
+TEST(DISABLED_Ch9Planes, IntersectRayParallelToPlane)
 {
   std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
   ww::ray R = ww::Ray(ww::Point(0.f, 10.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
@@ -175,7 +175,7 @@ TEST(Ch9Planes, IntersectRayParallelToPlane)
 
 //------------------------------------------------------------------------------
 // Scenario: Intersect with a coplanar ray.
-TEST(Ch9Planes, IntersectWithACoplanarRay)
+TEST(DISABLED_Ch9Planes, IntersectWithACoplanarRay)
 {
   std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
   ww::ray R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
@@ -185,7 +185,7 @@ TEST(Ch9Planes, IntersectWithACoplanarRay)
 
 //------------------------------------------------------------------------------
 // Scenario: Intersecting a plane from above.
-TEST(Ch9Planes, IntersectAPlaneFromAbove)
+TEST(DISABLED_Ch9Planes, IntersectAPlaneFromAbove)
 {
   std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
   ww::ray R = ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, -1.f, 0.f));
@@ -201,7 +201,7 @@ TEST(Ch9Planes, IntersectAPlaneFromAbove)
 
 //------------------------------------------------------------------------------
 // Scenario: A ray Intersecting a plane from below.
-TEST(Ch9Planes, IntersectAPlaneFromBelow)
+TEST(DISABLED_Ch9Planes, IntersectAPlaneFromBelow)
 {
   std::shared_ptr<ww::plane> ptrPlane = ww::PtrDefaultPlane();
   ww::ray R = ww::Ray(ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, 1.f, 0.f));
@@ -216,7 +216,7 @@ TEST(Ch9Planes, IntersectAPlaneFromBelow)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch9Planes, PuttingItTogether)
+TEST(DISABLED_Ch9Planes, PuttingItTogether)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
@@ -316,7 +316,7 @@ TEST(Ch9Planes, PuttingItTogether)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch9Planes, PuttingItTogetherHexagon)
+TEST(DISABLED_Ch9Planes, PuttingItTogetherHexagon)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();

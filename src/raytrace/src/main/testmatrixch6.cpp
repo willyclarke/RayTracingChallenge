@@ -4,7 +4,7 @@
 #include <cmath>
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, SphereNormals)
+TEST(DISABLED_Ch6LightAndShading, SphereNormals)
 {
   ww::sphere S{};
   {
@@ -27,7 +27,7 @@ TEST(Ch6LightAndShading, SphereNormals)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, SphereNormalsTranslated)
+TEST(DISABLED_Ch6LightAndShading, SphereNormalsTranslated)
 {
   ww::sphere S{};
 
@@ -64,7 +64,7 @@ TEST(Ch6LightAndShading, SphereNormalsTranslated)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, ReflectingVector45Degrees)
+TEST(DISABLED_Ch6LightAndShading, ReflectingVector45Degrees)
 {
   {
     //
@@ -92,7 +92,7 @@ TEST(Ch6LightAndShading, ReflectingVector45Degrees)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, PointLightPositionIntensity)
+TEST(DISABLED_Ch6LightAndShading, PointLightPositionIntensity)
 {
   ww::tup const Position = ww::Point(0.f, 0.f, 0.f);
   ww::tup const Intensity = ww::Color(1.f, 1.f, 1.f);
@@ -102,7 +102,7 @@ TEST(Ch6LightAndShading, PointLightPositionIntensity)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, MaterialInitialization)
+TEST(DISABLED_Ch6LightAndShading, MaterialInitialization)
 {
   ww::material const Material{};
   float const Ambient{0.1f};     //!< Typical value between 0 and 1. Non-negative.
@@ -120,7 +120,7 @@ TEST(Ch6LightAndShading, MaterialInitialization)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, SphereMaterialInitialization)
+TEST(DISABLED_Ch6LightAndShading, SphereMaterialInitialization)
 {
   ww::sphere const S{};
   ww::material const M{};
@@ -137,7 +137,7 @@ TEST(Ch6LightAndShading, SphereMaterialInitialization)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, SphereMaterialAssignment)
+TEST(DISABLED_Ch6LightAndShading, SphereMaterialAssignment)
 {
   ww::sphere S{};
   ww::material M{};
@@ -153,7 +153,7 @@ TEST(Ch6LightAndShading, SphereMaterialAssignment)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, SphereLighting)
+TEST(DISABLED_Ch6LightAndShading, SphereLighting)
 {
   // Background: Given the default material and a position.
   ww::material const M{};
@@ -271,7 +271,7 @@ TEST(Ch6LightAndShading, SphereLighting)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch6LightAndShading, SpherePuttingItTogether)
+TEST(DISABLED_Ch6LightAndShading, SpherePuttingItTogether)
 {
   // ---
   // NOTE: Create a lambda for the ray/sphere intersection.
