@@ -624,6 +624,7 @@ ray RayForPixel(camera const &C, int const Px, int const Py);
 
 // \fn Render - Use the camera to render an image of the given world.
 canvas Render(camera const &Camera, world const &World);
+canvas RenderMultiThread(camera const &Camera, world const &World);
 
 //------------------------------------------------------------------------------
 // Shadow functions ------------------------------------------------------------

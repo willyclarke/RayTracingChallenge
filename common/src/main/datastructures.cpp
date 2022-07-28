@@ -21,6 +21,7 @@
 #include <memory>  // for shared pointer.
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "perlinnoise.hpp"
@@ -2023,6 +2024,100 @@ canvas Render(camera const &Camera, world const &World)
       tup const Color = ColorAt(World, R);
       WritePixel(Image, X, Y, Color);
     }
+  }
+
+  return (Image);
+}
+
+struct render_block
+{
+  int HStart{};
+  int HLength{};
+  int VStart{};
+  int VHeigth{};
+  canvas *ptrImage{nullptr};
+  camera const *ptrCamera{nullptr};
+  world const *ptrWorld{nullptr};
+};
+
+void RenderBlock(render_block const &RB)
+{
+  for (int Y = RB.VStart;           ///<!
+       Y < RB.VStart + RB.VHeigth;  ///<!
+       ++Y)
+  {
+    for (int X = RB.HStart;           ///<!
+         X < RB.HStart + RB.HLength;  ///<!
+         ++X)
+    {
+      ray const R = RayForPixel(*RB.ptrCamera, X, Y);
+      tup const Color = ColorAt(*RB.ptrWorld, R);
+      WritePixel(*RB.ptrImage, X, Y, Color);
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+canvas RenderMultiThread(camera const &Camera, world const &World)
+{
+  canvas Image(Camera.HSize, Camera.VSize);
+
+  int const NumBlocksH = 8;
+  int const NumBlocksV = 8;
+  int const HSizeBlock = Camera.HSize / NumBlocksH;
+  int const VSizeBlock = Camera.VSize / NumBlocksV;
+
+  std::vector<render_block> vRenderBlocks{};
+
+  for (int HIdx = 0;       //!<
+       HIdx < NumBlocksH;  //!<
+       ++HIdx)
+  {
+    for (int VIdx = 0;       //!<
+         VIdx < NumBlocksV;  //!<
+         ++VIdx)
+    {
+      render_block RB{};
+      RB.HLength = HSizeBlock;
+      RB.VHeigth = VSizeBlock;
+      RB.HStart = HIdx * HSizeBlock;
+      RB.VStart = VIdx * VSizeBlock;
+      RB.ptrImage = &Image;
+      RB.ptrCamera = &Camera;
+      RB.ptrWorld = &World;
+      vRenderBlocks.push_back(RB);
+    }
+  }
+
+  struct WorkerThread
+  {
+    std::thread T;
+    render_block _RB{};
+    WorkerThread() { std::cout << __PRETTY_FUNCTION__ << " -> Called XXXXXXXXXXXXXXXXXXXXXXXXXX " << std::endl; }
+    WorkerThread(render_block const &RB) { _RB = RB; }
+
+    void Start() { T = std::thread(RenderBlock, _RB); }
+
+    WorkerThread(WorkerThread const &Orig) { _RB = Orig._RB; };
+    ~WorkerThread()
+    {
+      if (T.joinable())
+      {
+        T.join();
+      }
+    };
+  };
+
+  std::vector<WorkerThread> vWorkerThreads{};
+
+  for (auto const &RB : vRenderBlocks)
+  {
+    vWorkerThreads.push_back(RB);
+  }
+
+  for (auto &T : vWorkerThreads)
+  {
+    T.Start();
   }
 
   return (Image);
