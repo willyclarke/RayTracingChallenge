@@ -2010,12 +2010,12 @@ ray RayForPixel(camera const &Camera, int const Px, int const Py)
 //------------------------------------------------------------------------------
 void RenderSingleThread(camera const &Camera, world const &World, canvas &Image)
 {
-  for (int Y = 0;             ///<!
-       Y < Camera.VSize - 1;  ///<!
+  for (int Y = 0;         ///<!
+       Y < Camera.VSize;  ///<!
        ++Y)
   {
-    for (int X = 0;             ///<!
-         X < Camera.HSize - 1;  ///<!
+    for (int X = 0;         ///<!
+         X < Camera.HSize;  ///<!
          ++X)
     {
       ray const R = RayForPixel(Camera, X, Y);
