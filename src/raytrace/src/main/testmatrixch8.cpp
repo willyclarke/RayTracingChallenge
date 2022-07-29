@@ -3,7 +3,7 @@
 
 #include <cmath>
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, LightingWithTheSurfaceInShadow)
+TEST(DISABLED_Ch8Shadows, LightingWithTheSurfaceInShadow)
 {
   ww::tup vEye = ww::Vector(0.f, 0.f, -1.f);
   ww::tup vNormal = ww::Vector(0.f, 0.f, -1.f);
@@ -18,7 +18,7 @@ TEST(Ch8Shadows, LightingWithTheSurfaceInShadow)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, ThereIsNoShadowWhenNothingIsCollinearWithPointAndLight)
+TEST(DISABLED_Ch8Shadows, ThereIsNoShadowWhenNothingIsCollinearWithPointAndLight)
 {
   ww::world const W = ww::World();
   ww::tup const Point = ww::Point(0.f, 10.f, 0.f);
@@ -26,7 +26,7 @@ TEST(Ch8Shadows, ThereIsNoShadowWhenNothingIsCollinearWithPointAndLight)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, TheShadowWhenAnObjectIsBetweenThePointAndLight)
+TEST(DISABLED_Ch8Shadows, TheShadowWhenAnObjectIsBetweenThePointAndLight)
 {
   ww::world const W = ww::World();
   ww::tup const Point = ww::Point(10.f, -10.f, 10.f);
@@ -34,7 +34,7 @@ TEST(Ch8Shadows, TheShadowWhenAnObjectIsBetweenThePointAndLight)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, ThereIsNoShadowWhenAnObjectIsBehindTheLight)
+TEST(DISABLED_Ch8Shadows, ThereIsNoShadowWhenAnObjectIsBehindTheLight)
 {
   ww::world const W = ww::World();
   ww::tup const Point = ww::Point(-20.f, 20.f, -20.f);
@@ -42,7 +42,7 @@ TEST(Ch8Shadows, ThereIsNoShadowWhenAnObjectIsBehindTheLight)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, ThereIsNoShadowWhenAnObjectIsBehindThePoint)
+TEST(DISABLED_Ch8Shadows, ThereIsNoShadowWhenAnObjectIsBehindThePoint)
 {
   ww::world const W = ww::World();
   ww::tup const Point = ww::Point(-2.f, 2.f, -2.f);
@@ -50,7 +50,7 @@ TEST(Ch8Shadows, ThereIsNoShadowWhenAnObjectIsBehindThePoint)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, ShadeHitIsGivenAnIntersectionInShadow)
+TEST(DISABLED_Ch8Shadows, ShadeHitIsGivenAnIntersectionInShadow)
 {
   ww::world W = ww::World();
   ww::shared_ptr_light PtrLight = W.vPtrLights[0];
@@ -77,7 +77,7 @@ TEST(Ch8Shadows, ShadeHitIsGivenAnIntersectionInShadow)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, TheHitShouldOffsetThePoint)
+TEST(DISABLED_Ch8Shadows, TheHitShouldOffsetThePoint)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape PtrShape{};
@@ -94,7 +94,7 @@ TEST(Ch8Shadows, TheHitShouldOffsetThePoint)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch8Shadows, PuttingItTogether)
+TEST(DISABLED_Ch8Shadows, PuttingItTogether)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();

@@ -33,6 +33,7 @@
 namespace ww
 {
 constexpr float EPSILON = 0.0035000;  // 1E27 * std::numeric_limits<float>::min();
+constexpr float INIFINITY = std::numeric_limits<float>::max() - 1.f;
 constexpr double PI = 3.141592653589793238463;
 constexpr float PI_F = 3.14159265358979f;
 
@@ -161,6 +162,7 @@ tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point);
 /// ---
 tup NormalAt(shape const &Shape, tup const &P);
 tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
+tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint);
 tup Reflect(tup const &In, tup const &Normal);
 
@@ -384,10 +386,13 @@ struct camera
 {
   int HSize{160};
   int VSize{120};
+  int NumBlocksH{4};
+  int NumBlocksV{4};
   float FieldOfView{};
   float PixelSize{};
   float HalfWidth{};
   float HalfHeight{};
+  float RenderSingleThread{};
 
   //!< The transform of the object, initialize to identity matrix
   matrix Transform{
@@ -532,6 +537,11 @@ shared_ptr_sphere PtrGlassSphere();
 /// PtrDefaultPlane - Create a plane and return shared pointer to this object.
 /// ---
 shared_ptr_plane PtrDefaultPlane();
+
+/// ---
+/// PtrDefaultCube - Create a cube and return a shared pointer to this object.
+/// ---
+shared_ptr_cube PtrDefaultCube();
 
 /// ---
 /// Ray releated functions.

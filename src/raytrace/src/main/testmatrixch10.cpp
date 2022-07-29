@@ -5,7 +5,7 @@
 #include <memory>
 //------------------------------------------------------------------------------
 // Scenario: Creating a stripe pattern.
-TEST(Ch10Patterns, CreatingStripePattern)
+TEST(DISABLED_Ch10Patterns, CreatingStripePattern)
 {
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
@@ -18,7 +18,7 @@ TEST(Ch10Patterns, CreatingStripePattern)
 
 //------------------------------------------------------------------------------
 // Scenario: A stripe pattern is constant in y.
-TEST(Ch10Patterns, AStripePatternIsConstantInY)
+TEST(DISABLED_Ch10Patterns, AStripePatternIsConstantInY)
 {
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
@@ -32,7 +32,7 @@ TEST(Ch10Patterns, AStripePatternIsConstantInY)
 
 //------------------------------------------------------------------------------
 // Scenario: A stripe pattern is constant in z.
-TEST(Ch10Patterns, AStripePatternIsConstantInZ)
+TEST(DISABLED_Ch10Patterns, AStripePatternIsConstantInZ)
 {
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
@@ -46,7 +46,7 @@ TEST(Ch10Patterns, AStripePatternIsConstantInZ)
 
 //------------------------------------------------------------------------------
 // Scenario: A stripe pattern alternates in x.
-TEST(Ch10Patterns, AStripePatternAlternatesInX)
+TEST(DISABLED_Ch10Patterns, AStripePatternAlternatesInX)
 {
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
@@ -63,7 +63,7 @@ TEST(Ch10Patterns, AStripePatternAlternatesInX)
 
 //------------------------------------------------------------------------------
 // Scenario: Lighting with a pattern applied.
-TEST(Ch10Patterns, LightingWithAPatternApplied)
+TEST(DISABLED_Ch10Patterns, LightingWithAPatternApplied)
 {
   ww::material Material{};
   Material.Pattern = ww::StripePattern(ww::Color(1.f, 1.f, 1.f), ww::Color(0.f, 0.f, 0.f));
@@ -85,7 +85,7 @@ TEST(Ch10Patterns, LightingWithAPatternApplied)
 
 //------------------------------------------------------------------------------
 // Scenario: Stripes with an object transformation
-TEST(Ch10Patterns, StripesWithAnObjectTransformation)
+TEST(DISABLED_Ch10Patterns, StripesWithAnObjectTransformation)
 {
   ww::sphere Object{};
   Object.Transform = ww::Scaling(2.f, 2.f, 2.f);
@@ -99,7 +99,7 @@ TEST(Ch10Patterns, StripesWithAnObjectTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: Stripes with a pattern transformation
-TEST(Ch10Patterns, StripesWithAPatternTransformation)
+TEST(DISABLED_Ch10Patterns, StripesWithAPatternTransformation)
 {
   ww::sphere Object{};
   Object.Transform = ww::Scaling(2.f, 2.f, 2.f);
@@ -116,7 +116,7 @@ TEST(Ch10Patterns, StripesWithAPatternTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: Stripes with both an object and a pattern transformation
-TEST(Ch10Patterns, StripesWithBothAnObjectAndAPatternTransformation)
+TEST(DISABLED_Ch10Patterns, StripesWithBothAnObjectAndAPatternTransformation)
 {
   ww::sphere Object{};
   Object.Transform = ww::Scaling(2.f, 2.f, 2.f);
@@ -131,7 +131,7 @@ TEST(Ch10Patterns, StripesWithBothAnObjectAndAPatternTransformation)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch10Patterns, AlmostThere)
+TEST(DISABLED_Ch10Patterns, AlmostThere)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
@@ -208,7 +208,7 @@ TEST(Ch10Patterns, AlmostThere)
 
 //------------------------------------------------------------------------------
 // Scenario: The default pattern transformation.
-TEST(Ch10Patterns, TheDefaultPatternTransformation)
+TEST(DISABLED_Ch10Patterns, TheDefaultPatternTransformation)
 {
   ww::pattern const Pattern = ww::TestPattern();
   EXPECT_EQ(Pattern.Transform == ww::I(), true);
@@ -216,7 +216,7 @@ TEST(Ch10Patterns, TheDefaultPatternTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: Assigning a transformation.
-TEST(Ch10Patterns, AssigningATransformation)
+TEST(DISABLED_Ch10Patterns, AssigningATransformation)
 {
   ww::pattern Pattern = ww::TestPattern();
   ww::SetPatternTransform(Pattern, ww::Translation(1.f, 2.f, 3.f));
@@ -225,7 +225,7 @@ TEST(Ch10Patterns, AssigningATransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: The default pattern is different from the testpattern.
-TEST(Ch10Patterns, TheDefaultPatternIsDifferentFromTheTestPattern)
+TEST(DISABLED_Ch10Patterns, TheDefaultPatternIsDifferentFromTheTestPattern)
 {
   ww::pattern const Pattern = ww::TestPattern();
   bool const IsEqual = Pattern == ww::pattern{};
@@ -237,7 +237,7 @@ TEST(Ch10Patterns, TheDefaultPatternIsDifferentFromTheTestPattern)
 // NOTE: This test will only test that the scaling works for the
 //       PatternAtShape. Tweaks in PatternAtShape is neccessary
 //       for this to work. Test is described on page 178 of the Challenge.
-TEST(Ch10Patterns, APatternWithAnObjectTransformation)
+TEST(DISABLED_Ch10Patterns, APatternWithAnObjectTransformation)
 {
   return;
   ww::sphere Shape = *ww::PtrDefaultSphere();
@@ -251,7 +251,7 @@ TEST(Ch10Patterns, APatternWithAnObjectTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: A pattern with a pattern transformation.
-TEST(Ch10Patterns, APatternWithAPatternTransformation)
+TEST(DISABLED_Ch10Patterns, APatternWithAPatternTransformation)
 {
   ww::sphere Shape = *ww::PtrDefaultSphere();
   ww::pattern Pattern = ww::TestPattern();
@@ -264,7 +264,7 @@ TEST(Ch10Patterns, APatternWithAPatternTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: A pattern with both an object and a pattern transformation.
-TEST(Ch10Patterns, APatternWithBothAnObjectAndAPatternTransformation)
+TEST(DISABLED_Ch10Patterns, APatternWithBothAnObjectAndAPatternTransformation)
 {
   ww::sphere Shape = *ww::PtrDefaultSphere();
   Shape.Transform = ww::Scaling(2.f, 2.f, 2.f);
@@ -278,7 +278,7 @@ TEST(Ch10Patterns, APatternWithBothAnObjectAndAPatternTransformation)
 
 //------------------------------------------------------------------------------
 // Scenario: A gradient lineaerly interpolates between colors.
-TEST(Ch10Patterns, AGradientLinearlyInterpolatesBetweenColors)
+TEST(DISABLED_Ch10Patterns, AGradientLinearlyInterpolatesBetweenColors)
 {
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
@@ -292,7 +292,7 @@ TEST(Ch10Patterns, AGradientLinearlyInterpolatesBetweenColors)
 
 //------------------------------------------------------------------------------
 // Scenario: A ring should extend in both x and z.
-TEST(Ch10Patterns, ARingShouldExtendInBothXandZ)
+TEST(DISABLED_Ch10Patterns, ARingShouldExtendInBothXandZ)
 {
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
@@ -312,7 +312,7 @@ TEST(Ch10Patterns, ARingShouldExtendInBothXandZ)
 
 //------------------------------------------------------------------------------
 // Scenario: Checkers should repeat in x.
-TEST(Ch10Patterns, CheckersShouldRepeatInX)
+TEST(DISABLED_Ch10Patterns, CheckersShouldRepeatInX)
 {
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
@@ -328,7 +328,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInX)
 
 //------------------------------------------------------------------------------
 // Scenario: Checkers should repeat in y.
-TEST(Ch10Patterns, CheckersShouldRepeatInY)
+TEST(DISABLED_Ch10Patterns, CheckersShouldRepeatInY)
 {
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
@@ -344,7 +344,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInY)
 
 //------------------------------------------------------------------------------
 // Scenario: Checkers should repeat in z.
-TEST(Ch10Patterns, CheckersShouldRepeatInZ)
+TEST(DISABLED_Ch10Patterns, CheckersShouldRepeatInZ)
 {
   ww::tup const White = ww::Color(1.f, 1.f, 1.f);
   ww::tup const Black = ww::Color(0.f, 0.f, 0.f);
@@ -359,7 +359,7 @@ TEST(Ch10Patterns, CheckersShouldRepeatInZ)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch10Patterns, PuttingItTogether)
+TEST(DISABLED_Ch10Patterns, PuttingItTogether)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
@@ -444,7 +444,7 @@ TEST(Ch10Patterns, PuttingItTogether)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch10Patterns, PuttingItTogetherNestedPattern)
+TEST(DISABLED_Ch10Patterns, PuttingItTogetherNestedPattern)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
@@ -499,7 +499,7 @@ TEST(Ch10Patterns, PuttingItTogetherNestedPattern)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch10Patterns, PuttingItTogetherBlendedPattern)
+TEST(DISABLED_Ch10Patterns, PuttingItTogetherBlendedPattern)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
@@ -553,7 +553,7 @@ TEST(Ch10Patterns, PuttingItTogetherBlendedPattern)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch10Patterns, PuttingItTogetherPerturbedPattern)
+TEST(DISABLED_Ch10Patterns, PuttingItTogetherPerturbedPattern)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
