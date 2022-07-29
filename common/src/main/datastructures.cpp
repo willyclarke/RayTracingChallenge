@@ -2008,10 +2008,8 @@ ray RayForPixel(camera const &Camera, int const Px, int const Py)
 }
 
 //------------------------------------------------------------------------------
-canvas Render(camera const &Camera, world const &World)
+void RenderSingleThread(camera const &Camera, world const &World, canvas &Image)
 {
-  canvas Image(Camera.HSize, Camera.VSize);
-
   for (int Y = 0;             ///<!
        Y < Camera.VSize - 1;  ///<!
        ++Y)
@@ -2025,8 +2023,6 @@ canvas Render(camera const &Camera, world const &World)
       WritePixel(Image, X, Y, Color);
     }
   }
-
-  return (Image);
 }
 
 struct render_block
@@ -2040,6 +2036,10 @@ struct render_block
   world const *ptrWorld{nullptr};
 };
 
+/**
+ * Render a block of pixels defined in the struct render_block.
+ * This function locks on a mutex defined in the render block.
+ */
 void RenderBlock(render_block const &RB)
 {
   for (int Y = RB.VStart;           ///<!
@@ -2057,13 +2057,16 @@ void RenderBlock(render_block const &RB)
   }
 }
 
-//------------------------------------------------------------------------------
-canvas RenderMultiThread(camera const &Camera, world const &World)
+/**
+ * Use a number of threads to render the image on to the canvas.
+ * NOTE: The function is not thread safe but since the canvas is
+ *       split into blocks that are not overlapping there should (?)
+ *       not be any undefinded behavior.
+ */
+void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
-  canvas Image(Camera.HSize, Camera.VSize);
-
-  int const NumBlocksH = 8;
-  int const NumBlocksV = 8;
+  int const NumBlocksH = Camera.NumBlocksH;
+  int const NumBlocksV = Camera.NumBlocksV;
   int const HSizeBlock = Camera.HSize / NumBlocksH;
   int const VSizeBlock = Camera.VSize / NumBlocksV;
 
@@ -2119,8 +2122,18 @@ canvas RenderMultiThread(camera const &Camera, world const &World)
   {
     T.Start();
   }
+}
 
-  return (Image);
+//------------------------------------------------------------------------------
+canvas Render(camera const &Camera, world const &World)
+{
+  canvas Image(Camera.HSize, Camera.VSize);
+
+  if (Camera.RenderSingleThread)
+    RenderSingleThread(Camera, World, Image);
+  else
+    RenderMultiThread(Camera, World, Image);
+  return Image;
 }
 
 //------------------------------------------------------------------------------

@@ -386,10 +386,13 @@ struct camera
 {
   int HSize{160};
   int VSize{120};
+  int NumBlocksH{4};
+  int NumBlocksV{4};
   float FieldOfView{};
   float PixelSize{};
   float HalfWidth{};
   float HalfHeight{};
+  float RenderSingleThread{};
 
   //!< The transform of the object, initialize to identity matrix
   matrix Transform{
@@ -624,7 +627,6 @@ ray RayForPixel(camera const &C, int const Px, int const Py);
 
 // \fn Render - Use the camera to render an image of the given world.
 canvas Render(camera const &Camera, world const &World);
-canvas RenderMultiThread(camera const &Camera, world const &World);
 
 //------------------------------------------------------------------------------
 // Shadow functions ------------------------------------------------------------

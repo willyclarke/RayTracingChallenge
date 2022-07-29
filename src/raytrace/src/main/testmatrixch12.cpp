@@ -244,7 +244,7 @@ TEST(Ch12Cubes, PuttingItTogetherTake2)
   ww::pattern P1Perturbed = ww::PerturbPattern(P1);
   ww::shared_ptr_shape PtrMiddle = ww::PtrDefaultSphere();
   ww::shape &Middle = *PtrMiddle;
-  Middle.Transform = ww::Translation(0.f, 3.f, 0.0f);
+  Middle.Transform = ww::Translation(.5f, 1.f, 3.5f);
   Middle.Material.Color = ww::Color(0.1f, 1.0f, 0.5f);
   Middle.Material.Diffuse = 0.7f;
   Middle.Material.Specular = 0.3f;
@@ -260,16 +260,13 @@ TEST(Ch12Cubes, PuttingItTogetherTake2)
   // ---
   // NOTE: Write out the result so that it is possible to see whats going on.
   // ---
-  // ww::camera Camera = ww::Camera(2256, 2256, ww::Radians(50.f));
   ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
 
-  // ww::tup const ViewFrom = ww::Point(-2.f * TWidth, 2.5f, -2.f * TDepth);
   ww::tup const ViewFrom = ww::Point(0.f, 4.5f, -7.f);
   ww::tup const ViewTo = ww::Point(2.0f, 1.f, 1.f);
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 
-  // ww::canvas Canvas = ww::Render(Camera, World);
-  ww::canvas Canvas = ww::RenderMultiThread(Camera, World);
+  ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch12PuttingItTogether2.ppm");
 }
