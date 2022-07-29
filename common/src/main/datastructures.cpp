@@ -21,6 +21,7 @@
 #include <memory>  // for shared pointer.
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "perlinnoise.hpp"
@@ -1062,7 +1063,7 @@ ww::intersections LocalIntersectPlane(shared_ptr_shape PtrShape, ray const &Ray)
 }
 
 /**
- * Check if a ray have a local intersect with a sphere.
+ * Check if a ray has a local intersect with a sphere.
  * Param: PtrShape: A ww::sphere is needed to do some actual checks for intersections.
  * Return: ww::intersections.
  **/
@@ -1119,6 +1120,82 @@ ww::intersections LocalIntersectSphere(shared_ptr_shape PtrShape, ray const &Ray
   return (Result);
 }
 
+/**
+ * Check if a ray has a local intersect with a cube.
+ * Param: PtrShape: A ww::cube is needed to do some actual checks for intersections.
+ * Return: ww::intersections.
+ **/
+ww::intersections LocalIntersectCube(shared_ptr_shape PtrShape, ray const &Ray)
+{
+  Assert(PtrShape->isA<cube>(), __FUNCTION__, __LINE__);
+
+  ww::intersections XS{};
+
+  if (!PtrShape->isA<ww::cube>()) return XS;
+
+  auto const CheckAxis = [](float const Origin, float const Direction) -> std::pair<float, float>
+  {
+    std::pair<float, float> Result{};
+    float &TMin = Result.first;
+    float &TMax = Result.second;
+
+    float const TMinNumerator = (-1.f - Origin);
+    float const TMaxNumerator = (1.f - Origin);
+
+    if (std::abs(Direction) >= EPSILON)
+    {
+      TMin = TMinNumerator / Direction;
+      TMax = TMaxNumerator / Direction;
+    }
+    else
+    {
+      TMin = TMinNumerator * INIFINITY;
+      TMax = TMaxNumerator * INIFINITY;
+    }
+
+    // ---
+    // Swap when needed ...
+    // ---
+    if (TMin > TMax)
+    {
+      float const Tmp = TMin;
+      TMin = TMax;
+      TMax = Tmp;
+    }
+
+    return Result;
+  };
+
+  std::pair<float, float> const XtMinMax = CheckAxis(Ray.Origin.X, Ray.Direction.X);
+  std::pair<float, float> const YtMinMax = CheckAxis(Ray.Origin.Y, Ray.Direction.Y);
+  std::pair<float, float> const ZtMinMax = CheckAxis(Ray.Origin.Z, Ray.Direction.Z);
+
+  // ---
+  // Get the maximum value of minimums.
+  // ---
+  float TMin = std::max<float>(XtMinMax.first, YtMinMax.first);
+  TMin = std::max<float>(TMin, ZtMinMax.first);
+
+  // ---
+  // Get the minimum value of the maximums.
+  // ---
+  float TMax = std::min<float>(XtMinMax.second, YtMinMax.second);
+  TMax = std::min<float>(TMax, ZtMinMax.second);
+
+  // ---
+  // NOTE: Return no intersections when the ray misses the cube.
+  // ---
+  if (TMin > TMax) return {};
+
+  intersection I0{TMin, PtrShape};
+  intersection I1{TMax, PtrShape};
+
+  XS.vI.push_back(I0);
+  XS.vI.push_back(I1);
+
+  return XS;
+}
+
 //------------------------------------------------------------------------------
 /// \brief Generic Local Intersect
 ///
@@ -1137,6 +1214,10 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
   else if (PtrShape->isA<plane>())
   {
     Result = LocalIntersectPlane(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<cube>())
+  {
+    Result = LocalIntersectCube(PtrShape, RayIn);
   }
 
   return (Result);
@@ -1355,6 +1436,29 @@ tup LocalNormalAt(shape const &Shape, tup const &LocalPoint)
 {
   tup Result{};
   Result = LocalPoint - Point(0.f, 0.f, 0.f);
+  return Result;
+}
+
+/**
+ * The local normal for a cube is the side that has absolute value of (1).
+ * If none of the x,y,z components are 1 the point is not on the cube.
+ */
+tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint)
+{
+  tup Result = Vector(0.f, 0.f, LocalPoint.Z);
+
+  float MaxC = std::max<float>(std::abs(LocalPoint.X), std::abs(LocalPoint.Y));
+  MaxC = std::max<float>(MaxC, std::abs(LocalPoint.Z));
+
+  if (MaxC == std::abs(LocalPoint.X))
+  {
+    Result = Vector(LocalPoint.X, 0.f, 0.f);
+  }
+  else if (MaxC == std::abs(LocalPoint.Y))
+  {
+    Result = Vector(0.f, LocalPoint.Y, 0.f);
+  }
+
   return Result;
 }
 
@@ -1619,6 +1723,16 @@ shared_ptr_sphere PtrGlassSphere()
   pSphere->Material.RefractiveIndex = 1.5f;
   pSphere->funcPtrLocalIntersect = &ww::LocalIntersectSphere;
   return (pSphere);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cube PtrDefaultCube()
+{
+  shared_ptr_cube pCube{};
+  pCube.reset(new cube);
+  pCube->funcPtrLocalIntersect = &ww::LocalIntersectCube;
+  pCube->funcPtrLocalNormalAt = &ww::LocalNormalAtCube;
+  return (pCube);
 }
 
 //------------------------------------------------------------------------------
@@ -1894,16 +2008,14 @@ ray RayForPixel(camera const &Camera, int const Px, int const Py)
 }
 
 //------------------------------------------------------------------------------
-canvas Render(camera const &Camera, world const &World)
+void RenderSingleThread(camera const &Camera, world const &World, canvas &Image)
 {
-  canvas Image(Camera.HSize, Camera.VSize);
-
-  for (int Y = 0;             ///<!
-       Y < Camera.VSize - 1;  ///<!
+  for (int Y = 0;         ///<!
+       Y < Camera.VSize;  ///<!
        ++Y)
   {
-    for (int X = 0;             ///<!
-         X < Camera.HSize - 1;  ///<!
+    for (int X = 0;         ///<!
+         X < Camera.HSize;  ///<!
          ++X)
     {
       ray const R = RayForPixel(Camera, X, Y);
@@ -1911,8 +2023,117 @@ canvas Render(camera const &Camera, world const &World)
       WritePixel(Image, X, Y, Color);
     }
   }
+}
 
-  return (Image);
+struct render_block
+{
+  int HStart{};
+  int HLength{};
+  int VStart{};
+  int VHeigth{};
+  canvas *ptrImage{nullptr};
+  camera const *ptrCamera{nullptr};
+  world const *ptrWorld{nullptr};
+};
+
+/**
+ * Render a block of pixels defined in the struct render_block.
+ * This function locks on a mutex defined in the render block.
+ */
+void RenderBlock(render_block const &RB)
+{
+  for (int Y = RB.VStart;           ///<!
+       Y < RB.VStart + RB.VHeigth;  ///<!
+       ++Y)
+  {
+    for (int X = RB.HStart;           ///<!
+         X < RB.HStart + RB.HLength;  ///<!
+         ++X)
+    {
+      ray const R = RayForPixel(*RB.ptrCamera, X, Y);
+      tup const Color = ColorAt(*RB.ptrWorld, R);
+      WritePixel(*RB.ptrImage, X, Y, Color);
+    }
+  }
+}
+
+/**
+ * Use a number of threads to render the image on to the canvas.
+ * NOTE: The function is not thread safe but since the canvas is
+ *       split into blocks that are not overlapping there should (?)
+ *       not be any undefinded behavior.
+ */
+void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
+{
+  int const NumBlocksH = Camera.NumBlocksH;
+  int const NumBlocksV = Camera.NumBlocksV;
+  int const HSizeBlock = Camera.HSize / NumBlocksH;
+  int const VSizeBlock = Camera.VSize / NumBlocksV;
+
+  std::vector<render_block> vRenderBlocks{};
+
+  for (int HIdx = 0;       //!<
+       HIdx < NumBlocksH;  //!<
+       ++HIdx)
+  {
+    for (int VIdx = 0;       //!<
+         VIdx < NumBlocksV;  //!<
+         ++VIdx)
+    {
+      render_block RB{};
+      RB.HLength = HSizeBlock;
+      RB.VHeigth = VSizeBlock;
+      RB.HStart = HIdx * HSizeBlock;
+      RB.VStart = VIdx * VSizeBlock;
+      RB.ptrImage = &Image;
+      RB.ptrCamera = &Camera;
+      RB.ptrWorld = &World;
+      vRenderBlocks.push_back(RB);
+    }
+  }
+
+  struct WorkerThread
+  {
+    std::thread T;
+    render_block _RB{};
+    WorkerThread() { std::cout << __PRETTY_FUNCTION__ << " -> Called XXXXXXXXXXXXXXXXXXXXXXXXXX " << std::endl; }
+    WorkerThread(render_block const &RB) { _RB = RB; }
+
+    void Start() { T = std::thread(RenderBlock, _RB); }
+
+    WorkerThread(WorkerThread const &Orig) { _RB = Orig._RB; };
+    ~WorkerThread()
+    {
+      if (T.joinable())
+      {
+        T.join();
+      }
+    };
+  };
+
+  std::vector<WorkerThread> vWorkerThreads{};
+
+  for (auto const &RB : vRenderBlocks)
+  {
+    vWorkerThreads.push_back(RB);
+  }
+
+  for (auto &T : vWorkerThreads)
+  {
+    T.Start();
+  }
+}
+
+//------------------------------------------------------------------------------
+canvas Render(camera const &Camera, world const &World)
+{
+  canvas Image(Camera.HSize, Camera.VSize);
+
+  if (Camera.RenderSingleThread)
+    RenderSingleThread(Camera, World, Image);
+  else
+    RenderMultiThread(Camera, World, Image);
+  return Image;
 }
 
 //------------------------------------------------------------------------------

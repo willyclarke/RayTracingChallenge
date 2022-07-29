@@ -5,7 +5,7 @@
 #include <memory>
 //------------------------------------------------------------------------------
 // Scenario: Reflectivity for the default material
-TEST(CH11ReflectionAndRefraction, ReflectivityForTheDefaultMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, ReflectivityForTheDefaultMaterial)
 {
   ww::material const M = {};
   EXPECT_EQ(M.Reflective == 0.f, true);
@@ -13,7 +13,7 @@ TEST(CH11ReflectionAndRefraction, ReflectivityForTheDefaultMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: Precomputing the reflective vector
-TEST(CH11ReflectionAndRefraction, PrecomputingTheReflectiveVector)
+TEST(DISABLED_CH11ReflectionAndRefraction, PrecomputingTheReflectiveVector)
 {
   ww::shared_ptr_plane const Shape = ww::PtrDefaultPlane();
   ww::ray const R = ww::Ray(ww::Point(0.f, 1.f, -1.f), ww::Vector(0.f, -M_SQRT2 / 2.f, M_SQRT2 / 2.f));
@@ -24,7 +24,7 @@ TEST(CH11ReflectionAndRefraction, PrecomputingTheReflectiveVector)
 
 //------------------------------------------------------------------------------
 // Scenario: The reflected color for a nonreflective material
-TEST(CH11ReflectionAndRefraction, TheReflectedColorForANonReflectiveMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheReflectedColorForANonReflectiveMaterial)
 {
   ww::world W = ww::World();
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
@@ -42,7 +42,7 @@ TEST(CH11ReflectionAndRefraction, TheReflectedColorForANonReflectiveMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: The reflected color for a reflective material
-TEST(CH11ReflectionAndRefraction, TheReflectedColorForAReflectiveMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheReflectedColorForAReflectiveMaterial)
 {
   ww::world W = ww::World();
 
@@ -82,7 +82,7 @@ TEST(CH11ReflectionAndRefraction, TheReflectedColorForAReflectiveMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: shade_hit() with a reflective material
-TEST(CH11ReflectionAndRefraction, ShadeHitWithAReflectiveMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, ShadeHitWithAReflectiveMaterial)
 {
   ww::world W = ww::World();
 
@@ -132,7 +132,7 @@ TEST(CH11ReflectionAndRefraction, ShadeHitWithAReflectiveMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: color_at() with mutually reflective surface
-TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
+TEST(DISABLED_CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
 {
   ww::world W{};
 
@@ -209,7 +209,7 @@ TEST(CH11ReflectionAndRefraction, ColorAtWithMutuallyReflectiveSurface)
 
 //------------------------------------------------------------------------------
 // Scenario: The reflected color at the maximum recursive depth.
-TEST(CH11ReflectionAndRefraction, TheReflectedColorAtTheMaximumRecursiveDepth)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheReflectedColorAtTheMaximumRecursiveDepth)
 {
   ww::world W = ww::World();
 
@@ -234,7 +234,7 @@ TEST(CH11ReflectionAndRefraction, TheReflectedColorAtTheMaximumRecursiveDepth)
 }
 
 //------------------------------------------------------------------------------
-TEST(CH11ReflectionAndRefraction, PuttingItTogether)
+TEST(DISABLED_CH11ReflectionAndRefraction, PuttingItTogether)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
@@ -346,7 +346,7 @@ TEST(CH11ReflectionAndRefraction, PuttingItTogether)
 
 //------------------------------------------------------------------------------
 // Scenario: Transparency and Refractive index for the default material.
-TEST(CH11ReflectionAndRefraction, TransparencyAndRefractiveIndexForTheDefaultMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, TransparencyAndRefractiveIndexForTheDefaultMaterial)
 {
   ww::material M = ww::material{};
   EXPECT_EQ(M.Transparency, 0.f);
@@ -355,7 +355,7 @@ TEST(CH11ReflectionAndRefraction, TransparencyAndRefractiveIndexForTheDefaultMat
 
 //------------------------------------------------------------------------------
 // Scenario: A helper for producing a sphere with a glassy material.
-TEST(CH11ReflectionAndRefraction, AHelperForProducingASphereWithAGlassyMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, AHelperForProducingASphereWithAGlassyMaterial)
 {
   ww::shared_ptr_sphere Sphere = ww::PtrGlassSphere();
   EXPECT_EQ(Sphere->Transform == ww::I(), true);
@@ -365,7 +365,7 @@ TEST(CH11ReflectionAndRefraction, AHelperForProducingASphereWithAGlassyMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: Finding n1 and n2 at various intersections.
-TEST(CH11ReflectionAndRefraction, FindingN1AndN2AtVariousIntersections)
+TEST(DISABLED_CH11ReflectionAndRefraction, FindingN1AndN2AtVariousIntersections)
 {
   ww::shared_ptr_sphere A = ww::PtrGlassSphere();
   A->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
@@ -424,7 +424,7 @@ TEST(CH11ReflectionAndRefraction, FindingN1AndN2AtVariousIntersections)
 
 //------------------------------------------------------------------------------
 // Scenario: The under point is offset below the surface.
-TEST(CH11ReflectionAndRefraction, TheUnderPointIsOffsetBelowTheSurface)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheUnderPointIsOffsetBelowTheSurface)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
@@ -440,7 +440,7 @@ TEST(CH11ReflectionAndRefraction, TheUnderPointIsOffsetBelowTheSurface)
 
 //------------------------------------------------------------------------------
 // Scenario: The refracted color with an opaque surface.
-TEST(CH11ReflectionAndRefraction, TheRefractedColorWithAnOpaqueSurface)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheRefractedColorWithAnOpaqueSurface)
 {
   ww::world W = ww::World();
   ww::shared_ptr_shape Shape = W.vPtrObjects[0];
@@ -458,7 +458,7 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorWithAnOpaqueSurface)
 
 //------------------------------------------------------------------------------
 // Scenario: The refracted color at the maximum recursive depth.
-TEST(CH11ReflectionAndRefraction, TheRefractedColorAtTheMaximumRecursiveDepth)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheRefractedColorAtTheMaximumRecursiveDepth)
 {
   ww::world W = ww::World();
   ww::shared_ptr_shape Shape = W.vPtrObjects[0];
@@ -480,7 +480,7 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorAtTheMaximumRecursiveDepth)
 
 //------------------------------------------------------------------------------
 // Scenario: The refracted color under total internal reflection.
-TEST(CH11ReflectionAndRefraction, TheRefractedColorUnderTotalInternalReflection)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheRefractedColorUnderTotalInternalReflection)
 {
   ww::world W = ww::World();
   ww::shared_ptr_shape Shape = W.vPtrObjects[0];
@@ -504,7 +504,7 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorUnderTotalInternalReflection)
 
 //------------------------------------------------------------------------------
 // Scenario: The refracted color with a refracted ray.
-TEST(CH11ReflectionAndRefraction, TheRefractedColorWithARefractedRay)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheRefractedColorWithARefractedRay)
 {
   ww::world W = ww::World();
 
@@ -578,7 +578,7 @@ TEST(CH11ReflectionAndRefraction, TheRefractedColorWithARefractedRay)
 
 //------------------------------------------------------------------------------
 // Scenario: ShadeHit with a transparent material.
-TEST(CH11ReflectionAndRefraction, ShadeHitWithATransparentMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, ShadeHitWithATransparentMaterial)
 {
   ww::world W = ww::World();
 
@@ -614,7 +614,7 @@ TEST(CH11ReflectionAndRefraction, ShadeHitWithATransparentMaterial)
 
 //------------------------------------------------------------------------------
 // Scenario: The Schlick approximation under total internal reflection.
-TEST(CH11ReflectionAndRefraction, TheSchlickApproximationUnderTotalInternalReflection)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheSchlickApproximationUnderTotalInternalReflection)
 {
   ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, M_SQRT2 / 2.f), ww::Vector(0.f, 1.f, 0.f));
@@ -626,14 +626,13 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationUnderTotalInternalRefle
   EXPECT_EQ(Comps.n1, 1.5f);
   EXPECT_EQ(Comps.n2, 1.f);
   float const Reflectance = ww::Schlick(Comps);
-  std::cout << __PRETTY_FUNCTION__ << "." << __LINE__ << "-> Reflectance:" << Reflectance << std::endl;
 
   EXPECT_FLOAT_EQ(Reflectance, 1.f);
 }
 
 //------------------------------------------------------------------------------
 // Scenario: The Schlick approximation with a perpendicular viewing angle.
-TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithAPerpendicularViewingAngle)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheSchlickApproximationWithAPerpendicularViewingAngle)
 {
   ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 1.f, 0.f));
@@ -648,7 +647,7 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithAPerpendicularViewi
 
 //------------------------------------------------------------------------------
 // Scenario: The Schlick approximation with small angle and n2 > n1 .
-TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2)
+TEST(DISABLED_CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2)
 {
   ww::shared_ptr_sphere Shape = ww::PtrGlassSphere();
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.99f, -2.f), ww::Vector(0.f, 0.f, 1.f));
@@ -663,7 +662,7 @@ TEST(CH11ReflectionAndRefraction, TheSchlickApproximationWithSmallAngleAndn1GTn2
 
 //------------------------------------------------------------------------------
 // Scenario: shade_hit() with a reflective, transparent material.
-TEST(CH11ReflectionAndRefraction, ShadeHitWithAReflectiveTranparentMaterial)
+TEST(DISABLED_CH11ReflectionAndRefraction, ShadeHitWithAReflectiveTranparentMaterial)
 {
   ww::world W = ww::World();
 

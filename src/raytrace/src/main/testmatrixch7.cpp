@@ -5,7 +5,7 @@
 
 //------------------------------------------------------------------------------
 // Scenario: Creating a world, an empty one...
-TEST(Ch7MakingAScene, CreateAWorld)
+TEST(DISABLED_Ch7MakingAScene, CreateAWorld)
 {
   ww::world const World{};
   EXPECT_EQ(World.Count(), 0);
@@ -15,7 +15,7 @@ TEST(Ch7MakingAScene, CreateAWorld)
 
 //------------------------------------------------------------------------------
 // Scenario: The default world
-TEST(Ch7MakingAScene, DefaultWorld)
+TEST(DISABLED_Ch7MakingAScene, DefaultWorld)
 {
   ww::light const Light = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
   ww::sphere S1{};
@@ -78,7 +78,7 @@ TEST(Ch7MakingAScene, DefaultWorld)
 
 //------------------------------------------------------------------------------
 // Scenario: Intersect a world with a ray
-TEST(Ch7MakingAScene, IntersectWorldWithRay)
+TEST(DISABLED_Ch7MakingAScene, IntersectWorldWithRay)
 {
   ww::world const World = ww::World();
   ww::ray const Ray = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
@@ -95,7 +95,7 @@ TEST(Ch7MakingAScene, IntersectWorldWithRay)
 
 #if 1
 //------------------------------------------------------------------------------
-TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
+TEST(DISABLED_Ch7MakingAScene, PrecomputingStateOfIntersection)
 {
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
   ww::shared_ptr_shape pSphere{};
@@ -111,7 +111,7 @@ TEST(Ch7MakingAScene, PrecomputingStateOfIntersection)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7MakingAScene, HitFromInsideOrOutsideChangesTheNormal)
+TEST(DISABLED_Ch7MakingAScene, HitFromInsideOrOutsideChangesTheNormal)
 {
   {
     // NOTE: Scenario - The hit when an intersection occurs on the outside.
@@ -140,7 +140,7 @@ TEST(Ch7MakingAScene, HitFromInsideOrOutsideChangesTheNormal)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7MakingAScene, ShadingAnIntersection)
+TEST(DISABLED_Ch7MakingAScene, ShadingAnIntersection)
 {
   // NOTE: the default world consist of two spheres.
   ww::world W = ww::World();
@@ -197,7 +197,7 @@ TEST(Ch7MakingAScene, ShadingAnIntersection)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7MakingAScene, TheColorWhenARayMisses)
+TEST(DISABLED_Ch7MakingAScene, TheColorWhenARayMisses)
 {
   ww::world const W = ww::World();
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 1.f, 0.f));
@@ -206,7 +206,7 @@ TEST(Ch7MakingAScene, TheColorWhenARayMisses)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7MakingAScene, TheColorWhenARayHits)
+TEST(DISABLED_Ch7MakingAScene, TheColorWhenARayHits)
 {
   ww::world const W = ww::World();
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
@@ -215,7 +215,7 @@ TEST(Ch7MakingAScene, TheColorWhenARayHits)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7MakingAScene, TheColorWhenIntersectionBehindTheRay)
+TEST(DISABLED_Ch7MakingAScene, TheColorWhenIntersectionBehindTheRay)
 {
   ww::world W = ww::World();
   if (W.vPtrObjects.size() > 1)
@@ -238,7 +238,7 @@ TEST(Ch7MakingAScene, TheColorWhenIntersectionBehindTheRay)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7DefiningAViewTransformation, TransformationMatrixForDefaultOrientation)
+TEST(DISABLED_Ch7DefiningAViewTransformation, TransformationMatrixForDefaultOrientation)
 {
   ww::tup const From = ww::Point(0.f, 0.f, 0.f);
   ww::tup const To = ww::Point(0.f, 0.f, -1.f);
@@ -247,7 +247,7 @@ TEST(Ch7DefiningAViewTransformation, TransformationMatrixForDefaultOrientation)
   EXPECT_EQ(ww::Equal(ww::I(), T), true);
 }
 //------------------------------------------------------------------------------
-TEST(Ch7DefiningAViewTransformation, AViewTransformationMatrixInThePositiveZDirection)
+TEST(DISABLED_Ch7DefiningAViewTransformation, AViewTransformationMatrixInThePositiveZDirection)
 {
   ww::tup const From = ww::Point(0.f, 0.f, 0.f);
   ww::tup const To = ww::Point(0.f, 0.f, 1.f);
@@ -262,7 +262,7 @@ TEST(Ch7DefiningAViewTransformation, AViewTransformationMatrixInThePositiveZDire
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7DefiningAViewTransformation, TheViewTransformationMovesTheWorld)
+TEST(DISABLED_Ch7DefiningAViewTransformation, TheViewTransformationMovesTheWorld)
 {
   ww::tup const From = ww::Point(0.f, 0.f, 8.f);
   ww::tup const To = ww::Point(0.f, 0.f, 0.f);
@@ -273,7 +273,7 @@ TEST(Ch7DefiningAViewTransformation, TheViewTransformationMovesTheWorld)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7DefiningAViewTransformation, AnArbitraryViewTransformation)
+TEST(DISABLED_Ch7DefiningAViewTransformation, AnArbitraryViewTransformation)
 {
   ww::tup const From = ww::Point(1.f, 3.f, 2.f);
   ww::tup const To = ww::Point(4.f, -2.f, 8.f);
@@ -290,7 +290,7 @@ TEST(Ch7DefiningAViewTransformation, AnArbitraryViewTransformation)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7ImplementingACamera, ConstructingACamera)
+TEST(DISABLED_Ch7ImplementingACamera, ConstructingACamera)
 {
   int const HSize{160};
   int const VSize{120};
@@ -306,7 +306,7 @@ TEST(Ch7ImplementingACamera, ConstructingACamera)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7ImplementingACamera, PixelSizeForAHorisontalCanvas)
+TEST(DISABLED_Ch7ImplementingACamera, PixelSizeForAHorisontalCanvas)
 {
   int const Alfa{180};
   int const FieldOfView{Alfa / 2};
@@ -321,7 +321,7 @@ TEST(Ch7ImplementingACamera, PixelSizeForAHorisontalCanvas)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7ImplementingACamera, ConstructingARayThroughTheCenterOfTheCanvas)
+TEST(DISABLED_Ch7ImplementingACamera, ConstructingARayThroughTheCenterOfTheCanvas)
 {
   int const Alfa{180};
   int const FieldOfView{Alfa / 2};
@@ -334,7 +334,7 @@ TEST(Ch7ImplementingACamera, ConstructingARayThroughTheCenterOfTheCanvas)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7ImplementingACamera, ConstructingARayThroughThroughACornerOfTheCanvas)
+TEST(DISABLED_Ch7ImplementingACamera, ConstructingARayThroughThroughACornerOfTheCanvas)
 {
   int const Alfa{180};
   int const FieldOfView{Alfa / 2};
@@ -348,7 +348,7 @@ TEST(Ch7ImplementingACamera, ConstructingARayThroughThroughACornerOfTheCanvas)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7ImplementingACamera, ConstructingARayWhenTheCameraIsTransformed)
+TEST(DISABLED_Ch7ImplementingACamera, ConstructingARayWhenTheCameraIsTransformed)
 {
   int const Alfa{180};
   int const FieldOfView{Alfa / 2};
@@ -368,7 +368,7 @@ TEST(Ch7ImplementingACamera, ConstructingARayWhenTheCameraIsTransformed)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7ImplementingACamera, RenderingAWorldWithACamera)
+TEST(DISABLED_Ch7ImplementingACamera, RenderingAWorldWithACamera)
 {
   ww::world const W = ww::World();
 
@@ -384,7 +384,7 @@ TEST(Ch7ImplementingACamera, RenderingAWorldWithACamera)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch7ImplementingACamera, PuttingItTogether)
+TEST(DISABLED_Ch7ImplementingACamera, PuttingItTogether)
 {
   ww::world World = ww::World();
   World.vPtrLights.clear();
