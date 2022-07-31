@@ -1503,6 +1503,16 @@ tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint)
 }
 
 /**
+ * The local normal for a cylinder is the point on the cylinder with the
+ * Y-component removed.
+ */
+tup LocalNormalAtCylinder(shape const &Cylinder, tup const &LocalPoint)
+{
+  tup const Result = Vector(LocalPoint.X, 0.f, LocalPoint.Z);
+  return Result;
+}
+
+/**
  * The local normal for a plane is always 0, 1, 0.
  */
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
@@ -1740,6 +1750,7 @@ shared_ptr_cylinder PtrDefaultCylinder()
 {
   shared_ptr_cylinder pCylinder = SharedPtrSh<cylinder>(cylinder{});
   pCylinder->funcPtrLocalIntersect = &ww::LocalIntersectCylinder;
+  pCylinder->funcPtrLocalNormalAt = &ww::LocalNormalAtCylinder;
   return pCylinder;
 }
 

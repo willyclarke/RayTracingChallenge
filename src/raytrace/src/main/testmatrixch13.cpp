@@ -40,3 +40,14 @@ TEST(Ch13Cylinders, ARayStrikesACylinder)
   CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f)), 4.f, 6.f);
   CheckIntersect(Cyl, ww::Ray(ww::Point(0.5f, 0.f, -5.f), ww::Vector(.1f, 1.f, 1.f)), 6.80798f, 7.08872f);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Normal vector on a cylinder.
+TEST(Ch13Cylinders, NormalVectorOnACylinder)
+{
+  ww::shared_ptr_cylinder const Cyl = ww::PtrDefaultCylinder();
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(1.f, 0.f, 0.f)) == ww::Vector(1.f, 0.f, 0.f), true);
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.f, 5.f, -1.f)) == ww::Vector(0.f, 0.f, -1.f), true);
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.f, -2.f, 1.f)) == ww::Vector(0.f, 0.f, 1.f), true);
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(-1.f, 1.f, 0.f)) == ww::Vector(-1.f, 0.f, 0.f), true);
+}
