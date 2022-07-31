@@ -1841,6 +1841,16 @@ shared_ptr_cylinder PtrDefaultCylinder()
 }
 
 //------------------------------------------------------------------------------
+shared_ptr_cylinder PtrCappedCylinder(float Minimum, float Maximum)
+{
+  shared_ptr_cylinder pCylinder = PtrDefaultCylinder();
+  pCylinder->Closed = true;
+  pCylinder->Minimum = Minimum;
+  pCylinder->Maximum = Maximum;
+  return pCylinder;
+}
+
+//------------------------------------------------------------------------------
 shared_ptr_plane PtrDefaultPlane()
 {
   ww::plane P{};

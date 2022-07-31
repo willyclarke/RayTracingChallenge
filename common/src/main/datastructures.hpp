@@ -552,6 +552,7 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
 /// PtrDefaultCylinder - Create a cylinder and return a shared pointer to this object.
 /// ---
 shared_ptr_cylinder PtrDefaultCylinder();
+shared_ptr_cylinder PtrCappedCylinder(float Minimum=1.f, float Maximum=2.f);
 
 /// ---
 /// PtrDefaultSphere - Create a sphere and return shared pointer to this object.
