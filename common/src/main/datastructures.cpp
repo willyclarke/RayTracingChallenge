@@ -1577,7 +1577,24 @@ tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint)
  */
 tup LocalNormalAtCylinder(shape const &Cylinder, tup const &LocalPoint)
 {
-  tup const Result = Vector(LocalPoint.X, 0.f, LocalPoint.Z);
+  tup Result = Vector(LocalPoint.X, 0.f, LocalPoint.Z);
+
+  cylinder const *pCylinder = dynamic_cast<cylinder const *>(&Cylinder);
+
+  // ---
+  // NOTE: Compute the square of the distance from the y axis.
+  // ---
+  float const Distance = LocalPoint.X * LocalPoint.X + LocalPoint.Z * LocalPoint.Z;
+
+  if (Distance < 1.f && LocalPoint.Y >= pCylinder->Maximum - EPSILON)
+  {
+    Result = Vector(0.f, 1.f, 0.f);
+  }
+  else if (Distance < 1.f && LocalPoint.Y <= pCylinder->Minimum + EPSILON)
+  {
+    Result = Vector(0.f, -1.f, 0.f);
+  }
+
   return Result;
 }
 

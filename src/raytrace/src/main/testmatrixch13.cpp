@@ -278,3 +278,27 @@ TEST(Ch13Cylinders, IntersectingTheCapsOfAClosedCylinder)
   CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 4.f, -2.f), ww::Normalize(ww::Vector(0.f, -1.f, 1.f))), 2);
   CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, -1.f, -2.f), ww::Normalize(ww::Vector(0.f, 1.f, 1.f))), 2);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The normal vector on a cylinder's end caps.
+TEST(Ch13Cylinders, TheNormalVectorOnACylindersEndCaps)
+{
+  ww::shared_ptr_cylinder Cyl = ww::PtrDefaultCylinder();
+  Cyl->Minimum = 1.f;
+  Cyl->Maximum = 2.f;
+  Cyl->Closed = true;
+
+  // ---
+  // NOTE: Check the normal at the bottom of the cylinder.
+  // ---
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.f, 1.f, 0.f)) == ww::Vector(0.f, -1.f, 0.f), true);
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.5f, 1.f, 0.f)) == ww::Vector(0.f, -1.f, 0.f), true);
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.f, 1.f, 0.5f)) == ww::Vector(0.f, -1.f, 0.f), true);
+
+  // ---
+  // NOTE: Check the normal at the top of the cylinder.
+  // ---
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.f, 2.f, 0.f)) == ww::Vector(0.f, 1.f, 0.f), true);
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.5f, 2.f, 0.f)) == ww::Vector(0.f, 1.f, 0.f), true);
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(0.f, 2.f, 0.5f)) == ww::Vector(0.f, 1.f, 0.f), true);
+}
