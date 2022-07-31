@@ -236,5 +236,12 @@ TEST(Ch13Cylinders, IntersectingAConstrainedCylinder)
   // intersections.
   // ---
   CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 1.5f, -2.f), ww::Normalize(ww::Vector(0.f, 0.f, 1.f))), 2);
+}
 
+//------------------------------------------------------------------------------
+// Scenario: The default closed value for a cylinder.
+TEST(Ch13Cylinders, TheDefaultClosedValueForACylinder)
+{
+  ww::shared_ptr_cylinder Cyl = ww::PtrDefaultCylinder();
+  EXPECT_EQ(Cyl->Closed, false);
 }

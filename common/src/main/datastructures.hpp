@@ -296,6 +296,7 @@ struct sphere : public shape
  */
 struct cylinder : public shape
 {
+  bool Closed{};
   float Radius{1.f};
   float Minimum{-INIFINITY};
   float Maximum{INIFINITY};
