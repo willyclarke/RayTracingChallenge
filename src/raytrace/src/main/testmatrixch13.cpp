@@ -245,3 +245,36 @@ TEST(Ch13Cylinders, TheDefaultClosedValueForACylinder)
   ww::shared_ptr_cylinder Cyl = ww::PtrDefaultCylinder();
   EXPECT_EQ(Cyl->Closed, false);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Intersecting the caps of a closed cylinder.
+TEST(Ch13Cylinders, IntersectingTheCapsOfAClosedCylinder)
+{
+  ww::shared_ptr_cylinder Cyl = ww::PtrDefaultCylinder();
+  Cyl->Minimum = 1.f;
+  Cyl->Maximum = 2.f;
+  Cyl->Closed = true;
+
+  auto CheckIntersect = [](ww::shared_ptr_cylinder Cyl, ww::ray const &Ray, int NumIntersect)
+  {
+    ww::intersections const XS = ww::LocalIntersect(Cyl, Ray);
+    EXPECT_EQ(XS.Count(), NumIntersect);
+  };
+
+  // ---
+  // NOTE: Start above the cylinder and point a ray straight through downwards. Test #1.
+  // ---
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 3.f, 0.f), ww::Normalize(ww::Vector(0.f, -1.f, 0.f))), 2);
+
+  // ---
+  // NOTE: Start above and below the cylinder and cast the ray diagonally. Tests #2 and #4.
+  // ---
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 3.f, -2.f), ww::Normalize(ww::Vector(0.f, -1.f, 2.f))), 2);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 0.f, -2.f), ww::Normalize(ww::Vector(0.f, 1.f, 2.f))), 2);
+
+  // ---
+  // NOTE: Check the corner cases, tests #3 and #5 in the book.
+  // ---
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 4.f, -2.f), ww::Normalize(ww::Vector(0.f, -1.f, 1.f))), 2);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, -1.f, -2.f), ww::Normalize(ww::Vector(0.f, 1.f, 1.f))), 2);
+}

@@ -1205,12 +1205,56 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
 {
   Assert(PtrShape->isA<cylinder>(), __FUNCTION__, __LINE__);
 
+  intersections XS{};
+  cylinder const *pCylinder = dynamic_cast<cylinder *>(PtrShape.get());
+
+  auto IntersectCaps = [&](cylinder const *pCylinder, ray const &Ray, intersections &XS)
+  {
+    auto CheckCap = [](ray const &Ray, float t) -> bool
+    {
+      float const X = Ray.Origin.X + t * Ray.Direction.X;
+      float const Z = Ray.Origin.Z + t * Ray.Direction.Z;
+      bool const Result = (X * X + Z * Z) <= 1.f;
+      return Result;
+    };
+
+    // ---
+    // NOTE: Caps only matter if the cylinder is closed, and might possibly be intersected
+    //       by the ray.
+    // ---
+    if (!pCylinder->Closed) return;
+
+    if (std::abs(Ray.Direction.Y) < EPSILON) return;
+
+    // ---
+    // NOTE: Check for an intersection with the lower end cap by intersecting the ray
+    //       with the plane a y=cyl.minimum.
+    // ---
+    {
+      float const t = (pCylinder->Minimum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t)) XS.vI.push_back({t, PtrShape});
+    }
+
+    // ---
+    // NOTE: Check for an intersection with the upper cap by intersecting
+    //       the ray with the plane at y=cyl.maximum.
+    // ---
+    {
+      float const t = (pCylinder->Maximum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t)) XS.vI.push_back({t, PtrShape});
+    }
+  };
+
   float const A = Ray.Direction.X * Ray.Direction.X + Ray.Direction.Z * Ray.Direction.Z;
 
   // ---
   // NOTE: A ray is parallel to the y axis, return empty set.
   // ---
-  if (std::abs(A) < EPSILON) return {};
+  if (std::abs(A) < EPSILON)
+  {
+    IntersectCaps(pCylinder, Ray, XS);
+    return XS;
+  }
 
   float const B = 2.f * Ray.Origin.X * Ray.Direction.X +  //!<
                   2.f * Ray.Origin.Z * Ray.Direction.Z;
@@ -1219,6 +1263,7 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
 
   // ---
   // NOTE: No solutions when Discriminant i less than zero.
+  // FIXME: (Willy Clarke) Check to see if InterectCaps need to be called here before returning.
   // ---
   if (Discriminant < 0.f) return {};
 
@@ -1232,9 +1277,6 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
     t1 = tmp;
   }
 
-  intersections XS{};
-  cylinder const *pCylinder = dynamic_cast<cylinder *>(PtrShape.get());
-
   float const Y0 = Ray.Origin.Y + t0 * Ray.Direction.Y;
   if (pCylinder->Minimum < Y0 && Y0 < pCylinder->Maximum)
   {
@@ -1245,6 +1287,15 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
   if (pCylinder->Minimum < Y1 && Y1 < pCylinder->Maximum)
   {
     XS.vI.push_back({t1, PtrShape});
+  }
+
+  // ---
+  // NOTE: When the ray has less than two intersections it can still possibly intersect
+  //       with the caps at either end.
+  // ---
+  if (XS.Count() < 2)
+  {
+    IntersectCaps(pCylinder, Ray, XS);
   }
 
   return XS;
