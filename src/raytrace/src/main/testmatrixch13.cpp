@@ -189,3 +189,12 @@ TEST(DISABLED_Ch13Cylinders, IndefiniteCylinders)
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch13IndefiniteCylinders.ppm");
 }
+
+//------------------------------------------------------------------------------
+// Scenario: The default maximum and minimum for a cylinder.
+TEST(Ch13Cylinders, TheDefaultMaximumAndMinimumForACylinder)
+{
+  ww::shared_ptr_cylinder const Cyl = ww::PtrDefaultCylinder();
+  EXPECT_EQ(Cyl->Minimum == -ww::INIFINITY, true);
+  EXPECT_EQ(Cyl->Maximum == ww::INIFINITY, true);
+}

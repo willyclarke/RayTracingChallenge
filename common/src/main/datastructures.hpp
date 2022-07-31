@@ -297,6 +297,8 @@ struct sphere : public shape
 struct cylinder : public shape
 {
   float Radius{1.f};
+  float Minimum{-INIFINITY};
+  float Maximum{INIFINITY};
 
   template <typename T>
   bool isA()
