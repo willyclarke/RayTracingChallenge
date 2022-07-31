@@ -1196,6 +1196,40 @@ ww::intersections LocalIntersectCube(shared_ptr_shape PtrShape, ray const &Ray)
   return XS;
 }
 
+/**
+ * Check if a ray has a local intersect with a cylinder.
+ * Param: PtrShape: A cylinder is needed to do some actual checks for intersections.
+ * Return: intersections.
+ **/
+intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
+{
+  Assert(PtrShape->isA<cylinder>(), __FUNCTION__, __LINE__);
+
+  float const A = Ray.Direction.X * Ray.Direction.X + Ray.Direction.Z * Ray.Direction.Z;
+
+  // ---
+  // NOTE: A ray is parallel to the y axis, return empty set.
+  // ---
+  if (std::abs(A) < EPSILON) return {};
+
+  float const B = 2.f * Ray.Origin.X * Ray.Direction.X +  //!<
+                  2.f * Ray.Origin.Z * Ray.Direction.Z;
+  float const C = Ray.Origin.X * Ray.Origin.X + Ray.Origin.Z * Ray.Origin.Z - 1.f;
+  float const Discriminant = B * B - 4 * A * C;
+
+  // ---
+  // NOTE: No solutions when Discriminant i less than zero.
+  // ---
+  if (Discriminant < 0.f) return {};
+
+  intersections XS{};
+
+  intersection I{1.f, PtrShape};
+  XS.vI.push_back(I);
+
+  return XS;
+}
+
 //------------------------------------------------------------------------------
 /// \brief Generic Local Intersect
 ///
@@ -1218,6 +1252,10 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
   else if (PtrShape->isA<cube>())
   {
     Result = LocalIntersectCube(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<cylinder>())
+  {
+    Result = LocalIntersectCylinder(PtrShape, RayIn);
   }
 
   return (Result);
@@ -1693,6 +1731,14 @@ intersections IntersectWorld(world const &World, ray const &Ray)
   //       Use lambda function to extract the t value for each intersection.
   std::sort(XS.vI.begin(), XS.vI.end(), [](intersection const &A, intersection const &B) { return A.t < B.t; });
   return (XS);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cylinder PtrDefaultCylinder()
+{
+  shared_ptr_cylinder pCylinder = SharedPtrSh<cylinder>(cylinder{});
+  pCylinder->funcPtrLocalIntersect = &ww::LocalIntersectCylinder;
+  return pCylinder;
 }
 
 //------------------------------------------------------------------------------

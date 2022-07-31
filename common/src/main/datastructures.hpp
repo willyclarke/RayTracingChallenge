@@ -41,11 +41,13 @@ constexpr float PI_F = 3.14159265358979f;
 /// \declarations
 /// ---
 struct cube;
+struct cylinder;
 struct plane;
 struct shape;
 struct sphere;
 
 typedef std::shared_ptr<cube> shared_ptr_cube;
+typedef std::shared_ptr<cylinder> shared_ptr_cylinder;
 typedef std::shared_ptr<plane> shared_ptr_plane;
 typedef std::shared_ptr<shape> shared_ptr_shape;
 typedef std::shared_ptr<sphere> shared_ptr_sphere;
@@ -279,6 +281,21 @@ struct shape
 struct sphere : public shape
 {
   float Radius{1.f};  //!< Radius.
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+/**
+ * The cylinder has a default radius of 1, but the way the math works out it
+ * will be indefinetely long.
+ */
+struct cylinder : public shape
+{
+  float Radius{1.f};
 
   template <typename T>
   bool isA()
@@ -526,6 +543,11 @@ matrix TranslateScaleRotate(                   //!<
 /// ---
 intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocalRayOutput = nullptr);
 intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
+
+/// ---
+/// PtrDefaultCylinder - Create a cylinder and return a shared pointer to this object.
+/// ---
+shared_ptr_cylinder PtrDefaultCylinder();
 
 /// ---
 /// PtrDefaultSphere - Create a sphere and return shared pointer to this object.
