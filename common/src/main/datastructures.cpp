@@ -1222,10 +1222,12 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
   // ---
   if (Discriminant < 0.f) return {};
 
-  intersections XS{};
+  float const t0 = (-B - std::sqrtf(Discriminant)) / (2 * A);
+  float const t1 = (-B + std::sqrtf(Discriminant)) / (2 * A);
 
-  intersection I{1.f, PtrShape};
-  XS.vI.push_back(I);
+  intersections XS{};
+  XS.vI.push_back({t0, PtrShape});
+  XS.vI.push_back({t1, PtrShape});
 
   return XS;
 }
