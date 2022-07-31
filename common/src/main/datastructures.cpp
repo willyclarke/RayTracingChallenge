@@ -1222,12 +1222,30 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
   // ---
   if (Discriminant < 0.f) return {};
 
-  float const t0 = (-B - std::sqrtf(Discriminant)) / (2 * A);
-  float const t1 = (-B + std::sqrtf(Discriminant)) / (2 * A);
+  float t0 = (-B - std::sqrtf(Discriminant)) / (2 * A);
+  float t1 = (-B + std::sqrtf(Discriminant)) / (2 * A);
+
+  if (t0 > t1)  // swap
+  {
+    float const tmp = t0;
+    t0 = t1;
+    t1 = tmp;
+  }
 
   intersections XS{};
-  XS.vI.push_back({t0, PtrShape});
-  XS.vI.push_back({t1, PtrShape});
+  cylinder const *pCylinder = dynamic_cast<cylinder *>(PtrShape.get());
+
+  float const Y0 = Ray.Origin.Y + t0 * Ray.Direction.Y;
+  if (pCylinder->Minimum < Y0 && Y0 < pCylinder->Maximum)
+  {
+    XS.vI.push_back({t0, PtrShape});
+  }
+
+  float const Y1 = Ray.Origin.Y + t1 * Ray.Direction.Y;
+  if (pCylinder->Minimum < Y1 && Y1 < pCylinder->Maximum)
+  {
+    XS.vI.push_back({t1, PtrShape});
+  }
 
   return XS;
 }

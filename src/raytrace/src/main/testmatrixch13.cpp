@@ -198,3 +198,43 @@ TEST(Ch13Cylinders, TheDefaultMaximumAndMinimumForACylinder)
   EXPECT_EQ(Cyl->Minimum == -ww::INIFINITY, true);
   EXPECT_EQ(Cyl->Maximum == ww::INIFINITY, true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Intersecting a constrained cylinder.
+TEST(Ch13Cylinders, IntersectingAConstrainedCylinder)
+{
+  ww::shared_ptr_cylinder Cyl = ww::PtrDefaultCylinder();
+  Cyl->Minimum = 1.f;
+  Cyl->Maximum = 2.f;
+
+  auto CheckIntersect = [](ww::shared_ptr_cylinder Cyl, ww::ray const &Ray, int NumIntersect)
+  {
+    ww::intersections const XS = ww::LocalIntersect(Cyl, Ray);
+    EXPECT_EQ(XS.Count(), NumIntersect);
+  };
+
+  // ---
+  // Cast a ray diagonally from inside the cylinder with the ray escaping without intersecting.
+  // ---
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 1.5f, 0.f), ww::Normalize(ww::Vector(0.1f, 1.f, 0.f))), 0);
+
+  // ---
+  // Cast rays perpendicular to the y-axis, but from above and below the cylinder, should miss.
+  // ---
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 3.f, 5.f), ww::Normalize(ww::Vector(0.f, 0.f, 1.f))), 0);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Normalize(ww::Vector(0.f, 0.f, 1.f))), 0);
+
+  // ---
+  // Edge cases, shows that the minimum and maximum of the y values themselves are outside of the
+  // bounds of the cylinder. Remember that the height of the cylinder is from +1 to +2.
+  // ---
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 2.f, -5.f), ww::Normalize(ww::Vector(0.f, 0.f, 1.f))), 0);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 1.f, -5.f), ww::Normalize(ww::Vector(0.f, 0.f, 1.f))), 0);
+
+  // ---
+  // The final example cast a ray perpendicularly through the middle of the cylinder and produces two
+  // intersections.
+  // ---
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 1.5f, -2.f), ww::Normalize(ww::Vector(0.f, 0.f, 1.f))), 2);
+
+}
