@@ -40,12 +40,14 @@ constexpr float PI_F = 3.14159265358979f;
 /// ---
 /// \declarations
 /// ---
+struct cone;
 struct cube;
 struct cylinder;
 struct plane;
 struct shape;
 struct sphere;
 
+typedef std::shared_ptr<cone> shared_ptr_cone;
 typedef std::shared_ptr<cube> shared_ptr_cube;
 typedef std::shared_ptr<cylinder> shared_ptr_cylinder;
 typedef std::shared_ptr<plane> shared_ptr_plane;
@@ -288,6 +290,16 @@ struct sphere : public shape
   {
     return (dynamic_cast<T *>(this) != NULL);
   }
+};
+
+/**
+ * The cone ...
+ */
+struct cone : public shape
+{
+  bool Closed{};
+  float Minimum{-INIFINITY};
+  float Maximum{INIFINITY};
 };
 
 /**
@@ -551,8 +563,10 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
 /// ---
 /// PtrDefaultCylinder - Create a cylinder and return a shared pointer to this object.
 /// ---
+shared_ptr_cone PtrDefaultCone();
+shared_ptr_cone PtrCappedCone(float Minimum = 1.f, float Maximum = 1.f);
 shared_ptr_cylinder PtrDefaultCylinder();
-shared_ptr_cylinder PtrCappedCylinder(float Minimum=1.f, float Maximum=2.f);
+shared_ptr_cylinder PtrCappedCylinder(float Minimum = 1.f, float Maximum = 2.f);
 
 /// ---
 /// PtrDefaultSphere - Create a sphere and return shared pointer to this object.

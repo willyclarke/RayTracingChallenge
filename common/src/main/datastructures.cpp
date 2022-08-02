@@ -1197,6 +1197,83 @@ ww::intersections LocalIntersectCube(shared_ptr_shape PtrShape, ray const &Ray)
 }
 
 /**
+ * Check if a ray has a local intersect with a cone.
+ * Param: PtrShape: A cone is needed to do some actual checks for intersections.
+ * Return: intersections.
+ * NOTE: For reference :
+ * stackoverflow:
+ *https://gamedev.stackexchange.com/questions/112382/how-do-i-test-for-intersection-between-a-ray-and-a-cone
+ *
+ * In geometry quadric shapes are any surface that can be defined by an algebraic equation of second degree
+ *
+ * On the normal form this equation looks like this:
+ *
+ * Ax^2 + By^2 + Cz^2 +2Dxy + 2Exz + 2Fyz + 2Gx + 2Hy + 2Iz + J = 0
+ *
+ * For the local intersect of a cone A, B and C above are 1 and the remaining capital letters are 0.
+ **/
+intersections LocalIntersectCone(shared_ptr_shape PtrShape, ray const &Ray)
+{
+  Assert(PtrShape->isA<cone>(), __FUNCTION__, __LINE__);
+
+  intersections XS{};
+  cone const *pCone = dynamic_cast<cone *>(PtrShape.get());
+
+  float const A = Ray.Direction.X * Ray.Direction.X          //!<
+                  - Ray.Direction.Y * Ray.Direction.Y        //!<
+                  + Ray.Direction.Z * Ray.Direction.Z;       //!<
+  float const B = 2.f * (Ray.Origin.X * Ray.Direction.X      //!<
+                         - Ray.Origin.Y * Ray.Direction.Y    //!<
+                         + Ray.Origin.Z * Ray.Direction.Z);  //!<
+  float const C = Ray.Origin.X * Ray.Origin.X                //!<
+                  - Ray.Origin.Y * Ray.Origin.Y +            //!<
+                  Ray.Origin.Z * Ray.Origin.Z;
+
+  // ---
+  // NOTE: The ray will miss when A and B are both 0. With A beeing 0 and B at somevalue there will be one hit.
+  // ---
+  if (std::abs(A) < EPSILON)
+  {
+    if (std::abs(B) < EPSILON) return {};
+    float const t = -C / (2.f * B);
+    XS.vI.push_back({t, PtrShape});
+    return XS;
+  }
+
+  float Discriminant = B * B - 4.f * A * C;
+  // ---
+  // NOTE: No solutions when Discriminant i less than zero.
+  // FIXME: (Willy Clarke) Check to see if InterectCaps need to be called here before returning.
+  // ---
+  if (Discriminant < -EPSILON) return {};
+  if (Discriminant < 0.f) Discriminant = 0.f;  // FIXME: (Willy Clarke) What is the correct way of handling -0.f???
+
+  float t0 = (-B - std::sqrtf(Discriminant)) / (2.f * A);
+  float t1 = (-B + std::sqrtf(Discriminant)) / (2.f * A);
+
+  if (t0 > t1)  // swap
+  {
+    float const tmp = t0;
+    t0 = t1;
+    t1 = tmp;
+  }
+
+  float const Y0 = Ray.Origin.Y + t0 * Ray.Direction.Y;
+  if (pCone->Minimum < Y0 && Y0 < pCone->Maximum)
+  {
+    XS.vI.push_back({t0, PtrShape});
+  }
+
+  float const Y1 = Ray.Origin.Y + t1 * Ray.Direction.Y;
+  if (pCone->Minimum < Y1 && Y1 < pCone->Maximum)
+  {
+    XS.vI.push_back({t1, PtrShape});
+  }
+
+  return XS;
+}
+
+/**
  * Check if a ray has a local intersect with a cylinder.
  * Param: PtrShape: A cylinder is needed to do some actual checks for intersections.
  * Return: intersections.
@@ -1323,6 +1400,10 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
   else if (PtrShape->isA<cube>())
   {
     Result = LocalIntersectCube(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<cone>())
+  {
+    Result = LocalIntersectCone(PtrShape, RayIn);
   }
   else if (PtrShape->isA<cylinder>())
   {
@@ -1568,6 +1649,17 @@ tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint)
     Result = Vector(0.f, LocalPoint.Y, 0.f);
   }
 
+  return Result;
+}
+
+/**
+ * The local normal for a cone is the ...
+ */
+tup LocalNormalAtCone(shape const &Cone, tup const &LocalPoint)
+{
+  tup Result = Vector(LocalPoint.X, 0.f, LocalPoint.Z);
+
+  cone const *pCone = dynamic_cast<cone const *>(&Cone);
   return Result;
 }
 
@@ -1829,6 +1921,25 @@ intersections IntersectWorld(world const &World, ray const &Ray)
   //       Use lambda function to extract the t value for each intersection.
   std::sort(XS.vI.begin(), XS.vI.end(), [](intersection const &A, intersection const &B) { return A.t < B.t; });
   return (XS);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cone PtrDefaultCone()
+{
+  shared_ptr_cone pCone = SharedPtrSh<cone>(cone{});
+  pCone->funcPtrLocalIntersect = &ww::LocalIntersectCone;
+  pCone->funcPtrLocalNormalAt = &ww::LocalNormalAtCone;
+  return pCone;
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cone PtrCappedCone(float Minimum, float Maximum)
+{
+  shared_ptr_cone pCone = PtrDefaultCone();
+  pCone->Closed = true;
+  pCone->Minimum = Minimum;
+  pCone->Maximum = Maximum;
+  return pCone;
 }
 
 //------------------------------------------------------------------------------

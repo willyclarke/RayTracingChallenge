@@ -443,3 +443,36 @@ TEST(DISABLED_Ch13Cylinders, CappedCylinders)
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch13CappedCylinders.ppm");
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Intersecting a cone with a ray.
+TEST(Ch13Cylinders, IntersectingAConeWithARay)
+{
+  ww::shared_ptr_cone const Cone = ww::PtrDefaultCone();
+  auto CheckIntersect = [](ww::shared_ptr_cone Cone, ww::ray const &Ray, float t0, float t1)
+  {
+    ww::intersections const XS = ww::LocalIntersect(Cone, Ray);
+    EXPECT_EQ(XS.Count(), 2);
+    if (2 == XS.Count())
+    {
+      EXPECT_EQ(std::abs(XS.vI[0].t - t0) < ww::EPSILON, true);
+      EXPECT_EQ(std::abs(XS.vI[1].t - t1) < ww::EPSILON, true);
+    }
+  };
+
+  CheckIntersect(Cone, ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f)), 5.f, 5.f);
+  CheckIntersect(Cone, ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(1.f, 1.f, 1.f)), 8.66025f, 8.66025f);
+  CheckIntersect(Cone, ww::Ray(ww::Point(1.f, 1.f, -5.f), ww::Vector(-0.5f, -1.f, 1.f)), 4.550066f, 49.44994);
+}
+
+//------------------------------------------------------------------------------
+// Scenario: Intersecting a cone with a ray parallel to one of its halves.
+TEST(Ch13Cylinders, IntersectinAConeWithARayParallelToOneOfItsHalves)
+{
+  ww::shared_ptr_cone const Cone = ww::PtrDefaultCone();
+  ww::tup const Direction = ww::Normalize(ww::Vector(0.f, 1.f, 1.f));
+  ww::ray const Ray = ww::Ray(ww::Point(0.f, 0.f, -1.f), Direction);
+  ww::intersections const XS = ww::LocalIntersect(Cone, Ray);
+  EXPECT_EQ(XS.Count(), 1);
+  if (XS.Count()) EXPECT_EQ(std::abs(XS.vI[0].t - 0.35355f) < ww::EPSILON, true);
+}
