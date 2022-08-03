@@ -1706,9 +1706,26 @@ tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint)
  */
 tup LocalNormalAtCone(shape const &Cone, tup const &LocalPoint)
 {
-  tup Result = Vector(LocalPoint.X, 0.f, LocalPoint.Z);
+  float Y = std::sqrt(LocalPoint.X * LocalPoint.X + LocalPoint.Z * LocalPoint.Z);
+  if (LocalPoint.Y > 0.f) Y = -Y;
+
+  tup Result = Vector(LocalPoint.X, Y, LocalPoint.Z);
 
   cone const *pCone = dynamic_cast<cone const *>(&Cone);
+
+  // ---
+  // NOTE: Compute the square of the distance from the y axis.
+  // ---
+  float const Distance = LocalPoint.X * LocalPoint.X + LocalPoint.Z * LocalPoint.Z;
+
+  if (Distance < 1.f && LocalPoint.Y >= pCone->Maximum - EPSILON)
+  {
+    Result = Vector(0.f, 1.f, 0.f);
+  }
+  else if (Distance < 1.f && LocalPoint.Y <= pCone->Minimum + EPSILON)
+  {
+    Result = Vector(0.f, -1.f, 0.f);
+  }
   return Result;
 }
 

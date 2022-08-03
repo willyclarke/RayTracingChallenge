@@ -533,3 +533,22 @@ TEST(Ch13Cylinders, IntersectingAConesEndCaps)
   }
 #endif
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Computing the Normal vector on a cone.
+TEST(Ch13Cylinders, ComputingTheNormalVectorOnACone)
+{
+  ww::shared_ptr_shape Shape = ww::PtrDefaultCone();
+  {
+    ww::tup const N = ww::LocalNormalAtCone(*Shape, ww::Point(0.f, 0.f, 0.f));
+    EXPECT_EQ(N == ww::Vector(0.f, 0.f, 0.f), true);
+  }
+  {
+    ww::tup const N = ww::LocalNormalAtCone(*Shape, ww::Point(1.f, 1.f, 1.f));
+    EXPECT_EQ(N == ww::Vector(1.f, -M_SQRT2, 1.f), true);
+  }
+  {
+    ww::tup const N = ww::LocalNormalAtCone(*Shape, ww::Point(-1.f, -1.f, 0.f));
+    EXPECT_EQ(N == ww::Vector(-1.f, 1.f, 0.f), true);
+  }
+}

@@ -166,6 +166,7 @@ tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point);
 /// ---
 tup NormalAt(shape const &Shape, tup const &P);
 tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
+tup LocalNormalAtCone(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtCylinder(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint);
