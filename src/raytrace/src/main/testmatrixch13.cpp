@@ -476,3 +476,60 @@ TEST(Ch13Cylinders, IntersectinAConeWithARayParallelToOneOfItsHalves)
   EXPECT_EQ(XS.Count(), 1);
   if (XS.Count()) EXPECT_EQ(std::abs(XS.vI[0].t - 0.35355f) < ww::EPSILON, true);
 }
+
+//------------------------------------------------------------------------------
+// Scenario: Intersecting a cone's end caps.
+TEST(Ch13Cylinders, IntersectingAConesEndCaps)
+{
+  ww::shared_ptr_cone Cone = ww::PtrDefaultCone();
+  Cone->Minimum = -0.5f;
+  Cone->Maximum = 0.5f;
+  Cone->Closed = true;
+
+  auto CheckIntersect = [](ww::shared_ptr_cone Cone, ww::ray const &Ray, int Count)
+  {
+    ww::intersections const XS = ww::LocalIntersect(Cone, Ray);
+    EXPECT_EQ(XS.Count(), Count);
+  };
+
+  CheckIntersect(Cone, ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 1.f, 0.f)), 0);
+  CheckIntersect(Cone, ww::Ray(ww::Point(0.f, 0.f, -.25f), ww::Vector(0.f, 1.f, 1.f)), 2);
+  CheckIntersect(Cone, ww::Ray(ww::Point(0.f, 0.f, -.25f), ww::Vector(0.f, 1.f, 0.f)), 4);
+
+#if 1
+  // ---
+  // NOTE: Vector based method taken from
+  // http://lousodrome.net/blog/light/2017/01/03/intersection-of-a-ray-and-a-cone/
+  // ---
+  ww::tup const D = ww::Normalize(ww::Vector(0.f, 1.f, 1.f));
+  ww::tup const V = ww::Vector(0.f, 1.f, 0.f);
+  ww::tup const CO = ww::Vector(0.f, 0.f, -0.25f);
+  float const Theta = 45.f;
+  float const CosT = std::cosf(ww::Radians(Theta));
+  float const a = ww::Dot(D, V) * ww::Dot(D, V) - CosT * CosT;
+  float const b = 2.f * (ww::Dot(D, V) * ww::Dot(CO, V) - ww::Dot(D, CO) * CosT * CosT);
+  float const c = ww::Dot(CO, V) * ww::Dot(CO, V) - ww::Dot(CO, CO) * CosT * CosT;
+  // float const delta = b * b - 4.f * a * c;
+  // if (std::abs(a) > ww::EPSILON)
+  // {
+  // if (std::abs(delta) < ww::EPSILON)
+  // {
+  //   float const t = -b / (2.f * a);
+  // }
+  // else if (delta > 0)
+  // {
+  //   float const t0 = (-b - std::sqrtf(delta)) / (2.f * a);
+  //   float const t1 = (-b + std::sqrtf(delta)) / (2.f * a);
+  // }
+  // }
+  // else
+  if (std::abs(a) < ww::EPSILON && std::abs(b) > ww::EPSILON)
+  {
+    float const t = -c / (2.f * b);
+    ww::intersections const XS =
+        ww::LocalIntersect(Cone, ww::Ray(ww::Point(0.f, 0.f, -0.25f), ww::Vector(0.f, 1.f, 1.f)));
+    EXPECT_EQ(XS.Count(), 2);
+    if (XS.Count() > 0) EXPECT_EQ(std::abs(XS.vI[1].t - t) < ww::EPSILON, true);
+  }
+#endif
+}

@@ -1216,6 +1216,46 @@ intersections LocalIntersectCone(shared_ptr_shape PtrShape, ray const &Ray)
 {
   Assert(PtrShape->isA<cone>(), __FUNCTION__, __LINE__);
 
+  auto IntersectCaps = [&](cone const *pCone, ray const &Ray, intersections &XS)
+  {
+    auto CheckCap = [](ray const &Ray, float t, float Radius) -> bool
+    {
+      float const X = Ray.Origin.X + t * Ray.Direction.X;
+      float const Z = Ray.Origin.Z + t * Ray.Direction.Z;
+      bool const Result = (X * X + Z * Z) <= std::abs(Radius);
+      return Result;
+    };
+
+    // ---
+    // NOTE: Caps only matter if the cone is closed, and might possibly be intersected
+    //       by the ray.
+    // ---
+    if (!pCone->Closed) return;
+
+    // ---
+    // NOTE: The ray must not be horizontal in order to hit the cap.
+    // ---
+    if (std::abs(Ray.Direction.Y) < EPSILON) return;
+
+    // ---
+    // NOTE: Check for an intersection with the lower end cap by intersecting the ray
+    //       with the plane a y=cyl.minimum.
+    // ---
+    {
+      float const t = (pCone->Minimum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t, pCone->Minimum)) XS.vI.push_back({t, PtrShape});
+    }
+
+    // ---
+    // NOTE: Check for an intersection with the upper cap by intersecting
+    //       the ray with the plane at y=cyl.maximum.
+    // ---
+    {
+      float const t = (pCone->Maximum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t, pCone->Maximum)) XS.vI.push_back({t, PtrShape});
+    }
+  };
+
   intersections XS{};
   cone const *pCone = dynamic_cast<cone *>(PtrShape.get());
 
@@ -1231,11 +1271,18 @@ intersections LocalIntersectCone(shared_ptr_shape PtrShape, ray const &Ray)
 
   // ---
   // NOTE: The ray will miss when A and B are both 0. With A beeing 0 and B at somevalue there will be one hit.
+  //       When the cone is closed there may be additional hits for the capped ends though.
   // ---
   if (std::abs(A) < EPSILON)
   {
-    if (std::abs(B) < EPSILON) return {};
+    if (std::abs(B) < EPSILON)
+    {
+      return XS;
+    }
+
+    IntersectCaps(pCone, Ray, XS);
     float const t = -C / (2.f * B);
+
     XS.vI.push_back({t, PtrShape});
     return XS;
   }
@@ -1269,6 +1316,8 @@ intersections LocalIntersectCone(shared_ptr_shape PtrShape, ray const &Ray)
   {
     XS.vI.push_back({t1, PtrShape});
   }
+
+  IntersectCaps(pCone, Ray, XS);
 
   return XS;
 }
