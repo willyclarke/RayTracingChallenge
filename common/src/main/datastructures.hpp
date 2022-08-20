@@ -40,12 +40,16 @@ constexpr float PI_F = 3.14159265358979f;
 /// ---
 /// \declarations
 /// ---
+struct cone;
 struct cube;
+struct cylinder;
 struct plane;
 struct shape;
 struct sphere;
 
+typedef std::shared_ptr<cone> shared_ptr_cone;
 typedef std::shared_ptr<cube> shared_ptr_cube;
+typedef std::shared_ptr<cylinder> shared_ptr_cylinder;
 typedef std::shared_ptr<plane> shared_ptr_plane;
 typedef std::shared_ptr<shape> shared_ptr_shape;
 typedef std::shared_ptr<sphere> shared_ptr_sphere;
@@ -162,7 +166,9 @@ tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point);
 /// ---
 tup NormalAt(shape const &Shape, tup const &P);
 tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
+tup LocalNormalAtCone(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint);
+tup LocalNormalAtCylinder(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint);
 tup Reflect(tup const &In, tup const &Normal);
 
@@ -279,6 +285,34 @@ struct shape
 struct sphere : public shape
 {
   float Radius{1.f};  //!< Radius.
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+/**
+ * The cone ...
+ */
+struct cone : public shape
+{
+  bool Closed{};
+  float Minimum{-INIFINITY};
+  float Maximum{INIFINITY};
+};
+
+/**
+ * The cylinder has a default radius of 1, but the way the math works out it
+ * will be indefinetely long.
+ */
+struct cylinder : public shape
+{
+  bool Closed{};
+  float Radius{1.f};
+  float Minimum{-INIFINITY};
+  float Maximum{INIFINITY};
 
   template <typename T>
   bool isA()
@@ -526,6 +560,14 @@ matrix TranslateScaleRotate(                   //!<
 /// ---
 intersections Intersect(shared_ptr_shape PtrShape, ray const &Ray, ray *PtrLocalRayOutput = nullptr);
 intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn);
+
+/// ---
+/// PtrDefaultCylinder - Create a cylinder and return a shared pointer to this object.
+/// ---
+shared_ptr_cone PtrDefaultCone();
+shared_ptr_cone PtrCappedCone(float Minimum = 1.f, float Maximum = 1.f);
+shared_ptr_cylinder PtrDefaultCylinder();
+shared_ptr_cylinder PtrCappedCylinder(float Minimum = 1.f, float Maximum = 2.f);
 
 /// ---
 /// PtrDefaultSphere - Create a sphere and return shared pointer to this object.

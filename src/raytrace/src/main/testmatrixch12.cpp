@@ -6,7 +6,7 @@
 
 //------------------------------------------------------------------------------
 // Scenario: A ray intersects a cube.
-TEST(Ch12Cubes, ARayIntersectsACube)
+TEST(DISABLED_Ch12Cubes, ARayIntersectsACube)
 {
   ww::shared_ptr_cube C = ww::PtrDefaultCube();
 
@@ -40,7 +40,7 @@ TEST(Ch12Cubes, ARayIntersectsACube)
 
 //------------------------------------------------------------------------------
 // Scenario: A ray misses a cube.
-TEST(Ch12Cubes, ARayMissesACube)
+TEST(DISABLED_Ch12Cubes, ARayMissesACube)
 {
   ww::shared_ptr_cube C = ww::PtrDefaultCube();
 
@@ -60,7 +60,7 @@ TEST(Ch12Cubes, ARayMissesACube)
 
 //------------------------------------------------------------------------------
 // Scenario: The normal on the surface of a cube.
-TEST(Ch12Cubes, TheNormalOnTheSurfaceOfACube)
+TEST(DISABLED_Ch12Cubes, TheNormalOnTheSurfaceOfACube)
 {
   ww::shared_ptr_cube C = ww::PtrDefaultCube();
 
@@ -128,7 +128,7 @@ TEST(DISABLED_Ch12Cubes, PuttingItTogetherTake1)
 
 //------------------------------------------------------------------------------
 // Scenario: Putting it together.
-TEST(Ch12Cubes, PuttingItTogetherTake2)
+TEST(DISABLED_Ch12Cubes, PuttingItTogetherTake2)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
   ww::tup const ColorBrownLight =
