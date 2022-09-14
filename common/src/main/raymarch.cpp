@@ -16,9 +16,9 @@ namespace ww
 
 namespace rm
 {
-#define MAX_STEPS 100
-#define MAX_DIST 100.
-#define MIN_DIST 0.001
+constexpr int MAX_STEPS = 100;
+constexpr float MAX_DIST = 100.f;
+constexpr float MIN_DIST = 0.001f;
 
 //------------------------------------------------------------------------------
 float SdfSphere(tup const &Center, float Radius, tup const &P)
@@ -74,42 +74,46 @@ float GetLight(tup const &P)
 }
 
 //------------------------------------------------------------------------------
-float RayMarch(ray const &Ray)
+float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
 {
   float Distance{};
-  for (int Idx = 0;      //!<
-       Idx < MAX_STEPS;  //!<
-       ++Idx             //!<
+  for (int Idx = 0;          //!<
+       Idx < rm::MAX_STEPS;  //!<
+       ++Idx                 //!<
   )
   {
     tup iPos = Ray.Origin + Ray.Direction * Distance;
 
-    // ray iRay = Ray(Ray.Origin + Ray.Direction * Distance, Ray.Direction);
-    float const incrDistance = GetDistance(iPos);
+    float const incrDistance = GetDistance(iPos, PtrShape);
     Distance += incrDistance;
-    if (Distance > MAX_DIST || incrDistance < MIN_DIST) break;
+
+    // std::cout << __FUNCTION__ << "-> Step: " << Idx << ". Distance: " << Distance << ". incrDistance: " <<
+    // incrDistance
+    //           << std::endl;
+
+    if (Distance > ww::rm::MAX_DIST || incrDistance < ww::rm::MIN_DIST) break;
   }
   return Distance;
 }
 
 //------------------------------------------------------------------------------
-tup MainImage(int X, int Y, int W, int H)
+tup MainImage(int X, int Y, int W, int H, shared_ptr_shape PtrShape)
 {
   tup UV{float(X) / float(W) - 0.5f, float(Y) / float(H) - 0.5f, 0.f, 0.f};
   UV.X *= float(W) / float(H);
 
   constexpr float FocalDistance{0.6f};
-  ray const R = Ray(Point(0.f, 0.f, 1.6f), Vector(UV.X, UV.Y, FocalDistance));
+  ray const R = Ray(Point(0.f, 0.f, -1.6f), Vector(UV.X, UV.Y, FocalDistance));
 
   tup fragColor{};
-  float const Distance = RayMarch(R);
-  std::cout << __FUNCTION__ << "-> Ray: " << R << ". Distance: " << Distance << std::endl;
+  float const Distance = RayMarch(R, PtrShape);
+  // std::cout << __FUNCTION__ << "-> Ray: " << R << ". Distance: " << Distance << std::endl;
 
   if (Distance < MAX_DIST)
   {
     tup const pHit = R.Origin + R.Direction * Distance;
-    std::cout << __FUNCTION__ << "X: " << X << " Y: " << Y << ". Distance: " << Distance << ". pHit: " << pHit
-              << std::endl;
+    // std::cout << __FUNCTION__ << "HITHIT HIT ---- > X: " << X << " Y: " << Y << ". Distance: " << Distance
+    //           << ". pHit: " << pHit << std::endl;
     fragColor = tup{0.5f, 0.2f, 0.6f, 0.f} * GetLight(pHit) + tup{0.9f, 0.1f, 0.1f, 0.f};
   }
   return fragColor;
@@ -124,7 +128,10 @@ canvas Render(camera const &Camera, world const &World)
   for (int X = 0; X < Image.W; ++X)
     for (int Y = 0; Y < Image.H; ++Y)
     {
-      Image.vXY[X + Image.W * Y] = MainImage(X, Y, Image.W, Image.H);
+      for (int ObjIdx = 0; ObjIdx < World.vPtrObjects.size(); ++ObjIdx)
+      {
+        Image.vXY[X + Image.W * Y] = MainImage(X, Y, Image.W, Image.H, World.vPtrObjects[ObjIdx]);
+      }
     }
   return Image;
 }
