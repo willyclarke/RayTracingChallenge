@@ -246,7 +246,7 @@ struct intersections
 //    C: Finally the normal is normalized ( ;-) ) before returning it.
 struct shape
 {
-  tup Center{};
+  tup Center{0.f, 0.f, 0.f, 1.f}; //!< Set up the Center to be a point.
   material Material{};
 
   //!< The transform of the object, initialize to identity matrix
