@@ -38,8 +38,6 @@ TEST(RayMarch, RayMarch)
   auto TestDistance = [](ww::ray const &R, ww::shared_ptr_shape pDefaultSphere) -> float
   {
     float const Distance = ww::rm::RayMarch(R, pDefaultSphere);
-    std::cout << __FUNCTION__ << ". Sphere center: " << pDefaultSphere->Center << ". Distance: " << Distance
-              << std::endl;
     return Distance;
   };
 
@@ -71,6 +69,43 @@ TEST(RayMarch, RayMarch)
 }
 
 //------------------------------------------------------------------------------
+TEST(RayMarch, RayMarchMovedSphere)
+{
+  auto TestDistance = [](ww::ray const &R, ww::shared_ptr_shape pDefaultSphere) -> float
+  {
+    float const Distance = ww::rm::RayMarch(R, pDefaultSphere);
+    return Distance;
+  };
+
+  ww::shared_ptr_shape pDefaultSphere = ww::PtrDefaultSphere();
+  pDefaultSphere->Transform = ww::Translation(0.f, 0.f, 1.f);
+  // Hit the sphere straight on.
+  ww::ray R = ww::Ray(ww::Point(0.f, 0.f, -2.f), ww::Vector(0.f, 0.f, 1.f));
+  EXPECT_FLOAT_EQ(2.f, TestDistance(R, pDefaultSphere));
+
+  // Hit the side of the sphere.
+  // by moving sideways to X=-1 the distance is expected to be around value of 3.
+  R.Origin = ww::Point(-1.f, 0.f, -2.f);
+  EXPECT_LT(std::abs(3.f - TestDistance(R, pDefaultSphere)), 0.05);
+
+  // or by moving sideways to X=1 the distance is expected to be around value of 3.
+  R.Origin = ww::Point(1.f, 0.f, -2.f);
+  EXPECT_LT(std::abs(3.f - TestDistance(R, pDefaultSphere)), 0.05);
+
+  // or by moving up to Y=1 the distance is expected to be around value of 3.
+  R.Origin = ww::Point(0.f, 1.f, -2.f);
+  EXPECT_LT(std::abs(3.f - TestDistance(R, pDefaultSphere)), 0.05);
+
+  // or by moving down to Y=-1 the distance is expected to be around value of 3.
+  R.Origin = ww::Point(0.f, -1.f, -2.f);
+  EXPECT_LT(std::abs(3.f - TestDistance(R, pDefaultSphere)), 0.05);
+
+  // Miss the sphere.
+  R.Origin = ww::Point(-2.f, 0.f, -2.f);
+  EXPECT_GT(TestDistance(R, pDefaultSphere), 100.f);
+}
+
+//------------------------------------------------------------------------------
 TEST(RayMarch, MainImage)
 {
   ww::world World = ww::World();
@@ -91,9 +126,10 @@ TEST(RayMarch, MainImage)
   Middle.Material.Specular = 0.3f;
   World.vPtrObjects.push_back(pDefaultSphere);
 
+  ww::camera Camera{};
+
   for (int X = 0; X < 16; ++X)
-    for (int Y = 0; Y < 16; ++Y)
-      ww::rm::MainImage(X, Y, 16, 16, pDefaultSphere);
+    for (int Y = 0; Y < 16; ++Y) ww::rm::MainImage(Camera, World, X, Y, pDefaultSphere);
 }
 
 //------------------------------------------------------------------------------
@@ -113,14 +149,14 @@ TEST(RayMarch, Test1)
   // ---
   ww::tup const Blue = ww::Color(0.f, 0.f, 1.f);
   ww::tup const Yellow = ww::Color(1.f, 1.f, .0f);
-  float const Alpha = M_PI * float(45.f / 180.f);
 
   ww::shared_ptr_shape pDefaultSphere = ww::PtrDefaultSphere();
-  ww::shape &Middle = *pDefaultSphere;
-  Middle.Transform = ww::Translation(.5f, 1.f, 3.5f);
-  Middle.Material.Color = ww::Color(0.1f, 1.0f, 0.5f);
-  Middle.Material.Diffuse = 0.7f;
-  Middle.Material.Specular = 0.3f;
+  ww::shape &S = *pDefaultSphere;
+  // Middle.Transform = ww::Translation(.5f, 1.f, 3.5f);
+  S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.0f, 1.0f, 1.0f, 0.f, 0.f, 0.f);
+  S.Material.Color = ww::Color(1.0f, 0.2f, 0.5f);
+  S.Material.Diffuse = 0.7f;
+  S.Material.Specular = 0.3f;
   World.vPtrObjects.push_back(pDefaultSphere);
 
   // ---
@@ -128,16 +164,17 @@ TEST(RayMarch, Test1)
   // ---
   ww::shared_ptr_light pLight{};
   pLight.reset(new ww::light);
-  *pLight = ww::PointLight(ww::Point(-5.f, 25.f, -5.f), ww::Color(1.f, 1.f, 1.f));
+  // *pLight = ww::PointLight(ww::Point(-5.f, 25.f, -5.f), ww::Color(1.f, 1.f, 1.f));
+  *pLight = ww::PointLight(ww::Point(0.f, 2.f, -2.f), ww::Color(1.f, 1.f, 1.f));
   World.vPtrLights.push_back(pLight);
 
   // ---
   // NOTE: Write out the result so that it is possible to see whats going on.
   // ---
-  ww::camera Camera = ww::Camera(1256, 1256, ww::Radians(50.f));
+  ww::camera Camera = ww::Camera(320, 320, ww::Radians(50.f));
 
-  ww::tup const ViewFrom = ww::Point(0.f, 4.5f, -7.f);
-  ww::tup const ViewTo = ww::Point(2.0f, 1.f, 1.f);
+  ww::tup const ViewFrom = ww::Point(-4.f, .0f, -7.f);
+  ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 

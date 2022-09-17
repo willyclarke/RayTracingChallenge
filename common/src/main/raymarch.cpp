@@ -30,20 +30,21 @@ float SdfSphere(tup const &Center, float Radius, tup const &P)
 
 /**
  * GetDistance to objects in the scene.
- * TODO: (Willy Clarke) : this function need to be configured to support all
- *                        objects in a scene.
- *                        For now there is an implicit sphere at origin with
- *                        y equal to sphere diameter.
+ * The point in world coordinates is moved into local coordinates by use of
+ * the inverse transform of the shape.
  */
 //------------------------------------------------------------------------------
 float GetDistance(tup const &P, shared_ptr_shape PtrShape)
 {
-  if (PtrShape && PtrShape->isA<sphere>())
+  if (PtrShape)
   {
-    ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrShape.get());
-    float const Ds = SdfSphere(pSphere->Center, pSphere->Radius, P);
-    // std::cout << __FUNCTION__ << " -> is a sphere with Ds=" << Ds << std::endl;
-    return Ds;
+    tup const LocalPoint = ww::Inverse(PtrShape->Transform) * P;
+    if (PtrShape->isA<sphere>())
+    {
+      ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrShape.get());
+      float const Ds = SdfSphere(pSphere->Center, pSphere->Radius, LocalPoint);
+      return Ds;
+    }
   }
 
   float Distance{};
@@ -66,10 +67,11 @@ tup GetNormal(tup const &P, shared_ptr_shape PtrShape)
 }
 
 //------------------------------------------------------------------------------
-float GetLight(tup const &P)
+float GetLight(light const &Light, tup const &P)
 {
-  tup const LightPos = tup{0.f, 3.f, -2.2f, 0.f};
-  tup const LightDir = Normalize(P - LightPos);
+  tup const Tmp = Light.Position;
+  tup const LightPos = Point(0.f, 0.f, 0.0f);
+  tup const LightDir = Normalize(P - Light.Position);
   return -Dot(GetNormal(P), LightDir);
 }
 
@@ -82,9 +84,22 @@ float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
        ++Idx                 //!<
   )
   {
+    // ---
+    // NOTE: Compute the incremental position.
+    // ---
     tup iPos = Ray.Origin + Ray.Direction * Distance;
 
+    // ---
+    // NOTE: Get the increment in distance to the shape of interest.
+    //      This is called distance aided ray marching.
+    //      A useful blogpost is this one:
+    //      https://michaelwalczyk.com/blog-ray-marching.html
+    // ---
     float const incrDistance = GetDistance(iPos, PtrShape);
+
+    // ---
+    // NOTE: Ray march to the new distance.
+    // ---
     Distance += incrDistance;
 
     // std::cout << __FUNCTION__ << "-> Step: " << Idx << ". Distance: " << Distance << ". incrDistance: " <<
@@ -93,29 +108,23 @@ float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
 
     if (Distance > ww::rm::MAX_DIST || incrDistance < ww::rm::MIN_DIST) break;
   }
+
   return Distance;
 }
 
 //------------------------------------------------------------------------------
-tup MainImage(int X, int Y, int W, int H, shared_ptr_shape PtrShape)
+tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape)
 {
-  tup UV{float(X) / float(W) - 0.5f, float(Y) / float(H) - 0.5f, 0.f, 0.f};
-  UV.X *= float(W) / float(H);
-
-  constexpr float FocalDistance{0.6f};
-  ray const R = Ray(Point(0.f, 0.f, -1.6f), Vector(UV.X, UV.Y, FocalDistance));
-
-  tup fragColor{};
+  ray const R = ww::RayForPixel(Camera, X, Y);
   float const Distance = RayMarch(R, PtrShape);
-  // std::cout << __FUNCTION__ << "-> Ray: " << R << ". Distance: " << Distance << std::endl;
+  tup fragColor{};
 
-  if (Distance < MAX_DIST)
+  if (Distance < MAX_DIST)  // then march along the ray, yoohoo ... ->->->
   {
     tup const pHit = R.Origin + R.Direction * Distance;
-    // std::cout << __FUNCTION__ << "HITHIT HIT ---- > X: " << X << " Y: " << Y << ". Distance: " << Distance
-    //           << ". pHit: " << pHit << std::endl;
-    fragColor = tup{0.5f, 0.2f, 0.6f, 0.f} * GetLight(pHit) + tup{0.9f, 0.1f, 0.1f, 0.f};
+    fragColor = PtrShape->Material.Color * GetLight(*World.vPtrLights[0].get(), pHit);
   }
+
   return fragColor;
 }
 
@@ -124,13 +133,12 @@ canvas Render(camera const &Camera, world const &World)
 {
   canvas Image(Camera.HSize, Camera.VSize);
 
-  // float const Resolution = Image.W * Image.H;
   for (int X = 0; X < Image.W; ++X)
     for (int Y = 0; Y < Image.H; ++Y)
     {
       for (int ObjIdx = 0; ObjIdx < World.vPtrObjects.size(); ++ObjIdx)
       {
-        Image.vXY[X + Image.W * Y] = MainImage(X, Y, Image.W, Image.H, World.vPtrObjects[ObjIdx]);
+        Image.vXY[X + Image.W * Y] = MainImage(Camera, World, X, Y, World.vPtrObjects[ObjIdx]);
       }
     }
   return Image;

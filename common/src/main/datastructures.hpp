@@ -419,7 +419,7 @@ typedef std::shared_ptr<prepare_computation> shared_ptr_prepare_computation;
 struct camera
 {
   int HSize{160};
-  int VSize{120};
+  int VSize{160};
   int NumBlocksH{4};
   int NumBlocksV{4};
   float FieldOfView{};

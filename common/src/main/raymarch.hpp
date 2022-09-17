@@ -17,11 +17,11 @@ namespace rm
  * @param: R - Ray
  * @param: PtrShape - Shape to compute distance against
  */
-float RayMarch(ww::ray const &R, shared_ptr_shape PtrShape = nullptr);
+float RayMarch(ray const &R, shared_ptr_shape PtrShape = nullptr);
 
 /**
  */
-tup MainImage(int X, int Y, int W, int H, shared_ptr_shape PtrShape = nullptr);
+tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape = nullptr);
 
 /**
  */
