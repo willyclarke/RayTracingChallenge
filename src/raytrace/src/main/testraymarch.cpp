@@ -133,7 +133,7 @@ TEST(RayMarch, MainImage)
 }
 
 //------------------------------------------------------------------------------
-// Scenario: Indefinite cylinders test for fun.
+// Scenario:
 TEST(RayMarch, Test1)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
@@ -152,12 +152,20 @@ TEST(RayMarch, Test1)
 
   ww::shared_ptr_shape pDefaultSphere = ww::PtrDefaultSphere();
   ww::shape &S = *pDefaultSphere;
-  // Middle.Transform = ww::Translation(.5f, 1.f, 3.5f);
   S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.0f, 1.0f, 1.0f, 0.f, 0.f, 0.f);
   S.Material.Color = ww::Color(1.0f, 0.2f, 0.5f);
   S.Material.Diffuse = 0.7f;
-  S.Material.Specular = 0.3f;
+  S.Material.Specular = 0.f;
+  S.Material.Ambient = 0.f;
   World.vPtrObjects.push_back(pDefaultSphere);
+
+  ww::shared_ptr_shape pDefaultSphere2 = ww::PtrDefaultSphere();
+  ww::shape &S2 = *pDefaultSphere2;
+  S2.Transform = ww::TranslateScaleRotate(-2.f, 0.f, 0.f, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+  S2.Material.Color = ww::Color(0.0f, 0.2f, 0.5f) * 2.f;
+  S2.Material.Diffuse = 0.0f;
+  S2.Material.Specular = 0.0f;
+  World.vPtrObjects.push_back(pDefaultSphere2);
 
   // ---
   // We need some light, please.
@@ -165,7 +173,7 @@ TEST(RayMarch, Test1)
   ww::shared_ptr_light pLight{};
   pLight.reset(new ww::light);
   // *pLight = ww::PointLight(ww::Point(-5.f, 25.f, -5.f), ww::Color(1.f, 1.f, 1.f));
-  *pLight = ww::PointLight(ww::Point(0.f, 2.f, -2.f), ww::Color(1.f, 1.f, 1.f));
+  *pLight = ww::PointLight(ww::Point(-3.f, 3.f,  -3.f), ww::Color(1.f, 1.f, 1.f));
   World.vPtrLights.push_back(pLight);
 
   // ---
@@ -173,10 +181,12 @@ TEST(RayMarch, Test1)
   // ---
   ww::camera Camera = ww::Camera(320, 320, ww::Radians(50.f));
 
-  ww::tup const ViewFrom = ww::Point(-4.f, .0f, -7.f);
+  ww::tup const ViewFrom = ww::Point(-4.f, 2.0f, -7.f);
   ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  std::cout << "vPtrObjects.size:" << World.Count() << std::endl;
 
   ww::canvas Canvas = ww::rm::Render(Camera, World);
   ww::WriteToPPM(Canvas, "RayMarchTest1.ppm");

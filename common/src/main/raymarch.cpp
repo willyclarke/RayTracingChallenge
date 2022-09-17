@@ -57,22 +57,26 @@ float GetDistance(tup const &P, shared_ptr_shape PtrShape)
 //------------------------------------------------------------------------------
 tup GetNormal(tup const &P, shared_ptr_shape PtrShape)
 {
-  float const E{0.01f};
+  if (!PtrShape) return {};
+
+  float constexpr E{0.01f};
   tup const EpsilonXYY{E, 0.f, 0.f, 0.f};
   tup const EpsilonYXY{0.f, E, 0.f, 0.f};
   tup const EpsilonYYX{0.f, 0.f, E, 0.f};
+
   tup const N{GetDistance(P + EpsilonXYY, PtrShape), GetDistance(P + EpsilonYXY, PtrShape),
               GetDistance(P + EpsilonYYX, PtrShape), 0.f};
-  return Normalize(N);
+
+  tup const WorldNormal = ww::Transpose(ww::Inverse(PtrShape->Transform)) * N;
+
+  return Normalize(WorldNormal);
 }
 
 //------------------------------------------------------------------------------
-float GetLight(light const &Light, tup const &P)
+float GetLight(light const &Light, tup const &P, shared_ptr_shape PtrShape = nullptr)
 {
-  tup const Tmp = Light.Position;
-  tup const LightPos = Point(0.f, 0.f, 0.0f);
   tup const LightDir = Normalize(P - Light.Position);
-  return -Dot(GetNormal(P), LightDir);
+  return -Dot(GetNormal(P, PtrShape), LightDir);
 }
 
 //------------------------------------------------------------------------------
@@ -122,7 +126,7 @@ tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr
   if (Distance < MAX_DIST)  // then march along the ray, yoohoo ... ->->->
   {
     tup const pHit = R.Origin + R.Direction * Distance;
-    fragColor = PtrShape->Material.Color * GetLight(*World.vPtrLights[0].get(), pHit);
+    fragColor = PtrShape->Material.Color * GetLight(*World.vPtrLights[0].get(), pHit, PtrShape);
   }
 
   return fragColor;
@@ -138,7 +142,8 @@ canvas Render(camera const &Camera, world const &World)
     {
       for (int ObjIdx = 0; ObjIdx < World.vPtrObjects.size(); ++ObjIdx)
       {
-        Image.vXY[X + Image.W * Y] = MainImage(Camera, World, X, Y, World.vPtrObjects[ObjIdx]);
+        tup const Color = MainImage(Camera, World, X, Y, World.vPtrObjects[ObjIdx]);
+        Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
       }
     }
   return Image;
