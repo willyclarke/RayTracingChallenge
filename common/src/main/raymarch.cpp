@@ -36,29 +36,19 @@ float SdfSphere(tup const &Center, float Radius, tup const &P)
 //------------------------------------------------------------------------------
 float GetDistance(tup const &P, shared_ptr_shape PtrShape)
 {
-  if (PtrShape)
+  tup const LocalPoint = ww::Inverse(PtrShape->Transform) * P;
+  if (PtrShape->isA<sphere>())
   {
-    tup const LocalPoint = ww::Inverse(PtrShape->Transform) * P;
-    if (PtrShape->isA<sphere>())
-    {
-      ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrShape.get());
-      float const Ds = SdfSphere(pSphere->Center, pSphere->Radius, LocalPoint);
-      return Ds;
-    }
+    ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrShape.get());
+    float const Ds = SdfSphere(pSphere->Center, pSphere->Radius, LocalPoint);
+    return Ds;
   }
-
-  float Distance{};
-  tup const Center{0.f, 0.f, 0.f, 0.f};
-  float const Radius{0.4f};
-  Distance = SdfSphere(Center, Radius, P);
-  return Distance;
+  return {};
 }
 
 //------------------------------------------------------------------------------
 tup GetNormal(tup const &P, shared_ptr_shape PtrShape)
 {
-  if (!PtrShape) return {};
-
   float constexpr E{0.01f};
   tup const EpsilonXYY{E, 0.f, 0.f, 0.f};
   tup const EpsilonYXY{0.f, E, 0.f, 0.f};
