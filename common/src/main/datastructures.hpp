@@ -758,6 +758,18 @@ template std::shared_ptr<cube> SharedPtrSh<cube>(cube const &Sh);
 template std::shared_ptr<plane> SharedPtrSh<plane>(plane const &Sh);
 template std::shared_ptr<shape> SharedPtrSh<shape>(shape const &Sh);
 template std::shared_ptr<sphere> SharedPtrSh<sphere>(sphere const &Sh);
+
+struct render_block
+{
+  int HStart{};
+  int HLength{};
+  int VStart{};
+  int VHeigth{};
+  canvas *ptrImage{nullptr};
+  camera const *ptrCamera{nullptr};
+  world const *ptrWorld{nullptr};
+};
+
 };  // namespace ww
 
 // ---

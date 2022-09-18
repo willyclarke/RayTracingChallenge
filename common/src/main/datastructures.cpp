@@ -2357,17 +2357,6 @@ void RenderSingleThread(camera const &Camera, world const &World, canvas &Image)
   }
 }
 
-struct render_block
-{
-  int HStart{};
-  int HLength{};
-  int VStart{};
-  int VHeigth{};
-  canvas *ptrImage{nullptr};
-  camera const *ptrCamera{nullptr};
-  world const *ptrWorld{nullptr};
-};
-
 /**
  * Render a block of pixels defined in the struct render_block.
  * This function locks on a mutex defined in the render block.
