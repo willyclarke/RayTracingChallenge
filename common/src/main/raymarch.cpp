@@ -9,6 +9,9 @@
  * ******************************************************************************/
 #include "raymarch.hpp"
 
+#include <thread>
+#include <vector>
+
 /**
  */
 namespace ww
@@ -123,7 +126,7 @@ tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr
 }
 
 //------------------------------------------------------------------------------
-canvas Render(camera const &Camera, world const &World)
+canvas RenderSingleThread(camera const &Camera, world const &World)
 {
   canvas Image(Camera.HSize, Camera.VSize);
 
@@ -136,6 +139,112 @@ canvas Render(camera const &Camera, world const &World)
         Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
       }
     }
+  return Image;
+}
+
+/**
+ * Render a block of pixels defined in the struct render_block.
+ * This function locks on a mutex defined in the render block.
+ */
+void RenderBlock(render_block const &RB)
+{
+  for (int Y = RB.VStart;           ///<!
+       Y < RB.VStart + RB.VHeigth;  ///<!
+       ++Y)
+  {
+    for (int X = RB.HStart;           ///<!
+         X < RB.HStart + RB.HLength;  ///<!
+         ++X)
+    {
+      for (int ObjIdx = 0; ObjIdx < RB.ptrWorld->vPtrObjects.size(); ++ObjIdx)
+      {
+        world const &World = *RB.ptrWorld;
+        canvas &Image = *RB.ptrImage;
+        camera const &Camera = *RB.ptrCamera;
+        shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
+
+        tup const Color = MainImage(Camera, World, X, Y, PtrShape);
+        Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
+      }
+    }
+  }
+}
+
+/**
+ * Use a number of threads to render the image on to the canvas.
+ * NOTE: The function is not thread safe but since the canvas is
+ *       split into blocks that are not overlapping there should (?)
+ *       not be any undefinded behavior.
+ */
+void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
+{
+  int const NumBlocksH = Camera.NumBlocksH;
+  int const NumBlocksV = Camera.NumBlocksV;
+  int const HSizeBlock = Camera.HSize / NumBlocksH;
+  int const VSizeBlock = Camera.VSize / NumBlocksV;
+
+  std::vector<render_block> vRenderBlocks{};
+
+  for (int HIdx = 0;       //!<
+       HIdx < NumBlocksH;  //!<
+       ++HIdx)
+  {
+    for (int VIdx = 0;       //!<
+         VIdx < NumBlocksV;  //!<
+         ++VIdx)
+    {
+      render_block RB{};
+      RB.HLength = HSizeBlock;
+      RB.VHeigth = VSizeBlock;
+      RB.HStart = HIdx * HSizeBlock;
+      RB.VStart = VIdx * VSizeBlock;
+      RB.ptrImage = &Image;
+      RB.ptrCamera = &Camera;
+      RB.ptrWorld = &World;
+      vRenderBlocks.push_back(RB);
+    }
+  }
+
+  struct WorkerThread
+  {
+    std::thread T;
+    render_block _RB{};
+    WorkerThread() { std::cout << __PRETTY_FUNCTION__ << " -> Called XXXXXXXXXXXXXXXXXXXXXXXXXX " << std::endl; }
+    WorkerThread(render_block const &RB) { _RB = RB; }
+
+    void Start() { T = std::thread(RenderBlock, _RB); }
+
+    WorkerThread(WorkerThread const &Orig) { _RB = Orig._RB; };
+    ~WorkerThread()
+    {
+      if (T.joinable())
+      {
+        T.join();
+      }
+    };
+  };
+
+  std::vector<WorkerThread> vWorkerThreads{};
+
+  for (auto const &RB : vRenderBlocks)
+  {
+    vWorkerThreads.push_back(RB);
+  }
+
+  for (auto &T : vWorkerThreads)
+  {
+    T.Start();
+  }
+}
+
+//------------------------------------------------------------------------------
+canvas Render(camera const &Camera, world const &World)
+{
+  canvas Image(Camera.HSize, Camera.VSize);
+  if (Camera.RenderSingleThread) return RenderSingleThread(Camera, World);
+
+  RenderMultiThread(Camera, World, Image);
+
   return Image;
 }
 
