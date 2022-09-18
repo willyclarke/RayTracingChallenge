@@ -29,7 +29,7 @@ canvas Render(camera const &Camera, world const &World);
 
 /**
  */
-float GetDistance(tup const &P, shared_ptr_shape PtrShape = nullptr);
+float GetDistance(tup const &P, shared_ptr_shape PtrShape);
 
 /**
  */
