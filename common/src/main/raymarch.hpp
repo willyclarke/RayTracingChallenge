@@ -21,7 +21,7 @@ float RayMarch(ray const &R, shared_ptr_shape PtrShape);
 
 /**
  */
-tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape = nullptr);
+tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape);
 
 /**
  */
