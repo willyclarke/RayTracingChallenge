@@ -33,7 +33,7 @@ float GetDistance(tup const &P, shared_ptr_shape PtrShape);
 
 /**
  */
-tup GetNormal(tup const &P, shared_ptr_shape PtrShape = nullptr);
+tup GetNormal(tup const &P, shared_ptr_shape PtrShape);
 
 };      // end namespace rm
 };      // end namespace ww
