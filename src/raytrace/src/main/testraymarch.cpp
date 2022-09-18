@@ -186,8 +186,6 @@ TEST(RayMarch, Test1)
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 
-  std::cout << "vPtrObjects.size:" << World.Count() << std::endl;
-
   ww::canvas Canvas = ww::rm::Render(Camera, World);
   ww::WriteToPPM(Canvas, "RayMarchTest1.ppm");
 }
