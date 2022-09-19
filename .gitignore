@@ -7,3 +7,4 @@ GTAGS
 .LICENSE.icloud
 .clangd/
 .cache/
+.DS_Store
