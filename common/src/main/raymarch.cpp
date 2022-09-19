@@ -32,9 +32,10 @@ float SdfSphere(tup const &Center, float Radius, tup const &P)
 }
 
 /**
- * GetDistance to objects in the scene.
+ * GetDistance to one particular object in the scene.
  * The point in world coordinates is moved into local coordinates by use of
  * the inverse transform of the shape.
+ * return: Distance to shape or MAX_DIST when shape is not supported.
  */
 //------------------------------------------------------------------------------
 float GetDistance(tup const &P, shared_ptr_shape PtrShape)
@@ -43,10 +44,31 @@ float GetDistance(tup const &P, shared_ptr_shape PtrShape)
   if (PtrShape->isA<sphere>())
   {
     ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrShape.get());
-    float const Ds = SdfSphere(pSphere->Center, pSphere->Radius, LocalPoint);
+    // ---
+    // NOTE: A sphere will have uniform scaling in all directions.
+    //       So; for now the scaled X will be used as radius.
+    // ---
+    float const Radius = pSphere->Transform.R0.X;
+    float const Ds = SdfSphere(pSphere->Center, Radius, LocalPoint);
     return Ds;
   }
-  return {};
+  return MAX_DIST;
+}
+
+//------------------------------------------------------------------------------
+float GetDistance(tup const &P, world const &World)
+{
+  float Distance{MAX_DIST};
+  // ---
+  // NOTE: Set up scene here.
+  // ---
+  for (int ObjIdx = 0; ObjIdx < World.vPtrObjects.size(); ++ObjIdx)
+  {
+    shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
+    Distance = std::min(GetDistance(P, PtrShape), Distance);
+  }
+
+  return Distance;
 }
 
 //------------------------------------------------------------------------------
@@ -66,14 +88,14 @@ tup GetNormal(tup const &P, shared_ptr_shape PtrShape)
 }
 
 //------------------------------------------------------------------------------
-float GetLight(light const &Light, tup const &P, shared_ptr_shape PtrShape = nullptr)
+float GetLight(light const &Light, tup const &P, shared_ptr_shape PtrShape)
 {
   tup const LightDir = Normalize(P - Light.Position);
   return -Dot(GetNormal(P, PtrShape), LightDir);
 }
 
 //------------------------------------------------------------------------------
-float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
+float RayMarch(ray const &Ray, world const &World, shared_ptr_shape PtrShape)
 {
   float Distance{};
   for (int Idx = 0;          //!<
@@ -92,7 +114,7 @@ float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
     //      A useful blogpost is this one:
     //      https://michaelwalczyk.com/blog-ray-marching.html
     // ---
-    float const incrDistance = GetDistance(iPos, PtrShape);
+    float const incrDistance = GetDistance(iPos, World);
 
     // ---
     // NOTE: Ray march to the new distance.
@@ -113,7 +135,7 @@ float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
 tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape)
 {
   ray const R = ww::RayForPixel(Camera, X, Y);
-  float const Distance = RayMarch(R, PtrShape);
+  float const Distance = RayMarch(R, World, PtrShape);
   tup fragColor{};
 
   if (Distance < MAX_DIST)  // then march along the ray, yoohoo ... ->->->
@@ -240,9 +262,9 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 //------------------------------------------------------------------------------
 canvas Render(camera const &Camera, world const &World)
 {
-  canvas Image(Camera.HSize, Camera.VSize);
   if (Camera.RenderSingleThread) return RenderSingleThread(Camera, World);
 
+  canvas Image(Camera.HSize, Camera.VSize);
   RenderMultiThread(Camera, World, Image);
 
   return Image;

@@ -37,7 +37,10 @@ TEST(RayMarch, RayMarch)
 {
   auto TestDistance = [](ww::ray const &R, ww::shared_ptr_shape pDefaultSphere) -> float
   {
-    float const Distance = ww::rm::RayMarch(R, pDefaultSphere);
+    ww::world World{};
+    World.vPtrObjects.push_back(pDefaultSphere);
+
+    float const Distance = ww::rm::RayMarch(R, World, pDefaultSphere);
     return Distance;
   };
 
@@ -73,7 +76,9 @@ TEST(RayMarch, RayMarchMovedSphere)
 {
   auto TestDistance = [](ww::ray const &R, ww::shared_ptr_shape pDefaultSphere) -> float
   {
-    float const Distance = ww::rm::RayMarch(R, pDefaultSphere);
+    ww::world World{};
+    World.vPtrObjects.push_back(pDefaultSphere);
+    float const Distance = ww::rm::RayMarch(R, World, pDefaultSphere);
     return Distance;
   };
 
@@ -152,8 +157,9 @@ TEST(RayMarch, Test1)
 
   ww::shared_ptr_shape pDefaultSphere = ww::PtrDefaultSphere();
   ww::shape &S = *pDefaultSphere;
-  S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.0f, 1.0f, 1.0f, 0.f, 0.f, 0.f);
-  S.Material.Color = ww::Color(1.0f, 0.2f, 0.5f);
+  S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 0.9f, 0.9f, 0.9f, 0.f, 0.f, 0.f);
+  // S.Material.Color = ww::Color(1.0f, 0.2f, 0.5f);
+  S.Material.Color = ww::Color(0.0f, 0.0f, 1.0f);
   S.Material.Diffuse = 0.7f;
   S.Material.Specular = 0.f;
   S.Material.Ambient = 0.f;
@@ -161,10 +167,15 @@ TEST(RayMarch, Test1)
 
   ww::shared_ptr_shape pDefaultSphere2 = ww::PtrDefaultSphere();
   ww::shape &S2 = *pDefaultSphere2;
-  S2.Transform = ww::TranslateScaleRotate(-2.f, 0.f, 0.f, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
-  S2.Material.Color = ww::Color(0.0f, 0.2f, 0.5f) * 2.f;
+  S2.Transform = ww::TranslateScaleRotate(-2.f, 0.f, 0.f, 1.1f, 1.1f, 1.1f, 0.f, 0.f, 0.f);
+  // S2.Material.Color = ww::Color(0.0f, 0.2f, 0.5f) * 2.f;
+  S2.Material.Color = ww::Color(0.f, 1.f, 0.f);
   S2.Material.Diffuse = 0.0f;
   S2.Material.Specular = 0.0f;
+  S2.Print = true;
+  std::cout << "S2 is " << (S2.isA<ww::sphere>() ? "Sphere" : "Shape") << std::endl;
+  std::cout << "S2 Transform: \n" << S2.Transform << std::endl;
+
   World.vPtrObjects.push_back(pDefaultSphere2);
 
   // ---
@@ -173,15 +184,17 @@ TEST(RayMarch, Test1)
   ww::shared_ptr_light pLight{};
   pLight.reset(new ww::light);
   // *pLight = ww::PointLight(ww::Point(-5.f, 25.f, -5.f), ww::Color(1.f, 1.f, 1.f));
-  *pLight = ww::PointLight(ww::Point(-3.f, 3.f,  -3.f), ww::Color(1.f, 1.f, 1.f));
+  *pLight = ww::PointLight(ww::Point(-50.f, 100.f, -3.f), 0.01 * ww::Color(1.f, 1.f, 1.f));
   World.vPtrLights.push_back(pLight);
+
+  std::cout << "World has " << World.vPtrObjects.size() << " object(s)." << std::endl;
 
   // ---
   // NOTE: Write out the result so that it is possible to see whats going on.
   // ---
   ww::camera Camera = ww::Camera(320, 320, ww::Radians(50.f));
 
-  ww::tup const ViewFrom = ww::Point(-4.f, 2.0f, -7.f);
+  ww::tup const ViewFrom = ww::Point(0.f, 3.0f, -7.f);
   ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);

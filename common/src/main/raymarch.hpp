@@ -17,7 +17,7 @@ namespace rm
  * @param: R - Ray
  * @param: PtrShape - Shape to compute distance against
  */
-float RayMarch(ray const &R, shared_ptr_shape PtrShape);
+float RayMarch(ray const &R, world const &World, shared_ptr_shape PtrShape);
 
 /**
  */
@@ -30,6 +30,7 @@ canvas Render(camera const &Camera, world const &World);
 /**
  */
 float GetDistance(tup const &P, shared_ptr_shape PtrShape);
+float GetDistance(tup const &P, world const &World);
 
 /**
  */
