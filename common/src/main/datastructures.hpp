@@ -342,7 +342,7 @@ struct plane
 */
 struct plane : public shape
 {
-  float L{1.f};
+  float H{};
 
   template <typename T>
   bool isA()

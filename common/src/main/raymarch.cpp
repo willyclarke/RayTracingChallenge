@@ -89,8 +89,8 @@ float GetDistance(tup const &P, shared_ptr_shape PtrShape)
   }
   else if (PtrShape->isA<plane>())
   {
-    // plane const *pPlane = dynamic_cast<plane *>(PtrShape.get());
-    float const Dp = SdfPlane(LocalPoint, Point(0.f, 1.f, 0.f), 0.f);
+    plane const *pPlane = dynamic_cast<plane *>(PtrShape.get());
+    float const Dp = SdfPlane(LocalPoint, Point(0.f, 1.f, 0.f), pPlane->H);
     return Dp;
   }
   return MAX_DIST;

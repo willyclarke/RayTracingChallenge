@@ -277,11 +277,16 @@ TEST(RayMarch, Test1)
 
   ww::shared_ptr_shape pDefaultBox = ww::PtrDefaultCube();
   pDefaultBox->Transform =
-      ww::TranslateScaleRotate(2.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f * ww::Radians(45.f), 0.f * ww::Radians(45.f), 0.f);
+      ww::TranslateScaleRotate(2.f, 2.f, 0.f, 1.f, 1.f, 1.f, 0.f * ww::Radians(45.f), 0.f * ww::Radians(45.f), 0.f);
   pDefaultBox->Material.Color = ww::Color(1.f, 0.f, 0.f);
   ww::cube *pCube = dynamic_cast<ww::cube *>(pDefaultBox.get());
   pCube->R = 0.15;
   World.vPtrObjects.push_back(pDefaultBox);
+
+  ww::shared_ptr_shape pFloor = ww::PtrDefaultPlane();
+  ww::plane *pFloorRaw = dynamic_cast<ww::plane *>(pFloor.get());
+  pFloorRaw->H = -1.f;
+  World.vPtrObjects.push_back(pFloor);
 
   // ---
   // We need some light, please.
@@ -295,7 +300,7 @@ TEST(RayMarch, Test1)
   // ---
   // NOTE: Write out the result so that it is possible to see whats going on.
   // ---
-  ww::camera Camera = ww::Camera(320, 320, ww::Radians(50.f));
+  ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
 
   ww::tup const ViewFrom = ww::Point(0.f, 3.0f, -7.f);
   ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
