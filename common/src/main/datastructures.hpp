@@ -328,7 +328,7 @@ struct cylinder : public shape
 /// ---
 struct cube : public shape
 {
-  float L{1.f};
+  float R{}; //!< Radius for rounded box.
 
   template <typename T>
   bool isA()
@@ -464,6 +464,8 @@ float Mag(tup const &Tup);
 tup Mul(float const S, tup const &Tup);
 float Radians(float Deg);
 
+tup Abs(tup const &Tup);
+tup Max(tup const &A, float const B);
 // ---
 // NOTE: Multiply is also called Hadamard or Schur product.
 // ---

@@ -24,6 +24,34 @@ constexpr float MAX_DIST = 100.f;
 constexpr float MIN_DIST = 0.001f;
 
 //------------------------------------------------------------------------------
+/**
+ * @param: P - Point of interest.
+ * @param: B - Box, tuple with dimensions for X, Y, Z.
+ * @param: R - Radius for box with rounded corners.
+ */
+float SdfBox(tup const &P, tup const &B, float const Radius = 0.f)
+{
+  tup const Q = Abs(P) - B;
+  float const Distance = Mag(Max(Q, 0.f)) + std::min(std::max(Q.X, std::max(Q.Y, Q.Z)), 0.f) - Radius;
+
+  // std::cout << "P:\n" << P << "\nBox:\n" << B << "\nDistance:" << Distance << std::endl;
+
+  return Distance;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: P - Point
+ * @param: N - Normal (which must be normalized)
+ * @param: H - Height
+ */
+float SdfPlane(tup const &P, tup const &N, float H = 0.f)
+{
+  float const Result = Dot(P, N) + H;
+  return Result;
+}
+
+//------------------------------------------------------------------------------
 float SdfSphere(tup const &Center, float Radius, tup const &P)
 {
   float const Distance = Mag(P - Center);
@@ -43,7 +71,7 @@ float GetDistance(tup const &P, shared_ptr_shape PtrShape)
   tup const LocalPoint = ww::Inverse(PtrShape->Transform) * P;
   if (PtrShape->isA<sphere>())
   {
-    ww::sphere const *pSphere = dynamic_cast<ww::sphere *>(PtrShape.get());
+    sphere const *pSphere = dynamic_cast<sphere *>(PtrShape.get());
     // ---
     // NOTE: A sphere will have uniform scaling in all directions.
     //       So; for now the scaled X will be used as radius.
@@ -51,6 +79,19 @@ float GetDistance(tup const &P, shared_ptr_shape PtrShape)
     float const Radius = pSphere->Transform.R0.X;
     float const Ds = SdfSphere(pSphere->Center, Radius, LocalPoint);
     return Ds;
+  }
+  else if (PtrShape->isA<cube>())
+  {
+    cube const *pCube = dynamic_cast<cube *>(PtrShape.get());
+    tup const Box = Point(pCube->Transform.R[0].X / 2.f, pCube->Transform.R[1].Y / 2.f, pCube->Transform.R[2].Z / 2.f);
+    float const Db = SdfBox(LocalPoint, Box, pCube->R);
+    return Db;
+  }
+  else if (PtrShape->isA<plane>())
+  {
+    // plane const *pPlane = dynamic_cast<plane *>(PtrShape.get());
+    float const Dp = SdfPlane(LocalPoint, Point(0.f, 1.f, 0.f), 0.f);
+    return Dp;
   }
   return MAX_DIST;
 }

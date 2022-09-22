@@ -265,6 +265,13 @@ bool IsVector(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * Return the maximum of tup and variable.
+ * Works for both point and vector. Ignores W which is returned unaltered.
+ */
+tup Max(tup const &A, float const B) { return tup{std::max(A.X, B), std::max(A.Y, B), std::max(A.Z, B), A.W}; }
+
+//------------------------------------------------------------------------------
 tup Mul(float const S, tup const &Tup)
 {
   tup const Result{S * Tup.X, S * Tup.Y, S * Tup.Z, S * Tup.W};
@@ -290,6 +297,13 @@ float MagSquared(tup const &Tup)
 
 //------------------------------------------------------------------------------
 float Mag(tup const &Tup) { return (std::sqrtf(MagSquared(Tup))); }
+
+//------------------------------------------------------------------------------
+tup Abs(tup const &Tup)
+{
+  tup const Result{std::abs(Tup.X), std::abs(Tup.Y), std::abs(Tup.Z), std::abs(Tup.W)};
+  return (Result);
+}
 
 //------------------------------------------------------------------------------
 tup Negate(tup const &Tup)

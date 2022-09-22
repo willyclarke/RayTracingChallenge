@@ -15,6 +15,107 @@ TEST(RayMarch, GetDistance)
 }
 
 //------------------------------------------------------------------------------
+TEST(RayMarch, GetDistanceBox)
+{
+  ww::shared_ptr_shape pDefaultBox = ww::PtrDefaultCube();
+  // TODO: (Willy Clarke) Just use a point, the ray does not give meaning here.
+
+  {
+    ww::tup const P1 = ww::Point(0.f, 0.f, -2.f);
+    float D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 1.5f);
+  }
+
+  {
+    ww::tup const P1 = ww::Point(0.f, 0.f, 2.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 1.5f);
+  }
+
+  {
+    ww::tup const P1 = ww::Point(0.f, 2.f, 0.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 1.5f);
+  }
+
+  {
+    ww::tup const P1 = ww::Point(0.f, -2.f, 0.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 1.5f);
+  }
+
+  {
+    ww::tup const P1 = ww::Point(-2.f, 0.f, 0.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 1.5f);
+  }
+
+  {
+    ww::tup const P1 = ww::Point(2.f, 0.f, 0.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 1.5f);
+  }
+
+  {
+    ww::tup const P1 = ww::Point(1.f, 1.f, 0.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(1.f / 2.f));
+  }
+
+  {
+    ww::tup const P1 = ww::Point(-1.f, 1.f, 0.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(1.f / 2.f));
+  }
+
+  // ---
+  // NOTE: The length is Sqrt(1ˆ2 + 1ˆ2 + 1ˆ2) - Sqrt(0.5ˆ2 + 0.5ˆ2 +0.5ˆ2)
+  //       since the length corresponds to a line going from 0,0,0 to 1,1,1
+  //       via the point 0.5, 0.5, 0.5 (the corner of the box.)
+  // ---
+  {
+    ww::tup const P1 = ww::Point(1.f, 1.f, 1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+  {
+    ww::tup const P1 = ww::Point(1.f, 1.f, -1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+  {
+    ww::tup const P1 = ww::Point(1.f, -1.f, 1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+  {
+    ww::tup const P1 = ww::Point(1.f, -1.f, -1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+  {
+    ww::tup const P1 = ww::Point(-1.f, -1.f, -1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+  {
+    ww::tup const P1 = ww::Point(-1.f, -1.f, 1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+  {
+    ww::tup const P1 = ww::Point(-1.f, 1.f, 1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+  {
+    ww::tup const P1 = ww::Point(-1.f, 1.f, -1.f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
+  }
+}
+
+//------------------------------------------------------------------------------
 TEST(RayMarch, GetNormal)
 {
   auto TestNormal = [](ww::ray const &R)
@@ -157,12 +258,12 @@ TEST(RayMarch, Test1)
 
   ww::shared_ptr_shape pDefaultSphere = ww::PtrDefaultSphere();
   ww::shape &S = *pDefaultSphere;
-  S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 0.9f, 0.9f, 0.9f, 0.f, 0.f, 0.f);
+  S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 2.5f, 1.0f, 1.0f, 1.0f, 0.f, 0.f, 0.f);
   // S.Material.Color = ww::Color(1.0f, 0.2f, 0.5f);
   S.Material.Color = ww::Color(0.0f, 0.0f, 1.0f);
-  S.Material.Diffuse = 0.7f;
-  S.Material.Specular = 0.f;
-  S.Material.Ambient = 0.f;
+  // S.Material.Diffuse = 0.7f;
+  // S.Material.Specular = 0.f;
+  // S.Material.Ambient = 0.f;
   World.vPtrObjects.push_back(pDefaultSphere);
 
   ww::shared_ptr_shape pDefaultSphere2 = ww::PtrDefaultSphere();
@@ -172,22 +273,25 @@ TEST(RayMarch, Test1)
   S2.Material.Color = ww::Color(0.f, 1.f, 0.f);
   S2.Material.Diffuse = 0.0f;
   S2.Material.Specular = 0.0f;
-  S2.Print = true;
-  std::cout << "S2 is " << (S2.isA<ww::sphere>() ? "Sphere" : "Shape") << std::endl;
-  std::cout << "S2 Transform: \n" << S2.Transform << std::endl;
-
+  // S2.Print = true;
   World.vPtrObjects.push_back(pDefaultSphere2);
+
+  ww::shared_ptr_shape pDefaultBox = ww::PtrDefaultCube();
+  pDefaultBox->Transform =
+      ww::TranslateScaleRotate(2.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f * ww::Radians(45.f), 0.f * ww::Radians(45.f), 0.f);
+  pDefaultBox->Material.Color = ww::Color(1.f, 0.f, 0.f);
+  ww::cube *pCube = dynamic_cast<ww::cube *>(pDefaultBox.get());
+  pCube->R = 0.15;
+  World.vPtrObjects.push_back(pDefaultBox);
 
   // ---
   // We need some light, please.
   // ---
   ww::shared_ptr_light pLight{};
   pLight.reset(new ww::light);
-  // *pLight = ww::PointLight(ww::Point(-5.f, 25.f, -5.f), ww::Color(1.f, 1.f, 1.f));
-  *pLight = ww::PointLight(ww::Point(-50.f, 100.f, -3.f), 0.01 * ww::Color(1.f, 1.f, 1.f));
+  // *pLight = ww::PointLight(ww::Point(-5.f, 25.f, 2.5f), ww::Color(1.f, 1.f, 1.f));
+  *pLight = ww::PointLight(ww::Point(-50.f, 100.f, -3.f), 0.0 * ww::Color(1.f, 1.f, 1.f));
   World.vPtrLights.push_back(pLight);
-
-  std::cout << "World has " << World.vPtrObjects.size() << " object(s)." << std::endl;
 
   // ---
   // NOTE: Write out the result so that it is possible to see whats going on.
