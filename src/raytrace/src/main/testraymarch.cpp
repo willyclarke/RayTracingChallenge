@@ -18,7 +18,6 @@ TEST(RayMarch, GetDistance)
 TEST(RayMarch, GetDistanceBox)
 {
   ww::shared_ptr_shape pDefaultBox = ww::PtrDefaultCube();
-  // TODO: (Willy Clarke) Just use a point, the ray does not give meaning here.
 
   {
     ww::tup const P1 = ww::Point(0.f, 0.f, -2.f);
