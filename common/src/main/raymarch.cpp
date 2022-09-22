@@ -43,7 +43,7 @@ float SdfBox(tup const &P, tup const &B, float const Radius = 0.f)
 /**
  * @param: P - Point
  * @param: N - Normal (which must be normalized)
- * @param: H - Height
+ * @param: H - Height to lower the floor. i.e the distance increase by H.
  */
 float SdfPlane(tup const &P, tup const &N, float H = 0.f)
 {
