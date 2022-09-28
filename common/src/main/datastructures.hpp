@@ -449,6 +449,7 @@ tup Cross(tup const &A, tup const &B);
 //     : http://betterexplained.com/articles/vector-calculus-understanding-the-dot-product .
 // ---
 float Dot(tup const &A, tup const &B);
+float Dot(tup const &A);
 
 // ---
 // NOTE: For a discussion on how to do comparison with floating point number the following web

@@ -228,6 +228,19 @@ float Dot(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * @return: The dot product of the vector itself.
+*/
+float Dot(tup const &A)
+{
+  float const Result = A.X * A.X +  //!<
+                       A.Y * A.Y +  //<!
+                       A.Z * A.Z +  //<!
+                       A.W * A.W;   //<!
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
 bool Equal(float const A, float const B)
 {
   // if (std::fabs(A - B) < 2.f * EPSILON)
