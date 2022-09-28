@@ -112,6 +112,31 @@ TEST(RayMarch, GetDistanceBox)
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
+  {
+    ww::tup const P1 = ww::Point(0.5f, 0.5f, 0.5f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 0.f);
+  }
+  {
+    ww::tup const P1 = ww::Point(-0.5f, -0.5f, -0.5f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, 0.f);
+  }
+  {  //!< Inside the box the value should be negative.
+    ww::tup const P1 = ww::Point(-0.25f, .0f, .0f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, -0.25f);
+  }
+  {  //!< Inside the box the value should be negative.
+    ww::tup const P1 = ww::Point(.0f, -.25f, .0f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, -0.25f);
+  }
+  {  //!< Inside the box the value should be negative.
+    ww::tup const P1 = ww::Point(.0f, .0f, .25f);
+    float const D = ww::rm::GetDistance(P1, pDefaultBox);
+    EXPECT_FLOAT_EQ(D, -0.25f);
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -140,7 +165,7 @@ TEST(RayMarch, RayMarch)
     ww::world World{};
     World.vPtrObjects.push_back(pDefaultSphere);
 
-    float const Distance = ww::rm::RayMarch(R, World, pDefaultSphere);
+    float const Distance = ww::rm::RayMarch(R, pDefaultSphere);
     return Distance;
   };
 
@@ -178,7 +203,7 @@ TEST(RayMarch, RayMarchMovedSphere)
   {
     ww::world World{};
     World.vPtrObjects.push_back(pDefaultSphere);
-    float const Distance = ww::rm::RayMarch(R, World, pDefaultSphere);
+    float const Distance = ww::rm::RayMarch(R, pDefaultSphere);
     return Distance;
   };
 
@@ -257,44 +282,54 @@ TEST(RayMarch, Test1)
 
   ww::shared_ptr_shape pDefaultSphere = ww::PtrDefaultSphere();
   ww::shape &S = *pDefaultSphere;
-  S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 2.5f, 1.0f, 1.0f, 1.0f, 0.f, 0.f, 0.f);
-  // S.Material.Color = ww::Color(1.0f, 0.2f, 0.5f);
-  S.Material.Color = ww::Color(0.0f, 0.0f, 1.0f);
+  S.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.0f, 1.0f, 1.0f, 0.f, 0.f, 0.f);
+  S.Material.Color = ww::Color(0.0f, 0.9f, 0.0f);  //!< "normal white" material should be around 0.2 gray
   // S.Material.Diffuse = 0.7f;
   // S.Material.Specular = 0.f;
-  // S.Material.Ambient = 0.f;
-  World.vPtrObjects.push_back(pDefaultSphere);
+  S.Material.Ambient = 1.f;
 
   ww::shared_ptr_shape pDefaultSphere2 = ww::PtrDefaultSphere();
   ww::shape &S2 = *pDefaultSphere2;
   S2.Transform = ww::TranslateScaleRotate(-2.f, 0.f, 0.f, 1.1f, 1.1f, 1.1f, 0.f, 0.f, 0.f);
   // S2.Material.Color = ww::Color(0.0f, 0.2f, 0.5f) * 2.f;
-  S2.Material.Color = ww::Color(0.f, 1.f, 0.f);
+  S2.Material.Color = ww::Color(0.f, 0.f, 1.f);
   S2.Material.Diffuse = 0.0f;
   S2.Material.Specular = 0.0f;
   // S2.Print = true;
-  World.vPtrObjects.push_back(pDefaultSphere2);
 
   ww::shared_ptr_shape pDefaultBox = ww::PtrDefaultCube();
   pDefaultBox->Transform =
-      ww::TranslateScaleRotate(2.f, 2.f, 0.f, 1.f, 1.f, 1.f, 0.f * ww::Radians(45.f), 0.f * ww::Radians(45.f), 0.f);
-  pDefaultBox->Material.Color = ww::Color(1.f, 0.f, 0.f);
+      ww::TranslateScaleRotate(2.f, 0.f, -1.f, 1.f, 1.f, 1.f, 1.f * ww::Radians(45.f), -1.f * ww::Radians(45.f), 0.f);
+  pDefaultBox->Material.Color = ww::Color(0.7f, 0.4f, 0.8f);
   ww::cube *pCube = dynamic_cast<ww::cube *>(pDefaultBox.get());
-  pCube->R = 0.15;
-  World.vPtrObjects.push_back(pDefaultBox);
+  pCube->R = 0.1;
+
+  ww::cube Box2{};
+  Box2 = *pCube;
+  Box2.R = 0.05;
+  Box2.Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 2.f, 1.f, 2.f, 1.f, 1.f * ww::Radians(45.f), -1.f * ww::Radians(45.f), 0.f);
+  Box2.Material.Color = ww::Color(0.7f, 0.4f, 0.8f);
+  ww::shared_ptr_shape pBox2 = ww::PtrDefaultCube();
+  *pBox2 = Box2;
 
   ww::shared_ptr_shape pFloor = ww::PtrDefaultPlane();
+  pFloor->Material.Color = ww::Color(0.4f, 0.4f, 0.4f);
   ww::plane *pFloorRaw = dynamic_cast<ww::plane *>(pFloor.get());
-  pFloorRaw->H = -1.f;
-  World.vPtrObjects.push_back(pFloor);
+  pFloorRaw->H = 2.f;
 
+  World.vPtrObjects.push_back(pDefaultBox);
+  World.vPtrObjects.push_back(pDefaultSphere);
+  World.vPtrObjects.push_back(pDefaultSphere2);
+  World.vPtrObjects.push_back(pBox2);
+  World.vPtrObjects.push_back(pFloor);
   // ---
   // We need some light, please.
   // ---
   ww::shared_ptr_light pLight{};
   pLight.reset(new ww::light);
   // *pLight = ww::PointLight(ww::Point(-5.f, 25.f, 2.5f), ww::Color(1.f, 1.f, 1.f));
-  *pLight = ww::PointLight(ww::Point(-50.f, 100.f, -3.f), 0.0 * ww::Color(1.f, 1.f, 1.f));
+  *pLight = ww::PointLight(ww::Point(-6.f, 10.f, -0.f), ww::Color(1.f, 1.f, 1.f));
   World.vPtrLights.push_back(pLight);
 
   // ---
@@ -302,7 +337,7 @@ TEST(RayMarch, Test1)
   // ---
   ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
 
-  ww::tup const ViewFrom = ww::Point(0.f, 3.0f, -7.f);
+  ww::tup const ViewFrom = ww::Point(0.f, 7.0f, -7.f);
   ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);

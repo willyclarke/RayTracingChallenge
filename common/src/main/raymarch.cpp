@@ -9,6 +9,7 @@
  * ******************************************************************************/
 #include "raymarch.hpp"
 
+#include <cmath>
 #include <thread>
 #include <vector>
 
@@ -57,6 +58,33 @@ float SdfSphere(tup const &Center, float Radius, tup const &P)
   float const Distance = Mag(P - Center);
   float const DistToSphere = Distance - Radius;
   return DistToSphere;
+  float const DistToSphere2 = P.Y + Radius;
+  return std::min(DistToSphere, DistToSphere2);
+}
+
+/**
+ * Description: clamp returns the value of x constrained to the range minVal to maxVal.
+ * The returned value is computed as min(max(x, minVal), maxVal).
+ */
+float Clamp(float X, float MinVal, float MaxVal) { return std::min(std::max(X, MinVal), MaxVal); }
+
+/**
+ * pow — return the value of the first parameter raised to the power of the second
+ * @param: tup X - Specify the value to raise to the power Y.
+ * @param: tup Y - Specify the power to which to raise X.
+ * @return: tup that maitainse type beeing either Point or Vector. i.e. X.W remains unchanged.
+ */
+tup Pow(tup const &X, tup const &Y) { return tup{std::powf(X.X, Y.X), std::powf(X.Y, Y.Y), std::powf(X.Z, Y.Z), X.W}; }
+
+/**
+ * Description: step generates a step function by comparing x to edge.
+ * For element i of the return value, 0.0 is returned if x[i] < edge[i],
+ * and 1.0 is returned otherwise.
+ */
+float Step(float Edge, float X)
+{
+  if (X < Edge) return 0.f;
+  return 1.f;
 }
 
 /**
@@ -129,14 +157,74 @@ tup GetNormal(tup const &P, shared_ptr_shape PtrShape)
 }
 
 //------------------------------------------------------------------------------
+tup GetLight(tup const &P, shared_ptr_shape PtrShape)
+{
+  // ---
+  // NOTE: Test code:
+  // ---
+  // "normal white" material should be around 0.2 gray
+  static tup const Mate = Color(0.2f, 0.2f, 0.2f);
+  tup const Nor = GetNormal(P, PtrShape);
+
+  // Lighting
+  static tup const SunDir = Normalize(Vector(0.8f, 0.4f, 0.2f));
+  float const SunDif = Clamp(Dot(Nor, SunDir), 0.f, 1.f);
+  float const SunSha = Step(RayMarch(Ray(P + Nor * 0.001f, SunDir), PtrShape), 0.f);
+  float const SkyDif = Clamp(0.5f + 0.5f * Dot(Nor, Vector(0.f, 1.f, 0.f)), 0.f, 1.f);
+  float const BouDif = Clamp(0.5f + 0.5f * Dot(Nor, Vector(0.f, -1.f, 0.f)), 0.f, 1.f);
+
+  // ---
+  // NOTE: Key light ~- 10.
+  //       Fill light ~- 1.
+  tup const Color0 = Mate * Point(7.f, 5.f, 3.f) * SunDif * SunSha;
+  tup const Color1 = Mate * Point(0.5f, 0.8f, 0.9f) * SkyDif;
+  tup const Color2 = Mate * Point(0.7f, 0.3f, 0.2f) * BouDif;
+  tup const Color = Color0 + Color1 + Color2;
+  return Color;
+}
+
+//------------------------------------------------------------------------------
 float GetLight(light const &Light, tup const &P, shared_ptr_shape PtrShape)
 {
+  // ---
+  // Original code
+  // ---
   tup const LightDir = Normalize(P - Light.Position);
   return -Dot(GetNormal(P, PtrShape), LightDir);
 }
 
 //------------------------------------------------------------------------------
-float RayMarch(ray const &Ray, world const &World, shared_ptr_shape PtrShape)
+tup Lighting(material const &Material, light const &Light, tup const &P, tup const &EyeV, tup const NormalV)
+{
+  tup const EffectiveColor = Material.Color * Light.Intensity;
+  tup const LightV = Normalize(Light.Position - P);
+  tup const Ambient = EffectiveColor * Material.Ambient;
+  float const LightDotNormal = Dot(LightV, NormalV);
+
+  tup Diffuse{};
+  tup Specular{};
+
+  if (LightDotNormal < 0.f)
+  {
+    return Ambient;
+  }
+  // std::cout << __FUNCTION__ << ". LightDotNormal: " << LightDotNormal << ". Ambient:" << Ambient << ". Intensity:" <<
+  // Light.Intensity << std::endl;
+
+  Diffuse = EffectiveColor * Material.Diffuse * LightDotNormal;
+
+  tup const ReflectV = Reflect(-LightV, NormalV);
+  float const ReflectDotEye = Dot(ReflectV, EyeV);
+  if (ReflectDotEye > 0.f)  // a negative number means pointing away.
+  {
+    float const Factor = std::pow(ReflectDotEye, Material.Shininess);
+    Specular = Light.Intensity * Material.Specular * Factor;
+  }
+  return Ambient + Diffuse + Specular;
+}
+
+//------------------------------------------------------------------------------
+float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
 {
   float Distance{};
   for (int Idx = 0;          //!<
@@ -155,7 +243,7 @@ float RayMarch(ray const &Ray, world const &World, shared_ptr_shape PtrShape)
     //      A useful blogpost is this one:
     //      https://michaelwalczyk.com/blog-ray-marching.html
     // ---
-    float const incrDistance = GetDistance(iPos, World);
+    float const incrDistance = GetDistance(iPos, PtrShape);
 
     // ---
     // NOTE: Ray march to the new distance.
@@ -173,18 +261,28 @@ float RayMarch(ray const &Ray, world const &World, shared_ptr_shape PtrShape)
 }
 
 //------------------------------------------------------------------------------
+float RayMarch(ray const &Ray, world const &World, shared_ptr_shape PtrShape) { return {}; }
+
+//------------------------------------------------------------------------------
 tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape)
 {
   ray const R = ww::RayForPixel(Camera, X, Y);
-  float const Distance = RayMarch(R, World, PtrShape);
-  tup fragColor{};
+  float const Distance = RayMarch(R, PtrShape);
 
-  if (Distance < MAX_DIST)  // then march along the ray, yoohoo ... ->->->
+  shared_ptr_light PtrLights = World.vPtrLights[0];
+  light const &Light = *PtrLights;
+
+  // tup fragColor = Color(0.65f, 0.75f, 0.9f) * 0.2;
+  tup fragColor{};
+  if (Distance < MAX_DIST)  // then there is a hit
   {
     tup const pHit = R.Origin + R.Direction * Distance;
-    fragColor = PtrShape->Material.Color * GetLight(*World.vPtrLights[0].get(), pHit, PtrShape);
+    fragColor = PtrShape->Material.Color * GetLight(Light, pHit, PtrShape);
+    // fragColor = GetLight(pHit, PtrShape);
+    // std::cout << __FUNCTION__ << ": Got hit at X:" << X << " Y:" << Y << ". Color:" << fragColor << std::endl;
   }
 
+  // fragColor = Pow(fragColor, Color(0.4545f, 0.4545f, 0.4545f));
   return fragColor;
 }
 
@@ -226,8 +324,16 @@ void RenderBlock(render_block const &RB)
         camera const &Camera = *RB.ptrCamera;
         shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
 
-        tup const Color = MainImage(Camera, World, X, Y, PtrShape);
-        Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
+        if (Image.vXY[X + Image.W * Y].W < 1.f)
+        {
+          tup const Color = MainImage(Camera, World, X, Y, PtrShape);
+          if (Mag(Color) > 0.001f)  // then there is an object there
+          {
+            Image.vXY[X + Image.W * Y] = Color;  //+ Image.vXY[X + Image.W * Y];
+            Image.vXY[X + Image.W * Y].W = 1.f;  // store the update
+          }
+        }
+        // Image.vXY[X + Image.W * Y] = MainImage(Camera, World, X, Y, PtrShape);
       }
     }
   }
@@ -303,11 +409,12 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 //------------------------------------------------------------------------------
 canvas Render(camera const &Camera, world const &World)
 {
+  Assert(World.vPtrLights.size() > 0, __FUNCTION__, __LINE__);
+
   if (Camera.RenderSingleThread) return RenderSingleThread(Camera, World);
 
   canvas Image(Camera.HSize, Camera.VSize);
   RenderMultiThread(Camera, World, Image);
-
   return Image;
 }
 

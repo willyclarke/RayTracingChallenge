@@ -17,6 +17,7 @@ namespace rm
  * @param: R - Ray
  * @param: PtrShape - Shape to compute distance against
  */
+float RayMarch(ray const &R, shared_ptr_shape PtrShape);
 float RayMarch(ray const &R, world const &World, shared_ptr_shape PtrShape);
 
 /**
