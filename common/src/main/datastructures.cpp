@@ -218,6 +218,13 @@ tup Cross(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
+tup Div(tup const &A, tup const &B)
+{
+  tup Result{A.X / B.X, A.Y / B.Y, A.Z / B.Z, A.W};
+  return Result;
+}
+
+//------------------------------------------------------------------------------
 float Dot(tup const &A, tup const &B)
 {
   float const Result = A.X * B.X +  //!<
@@ -230,7 +237,7 @@ float Dot(tup const &A, tup const &B)
 //------------------------------------------------------------------------------
 /**
  * @return: The dot product of the vector itself.
-*/
+ */
 float Dot(tup const &A)
 {
   float const Result = A.X * A.X +  //!<
@@ -319,6 +326,18 @@ tup Abs(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * @return: fract returns the fractional part of X.
+ */
+float Fract(float X) { return X - std::floorf(X); }
+
+//------------------------------------------------------------------------------
+/**
+ * @return: fract returns the fractional part of X.
+ */
+tup Fract(tup const &X) { return tup{Fract(X.X), Fract(X.Y), Fract(X.Z), Fract(X.W)}; }
+
+//------------------------------------------------------------------------------
 tup Negate(tup const &Tup)
 {
   tup const Result{-Tup.X, -Tup.Y, -Tup.Z, -Tup.W};
@@ -337,6 +356,20 @@ tup Point(float A, float B, float C)
 {
   tup Result{A, B, C, 1.f};
   return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: std::sinf to the elements X, Y, Z individually. W remains unchanged.
+ */
+tup Sin(tup const &Input)
+{
+  return tup{
+      std::sinf(Input.X),  //!<
+      std::sinf(Input.Y),  //!<
+      std::sinf(Input.Z),  //!<
+      Input.W              //!<
+  };
 }
 
 //------------------------------------------------------------------------------
@@ -3186,6 +3219,8 @@ ww::tup operator-(ww::tup const &A, ww::tup const &B) { return (ww::Sub(A, B)); 
 ww::tup operator*(float const S, ww::tup const &Tup) { return (ww::Mul(S, Tup)); }
 ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Mul(S, Tup)); }
 ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Mul(A, B)); }
+ww::tup operator/(ww::tup const &A, ww::tup const &B) { return (ww::Div(A, B)); }
+ww::tup operator/(float const A, ww::tup const &B) { return ww::tup{A / B.X, A / B.Y, A / B.Z, B.W}; }
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B) { return (ww::Mul(A, B)); }
 ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)); }
 ww::ray operator*(ww::matrix const &M, ww::ray const &R) { return (ww::Mul(M, R)); }

@@ -246,7 +246,7 @@ struct intersections
 //    C: Finally the normal is normalized ( ;-) ) before returning it.
 struct shape
 {
-  tup Center{0.f, 0.f, 0.f, 1.f}; //!< Set up the Center to be a point.
+  tup Center{0.f, 0.f, 0.f, 1.f};  //!< Set up the Center to be a point.
   material Material{};
 
   //!< The transform of the object, initialize to identity matrix
@@ -328,7 +328,7 @@ struct cylinder : public shape
 /// ---
 struct cube : public shape
 {
-  float R{}; //!< Radius for rounded box.
+  float R{};  //!< Radius for rounded box.
 
   template <typename T>
   bool isA()
@@ -460,21 +460,25 @@ bool Equal(float const A, float const B);
 bool Equal(tup const &A, tup const &B);
 bool IsVector(tup const &Tup);
 bool IsPoint(tup const &Tup);
+float Fract(float const X);
 float MagSquared(tup const &Tup);
 float Mag(tup const &Tup);
-tup Mul(float const S, tup const &Tup);
 float Radians(float Deg);
 
 tup Abs(tup const &Tup);
+tup Div(float const S, tup const &Tup);
+tup Fract(tup const &X);
 tup Max(tup const &A, float const B);
 // ---
 // NOTE: Multiply is also called Hadamard or Schur product.
 // ---
 tup Mul(tup const A, tup const B);
+tup Mul(float const S, tup const &Tup);
 tup Negate(tup const &Tup);
 tup Normalize(tup const &Tup);
 tup Point(float A, float B, float C);
 tup Sub(tup const &A, tup const &B);
+tup Sin(tup const &Input);
 tup Vector(float A, float B, float C);
 
 // ---
@@ -794,6 +798,8 @@ ww::tup operator*(float const S, ww::tup const &Tup);
 ww::tup operator*(ww::tup const &Tup, float const S);
 ww::tup operator*(ww::tup const &A, ww::tup const &B);
 ww::tup operator/(ww::tup const &Tup, float const S);
+ww::tup operator/(ww::tup const &A, ww::tup const &B);
+ww::tup operator/(float const A, ww::tup const &B);
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B);
 ww::tup operator*(ww::matrix const &A, ww::tup const &T);
 ww::ray operator*(ww::matrix const &M, ww::ray const &R);
