@@ -158,6 +158,23 @@ TEST(RayMarch, GetNormal)
 }
 
 //------------------------------------------------------------------------------
+TEST(DISABLED_RayMarch, CalcNormal)
+{
+  auto TestNormal = [](ww::ray const &R)
+  {
+    ww::tup const N = ww::rm::CalcNormal(R.Origin);
+    EXPECT_FLOAT_EQ(ww::Mag(N), 1.0f);
+    EXPECT_LT(ww::Mag(N - R.Direction), 0.01f);
+  };
+  TestNormal(ww::Ray(ww::Point(0.f, 0.f, -1.f), ww::Vector(0.f, 0.f, -1.f)));
+  TestNormal(ww::Ray(ww::Point(0.f, 0.f, 1.f), ww::Vector(0.f, 0.f, 1.f)));
+  TestNormal(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)));
+  TestNormal(ww::Ray(ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)));
+  TestNormal(ww::Ray(ww::Point(1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f)));
+  TestNormal(ww::Ray(ww::Point(-1.f, 0.f, 0.f), ww::Vector(-1.f, 0.f, 0.f)));
+}
+
+//------------------------------------------------------------------------------
 TEST(RayMarch, RayMarch)
 {
   auto TestDistance = [](ww::ray const &R, ww::shared_ptr_shape pDefaultSphere) -> float
@@ -335,7 +352,8 @@ TEST(RayMarch, Test1)
   // ---
   // NOTE: Write out the result so that it is possible to see whats going on.
   // ---
-  ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
+  ww::camera Camera = ww::Camera(1256, 1256, ww::Radians(50.f));
+  Camera.RenderSingleThread = true;
 
   ww::tup const ViewFrom = ww::Point(0.f, 7.0f, -7.f);
   ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
@@ -343,5 +361,13 @@ TEST(RayMarch, Test1)
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 
   ww::canvas Canvas = ww::rm::Render(Camera, World);
-  ww::WriteToPPM(Canvas, "RayMarchTest1.ppm");
+  ww::WriteToPPM(Canvas, "RayMarchTest2.ppm");
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, TestRaymarchPrimitives)
+{
+  ww::tup const Coordinates{};
+  ww::tup const Resolution{256.f, 256.f, 0.f, 0.f};
+  ww::rm::MainImage(Coordinates, Resolution);
 }

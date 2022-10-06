@@ -25,6 +25,12 @@ float RayMarch(ray const &R, world const &World, shared_ptr_shape PtrShape);
 tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape);
 
 /**
+ * Mainimage from https://www.shadertoy.com/view/Xds3zN.
+ * Shows a lot of raymarching primitives.
+ */
+tup MainImage(tup const &FragCoord, tup const &Resolution);
+
+/**
  */
 canvas Render(camera const &Camera, world const &World);
 
@@ -36,6 +42,7 @@ float GetDistance(tup const &P, world const &World);
 /**
  */
 tup GetNormal(tup const &P, shared_ptr_shape PtrShape);
+tup CalcNormal(tup const &P);
 
 };      // end namespace rm
 };      // end namespace ww

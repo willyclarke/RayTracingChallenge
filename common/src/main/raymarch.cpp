@@ -23,6 +23,11 @@ namespace rm
 constexpr int MAX_STEPS = 100;
 constexpr float MAX_DIST = 100.f;
 constexpr float MIN_DIST = 0.001f;
+#if HW_PERFORMANCE == 0
+#define AA 1
+#else
+#define AA 2  // make this 2 or 3 for antialiasing
+#endif
 
 //------------------------------------------------------------------------------
 /**
@@ -62,11 +67,42 @@ float SdfSphere(tup const &Center, float Radius, tup const &P)
   return std::min(DistToSphere, DistToSphere2);
 }
 
+//-
+/**
+ * sd Functions taken from Inigios Shadertoy primitives.
+ */
+
+//------------------------------------------------------------------------------
+float sdBox(tup const &Pos, tup const &Box)
+{
+  tup Distance = Abs(Pos) - Box;
+  float const Result = std::min(std::max(Distance.X, std::max(Distance.Y, Distance.Z)),  //!<
+                                0.f)                                                     //!<
+                       + Mag(Max(Distance, 0.f));
+  // std::cout << __FUNCTION__ << ". Distance: " << Distance << ". Lenght: " << Mag(Distance) << std::endl;
+
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+float sdSphere(tup const &Pos, float S) { return Mag(Pos) - S; }
+
 /**
  * Description: clamp returns the value of x constrained to the range minVal to maxVal.
  * The returned value is computed as min(max(x, minVal), maxVal).
  */
 float Clamp(float X, float MinVal, float MaxVal) { return std::min(std::max(X, MinVal), MaxVal); }
+
+//------------------------------------------------------------------------------
+tup Clamp(tup const &X, float MinVal, float MaxVal)
+{
+  return {
+      Clamp(X.X, MinVal, MaxVal),  //!<
+      Clamp(X.Y, MinVal, MaxVal),  //!<
+      Clamp(X.Z, MinVal, MaxVal),  //!<
+      X.W                          //!<
+  };
+}
 
 /**
  * pow — return the value of the first parameter raised to the power of the second
@@ -138,6 +174,78 @@ float GetDistance(tup const &P, world const &World)
   }
 
   return Distance;
+}
+
+//------------------------------------------------------------------------------
+tup OpU(tup const &D1, tup const &D2) { return (D1.X < D2.X) ? D1 : D2; }
+
+//------------------------------------------------------------------------------
+/**
+ * Map the various Signed Distance Functions of the objects in the scene.
+ */
+tup Map(tup const &Pos)
+{
+  tup Res = Vector(Pos.Y, 0.f, 0.f);
+
+  // std::cout << __FUNCTION__ << "." << __LINE__ << ". Pos:    " << Pos << std::endl;
+  // ---
+  // Bounding box.
+  // ---
+  if (sdBox(Pos - Vector(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  {
+    Res = OpU(Res, Vector(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
+  }
+  return Res;
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/rmshadows
+float CalcSoftShadow(ray const &R, float tMin, float tMax)
+{
+  // bounding volume
+  float tp = (0.8 - R.Origin.Y) / R.Direction.Y;
+  if (tp > 0.f) tMax = std::min(tMax, tp);
+
+  float Res = 1.0;
+  float t = tMin;
+  for (int Idx = 0; Idx < 24; ++Idx)
+  {
+    float H = Map(R.Origin + R.Direction * t).X;
+    float S = Clamp(8.f * H / t, 0.f, 1.f);
+    Res = std::min(Res, S);
+    t += Clamp(H, 0.01f, 0.2f);
+    if (Res < 0.004f || t > tMax) break;
+  }
+  Res = Clamp(Res, 0.f, 1.f);
+  return Res * Res * (3.f - 2.f * Res);
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/normalsSDF
+tup CalcNormal(tup const &Pos)
+{
+#if 1
+  tup const e = Vector(1.f, -1.f, 0.f) * 0.5773f * 0.0005f;
+  tup const exyy = Vector(e.X, e.Y, e.Y);
+  tup const eyyx = Vector(e.Y, e.Y, e.X);
+  tup const eyxy = Vector(e.Y, e.X, e.Y);
+  tup const exxx = Vector(e.X, e.X, e.X);
+  return Normalize(exyy * Map(Pos + exyy).X +  //!<
+                   eyyx * Map(Pos + eyyx).X +  //!<
+                   eyxy * Map(Pos + eyxy).X +  //!<
+                   exxx * Map(Pos + exxx).X    //!<
+  );
+#else
+  // inspired by tdhooper and klems - a way to prevent the compiler from inlining map() 4 times
+  vec3 n = vec3(0.0);
+  for (int i = ZERO; i < 4; i++)
+  {
+    vec3 e = 0.5773 * (2.0 * vec3((((i + 3) >> 1) & 1), ((i >> 1) & 1), (i & 1)) - 1.0);
+    n += e * map(pos + 0.0005 * e).x;
+    // if( n.x+n.y+n.z>100.0 ) break;
+  }
+  return normalize(n);
+#endif
 }
 
 //------------------------------------------------------------------------------
@@ -286,18 +394,302 @@ tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr
   return fragColor;
 }
 
+// https://iquilezles.org/articles/boxfunctions
+tup iBox(ray const &R, tup const &Radius)
+{
+  tup const M = 1.f / R.Direction;
+  tup const N = M * R.Origin;
+  tup const K = Abs(M) * Radius;
+  tup const t1 = -N - K;
+  tup const t2 = -N + K;
+  return tup(std::max(std::max(t1.X, t1.Y), t1.Z), std::min(std::min(t2.X, t2.Y), t2.Z));
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Raycast from Inigios primitive's example.
+ */
+tup RayCast(ray const &R)
+{
+  tup Res = Vector(-1.f, -1.f, 0.f);
+  float Tmin{1.f};
+  float Tmax{20.f};
+
+  // ---
+  // Raytrace floor plane
+  // ---
+  float Tp1 = (0.f - R.Origin.Y) / R.Direction.Y;
+  if (Tp1 > 0.f)
+  {
+    Tmax = std::min(Tmax, Tp1);
+    Res = Vector(Tp1, 1.f, 0.f);
+  }
+
+  //
+  // Raymarch primitives
+  //
+  tup Tb = iBox(Ray(R.Origin - Vector(0.f, 0.4f, -0.5f), R.Direction), Point(2.5f, 0.41f, 3.f));
+  if (Tb.X < Tb.Y && Tb.Y > 0.f && Tb.X < Tmax)
+  {
+    Tmin = std::max(Tb.X, Tmin);
+    Tmax = std::min(Tb.Y, Tmax);
+
+    float t = Tmin;
+    for (int Idx = 0; Idx < 70 && t < Tmax; ++Idx)
+    {
+      tup h = Map(R.Origin + R.Direction * t);
+      if (std::abs(h.X) < (0.0001f * t))
+      {
+        Res = Vector(t, h.Y, 0.f);
+        break;
+      }
+      t += h.X;
+    }
+  }
+
+  return Res;
+}
+
+//------------------------------------------------------------------------------
+//
+// https://iquilezles.org/articles/nvscene2008/rwwtt.pdf
+//
+//------------------------------------------------------------------------------
+/**
+ * Calculate the Ambient Occlusion factor.
+ * @Pos: Position.
+ * @Nor: Normal Vector.
+ * @N: Number of samples - optional.
+ * @return: float describing the Occlusion after N samples.
+ */
+float CalcAO(tup const &Pos, tup const &Nor, int N = 5)
+{
+  float Occ{};
+  float Sca{1.f};
+  for (int Idx = 0;  //!<
+       Idx < N;      //!<
+       ++Idx)
+  {
+    float H = 0.01f + 0.12f * float(Idx) / 4.f;
+    float D = Map(Pos + H * Nor).X;
+    Occ += (H - D) * Sca;
+    Sca *= 0.95f;
+    if (Occ > 0.35f) break;
+  }
+  return Clamp(1.f - 3.f * Occ, 0.f, 1.f) * (0.5f + 0.5 * Nor.Y);
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/checkerfiltering
+float CheckersGradBox(tup const &Pos, tup const &dPdx, tup const &dPdy)
+{
+  // filter kernel
+  tup W = Abs(dPdx) + Abs(dPdy) + Color(0.001f, 0.001f, 0.f);
+  // analytical integral (box filter)
+  tup I = 2.f *
+          (Abs(Fract((Pos - 0.5f * W) * 0.5f) - Color(0.5f, 0.5f, 0.f)) -
+           Abs(Fract((Pos + 0.5f * W) * 0.5f) - Color(0.5f, 0.5f, 0.0f))) /
+          W;
+  // xor pattern
+  return 0.5f - 0.5f * I.X * I.Y;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Render from Inigios primitive's example.
+ */
+tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
+{
+  // Background
+  tup Col = Vector(0.7f, 0.7f, 0.9f) - 0.3f * Vector(std::max(R.Direction.Y, 0.f),  //!<
+                                                     std::max(R.Direction.Y, 0.f),  //!<
+                                                     std::max(R.Direction.Y, 0.f)   //!<
+                                              );
+
+  // ---
+  // Raycast scene
+  // ---
+  tup Res = RayCast(R);
+  float t = Res.X;
+  float M = Res.Y;
+
+  if (M > -0.5f)
+  {
+    tup Pos = R.Origin + t * R.Direction;
+
+    tup Nor = (M < 1.5f) ? Vector(0.f, 1.f, 0.f) : CalcNormal(Pos);
+    tup Ref = Reflect(R.Direction, Nor);
+
+    // Material
+    Col = Color(0.2f, 0.2f, 0.2f) + 0.2f * Sin(2.f * Color(M, M, M) + Color(0.f, 1.f, 2.f));
+    float Ks = 1.f;
+
+    if (M < 1.5f)
+    {
+      // Project pixel footprint into the plane
+      tup dPdx = R.Origin.Y * (R.Direction / R.Direction.Y - Rdx / Rdx.Y);
+      tup dPdy = R.Origin.Y * (R.Direction / R.Direction.Y - Rdy / Rdy.Y);
+
+      float Floor = CheckersGradBox(3.0 * Vector(Pos.X, Pos.Z, 0.f),    //!<
+                                    3.0 * Vector(dPdx.X, dPdx.Z, 0.f),  //!<
+                                    3.0 * Vector(dPdy.X, dPdy.Z, 0.f)   //!<
+      );
+      Col = Color(0.15f, 0.15f, 0.15f) + Floor * Color(0.05f, 0.05f, 0.05f);
+      Ks = 0.4;
+    }
+
+    // ---
+    // Lighting.
+    // ---
+
+    // ---
+    // Calculate Ambient Occlusion.
+    // ---
+    float Occ = CalcAO(Pos, Nor);
+
+    tup Lin{};
+
+    // ---
+    // Sun
+    // ---
+    if (0)
+    {
+      tup Lig = Normalize(Vector(-0.5f, 0.4, -0.6f));
+      tup Hal = Normalize(Lig - R.Direction);
+      float Dif = Clamp(Dot(Nor, Lig), 0.f, 1.f);
+
+      Dif *= CalcSoftShadow(Ray(Pos, Lig), 0.02f, 2.5f);
+      float Spe = std::powf(Clamp(Dot(Nor, Hal), 0.f, 1.f), 16.f);
+      Spe *= Dif;
+      Spe *= 0.04f + 0.96f * std::powf(Clamp(1.f - Dot(Hal, Lig), 0.f, 1.f), 5.f);
+      Lin = Lin + Col * 2.2f * Dif * Vector(1.3f, 1.f, 0.7f);
+      Lin = Lin + 5.f * Spe * Vector(1.3f, 1.f, 0.7f) * Ks;
+    }
+
+    // Col = Lin;
+  }
+
+  return Clamp(Col, 0.f, 1.f);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * SetCamera
+ */
+matrix SetCamera(tup const &Origin, tup const &Ta, float const Cr)
+{
+  tup const Cw = Normalize(Ta - Origin);
+  tup const Cp = Vector(std::sinf(Cr), std::cosf(Cr), 0.f);
+  tup const Cu = Normalize(Cross(Cw, Cp));
+  tup const Cv = Cross(Cu, Cw);
+  matrix M{};
+  M.R0 = Cu;
+  M.R1 = Cv;
+  M.R2 = Cw;
+  std::cout << __FUNCTION__ << M << std::endl;
+
+  return M;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * MainImage: https://www.shadertoy.com/view/Xds3zN
+ * Raymarching - Primitives.
+ * A set of raw primitives. All except the ellipsoid are exact euclidean distances.
+ * Based on the work by iq in 2013-03-25.
+ * @param: FragCoord.X - Horisontal coordinate of the screen.
+ * @param: FragCoord.Y - Vertical coordinate of the screen.
+ * @param: Resolution.X - Horisontal resolution.
+ * @param: Resolution.Y - Vertical resolution.
+ * @return: FragColor - The color of the pixel at X,Y.
+ */
+tup MainImage(tup const &FragCoord, tup const &Resolution)
+{
+  ray R{};
+  float const Time{};
+  tup const Mouse{};
+
+  // ---
+  // Camera:
+  // ---
+  tup const Ta = Vector(0.25f, -0.75f, -0.75f);
+  R.Origin = Ta + Point(4.5f * std::cosf(0.1f * Time + 7.f * Mouse.X),  //!<
+                         2.2f,                                           //!<
+                         4.5f * std::sinf(0.1f * Time + 7.f * Mouse.X)   //!<
+                  );
+
+  // Camera to World transformation
+  // TODO: (Willy Clarke) Move the camera instantiation.
+  // static matrix const Ca = SetCamera(R.Origin, Ta, 0.f);
+  static matrix const Ca = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+
+  tup Tot{};
+
+  // ---
+  // Pixel coordinates. NOTE: This becomes a vector.
+  // ---
+  tup PixelCoord = (2.f * FragCoord - Resolution) / Resolution.Y;
+
+  // ---
+  // Focal length
+  // ---
+  float constexpr FocalLength{2.5f};
+  PixelCoord.Z = FocalLength;
+
+  // ---
+  // Ray direction.
+  // ---
+  R.Direction = Ca * Normalize(PixelCoord);
+
+  // ---
+  // Ray differentials
+  // ---
+  tup Px = (2.f * (FragCoord + Vector(1.f, 0.f, 0.f)) - Resolution) / Resolution.Y;  // is a vector.
+  Px.Z = FocalLength;
+
+  tup Py = (2.f * (FragCoord + Vector(0.f, 1.f, 0.f)) - Resolution) / Resolution.Y;  // is a vector.
+  Py.Z = FocalLength;
+
+  tup Rdx = Ca * Normalize(Px);
+  tup Rdy = Ca * Normalize(Py);
+
+
+  // ---
+  // Render
+  // ---
+  tup Color = Render(R, Rdx, Rdy);
+
+  // ---
+  // Gain
+  // ---
+  Color = 3.f * Color / (Vector(2.5f, 2.5f, 2.5f) + Color);
+
+  // ---
+  // Gamma.
+  // ---
+  Color = Pow(Color, Vector(0.4545f, 0.4545f, 0.4545f));
+
+  Tot = Tot + Color;
+  return Tot;
+}
+
 //------------------------------------------------------------------------------
 canvas RenderSingleThread(camera const &Camera, world const &World)
 {
   canvas Image(Camera.HSize, Camera.VSize);
+  tup const Resolution = tup{float(Camera.HSize), float(Camera.VSize), 0.f, 0.f};
 
   for (int X = 0; X < Image.W; ++X)
     for (int Y = 0; Y < Image.H; ++Y)
     {
       for (int ObjIdx = 0; ObjIdx < World.vPtrObjects.size(); ++ObjIdx)
       {
+#if 0
         tup const Color = MainImage(Camera, World, X, Y, World.vPtrObjects[ObjIdx]);
         Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
+#endif
+        tup const FragCoord = tup{float(X), float(Y), 0.f, 0.f};
+        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, Resolution);
       }
     }
   return Image;
@@ -309,6 +701,11 @@ canvas RenderSingleThread(camera const &Camera, world const &World)
  */
 void RenderBlock(render_block const &RB)
 {
+  world const &World = *RB.ptrWorld;
+  canvas &Image = *RB.ptrImage;
+  camera const &Camera = *RB.ptrCamera;
+  tup const Resolution = tup{float(Camera.HSize), float(Camera.VSize), 0.f, 0.f};
+
   for (int Y = RB.VStart;           ///<!
        Y < RB.VStart + RB.VHeigth;  ///<!
        ++Y)
@@ -319,9 +716,7 @@ void RenderBlock(render_block const &RB)
     {
       for (int ObjIdx = 0; ObjIdx < RB.ptrWorld->vPtrObjects.size(); ++ObjIdx)
       {
-        world const &World = *RB.ptrWorld;
-        canvas &Image = *RB.ptrImage;
-        camera const &Camera = *RB.ptrCamera;
+#if 0
         shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
 
         if (Image.vXY[X + Image.W * Y].W < 1.f)
@@ -333,7 +728,9 @@ void RenderBlock(render_block const &RB)
             Image.vXY[X + Image.W * Y].W = 1.f;  // store the update
           }
         }
-        // Image.vXY[X + Image.W * Y] = MainImage(Camera, World, X, Y, PtrShape);
+#endif
+        tup const FragCoord = tup{float(X), float(Y), 0.f, 0.f};
+        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, Resolution);
       }
     }
   }
