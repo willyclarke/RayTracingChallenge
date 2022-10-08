@@ -368,6 +368,23 @@ TEST(RayMarch, Test1)
 TEST(RayMarch, TestRaymarchPrimitives)
 {
   ww::tup const Coordinates{};
-  ww::tup const Resolution{256.f, 256.f, 0.f, 0.f};
+  ww::tup const Resolution{1256.f, 1256.f, 0.f, 0.f};
   ww::rm::MainImage(Coordinates, Resolution);
+
+  ww::matrix MCoordXform = Matrix22(ww::tup{1.f / Resolution.X, 1.f / Resolution.Y},  //!<
+                                    ww::tup{1.f / Resolution.X, 1.f / Resolution.X});
+
+  ww::tup Coord1 = MCoordXform * ww::Vector(0.0f * Resolution.X, 0.0f * Resolution.Y, 0.f)  //!<
+                   + ww::Vector(-1.f, -1.f, 0.f);
+  ww::tup Coord2 = MCoordXform * ww::Vector(0.5f * Resolution.X, 0.5f * Resolution.Y, 0.f)  //!<
+                   + ww::Vector(-1.f, -1.f, 0.f);
+  ww::tup Coord3 = MCoordXform * ww::Vector(1.0f * Resolution.X, 1.0f * Resolution.Y, 0.f)  //!<
+                   + ww::Vector(-1.f, -1.f, 0.f);
+
+  EXPECT_EQ(Coord1.X, -1.f);
+  EXPECT_EQ(Coord1.Y, -1.f);
+  EXPECT_EQ(Coord2.X, 0.f);
+  EXPECT_EQ(Coord2.Y, 0.f);
+  EXPECT_EQ(Coord3.X, 1.f);
+  EXPECT_EQ(Coord3.Y, 1.f);
 }
