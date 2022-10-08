@@ -644,7 +644,7 @@ matrix Matrix22(tup const &R0, tup const &R1)
 float Get(matrix const &M, int Row, int Col)
 {
   Assert(Row < M.Dimension, __FUNCTION__, __LINE__);
-  Assert(Col < M.Dimension, __FUNCTION__, __LINE__);
+  Assert(Col < 4, __FUNCTION__, __LINE__);
   return M.R[Row].C[Col];
 };
 
@@ -707,12 +707,12 @@ matrix Inverse(matrix const &M)
 matrix Mul(matrix const &A, matrix const &B)
 {
   matrix M{};
-  for (size_t Row = 0;  ///<!
-       Row < 4;         ///<!
+  for (size_t Row = 0;                            ///<!
+       Row < std::min(A.Dimension, B.Dimension);  ///<!
        ++Row)
   {
-    for (size_t Col = 0;  ///<!
-         Col < 4;         ///<!
+    for (size_t Col = 0;                            ///<!
+         Col < std::min(A.Dimension, B.Dimension);  ///<!
          ++Col)
     {
       float const Mrc = Get(A, Row, 0) * Get(B, 0, Col) +  //
@@ -729,8 +729,8 @@ matrix Mul(matrix const &A, matrix const &B)
 tup Mul(matrix const &A, tup const &T)
 {
   tup Result{};
-  for (size_t Idx = 0;  ///<!
-       Idx < 4;         ///<!
+  for (size_t Idx = 0;     ///<!
+       Idx < A.Dimension;  ///<!
        ++Idx)
   {
     Result.C[Idx] = Get(A, Idx, 0) * T.C[0] +  //
