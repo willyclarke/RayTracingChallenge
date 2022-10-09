@@ -79,29 +79,32 @@ float sdBox(tup const &Pos, tup const &Box)
   float const Result = std::min(std::max(Distance.X, std::max(Distance.Y, Distance.Z)),  //!<
                                 0.f)                                                     //!<
                        + Mag(Max(Distance, 0.f));
-  // std::cout << __FUNCTION__ << ". Distance: " << Distance << ". Lenght: " << Mag(Distance) << std::endl;
+  // std::cout << __FUNCTION__ << ". Distance: " << Distance << ". Lenght: " << Mag(Distance) << ". Result: " << Result
+  //           << std::endl;
 
   return Result;
 }
 
 //------------------------------------------------------------------------------
-float sdSphere(tup const &Pos, float S) { return Mag(Pos) - S; }
-
-/**
- * Description: clamp returns the value of x constrained to the range minVal to maxVal.
- * The returned value is computed as min(max(x, minVal), maxVal).
- */
-float Clamp(float X, float MinVal, float MaxVal) { return std::min(std::max(X, MinVal), MaxVal); }
+float sdSphere(tup const &Pos, float S)
+{
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+  return Mag(Pos - Point(0.f, 0.f, 0.f)) - S;
+}
 
 //------------------------------------------------------------------------------
-tup Clamp(tup const &X, float MinVal, float MaxVal)
+// la,lb=semi axis, h=height, ra=corner
+float sdRhombus(tup Pos, float la, float lb, float h, float ra)
 {
-  return {
-      Clamp(X.X, MinVal, MaxVal),  //!<
-      Clamp(X.Y, MinVal, MaxVal),  //!<
-      Clamp(X.Z, MinVal, MaxVal),  //!<
-      X.W                          //!<
-  };
+  Pos = Abs(Pos);
+  tup B = Vector(la, lb, 0.f);
+  float F = Clamp(NDot(B, B - 2.f * tup(Pos.X, Pos.Z)) / Dot(B, B), -1.f, 1.f);
+  tup Q = tup(Mag(tup(Pos.X, Pos.Z) - 0.5f * B * tup(1.f - F, 1.f + F))  //!<
+                      * Sign(Pos.X * B.Y + Pos.Z * B.X - B.X * B.Y) -
+                  ra,  //!<
+              Pos.Y - h);
+  float Result = std::fmin(std::fmax(Q.X, Q.Y), 0.f) + Mag(Max(Q, 0.f));
+  return Result;
 }
 
 /**
@@ -185,15 +188,17 @@ tup OpU(tup const &D1, tup const &D2) { return (D1.X < D2.X) ? D1 : D2; }
  */
 tup Map(tup const &Pos)
 {
-  tup Res = Vector(Pos.Y, 0.f, 0.f);
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
 
-  // std::cout << __FUNCTION__ << "." << __LINE__ << ". Pos:    " << Pos << std::endl;
+  tup Res = Point(Pos.Y, 0.f, 0.f);
+
   // ---
   // Bounding box.
   // ---
-  if (sdBox(Pos - Vector(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
   {
-    Res = OpU(Res, Vector(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
+    Res = OpU(Res, Point(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
+    Res = OpU(Res, Point(sdRhombus(Pos - Vector(-2.f, 0.25f, 1.f), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
   }
   return Res;
 }
@@ -230,11 +235,13 @@ tup CalcNormal(tup const &Pos)
   tup const eyyx = Vector(e.Y, e.Y, e.X);
   tup const eyxy = Vector(e.Y, e.X, e.Y);
   tup const exxx = Vector(e.X, e.X, e.X);
-  return Normalize(exyy * Map(Pos + exyy).X +  //!<
-                   eyyx * Map(Pos + eyyx).X +  //!<
-                   eyxy * Map(Pos + eyxy).X +  //!<
-                   exxx * Map(Pos + exxx).X    //!<
+  tup const N = Normalize(exyy * Map(Pos + exyy).X +  //!<
+                          eyyx * Map(Pos + eyyx).X +  //!<
+                          eyxy * Map(Pos + eyxy).X +  //!<
+                          exxx * Map(Pos + exxx).X    //!<
   );
+  Assert(IsVector(N), __FUNCTION__, __LINE__);
+  return N;
 #else
   // inspired by tdhooper and klems - a way to prevent the compiler from inlining map() 4 times
   vec3 n = vec3(0.0);
@@ -395,11 +402,11 @@ tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr
 }
 
 // https://iquilezles.org/articles/boxfunctions
-tup iBox(ray const &R, tup const &Radius)
+tup iBox(ray const &R, tup const &Rad)
 {
-  tup const M = 1.f / R.Direction;
-  tup const N = M * R.Origin;
-  tup const K = Abs(M) * Radius;
+  tup const M = 1.f / R.Direction;  // is a Vector.
+  tup const N = M * R.Origin;       // becomes a Vector.
+  tup const K = Abs(M) * Rad;       // becomes a Vector since M is a Vector.
   tup const t1 = -N - K;
   tup const t2 = -N + K;
   return tup(std::max(std::max(t1.X, t1.Y), t1.Z), std::min(std::min(t2.X, t2.Y), t2.Z));
@@ -448,6 +455,28 @@ tup RayCast(ray const &R)
   }
 
   return Res;
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/rmshadows
+float CalcSoftshadow(ray const &R, float mint, float tmax)
+{
+  // bounding volume
+  float tp = (0.8f - R.Origin.Y) / R.Direction.Y;
+  if (tp > 0.f) tmax = std::min(tmax, tp);
+
+  float Res = 1.f;
+  float t = mint;
+  for (int Idx = 0; Idx < 24; ++Idx)
+  {
+    float h = Map(R.Origin + R.Direction * t).X;
+    float s = Clamp(8.f * h / t, 0.f, 1.f);
+    Res = std::fmin(Res, s);
+    t += Clamp(h, 0.01f, 0.2f);
+    if (Res < 0.004f || t > tmax) break;
+  }
+  Res = Clamp(Res, 0.f, 1.f);
+  return Res * Res * (3.f - 2.f * Res);
 }
 
 //------------------------------------------------------------------------------
@@ -501,10 +530,10 @@ float CheckersGradBox(tup const &Pos, tup const &dPdx, tup const &dPdy)
 tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
 {
   // Background
-  tup Col = Vector(0.7f, 0.7f, 0.9f) - 0.3f * Vector(std::max(R.Direction.Y, 0.f),  //!<
-                                                     std::max(R.Direction.Y, 0.f),  //!<
-                                                     std::max(R.Direction.Y, 0.f)   //!<
-                                              );
+  tup Col = Color(0.7f, 0.7f, 0.9f) - 0.3f * Color(std::max(R.Direction.Y, 0.f),  //!<
+                                                   std::max(R.Direction.Y, 0.f),  //!<
+                                                   std::max(R.Direction.Y, 0.f)   //!<
+                                             );
 
   // ---
   // Raycast scene
@@ -552,7 +581,7 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
     // ---
     // Sun
     // ---
-    if (0)
+    if (1)
     {
       tup Lig = Normalize(Vector(-0.5f, 0.4, -0.6f));
       tup Hal = Normalize(Lig - R.Direction);
@@ -566,7 +595,23 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
       Lin = Lin + 5.f * Spe * Vector(1.3f, 1.f, 0.7f) * Ks;
     }
 
-    // Col = Lin;
+    // ---
+    // Sky
+    // ---
+    if (1)
+    {
+      float Dif = std::sqrtf(Clamp(0.5f + 0.5f * Nor.Y, 0.f, 1.f));
+      Dif *= Occ;
+      float Spe = SmoothStep(-0.2f, 0.2f, Ref.Y);
+      Spe *= Dif;
+      Spe *= 0.04f + 0.96f * std::powf(Clamp(1.f + Dot(Nor, R.Direction), 0.f, 1.f), 5.f);
+      // if( spe>0.001 )
+      Spe *= CalcSoftshadow(Ray(Pos, Ref), 0.02, 2.5);
+      Lin = Lin + Col * 0.60 * Dif * Vector(0.4f, 0.6f, 1.15f);
+      Lin = Lin + 2.00 * Spe * Vector(0.4f, 0.6f, 1.3f) * Ks;
+    }
+
+    Col = Lin;
   }
 
   return Clamp(Col, 0.f, 1.f);
@@ -603,7 +648,7 @@ matrix SetCamera(tup const &Origin, tup const &Ta, float const Cr)
  * @param: Resolution.Y - Vertical resolution.
  * @return: FragColor - The color of the pixel at X,Y.
  */
-tup MainImage(tup const &FragCoord, tup const &Resolution)
+tup MainImage(tup const &FragCoord, mainimage_config const &Cfg)
 {
   ray R{};
   float const Time{};
@@ -612,29 +657,26 @@ tup MainImage(tup const &FragCoord, tup const &Resolution)
   // ---
   // Camera:
   // ---
-  tup const Ta = Vector(0.25f, -0.75f, -0.75f);
+  // tup const Ta = Vector(0.25f, -0.75f, -0.75f);
+  tup const Ta = Vector(0.f, -1.5f, 0.f);
   R.Origin = Ta + Point(4.5f * std::cosf(0.1f * Time + 7.f * Mouse.X),  //!<
-                         2.2f,                                           //!<
-                         4.5f * std::sinf(0.1f * Time + 7.f * Mouse.X)   //!<
+                        2.2f,                                           //!<
+                        4.5f * std::sinf(0.1f * Time + 7.f * Mouse.X)   //!<
                   );
 
   // Camera to World transformation
   // TODO: (Willy Clarke) Move the camera instantiation.
   // static matrix const Ca = SetCamera(R.Origin, Ta, 0.f);
-  static matrix const Ca = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+  // static matrix const Ca = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+  matrix const &Ca = Cfg.MCamera;
 
   tup Tot{};
 
   // ---
   // Pixel coordinates. NOTE: This becomes a vector.
   // ---
-  tup PixelCoord = (2.f * FragCoord - Resolution) / Resolution.Y;
-
-  // ---
-  // Focal length
-  // ---
-  float constexpr FocalLength{2.5f};
-  PixelCoord.Z = FocalLength;
+  tup PixelCoord = (2.f * FragCoord - Cfg.Resolution) / Cfg.Resolution.Y;
+  PixelCoord.Z = Cfg.FocalLength;
 
   // ---
   // Ray direction.
@@ -644,15 +686,16 @@ tup MainImage(tup const &FragCoord, tup const &Resolution)
   // ---
   // Ray differentials
   // ---
-  tup Px = (2.f * (FragCoord + Vector(1.f, 0.f, 0.f)) - Resolution) / Resolution.Y;  // is a vector.
-  Px.Z = FocalLength;
+  tup Px = (2.f * (FragCoord + Vector(1.f, 0.f, 0.f)) - Cfg.Resolution) / Cfg.Resolution.Y;  // is a vector.
+  Px.Z = Cfg.FocalLength;
+  Assert(IsVector(Px), __FUNCTION__, __LINE__);
 
-  tup Py = (2.f * (FragCoord + Vector(0.f, 1.f, 0.f)) - Resolution) / Resolution.Y;  // is a vector.
-  Py.Z = FocalLength;
+  tup Py = (2.f * (FragCoord + Vector(0.f, 1.f, 0.f)) - Cfg.Resolution) / Cfg.Resolution.Y;  // is a vector.
+  Py.Z = Cfg.FocalLength;
+  Assert(IsVector(Py), __FUNCTION__, __LINE__);
 
   tup Rdx = Ca * Normalize(Px);
   tup Rdy = Ca * Normalize(Py);
-
 
   // ---
   // Render
@@ -677,7 +720,9 @@ tup MainImage(tup const &FragCoord, tup const &Resolution)
 canvas RenderSingleThread(camera const &Camera, world const &World)
 {
   canvas Image(Camera.HSize, Camera.VSize);
-  tup const Resolution = tup{float(Camera.HSize), float(Camera.VSize), 0.f, 0.f};
+  mainimage_config Cfg{};
+  Cfg.Resolution = tup(Image.W, Image.H);
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
 
   for (int X = 0; X < Image.W; ++X)
     for (int Y = 0; Y < Image.H; ++Y)
@@ -688,8 +733,8 @@ canvas RenderSingleThread(camera const &Camera, world const &World)
         tup const Color = MainImage(Camera, World, X, Y, World.vPtrObjects[ObjIdx]);
         Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
 #endif
-        tup const FragCoord = tup{float(X), float(Y), 0.f, 0.f};
-        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, Resolution);
+        tup const FragCoord = tup(float(X), float(Y));
+        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, Cfg);
       }
     }
   return Image;
@@ -701,10 +746,10 @@ canvas RenderSingleThread(camera const &Camera, world const &World)
  */
 void RenderBlock(render_block const &RB)
 {
-  world const &World = *RB.ptrWorld;
+  // world const &World = *RB.ptrWorld;
   canvas &Image = *RB.ptrImage;
   camera const &Camera = *RB.ptrCamera;
-  tup const Resolution = tup{float(Camera.HSize), float(Camera.VSize), 0.f, 0.f};
+  tup const Resolution = Point(Camera.HSize, Camera.VSize, 0.f);
 
   for (int Y = RB.VStart;           ///<!
        Y < RB.VStart + RB.VHeigth;  ///<!
@@ -729,8 +774,8 @@ void RenderBlock(render_block const &RB)
           }
         }
 #endif
-        tup const FragCoord = tup{float(X), float(Y), 0.f, 0.f};
-        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, Resolution);
+        tup const FragCoord = Point(X, Y, 0.f);
+        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, RB.Cfg);
       }
     }
   }
@@ -744,6 +789,10 @@ void RenderBlock(render_block const &RB)
  */
 void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
+  mainimage_config Cfg{};
+  Cfg.Resolution = tup(Image.W, Image.H);
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+
   int const NumBlocksH = Camera.NumBlocksH;
   int const NumBlocksV = Camera.NumBlocksV;
   int const HSizeBlock = Camera.HSize / NumBlocksH;
@@ -767,6 +816,7 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
       RB.ptrImage = &Image;
       RB.ptrCamera = &Camera;
       RB.ptrWorld = &World;
+      RB.Cfg = Cfg;
       vRenderBlocks.push_back(RB);
     }
   }

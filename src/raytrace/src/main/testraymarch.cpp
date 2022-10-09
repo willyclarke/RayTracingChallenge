@@ -352,7 +352,7 @@ TEST(RayMarch, Test1)
   // ---
   // NOTE: Write out the result so that it is possible to see whats going on.
   // ---
-  ww::camera Camera = ww::Camera(1256, 1256, ww::Radians(50.f));
+  ww::camera Camera = ww::Camera(512, 512, ww::Radians(50.f));
   Camera.RenderSingleThread = true;
 
   ww::tup const ViewFrom = ww::Point(0.f, 7.0f, -7.f);
@@ -369,7 +369,8 @@ TEST(RayMarch, TestRaymarchPrimitives)
 {
   ww::tup const Coordinates{};
   ww::tup const Resolution{1256.f, 1256.f, 0.f, 0.f};
-  ww::rm::MainImage(Coordinates, Resolution);
+  ww::mainimage_config Cfg{};
+  ww::rm::MainImage(Coordinates, Cfg);
 
   ww::matrix MCoordXform = Matrix22(ww::tup{1.f / Resolution.X, 1.f / Resolution.Y},  //!<
                                     ww::tup{1.f / Resolution.X, 1.f / Resolution.X});

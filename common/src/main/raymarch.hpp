@@ -28,7 +28,7 @@ tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr
  * Mainimage from https://www.shadertoy.com/view/Xds3zN.
  * Shows a lot of raymarching primitives.
  */
-tup MainImage(tup const &FragCoord, tup const &Resolution);
+tup MainImage(tup const &FragCoord, mainimage_config const &Cfg);
 
 /**
  */
