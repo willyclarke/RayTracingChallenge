@@ -396,7 +396,7 @@ struct world
 struct mainimage_config
 {
   static float constexpr FocalLength{2.5f};
-  tup Resolution{256.f, 256.f, 0.f, 0.f};
+  tup Resolution{256.f, 256.f, 0.f, 1.f};
   matrix MCamera{};
 };
 
