@@ -290,7 +290,7 @@ tup Max(tup const &A, float const B) { return tup{std::max(A.X, B), std::max(A.Y
 //------------------------------------------------------------------------------
 tup Mul(float const S, tup const &Tup)
 {
-  tup const Result{S * Tup.X, S * Tup.Y, S * Tup.Z, S * Tup.W};
+  tup const Result{S * Tup.X, S * Tup.Y, S * Tup.Z, Tup.W};
   return (Result);
 }
 
