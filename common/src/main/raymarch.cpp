@@ -20,6 +20,7 @@ namespace ww
 
 namespace rm
 {
+std::mutex gMutexPrint{};
 constexpr int MAX_STEPS = 100;
 constexpr float MAX_DIST = 100.f;
 constexpr float MIN_DIST = 0.001f;
@@ -538,6 +539,7 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
   // ---
   // Raycast scene
   // ---
+
   tup Res = RayCast(R);
   float t = Res.X;
   float M = Res.Y;
@@ -631,7 +633,6 @@ matrix SetCamera(tup const &Origin, tup const &Ta, float const Cr)
   M.R0 = Cu;
   M.R1 = Cv;
   M.R2 = Cw;
-  std::cout << __FUNCTION__ << M << std::endl;
 
   return M;
 }
@@ -721,7 +722,7 @@ canvas RenderSingleThread(camera const &Camera, world const &World)
 {
   canvas Image(Camera.HSize, Camera.VSize);
   mainimage_config Cfg{};
-  Cfg.Resolution = tup(Image.W, Image.H);
+  Cfg.Resolution = Point(Image.W, Image.H, 0.f);
   Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
 
   for (int X = 0; X < Image.W; ++X)
@@ -733,7 +734,7 @@ canvas RenderSingleThread(camera const &Camera, world const &World)
         tup const Color = MainImage(Camera, World, X, Y, World.vPtrObjects[ObjIdx]);
         Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
 #endif
-        tup const FragCoord = tup(float(X), float(Y));
+        tup const FragCoord = Point(X, Y, 0.f);
         Image.vXY[X + Image.W * Y] = MainImage(FragCoord, Cfg);
       }
     }
@@ -790,7 +791,7 @@ void RenderBlock(render_block const &RB)
 void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
-  Cfg.Resolution = tup(Image.W, Image.H);
+  Cfg.Resolution = Point(Image.W, Image.H, 0.f);
   Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
 
   int const NumBlocksH = Camera.NumBlocksH;

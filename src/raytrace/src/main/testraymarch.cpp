@@ -353,11 +353,12 @@ TEST(RayMarch, Test1)
   // NOTE: Write out the result so that it is possible to see whats going on.
   // ---
   ww::camera Camera = ww::Camera(512, 512, ww::Radians(50.f));
-  Camera.RenderSingleThread = true;
+  // Camera.RenderSingleThread = true;
 
   ww::tup const ViewFrom = ww::Point(0.f, 7.0f, -7.f);
   ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
   ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 
   ww::canvas Canvas = ww::rm::Render(Camera, World);
@@ -367,11 +368,12 @@ TEST(RayMarch, Test1)
 //------------------------------------------------------------------------------
 TEST(RayMarch, TestRaymarchPrimitives)
 {
-  ww::tup const Coordinates{};
-  ww::tup const Resolution{1256.f, 1256.f, 0.f, 0.f};
+  ww::tup const Coordinates = ww::Point(0.f, 0.f, 0.f);
   ww::mainimage_config Cfg{};
   ww::rm::MainImage(Coordinates, Cfg);
+  ww::tup const &Resolution = Cfg.Resolution;
 
+  EXPECT_EQ(ww::IsPoint(Cfg.Resolution), ww::IsPoint(ww::Point(0.f, 0.f, 0.f)));
   ww::matrix MCoordXform = Matrix22(ww::tup{1.f / Resolution.X, 1.f / Resolution.Y},  //!<
                                     ww::tup{1.f / Resolution.X, 1.f / Resolution.X});
 
