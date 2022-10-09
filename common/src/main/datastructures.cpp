@@ -235,17 +235,13 @@ float Dot(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
+float NDot(tup const &A, tup const &B) { return A.X * B.X - A.Y * B.Y; }
+
+//------------------------------------------------------------------------------
 /**
  * @return: The dot product of the vector itself.
  */
-float Dot(tup const &A)
-{
-  float const Result = A.X * A.X +  //!<
-                       A.Y * A.Y +  //<!
-                       A.Z * A.Z +  //<!
-                       A.W * A.W;   //<!
-  return (Result);
-}
+float Dot(tup const &A) { return Dot(A, A); }
 
 //------------------------------------------------------------------------------
 bool Equal(float const A, float const B)
@@ -3207,6 +3203,46 @@ tup CheckersGradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
   tup const Color =
       (0 == Floor % 2) ? CheckersPatternAt(Pattern, PatternPoint) : GradientPatternAt(Pattern, PatternPoint);
   return Color;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Description: clamp returns the value of x constrained to the range minVal to maxVal.
+ * The returned value is computed as min(max(x, minVal), maxVal).
+ */
+float Clamp(float X, float MinVal, float MaxVal) { return std::min(std::max(X, MinVal), MaxVal); }
+
+//------------------------------------------------------------------------------
+tup Clamp(tup const &X, float MinVal, float MaxVal)
+{
+  return {
+      Clamp(X.X, MinVal, MaxVal),  //!<
+      Clamp(X.Y, MinVal, MaxVal),  //!<
+      Clamp(X.Z, MinVal, MaxVal),  //!<
+      X.W                          //!<
+  };
+}
+
+//------------------------------------------------------------------------------
+float Sign(float X)
+{
+  if (X < 0.f) return -1.f;
+  return 1.f;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Perform Hermite interpolation between two values
+ * @param: Edge0 - Specifies the value of the lower edge of the Hermite function.
+ * @param: Edge1 - Specifies the value of the upper edge of the Hermite function.
+ * @param: X - Specifies the source value for interpolation.
+ * @return: Interpolated value.
+ */
+float SmoothStep(float Edge0, float Edge1, float X)
+{
+  Assert(Edge1 > Edge0, __FUNCTION__, __LINE__);
+  float const t = Clamp((X - Edge0) / (Edge1 - Edge0), 0.f, 1.f);
+  return t * t * (3.f - 2.f * t);
 }
 };  // namespace ww
 

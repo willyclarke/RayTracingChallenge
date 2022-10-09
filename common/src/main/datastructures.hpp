@@ -391,6 +391,16 @@ struct world
 };
 
 //------------------------------------------------------------------------------
+// \struct mainimage_config
+// Configuration for the main image when raymarching.
+struct mainimage_config
+{
+  static float constexpr FocalLength{2.5f};
+  tup Resolution{256.f, 256.f, 0.f, 0.f};
+  matrix MCamera{};
+};
+
+//------------------------------------------------------------------------------
 // \struct prepare_computation
 // \brief Holds precomputed values for the point in world space where the intersection
 //        occured, the eye vector (pointing back toward the eye, or camera), and the
@@ -450,6 +460,8 @@ tup Cross(tup const &A, tup const &B);
 // ---
 float Dot(tup const &A, tup const &B);
 float Dot(tup const &A);
+// Inigios negative dot product.
+float NDot(tup const &A, tup const &B);
 
 // ---
 // NOTE: For a discussion on how to do comparison with floating point number the following web
@@ -700,6 +712,11 @@ tup RefractedColor(world const &World, prepare_computation const &Comps, int con
 float Schlick(prepare_computation const &Comps);
 
 //------------------------------------------------------------------------------
+float Clamp(float X, float MinVal, float MaxVal);
+tup Clamp(tup const &X, float MinVal, float MaxVal);
+float Sign(float X);
+float SmoothStep(float Edge0, float Edge1, float X);
+//------------------------------------------------------------------------------
 // Functions for testing planes.
 //------------------------------------------------------------------------------
 shape TestShape();
@@ -775,6 +792,7 @@ struct render_block
   canvas *ptrImage{nullptr};
   camera const *ptrCamera{nullptr};
   world const *ptrWorld{nullptr};
+  mainimage_config Cfg{};
 };
 
 };  // namespace ww
