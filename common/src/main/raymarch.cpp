@@ -94,6 +94,18 @@ float sdSphere(tup const &Pos, float S)
 }
 
 //------------------------------------------------------------------------------
+float sdBoxFrame(tup Pos, tup const &Box, float e)
+{
+  Pos = Abs(Pos) - Box;
+  tup const q = Abs(Pos + tup(e, e, e)) - tup(e, e, e);
+
+  return std::fmin(
+      std::fmin(Mag(Max(Vector(Pos.X, q.Y, q.Z), 0.0)) + std::fmin(std::fmax(Pos.X, std::fmax(q.Y, q.Z)), 0.0),   //!<
+                Mag(Max(Vector(q.X, Pos.Y, q.Z), 0.0)) + std::fmin(std::fmax(q.X, std::fmax(Pos.Y, q.Z)), 0.0)),  //!<
+      Mag(Max(Vector(q.X, q.Y, Pos.Z), 0.0)) + std::fmin(std::fmax(q.X, std::fmax(q.Y, Pos.Z)), 0.0)              //!<
+  );
+}
+//------------------------------------------------------------------------------
 // la,lb=semi axis, h=height, ra=corner
 float sdRhombus(tup Pos, float la, float lb, float h, float ra)
 {
@@ -201,6 +213,15 @@ tup Map(tup const &Pos)
     Res = OpU(Res, Point(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
     Res = OpU(Res, Point(sdRhombus(Pos - Vector(-2.f, 0.25f, 1.f), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
   }
+
+  // ---
+  // Bounding box.
+  // ---
+  if (sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  {
+    Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
+  }
+
   return Res;
 }
 
@@ -659,7 +680,7 @@ tup MainImage(tup const &FragCoord, mainimage_config const &Cfg)
   // Camera:
   // ---
   // tup const Ta = Vector(0.25f, -0.75f, -0.75f);
-  tup const Ta = Vector(0.f, -1.5f, 0.f);
+  tup const Ta = Vector(0.5f, -0.5f, -.5f);
   R.Origin = Ta + Point(4.5f * std::cosf(0.1f * Time + 7.f * Mouse.X),  //!<
                         2.2f,                                           //!<
                         4.5f * std::sinf(0.1f * Time + 7.f * Mouse.X)   //!<
