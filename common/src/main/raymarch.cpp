@@ -130,6 +130,20 @@ float sdCappedTorus(tup Pos, tup const &Sc, float RadA, float RadB)
 }
 
 //------------------------------------------------------------------------------
+// vertical
+float sdCone(tup const &Pos, tup const &Center, float H)
+{
+  tup q = H * VectorXY(Center.X, -Center.Y) / Center.Y;
+  tup w = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
+  tup a = w - q * Clamp(Dot(w, q) / Dot(q, q), 0.f, 1.f);
+  tup b = w - q * VectorXY(Clamp(w.X / q.X, 0.f, 1.f), 1.f);
+  float k = Sign(q.Y);
+  float d = std::fmin(Dot(a, a), Dot(b, b));
+  float s = std::fmax(k * (w.X * q.Y - w.Y * q.X), k * (w.Y - q.Y));
+  return std::sqrtf(d)*Sign(s);
+}
+
+//------------------------------------------------------------------------------
 // LenA,LenB = semi axis, H=height, Rad = corner radius
 float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
 {
@@ -251,11 +265,12 @@ tup Map(tup const &Pos)
     Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f),
                                        Vector(0.866025f, -0.5f, 0.f), 0.25f, 0.05f),
                          25.f, 0.f));
-    // Res = OpU(Res, Point(sdCappedTorus((Pos - Vector(0.f, 0.3f, 1.f)) * Vector(1.f, -1.f, 1.f), Vector(0.866025f, -0.5f,
-    // 0.f),
+    // Res = OpU(Res, Point(sdCappedTorus((Pos - Vector(0.f, 0.3f, 1.f)) * Vector(1.f, -1.f, 1.f), Vector(0.866025f,
+    // -0.5f, 0.f),
     //                                    0.25f, 0.05f),
     //                      25.f, 0.f));
     Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
+    Res = OpU(Res, Point(sdCone(Pos - Vector(0.0, 0.45, -1.0), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
   }
 
   // ---
