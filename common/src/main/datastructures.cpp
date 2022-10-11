@@ -383,6 +383,20 @@ tup Vector(float A, float B, float C)
 }
 
 //------------------------------------------------------------------------------
+tup VectorXZY(float X, float Y, float Z)
+{
+  tup Result{X, Z, Y, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorXZY(tup const &A)
+{
+  tup Result{A.X, A.Z, A.Y, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
 /**
  * Convert from degrees to radians.
  */
