@@ -398,6 +398,16 @@ tup VectorXZY(tup const &A)
 
 //------------------------------------------------------------------------------
 /**
+ * @return: Vector with Z=0.
+ */
+tup VectorXY(tup const &A)
+{
+  tup Result{A.X, A.Y, 0.f, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
  * Convert from degrees to radians.
  */
 float Radians(float Deg) { return (PI_F * Deg / 180.f); }

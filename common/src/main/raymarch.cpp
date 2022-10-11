@@ -122,6 +122,14 @@ float sdTorus(tup const &Pos, tup const &t)
 }
 
 //------------------------------------------------------------------------------
+float sdCappedTorus(tup Pos, tup const &Sc, float RadA, float RadB)
+{
+  Pos.X = abs(Pos.X);
+  float k = (Sc.Y * Pos.X > Sc.X * Pos.Y) ? Dot(VectorXY(Pos), Sc) : Mag(VectorXY(Pos));
+  return std::sqrtf(Dot(Pos, Pos) + RadA * RadA - 2.0 * RadA * k) - RadB;
+}
+
+//------------------------------------------------------------------------------
 // LenA,LenB = semi axis, H=height, Rad = corner radius
 float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
 {
@@ -239,6 +247,14 @@ tup Map(tup const &Pos)
   // ---
   if (sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
+    static matrix const MCappedTorus = TranslateScaleRotate(0.f, 0.3, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f),
+                                       Vector(0.866025, -0.5, 0.f), 0.25, 0.05),
+                         25.0, 0.f));
+    // Res = OpU(Res, Point(sdCappedTorus((Pos - Vector(0.0, 0.30, 1.0)) * Vector(1, -1, 1), Vector(0.866025, -0.5,
+    // 0.f),
+    //                                    0.25, 0.05),
+    //                      25.0, 0.f));
     Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
   }
 

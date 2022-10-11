@@ -494,6 +494,7 @@ tup Sin(tup const &Input);
 tup Vector(float A, float B, float C);
 tup VectorXZY(float X, float Y, float Z);
 tup VectorXZY(tup const &A);
+tup VectorXY(tup const &A);
 
 // ---
 // NOTE: Canvas declarations.
