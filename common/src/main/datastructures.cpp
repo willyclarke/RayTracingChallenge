@@ -390,6 +390,13 @@ tup VectorXZY(float X, float Y, float Z)
 }
 
 //------------------------------------------------------------------------------
+tup VectorXY(float X, float Y)
+{
+  tup Result{X, Y, 0.f, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
 tup VectorXZY(tup const &A)
 {
   tup Result{A.X, A.Z, A.Y, 0.f};
@@ -403,6 +410,16 @@ tup VectorXZY(tup const &A)
 tup VectorXY(tup const &A)
 {
   tup Result{A.X, A.Y, 0.f, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: Vector where Z->Y and the resulting Z=0.
+ */
+tup VectorXZ(tup const &A)
+{
+  tup Result{A.X, A.Z, 0.f, 0.f};
   return (Result);
 }
 
