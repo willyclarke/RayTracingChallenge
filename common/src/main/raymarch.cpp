@@ -74,23 +74,23 @@ float SdfSphere(tup const &Center, float Radius, tup const &P)
  */
 
 //------------------------------------------------------------------------------
-float sdBox(tup const &Pos, tup const &Box)
-{
-  tup Distance = Abs(Pos) - Box;
-  float const Result = std::min(std::max(Distance.X, std::max(Distance.Y, Distance.Z)),  //!<
-                                0.f)                                                     //!<
-                       + Mag(Max(Distance, 0.f));
-  // std::cout << __FUNCTION__ << ". Distance: " << Distance << ". Lenght: " << Mag(Distance) << ". Result: " << Result
-  //           << std::endl;
-
-  return Result;
-}
+float sdPlane(tup const &Pos) { return Pos.Y; }
 
 //------------------------------------------------------------------------------
 float sdSphere(tup const &Pos, float S)
 {
   Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
   return Mag(Pos - Point(0.f, 0.f, 0.f)) - S;
+}
+
+//------------------------------------------------------------------------------
+float sdBox(tup const &Pos, tup const &Box)
+{
+  tup Distance = Abs(Pos) - Box;
+  float const Result = std::fmin(std::fmax(Distance.X, std::fmax(Distance.Y, Distance.Z)),  //!<
+                                 0.f)                                                       //!<
+                       + Mag(Max(Distance, 0.f));
+  return Result;
 }
 
 //------------------------------------------------------------------------------
@@ -105,17 +105,32 @@ float sdBoxFrame(tup Pos, tup const &Box, float e)
       Mag(Max(Vector(q.X, q.Y, Pos.Z), 0.0)) + std::fmin(std::fmax(q.X, std::fmax(q.Y, Pos.Z)), 0.0)              //!<
   );
 }
+
 //------------------------------------------------------------------------------
-// la,lb=semi axis, h=height, ra=corner
-float sdRhombus(tup Pos, float la, float lb, float h, float ra)
+float sdEllipsoid(tup const &Pos, tup const &Rad)  // approximated
+{
+  float k0 = Mag(Pos / Rad);
+  float k1 = Mag(Pos / (Rad * Rad));
+  return k0 * (k0 - 1.0) / k1;
+}
+
+//------------------------------------------------------------------------------
+float sdTorus(tup const &Pos, tup const &t)
+{
+  float Result = Mag(tup(Mag(tup(Pos.X, Pos.Z)) - t.X, Pos.Y)) - t.Y;
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+// LenA,LenB = semi axis, H=height, Rad = corner radius
+float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
 {
   Pos = Abs(Pos);
-  tup B = Vector(la, lb, 0.f);
+  tup B = Vector(LenA, LenB, 0.f);
   float F = Clamp(NDot(B, B - 2.f * tup(Pos.X, Pos.Z)) / Dot(B, B), -1.f, 1.f);
-  tup Q = tup(Mag(tup(Pos.X, Pos.Z) - 0.5f * B * tup(1.f - F, 1.f + F))  //!<
-                      * Sign(Pos.X * B.Y + Pos.Z * B.X - B.X * B.Y) -
-                  ra,  //!<
-              Pos.Y - h);
+  tup Q =
+      tup(Mag(tup(Pos.X, Pos.Z) - 0.5f * B * tup(1.f - F, 1.f + F)) * Sign(Pos.X * B.Y + Pos.Z * B.X - B.X * B.Y) - Rad,
+          Pos.Y - H);
   float Result = std::fmin(std::fmax(Q.X, Q.Y), 0.f) + Mag(Max(Q, 0.f));
   return Result;
 }
@@ -193,6 +208,9 @@ float GetDistance(tup const &P, world const &World)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * Operation union
+ */
 tup OpU(tup const &D1, tup const &D2) { return (D1.X < D2.X) ? D1 : D2; }
 
 //------------------------------------------------------------------------------
@@ -211,7 +229,9 @@ tup Map(tup const &Pos)
   if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
   {
     Res = OpU(Res, Point(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
-    Res = OpU(Res, Point(sdRhombus(Pos - Vector(-2.f, 0.25f, 1.f), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    // Res = OpU(Res, Point(sdRhombus(Pos - Vector(-2.f, 0.25f, 1.f), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    static matrix const MRhombus = TranslateScaleRotate(-2.f, 0.45f, 1.f, 1.5f, 1.5f, 1.5f, 0.f, 0.78f, -1.5708f);
+    Res = OpU(Res, Point(sdRhombus(Inverse(MRhombus) * Pos, 0.15f, 0.25f, 0.08f, 0.08f), 17.f, 0.f));
   }
 
   // ---
@@ -220,6 +240,15 @@ tup Map(tup const &Pos)
   if (sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
+  }
+
+  // ---
+  // Bounding box
+  // ---
+  if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  {
+    Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)), Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
+    Res = OpU(Res, Point(sdBox(Pos - Point(1.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
   }
 
   return Res;
@@ -345,8 +374,8 @@ tup Lighting(material const &Material, light const &Light, tup const &P, tup con
   {
     return Ambient;
   }
-  // std::cout << __FUNCTION__ << ". LightDotNormal: " << LightDotNormal << ". Ambient:" << Ambient << ". Intensity:" <<
-  // Light.Intensity << std::endl;
+  // std::cout << __FUNCTION__ << ". LightDotNormal: " << LightDotNormal << ". Ambient:" << Ambient << ". Intensity:"
+  // << Light.Intensity << std::endl;
 
   Diffuse = EffectiveColor * Material.Diffuse * LightDotNormal;
 
