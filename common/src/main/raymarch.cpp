@@ -130,6 +130,15 @@ float sdCappedTorus(tup Pos, tup const &Sc, float RadA, float RadB)
 }
 
 //------------------------------------------------------------------------------
+float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad)
+{
+  tup pa = Pos - A;
+  tup ba = B - A;
+  float h = Clamp(Dot(pa, ba) / Dot(ba), 0.f, 1.f);
+  return Mag(pa - ba * h) - Rad;
+}
+
+//------------------------------------------------------------------------------
 // vertical
 float sdCone(tup const &Pos, tup const &Center, float H)
 {
@@ -154,6 +163,16 @@ float sdCappedCone(tup const &Pos, float H, float Rad1, float Rad2)
   tup cb = q - k1 + k2 * Clamp(Dot(k1 - q, k2) / Dot(k2), 0.f, 1.f);
   float s = (cb.X < 0.f && ca.Y < 0.f) ? -1.f : 1.f;
   return s * std::sqrtf(std::fmin(Dot(ca), Dot(cb)));
+}
+
+//------------------------------------------------------------------------------
+// c is the sin/cos of the desired cone angle
+float sdSolidAngle(tup pos, tup c, float ra)
+{
+  tup p = VectorXY(Mag(VectorXZ(pos)), pos.Y);
+  float l = Mag(p) - ra;
+  float m = Mag(p - c * Clamp(Dot(p, c), 0.f, ra));
+  return std::fmax(l, m * Sign(c.Y * p.X - c.X * p.Y));
 }
 
 //------------------------------------------------------------------------------
@@ -278,13 +297,10 @@ tup Map(tup const &Pos)
     Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f),
                                        Vector(0.866025f, -0.5f, 0.f), 0.25f, 0.05f),
                          25.f, 0.f));
-    // Res = OpU(Res, Point(sdCappedTorus((Pos - Vector(0.f, 0.3f, 1.f)) * Vector(1.f, -1.f, 1.f), Vector(0.866025f,
-    // -0.5f, 0.f),
-    //                                    0.25f, 0.05f),
-    //                      25.f, 0.f));
     Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
     Res = OpU(Res, Point(sdCone(Pos - Vector(0.f, 0.45f, -1.f), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
     Res = OpU(Res, Point(sdCappedCone(Pos - Vector(0.f, 0.25f, -2.f), 0.25f, 0.25f, 0.1f), 13.67f, 0.f));
+    Res = OpU(Res, Point(sdSolidAngle(Pos - Vector(0.f, 0.f, -3.f), VectorXY(3.f, 4.f) / 5.f, 0.4f), 49.13f, 0.f));
   }
 
   // ---
@@ -294,6 +310,9 @@ tup Map(tup const &Pos)
   {
     Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)), Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
     Res = OpU(Res, Point(sdBox(Pos - Point(1.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
+    Res = OpU(Res, Point(sdCapsule(Pos - Point(1.f, 0.f, -1.f), Vector(-0.1f, 0.1f, -0.1f),  //!<
+                                   Vector(0.2f, 0.4f, 0.2f), 0.1f),
+                         31.9f, 0.f));
   }
 
   return Res;
