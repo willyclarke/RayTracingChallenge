@@ -140,7 +140,20 @@ float sdCone(tup const &Pos, tup const &Center, float H)
   float k = Sign(q.Y);
   float d = std::fmin(Dot(a, a), Dot(b, b));
   float s = std::fmax(k * (w.X * q.Y - w.Y * q.X), k * (w.Y - q.Y));
-  return std::sqrtf(d)*Sign(s);
+  return std::sqrtf(d) * Sign(s);
+}
+
+//------------------------------------------------------------------------------
+float sdCappedCone(tup const &Pos, float H, float Rad1, float Rad2)
+{
+  tup q = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
+
+  tup k1 = VectorXY(Rad2, H);
+  tup k2 = VectorXY(Rad2 - Rad1, 2.f * H);
+  tup ca = VectorXY(q.X - std::fmin(q.X, (q.Y < 0.f) ? Rad1 : Rad2), std::abs(q.Y) - H);
+  tup cb = q - k1 + k2 * Clamp(Dot(k1 - q, k2) / Dot(k2), 0.f, 1.f);
+  float s = (cb.X < 0.f && ca.Y < 0.f) ? -1.f : 1.f;
+  return s * std::sqrtf(std::fmin(Dot(ca), Dot(cb)));
 }
 
 //------------------------------------------------------------------------------
@@ -270,7 +283,8 @@ tup Map(tup const &Pos)
     //                                    0.25f, 0.05f),
     //                      25.f, 0.f));
     Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
-    Res = OpU(Res, Point(sdCone(Pos - Vector(0.0, 0.45, -1.0), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
+    Res = OpU(Res, Point(sdCone(Pos - Vector(0.f, 0.45f, -1.f), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
+    Res = OpU(Res, Point(sdCappedCone(Pos - Vector(0.f, 0.25f, -2.f), 0.25f, 0.25f, 0.1f), 13.67f, 0.f));
   }
 
   // ---
