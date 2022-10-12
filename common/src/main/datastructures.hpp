@@ -395,7 +395,7 @@ struct world
 // Configuration for the main image when raymarching.
 struct mainimage_config
 {
-  static float constexpr FocalLength{2.5f};
+  static float constexpr FocalLength{1.0f};
   tup Resolution{256.f, 256.f, 0.f, 1.f};
   matrix MCamera{};
 };

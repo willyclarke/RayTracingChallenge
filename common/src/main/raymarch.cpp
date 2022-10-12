@@ -887,7 +887,7 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
-  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.35f * 0.78f, 0.f);
 
   int const NumBlocksH = Camera.NumBlocksH;
   int const NumBlocksV = Camera.NumBlocksV;
