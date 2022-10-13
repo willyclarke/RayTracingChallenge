@@ -21,6 +21,7 @@ namespace ww
 namespace rm
 {
 std::mutex gMutexPrint{};
+std::atomic<bool> gPrintMe{true};
 constexpr int MAX_STEPS = 100;
 constexpr float MAX_DIST = 100.f;
 constexpr float MIN_DIST = 0.001f;
@@ -86,6 +87,8 @@ float sdSphere(tup const &Pos, float S)
 //------------------------------------------------------------------------------
 float sdBox(tup const &Pos, tup const &Box)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(Box), __PRETTY_FUNCTION__, __LINE__);
   tup Distance = Abs(Pos) - Box;
   float const Result = std::fmin(std::fmax(Distance.X, std::fmax(Distance.Y, Distance.Z)),  //!<
                                  0.f)                                                       //!<
@@ -130,12 +133,49 @@ float sdCappedTorus(tup Pos, tup const &Sc, float RadA, float RadB)
 }
 
 //------------------------------------------------------------------------------
+float sdHexPrism(tup Pos, tup const &H)
+{
+  Pos = Abs(Pos);
+
+  tup const k = Vector(-0.8660254f, 0.5f, 0.57735f);
+  Pos = Pos - VectorXY(2.f * std::fmin(Dot(VectorXY(k), VectorXY(Pos)), 0.f) * VectorXY(k));
+  tup const d = VectorXY(Mag(VectorXY(Pos) - VectorXY(Clamp(Pos.X, -k.Z * H.X, k.Z * H.X), H.X)) * Sign(Pos.Y - H.X),
+                         Pos.Z - H.Y);
+  return std::fmin(std::fmax(d.X, d.Y), 0.0f) + Mag(Max(d, 0.f));
+}
+
+//------------------------------------------------------------------------------
 float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad)
 {
   tup pa = Pos - A;
   tup ba = B - A;
   float h = Clamp(Dot(pa, ba) / Dot(ba), 0.f, 1.f);
   return Mag(pa - ba * h) - Rad;
+}
+
+//------------------------------------------------------------------------------
+// vertical
+float sdCylinder(tup const &Pos, tup const &H)
+{
+  tup d = Abs(VectorXY(Mag(VectorXZ(Pos)), Pos.Y)) - H;
+  return std::min(std::max(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
+}
+
+//------------------------------------------------------------------------------
+// arbitrary orientation
+float sdCylinder(tup const &Pos, tup const &A, tup const &B, float Rad)
+{
+  tup pa = Pos - A;
+  tup ba = B - A;
+  float baba = Dot(ba, ba);
+  float paba = Dot(pa, ba);
+
+  float x = Mag(pa * baba - ba * paba) - Rad * baba;
+  float y = std::fabs(paba - baba * 0.5f) - baba * 0.5f;
+  float x2 = x * x;
+  float y2 = y * y * baba;
+  float d = (std::fmax(x, y) < 0.f) ? -std::fmin(x2, y2) : (((x > 0.f) ? x2 : 0.f) + ((y > 0.f) ? y2 : 0.f));
+  return Sign(d) * std::sqrtf(std::fabs(d)) / baba;
 }
 
 //------------------------------------------------------------------------------
@@ -313,6 +353,32 @@ tup Map(tup const &Pos)
     Res = OpU(Res, Point(sdCapsule(Pos - Point(1.f, 0.f, -1.f), Vector(-0.1f, 0.1f, -0.1f),  //!<
                                    Vector(0.2f, 0.4f, 0.2f), 0.1f),
                          31.9f, 0.f));
+    Res = OpU(Res, Point(sdCylinder(Pos - Point(1.f, 0.25f, -2.f), VectorXY(0.15f, 0.25f)), 8.f, 0.f));
+    Res = OpU(Res, Point(sdHexPrism(Pos - Vector(1.f, 0.2f, -3.f), VectorXY(0.2f, 0.05f)), 18.4f, 0.f));
+  }
+
+  // bounding box
+  if (sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  {
+    // res = opU( res, vec2( sdPyramid(    pos-vec3(-1.0,-0.6,-3.0), 1.0 ), 13.56 ) );
+    // res = opU( res, vec2( sdOctahedron( pos-vec3(-1.0,0.15,-2.0), 0.35 ), 23.56 ) );
+    // res = opU( res, vec2( sdTriPrism(   pos-vec3(-1.0,0.15,-1.0), vec2(0.3,0.05) ),43.5 ) );
+    // res = opU( res, vec2( sdEllipsoid(  pos-vec3(-1.0,0.25, 0.0), vec3(0.2, 0.25, 0.05) ), 43.17 ) );
+    // res = opU( res, vec2( sdHorseshoe(  pos-vec3(-1.0,0.25, 1.0), vec2(cos(1.3),sin(1.3)), 0.2, 0.3, vec2(0.03,0.08)
+    // ), 11.5 ) );
+  }
+
+  // bounding box
+  if (sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  {
+    // res = opU( res, vec2( sdOctogonPrism(pos-vec3( 2.0,0.2,-3.0), 0.2, 0.05), 51.8 ) );
+    Res = OpU(Res, Point(sdCylinder(Pos - Point(2.f, 0.14f, -2.f), Vector(0.1f, -0.1f, 0.f), Vector(-0.2f, 0.35f, 0.1f),
+                                    0.08f),
+                         31.2f, 0.f));
+    // res = opU( res, vec2( sdCappedCone(  pos-vec3( 2.0,0.09,-1.0), vec3(0.1,0.0,0.0),
+    // vec3(-0.2,0.40,0.1), 0.15, 0.05), 46.1 ) ); res = opU( res, vec2( sdRoundCone(   pos-vec3( 2.0,0.15, 0.0),
+    // vec3(0.1,0.0,0.0), vec3(-0.1,0.35,0.1), 0.15, 0.05), 51.7 ) ); res = opU( res, vec2( sdRoundCone(
+    // pos-vec3( 2.0,0.20, 1.0), 0.2, 0.1, 0.3 ), 37.0 ) );
   }
 
   return Res;
@@ -906,7 +972,7 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
-  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.35f * 0.78f, 0.f);
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -Radians(90.f), 0.f);
 
   int const NumBlocksH = Camera.NumBlocksH;
   int const NumBlocksV = Camera.NumBlocksV;
