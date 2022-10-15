@@ -216,6 +216,67 @@ float sdSolidAngle(tup pos, tup c, float ra)
 }
 
 //------------------------------------------------------------------------------
+float sdOctahedron(tup p, float s)
+{
+  p = Abs(p);
+  float m = p.X + p.Y + p.Z - s;
+
+// exact distance
+#if 0
+  tup o = Min(3.f * p - Vector(m, m, m), 0.f);
+  o = Max(6.f * p - Vector(m, m, m) * 2.f - o * 3.f + Vector(o.X + o.Y + o.Z, o.X + o.Y + o.Z, o.X + o.Y + o.Z), 0.f);
+  return Mag(p - s * o / (o.X + o.Y + o.Z));
+#endif
+
+// exact distance
+#if 1
+  tup q{};
+  if (3.f * p.X < m)
+    q = VectorXYZ(p);
+  else if (3.f * p.Y < m)
+    q = VectorYZX(p);
+  else if (3.f * p.Z < m)
+    q = VectorZXY(p);
+  else
+    return m * 0.57735027f;
+  float k = Clamp(0.5f * (q.Z - q.Y + s), 0.f, s);
+  return Mag(Vector(q.X, q.Y - s + k, q.Z - k));
+#endif
+
+// bound, not exact
+#if 0
+  return m * 0.57735027f;
+#endif
+}
+
+//------------------------------------------------------------------------------
+float sdPyramid(tup Pos, float H)
+{
+  float m2 = H * H + 0.25f;
+
+  // symmetry
+  Pos = Vector(std::abs(Pos.X), Pos.Y, std::abs(Pos.Z));
+  Pos = (Pos.Z > Pos.X) ? Vector(Pos.Z, Pos.Y, Pos.X) : Vector(Pos.X, Pos.Y, Pos.Z);
+  Pos.X -= 0.5f;
+  Pos.Z -= 0.5f;
+  // ==
+
+  // project into face plane (2D)
+  tup q = Vector(Pos.Z, H * Pos.Y - 0.5f * Pos.X, H * Pos.X + 0.5f * Pos.Y);
+
+  float s = std::fmax(-q.X, 0.f);
+  float t = Clamp((q.Y - 0.5f * Pos.Z) / (m2 + 0.25f), 0.f, 1.f);
+
+  float a = m2 * (q.X + s) * (q.X + s) + q.Y * q.Y;
+  float b = m2 * (q.X + 0.5f * t) * (q.X + 0.5f * t) + (q.Y - m2 * t) * (q.Y - m2 * t);
+
+  float d2 = std::fmin(q.Y, -q.X * m2 - q.Y * 0.5f) > 0.f ? 0.f : std::fmin(a, b);
+
+  // recover 3D and scale, and add sign
+  return std::sqrtf((d2 + q.Z * q.Z) / m2) * Sign(std::fmax(q.Z, -Pos.Y));
+}
+
+//------------------------------------------------------------------------------
 // LenA,LenB = semi axis, H=height, Rad = corner radius
 float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
 {
@@ -305,7 +366,16 @@ float GetDistance(tup const &P, world const &World)
 /**
  * Operation union
  */
-tup OpU(tup const &D1, tup const &D2) { return (D1.X < D2.X) ? D1 : D2; }
+tup OpU(tup const &D1, tup const &D2, char const *pStr = nullptr)
+{
+  if (pStr && !(D1.X < D2.X))
+  {
+    gMutexPrint.lock();
+    std::cout << "Got hit with D:" << D2 << std::string(pStr) << std::endl;
+    gMutexPrint.unlock();
+  }
+  return (D1.X < D2.X) ? D1 : D2;
+}
 
 //------------------------------------------------------------------------------
 /**
@@ -320,7 +390,7 @@ tup Map(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (false && sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
   {
     Res = OpU(Res, Point(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
     // Res = OpU(Res, Point(sdRhombus(Pos - Vector(-2.f, 0.25f, 1.f), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
@@ -331,7 +401,7 @@ tup Map(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     static matrix const MCappedTorus = TranslateScaleRotate(0.f, 0.3f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
     Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f),
@@ -346,22 +416,28 @@ tup Map(tup const &Pos)
   // ---
   // Bounding box
   // ---
-  if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
-    Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)), Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
-    Res = OpU(Res, Point(sdBox(Pos - Point(1.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
-    Res = OpU(Res, Point(sdCapsule(Pos - Point(1.f, 0.f, -1.f), Vector(-0.1f, 0.1f, -0.1f),  //!<
-                                   Vector(0.2f, 0.4f, 0.2f), 0.1f),
-                         31.9f, 0.f));
+    // Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)), Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
+    // Res = OpU(Res, Point(sdBox(Pos - Point(1.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
+    // Res = OpU(Res, Point(sdCapsule(Pos - Point(1.f, 0.f, -1.f), Vector(-0.1f, 0.1f, -0.1f),  //!<
+    //                                Vector(0.2f, 0.4f, 0.2f), 0.1f),
+    //                      31.9f, 0.f));
     Res = OpU(Res, Point(sdCylinder(Pos - Point(1.f, 0.25f, -2.f), VectorXY(0.15f, 0.25f)), 8.f, 0.f));
     Res = OpU(Res, Point(sdHexPrism(Pos - Vector(1.f, 0.2f, -3.f), VectorXY(0.2f, 0.05f)), 18.4f, 0.f));
   }
 
   // bounding box
-  if (sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  if (true && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
   {
-    // res = opU( res, vec2( sdPyramid(    pos-vec3(-1.0,-0.6,-3.0), 1.0 ), 13.56 ) );
-    // res = opU( res, vec2( sdOctahedron( pos-vec3(-1.0,0.15,-2.0), 0.35 ), 23.56 ) );
+    Res = OpU(Res, Point(sdPyramid(Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
+    // gMutexPrint.lock();
+    // tup PyramidTst = Point(sdPyramid(Pos - Vector(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f);
+    // Res = OpU(Res, PyramidTst);
+    // std::cout << "Res.X: " << Res.X << ". PyramidTst.X:" << PyramidTst.X << std::endl;
+    // gMutexPrint.unlock();
+
+    Res = OpU(Res, Point(sdOctahedron(Pos - Point(-1.f, 0.15f, -2.f), 0.35f), 23.56f, 0.f));
     // res = opU( res, vec2( sdTriPrism(   pos-vec3(-1.0,0.15,-1.0), vec2(0.3,0.05) ),43.5 ) );
     // res = opU( res, vec2( sdEllipsoid(  pos-vec3(-1.0,0.25, 0.0), vec3(0.2, 0.25, 0.05) ), 43.17 ) );
     // res = opU( res, vec2( sdHorseshoe(  pos-vec3(-1.0,0.25, 1.0), vec2(cos(1.3),sin(1.3)), 0.2, 0.3, vec2(0.03,0.08)
@@ -369,7 +445,7 @@ tup Map(tup const &Pos)
   }
 
   // bounding box
-  if (sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // res = opU( res, vec2( sdOctogonPrism(pos-vec3( 2.0,0.2,-3.0), 0.2, 0.05), 51.8 ) );
     Res = OpU(Res, Point(sdCylinder(Pos - Point(2.f, 0.14f, -2.f), Vector(0.1f, -0.1f, 0.f), Vector(-0.2f, 0.35f, 0.1f),
@@ -381,7 +457,7 @@ tup Map(tup const &Pos)
     // pos-vec3( 2.0,0.20, 1.0), 0.2, 0.1, 0.3 ), 37.0 ) );
   }
 
-  return Res;
+  return VectorXY(Res);
 }
 
 //------------------------------------------------------------------------------
