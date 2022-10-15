@@ -221,28 +221,12 @@ float sdRoundCone(tup Pos, tup A, tup B, float Rad1, float Rad2)
 }
 
 //------------------------------------------------------------------------------
+//
 // FIXME: (Willy Clarke) : The sdTriPrism does not work yet.
 float sdTriPrism(tup Pos, tup H)
 {
-  Assert(IsVector(Pos), __FUNCTION__, __LINE__);
-  float const OrigZ = Pos.Z;
-  float const k = std::sqrtf(3.f);
-  H.X *= 0.5f * k;
-  Pos.X /= H.X;
-  Pos.Y /= H.X;
-  Pos.X = std::fabs(Pos.X) - 1.f;
-  Pos.Y = Pos.Y + 1.f / k;
-  if (Pos.X + k * Pos.Y > 0.f)
-  {
-    Pos.X = (Pos.X - k * Pos.Y) / 2.f;
-    Pos.Y = (-k * Pos.X - Pos.Y) / 2.f;
-  }
-
-  Pos.X -= Clamp(Pos.X, -2.f, 0.f);
-  float d1 = Mag(VectorXY(Pos)) * Sign(-Pos.Y) * H.X;
-  float d2 = std::fabs(Pos.Z) - H.Y;
-  Assert(OrigZ == Pos.Z, __PRETTY_FUNCTION__, __LINE__);
-  return Mag(Max(VectorXY(d1, d2), 0.f)) + std::fmin(std::fmax(d1, d2), 0.f);
+  tup q = Abs(Pos);
+  return std::fmax(q.Z - H.Y, std::fmax(q.X * 0.866025f + Pos.Y * 0.5f, -Pos.Y) - H.X * 0.5f);
 }
 
 //------------------------------------------------------------------------------
