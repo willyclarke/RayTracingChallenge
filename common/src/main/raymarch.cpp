@@ -221,8 +221,6 @@ float sdRoundCone(tup Pos, tup A, tup B, float Rad1, float Rad2)
 }
 
 //------------------------------------------------------------------------------
-//
-// FIXME: (Willy Clarke) : The sdTriPrism does not work yet.
 float sdTriPrism(tup Pos, tup H)
 {
   tup q = Abs(Pos);
@@ -391,7 +389,6 @@ float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
 }
 
 //------------------------------------------------------------------------------
-// FIXME: (Willy Clarke) : The sdHorseshoe does not work yet.
 float sdHorseshoe(tup p, tup c, float r, float le, tup w)
 {
   p.X = abs(p.X);
@@ -401,17 +398,23 @@ float sdHorseshoe(tup p, tup c, float r, float le, tup w)
 
   // p.xy = mat2(-c.x, c.y, c.y, c.x) * p.xy;
   tup pXY = M * VectorXY(p);
+  p.X = pXY.X;
+  p.Y = pXY.Y;
 
   // p.xy = vec2((p.y > 0.0 || p.x > 0.0) ? p.x : l * sign(-c.x), (p.x > 0.0) ? p.y : l);
   p.X = (p.Y > 0.f || p.X > 0.f) ? p.X : l * Sign(-c.X);
   p.Y = (p.X > 0.f) ? p.Y : l;
 
   // p.xy = vec2(p.x, abs(p.y - r)) - vec2(le, 0.0);
-  p.X = p.X - le;
-  p.Y = std::fabs(p.Y - r);
+  tup pXY2 = VectorXY(p.X, std::fabs(p.Y - r)) - VectorXY(le, 0.f);
+  p.X = pXY2.X;
+  p.Y = pXY2.Y;
 
+  // vec2 q = vec2(length(max(p.xy,0.0)) + min(0.0,max(p.x,p.y)),p.z);
   tup q = VectorXY(Mag(Max(VectorXY(p), 0.f)) + std::fmin(0.f, std::fmax(p.X, p.Y)), p.Z);
   tup d = Abs(q) - w;
+
+  // return min(max(d.x,d.y),0.0) + length(max(d,0.0));
   return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
 }
 
