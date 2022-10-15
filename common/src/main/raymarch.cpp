@@ -145,40 +145,30 @@ float sdHexPrism(tup Pos, tup const &H)
 }
 
 //------------------------------------------------------------------------------
-// FIXME: (Willy Clarke) : The sdOctogonPrism does not work yet.
-float sdOctogonPrism(tup p, float r, float h)
+float sdOctogonPrism(tup Pos, float Rad, float H)
 {
   tup const k = Vector(-0.9238795325f,  // sqrt(2+sqrt(2))/2
                        0.3826834323f,   // sqrt(2-sqrt(2))/2
                        0.4142135623f);  // sqrt(2)-1
   // reflections
-  p = Abs(p);
+  Pos = Abs(Pos);
   // p.xy -= 2.0*min(dot(vec2( k.x,k.y),p.xy),0.0)*vec2( k.x,k.y);
-  p.X = p.X - 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(p)), 0.0);
-  p.Y = p.Y - 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(p)), 0.0);
-  {
-    tup pXY = p * VectorXY(k.X, k.Y);
-    p.X = pXY.X;
-    p.Y = pXY.Y;
-  }
+  float pM1 = 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(Pos)), 0.f);
+  Pos = Pos - pM1 * VectorXY(k.X, k.Y);
 
   // p.xy -= 2.0 * min(dot(vec2(-k.x, k.y), p.xy), 0.0) * vec2(-k.x, k.y);
-  p.X = p.X - 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(p)), 0.0);
-  p.Y = p.Y - 2.f * std::fmin(Dot(VectorXY(-k.X, k.Y), VectorXY(p)), 0.0);
-  {
-    tup pXY = p * VectorXY(-k.X, k.Y);
-    p.X = pXY.X;
-    p.Y = pXY.Y;
-  }
+  float pM2 = 2.f * std::fmin(Dot(VectorXY(-k.X, k.Y), VectorXY(Pos)), 0.f);
+  Pos = Pos - pM2 * VectorXY(k.X, k.Y);
 
   // polygon side
   // p.xy -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
-  // FIXME: (Willy Clarke) : Avoid the double calculation of VectorXY.
-  p.X = p.X - VectorXY(Clamp(p.X, -k.Z * r, k.Z * r), r).X;
-  p.Y = p.Y - VectorXY(Clamp(p.X, -k.Z * r, k.Z * r), r).Y;
+  tup pM3 = VectorXY(Clamp(Pos.X, -k.Z * Rad, k.Z * Rad), Rad);
+  Pos.X = Pos.X - pM3.X;
+  Pos.Y = Pos.Y - pM3.Y;
+
   // vec2 d = vec2(length(p.xy) * sign(p.y), p.z - h);
-  tup d = VectorXY(Mag(VectorXY(p)) * Sign(p.Y), p.Z - h);
-  return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
+  tup d = VectorXY(Mag(VectorXY(Pos)) * Sign(Pos.Y), Pos.Z - H);
+  return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.f));
 }
 
 //------------------------------------------------------------------------------
@@ -562,7 +552,7 @@ tup Map(tup const &Pos)
   }
 
   // bounding box
-  if (true && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdPyramid(   Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
