@@ -145,12 +145,114 @@ float sdHexPrism(tup Pos, tup const &H)
 }
 
 //------------------------------------------------------------------------------
+// FIXME: (Willy Clarke) : The sdOctogonPrism does not work yet.
+float sdOctogonPrism(tup p, float r, float h)
+{
+  tup const k = Vector(-0.9238795325f,  // sqrt(2+sqrt(2))/2
+                       0.3826834323f,   // sqrt(2-sqrt(2))/2
+                       0.4142135623f);  // sqrt(2)-1
+  // reflections
+  p = Abs(p);
+  // p.xy -= 2.0*min(dot(vec2( k.x,k.y),p.xy),0.0)*vec2( k.x,k.y);
+  p.X = p.X - 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(p)), 0.0);
+  p.Y = p.Y - 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(p)), 0.0);
+  {
+    tup pXY = p * VectorXY(k.X, k.Y);
+    p.X = pXY.X;
+    p.Y = pXY.Y;
+  }
+
+  // p.xy -= 2.0 * min(dot(vec2(-k.x, k.y), p.xy), 0.0) * vec2(-k.x, k.y);
+  p.X = p.X - 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(p)), 0.0);
+  p.Y = p.Y - 2.f * std::fmin(Dot(VectorXY(-k.X, k.Y), VectorXY(p)), 0.0);
+  {
+    tup pXY = p * VectorXY(-k.X, k.Y);
+    p.X = pXY.X;
+    p.Y = pXY.Y;
+  }
+
+  // polygon side
+  // p.xy -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
+  // FIXME: (Willy Clarke) : Avoid the double calculation of VectorXY.
+  p.X = p.X - VectorXY(Clamp(p.X, -k.Z * r, k.Z * r), r).X;
+  p.Y = p.Y - VectorXY(Clamp(p.X, -k.Z * r, k.Z * r), r).Y;
+  // vec2 d = vec2(length(p.xy) * sign(p.y), p.z - h);
+  tup d = VectorXY(Mag(VectorXY(p)) * Sign(p.Y), p.Z - h);
+  return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
+}
+
+//------------------------------------------------------------------------------
 float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad)
 {
   tup pa = Pos - A;
   tup ba = B - A;
   float h = Clamp(Dot(pa, ba) / Dot(ba), 0.f, 1.f);
   return Mag(pa - ba * h) - Rad;
+}
+
+//------------------------------------------------------------------------------
+float sdRoundCone(tup Pos, float Rad1, float Rad2, float H)
+{
+  tup q = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
+
+  float b = (Rad1 - Rad2) / H;
+  float a = sqrt(1.f - b * b);
+  float k = Dot(q, VectorXY(-b, a));
+
+  if (k < 0.f) return Mag(q) - Rad1;
+  if (k > a * H) return Mag(q - VectorXY(0.f, H)) - Rad2;
+
+  return Dot(q, VectorXY(a, b)) - Rad1;
+}
+
+//------------------------------------------------------------------------------
+float sdRoundCone(tup Pos, tup A, tup B, float Rad1, float Rad2)
+{
+  // sampling independent computations (only depend on shape)
+  tup ba = B - A;
+  float l2 = Dot(ba, ba);
+  float rr = Rad1 - Rad2;
+  float a2 = l2 - rr * rr;
+  float il2 = 1.f / l2;
+
+  // sampling dependant computations
+  tup pa = Pos - A;
+  float y = Dot(pa, ba);
+  float z = y - l2;
+  float x2 = Dot(pa * l2 - ba * y);
+  float y2 = y * y * l2;
+  float z2 = z * z * l2;
+
+  // single square root!
+  float k = Sign(rr) * rr * rr * x2;
+  if (Sign(z) * a2 * z2 > k) return std::sqrtf(x2 + z2) * il2 - Rad2;
+  if (Sign(y) * a2 * y2 < k) return std::sqrtf(x2 + y2) * il2 - Rad1;
+  return (std::sqrtf(x2 * a2 * il2) + y * rr) * il2 - Rad1;
+}
+
+//------------------------------------------------------------------------------
+// FIXME: (Willy Clarke) : The sdTriPrism does not work yet.
+float sdTriPrism(tup Pos, tup H)
+{
+  Assert(IsVector(Pos), __FUNCTION__, __LINE__);
+  float const OrigZ = Pos.Z;
+  float const k = std::sqrtf(3.f);
+  H.X *= 0.5f * k;
+  Pos.X /= H.X;
+  Pos.Y /= H.X;
+  Pos.X = std::fabs(Pos.X) - 1.f;
+  Pos.Y = Pos.Y + 1.f / k;
+  if (Pos.X + k * Pos.Y > 0.f)
+  {
+    Pos.X = (Pos.X - k * Pos.Y) / 2.f;
+    Pos.Y = (-k * Pos.X - Pos.Y) / 2.f;
+  }
+
+  Pos.X -= Clamp(Pos.X, -2.f, 0.f);
+  float d1 = Mag(VectorXY(Pos)) * Sign(-Pos.Y) * H.X;
+  float d2 = std::fabs(Pos.Z) - H.Y;
+  Assert(OrigZ == Pos.Z, __PRETTY_FUNCTION__, __LINE__);
+  return Mag(Max(VectorXY(d1, d2), 0.f)) + std::fmin(std::fmax(d1, d2), 0.f);
 }
 
 //------------------------------------------------------------------------------
@@ -203,6 +305,30 @@ float sdCappedCone(tup const &Pos, float H, float Rad1, float Rad2)
   tup cb = q - k1 + k2 * Clamp(Dot(k1 - q, k2) / Dot(k2), 0.f, 1.f);
   float s = (cb.X < 0.f && ca.Y < 0.f) ? -1.f : 1.f;
   return s * std::sqrtf(std::fmin(Dot(ca), Dot(cb)));
+}
+
+//------------------------------------------------------------------------------
+float sdCappedCone(tup Pos, tup A, tup B, float RadA, float RadB)
+{
+  float rba = RadB - RadA;
+  float baba = Dot(B - A, B - A);
+  float papa = Dot(Pos - A, Pos - A);
+  float paba = Dot(Pos - A, B - A) / baba;
+
+  float x = std::sqrtf(papa - paba * paba * baba);
+
+  float cax = std::fmax(0.f, x - ((paba < 0.5f) ? RadA : RadB));
+  float cay = std::fabs(paba - 0.5f) - 0.5f;
+
+  float k = rba * rba + baba;
+  float f = Clamp((rba * (x - RadA) + paba * baba) / k, 0.f, 1.f);
+
+  float cbx = x - RadA - f * rba;
+  float cby = paba - f;
+
+  float s = (cbx < 0.f && cay < 0.f) ? -1.f : 1.f;
+
+  return s * std::sqrtf(std::fmin(cax * cax + cay * cay * baba, cbx * cbx + cby * cby * baba));
 }
 
 //------------------------------------------------------------------------------
@@ -288,6 +414,31 @@ float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
           Pos.Y - H);
   float Result = std::fmin(std::fmax(Q.X, Q.Y), 0.f) + Mag(Max(Q, 0.f));
   return Result;
+}
+
+//------------------------------------------------------------------------------
+// FIXME: (Willy Clarke) : The sdHorseshoe does not work yet.
+float sdHorseshoe(tup p, tup c, float r, float le, tup w)
+{
+  p.X = abs(p.X);
+  float l = Mag(VectorXY(p));
+
+  matrix M = Matrix22(VectorXY(-c.X, c.Y), VectorXY(c.Y, c.X));
+
+  // p.xy = mat2(-c.x, c.y, c.y, c.x) * p.xy;
+  tup pXY = M * VectorXY(p);
+
+  // p.xy = vec2((p.y > 0.0 || p.x > 0.0) ? p.x : l * sign(-c.x), (p.x > 0.0) ? p.y : l);
+  p.X = (p.Y > 0.f || p.X > 0.f) ? p.X : l * Sign(-c.X);
+  p.Y = (p.X > 0.f) ? p.Y : l;
+
+  // p.xy = vec2(p.x, abs(p.y - r)) - vec2(le, 0.0);
+  p.X = p.X - le;
+  p.Y = std::fabs(p.Y - r);
+
+  tup q = VectorXY(Mag(Max(VectorXY(p), 0.f)) + std::fmin(0.f, std::fmax(p.X, p.Y)), p.Z);
+  tup d = Abs(q) - w;
+  return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
 }
 
 /**
@@ -390,71 +541,67 @@ tup Map(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (false && sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (true && sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
   {
+    // clang-format off
     Res = OpU(Res, Point(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
     // Res = OpU(Res, Point(sdRhombus(Pos - Vector(-2.f, 0.25f, 1.f), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
     static matrix const MRhombus = TranslateScaleRotate(-2.f, 0.45f, 1.f, 1.5f, 1.5f, 1.5f, 0.f, 0.78f, -1.5708f);
     Res = OpU(Res, Point(sdRhombus(Inverse(MRhombus) * Pos, 0.15f, 0.25f, 0.08f, 0.08f), 17.f, 0.f));
+    // clang-format on
   }
 
   // ---
   // Bounding box.
   // ---
-  if (false && sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (true && sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
+    // clang-format off
     static matrix const MCappedTorus = TranslateScaleRotate(0.f, 0.3f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
-    Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f),
-                                       Vector(0.866025f, -0.5f, 0.f), 0.25f, 0.05f),
-                         25.f, 0.f));
+    Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f), Vector(0.866025f, -0.5f, 0.f), 0.25f, 0.05f), 25.f, 0.f));
     Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
     Res = OpU(Res, Point(sdCone(Pos - Vector(0.f, 0.45f, -1.f), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
     Res = OpU(Res, Point(sdCappedCone(Pos - Vector(0.f, 0.25f, -2.f), 0.25f, 0.25f, 0.1f), 13.67f, 0.f));
     Res = OpU(Res, Point(sdSolidAngle(Pos - Vector(0.f, 0.f, -3.f), VectorXY(3.f, 4.f) / 5.f, 0.4f), 49.13f, 0.f));
+    // clang-format on
   }
 
   // ---
   // Bounding box
   // ---
-  if (false && sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (true && sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
-    // Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)), Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
-    // Res = OpU(Res, Point(sdBox(Pos - Point(1.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
-    // Res = OpU(Res, Point(sdCapsule(Pos - Point(1.f, 0.f, -1.f), Vector(-0.1f, 0.1f, -0.1f),  //!<
-    //                                Vector(0.2f, 0.4f, 0.2f), 0.1f),
-    //                      31.9f, 0.f));
+    // clang-format off
+    Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)), Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
+    Res = OpU(Res, Point(sdBox(     Pos - Point(1.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
+    Res = OpU(Res, Point(sdCapsule( Pos - Point(1.f, 0.f, -1.f), Vector(-0.1f, 0.1f, -0.1f),  Vector(0.2f, 0.4f, 0.2f), 0.1f), 31.9f, 0.f));
     Res = OpU(Res, Point(sdCylinder(Pos - Point(1.f, 0.25f, -2.f), VectorXY(0.15f, 0.25f)), 8.f, 0.f));
-    Res = OpU(Res, Point(sdHexPrism(Pos - Vector(1.f, 0.2f, -3.f), VectorXY(0.2f, 0.05f)), 18.4f, 0.f));
+    Res = OpU(Res, Point(sdHexPrism(Pos - Point(1.f, 0.2f, -3.f), VectorXY(0.2f, 0.05f)), 18.4f, 0.f));
+    // clang-format on
   }
 
   // bounding box
   if (true && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
   {
-    Res = OpU(Res, Point(sdPyramid(Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
-    // gMutexPrint.lock();
-    // tup PyramidTst = Point(sdPyramid(Pos - Vector(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f);
-    // Res = OpU(Res, PyramidTst);
-    // std::cout << "Res.X: " << Res.X << ". PyramidTst.X:" << PyramidTst.X << std::endl;
-    // gMutexPrint.unlock();
-
+    // clang-format off
+    Res = OpU(Res, Point(sdPyramid(   Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
     Res = OpU(Res, Point(sdOctahedron(Pos - Point(-1.f, 0.15f, -2.f), 0.35f), 23.56f, 0.f));
-    // res = opU( res, vec2( sdTriPrism(   pos-vec3(-1.0,0.15,-1.0), vec2(0.3,0.05) ),43.5 ) );
-    // res = opU( res, vec2( sdEllipsoid(  pos-vec3(-1.0,0.25, 0.0), vec3(0.2, 0.25, 0.05) ), 43.17 ) );
-    // res = opU( res, vec2( sdHorseshoe(  pos-vec3(-1.0,0.25, 1.0), vec2(cos(1.3),sin(1.3)), 0.2, 0.3, vec2(0.03,0.08)
-    // ), 11.5 ) );
+    Res = OpU(Res, Point(sdTriPrism(  Pos - Point(-1.f, 0.15f, -1.f), VectorXY(0.3f, 0.05f)), 43.5f, 0.f));
+    Res = OpU(Res, Point(sdEllipsoid( Pos - Point(-1.f, 0.25f, 0.f), Vector(0.2f, 0.25f, 0.05f)), 43.17f, 0.f));
+    Res = OpU(Res, Point(sdHorseshoe( Pos - Point(-1.f, 0.25f, 1.f), VectorXY(std::cosf(1.3f), std::sinf(1.3f)), 0.2f, 0.3f, VectorXY(0.03f, 0.08f)), 11.5f, 0.f));
+    // clang-format on
   }
 
   // bounding box
-  if (false && sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (true && sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
-    // res = opU( res, vec2( sdOctogonPrism(pos-vec3( 2.0,0.2,-3.0), 0.2, 0.05), 51.8 ) );
-    Res = OpU(Res, Point(sdCylinder(Pos - Point(2.f, 0.14f, -2.f), Vector(0.1f, -0.1f, 0.f), Vector(-0.2f, 0.35f, 0.1f),
-                                    0.08f),
-                         31.2f, 0.f));
-    // res = opU( res, vec2( sdCappedCone(  pos-vec3( 2.0,0.09,-1.0), vec3(0.1,0.0,0.0),
-    // vec3(-0.2,0.40,0.1), 0.15, 0.05), 46.1 ) ); res = opU( res, vec2( sdRoundCone(   pos-vec3( 2.0,0.15, 0.0),
-    // vec3(0.1,0.0,0.0), vec3(-0.1,0.35,0.1), 0.15, 0.05), 51.7 ) ); res = opU( res, vec2( sdRoundCone(
-    // pos-vec3( 2.0,0.20, 1.0), 0.2, 0.1, 0.3 ), 37.0 ) );
+    // clang-format off
+    Res = OpU(Res, Point(sdOctogonPrism(Pos - Point(2.f, 0.2f, -3.f), 0.2f, 0.05f), 51.8f, 0.f));
+    Res = OpU(Res, Point(sdCylinder(    Pos - Point(2.f, 0.14f, -2.f), Vector(0.1f, -0.1f, 0.f), Vector(-0.2f, 0.35f, 0.1f), 0.08f), 31.2f, 0.f));
+    Res = OpU(Res, Point(sdCappedCone(  Pos - Point(2.f, 0.09f, -1.f), Vector(0.1f, 0.f, 0.f), Vector(-0.2f, 0.4f, 0.1f), 0.15f, 0.05f), 46.1f, 0.f));
+    Res = OpU(Res, Point(sdRoundCone(   Pos - Point(2.f, 0.15f, 0.f),  Vector(0.1f, 0.f, 0.f), Vector(-0.1f, 0.35f, 0.1f), 0.15f, 0.05f), 51.7f ,0.f));
+    Res = OpU(Res, Point(sdRoundCone(   Pos - Point(2.f, 0.2f, 1.f), 0.2f, 0.1f, 0.3f), 37.f, 0.f ) );
+    // clang-format on
   }
 
   return VectorXY(Res);
@@ -1048,8 +1195,8 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
-  Cfg.FocalLength = 2.f;
-  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.5f * Radians(45.f), 0.f);
+  Cfg.FocalLength = 2.5f;
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.0f * Radians(45.f), 0.f);
 
   int const NumBlocksH = Camera.NumBlocksH;
   int const NumBlocksV = Camera.NumBlocksV;
