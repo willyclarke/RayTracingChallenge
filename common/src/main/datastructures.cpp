@@ -3302,6 +3302,14 @@ tup Clamp(tup const &X, float MinVal, float MaxVal)
   };
 }
 
+/**
+ * pow — return the value of the first parameter raised to the power of the second
+ * @param: tup X - Specify the value to raise to the power Y.
+ * @param: tup Y - Specify the power to which to raise X.
+ * @return: tup that maitainse type beeing either Point or Vector. i.e. X.W remains unchanged.
+ */
+tup Pow(tup const &X, tup const &Y) { return tup{std::powf(X.X, Y.X), std::powf(X.Y, Y.Y), std::powf(X.Z, Y.Z), X.W}; }
+
 //------------------------------------------------------------------------------
 float Sign(float X)
 {
@@ -3323,6 +3331,17 @@ float SmoothStep(float Edge0, float Edge1, float X)
   float const t = Clamp((X - Edge0) / (Edge1 - Edge0), 0.f, 1.f);
   return t * t * (3.f - 2.f * t);
 }
+/**
+ * Description: step generates a step function by comparing x to edge.
+ * For element i of the return value, 0.0 is returned if x[i] < edge[i],
+ * and 1.0 is returned otherwise.
+ */
+float Step(float Edge, float X)
+{
+  if (X < Edge) return 0.f;
+  return 1.f;
+}
+
 };  // namespace ww
 
 // ---

@@ -724,8 +724,10 @@ float Schlick(prepare_computation const &Comps);
 //------------------------------------------------------------------------------
 float Clamp(float X, float MinVal, float MaxVal);
 tup Clamp(tup const &X, float MinVal, float MaxVal);
+tup Pow(tup const &X, tup const &Y);
 float Sign(float X);
 float SmoothStep(float Edge0, float Edge1, float X);
+float Step(float Edge, float X);
 //------------------------------------------------------------------------------
 // Functions for testing planes.
 //------------------------------------------------------------------------------

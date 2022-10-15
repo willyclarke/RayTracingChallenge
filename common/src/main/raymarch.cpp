@@ -442,25 +442,6 @@ float sdHorseshoe(tup p, tup c, float r, float le, tup w)
 }
 
 /**
- * pow — return the value of the first parameter raised to the power of the second
- * @param: tup X - Specify the value to raise to the power Y.
- * @param: tup Y - Specify the power to which to raise X.
- * @return: tup that maitainse type beeing either Point or Vector. i.e. X.W remains unchanged.
- */
-tup Pow(tup const &X, tup const &Y) { return tup{std::powf(X.X, Y.X), std::powf(X.Y, Y.Y), std::powf(X.Z, Y.Z), X.W}; }
-
-/**
- * Description: step generates a step function by comparing x to edge.
- * For element i of the return value, 0.0 is returned if x[i] < edge[i],
- * and 1.0 is returned otherwise.
- */
-float Step(float Edge, float X)
-{
-  if (X < Edge) return 0.f;
-  return 1.f;
-}
-
-/**
  * GetDistance to one particular object in the scene.
  * The point in world coordinates is moved into local coordinates by use of
  * the inverse transform of the shape.
@@ -1195,7 +1176,7 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
-  Cfg.FocalLength = 2.5f;
+  Cfg.FocalLength = 1.0f;
   Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.0f * Radians(45.f), 0.f);
 
   int const NumBlocksH = Camera.NumBlocksH;
