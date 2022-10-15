@@ -481,6 +481,7 @@ tup Abs(tup const &Tup);
 tup Div(float const S, tup const &Tup);
 tup Fract(tup const &X);
 tup Max(tup const &A, float const B);
+tup Min(tup const &A, float const B);
 // ---
 // NOTE: Multiply is also called Hadamard or Schur product.
 // ---
@@ -494,9 +495,13 @@ tup Sin(tup const &Input);
 tup Vector(float A, float B, float C);
 tup VectorXZY(float X, float Y, float Z);
 tup VectorXY(float X, float Y);
+tup VectorXYZ(tup const &A);
+tup VectorYZX(tup const &A);
 tup VectorXZY(tup const &A);
+tup VectorZXY(tup const &A);
 tup VectorXY(tup const &A);
 tup VectorXZ(tup const &A);
+tup VectorZX(tup const &A);
 
 // ---
 // NOTE: Canvas declarations.

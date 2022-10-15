@@ -285,7 +285,14 @@ bool IsVector(tup const &Tup)
  * Return the maximum of tup and variable.
  * Works for both point and vector. Ignores W which is returned unaltered.
  */
-tup Max(tup const &A, float const B) { return tup{std::max(A.X, B), std::max(A.Y, B), std::max(A.Z, B), A.W}; }
+tup Max(tup const &A, float const B) { return tup{std::fmax(A.X, B), std::fmax(A.Y, B), std::fmax(A.Z, B), A.W}; }
+
+//------------------------------------------------------------------------------
+/**
+ * Return the minimum of tup and variable.
+ * Works for both point and vector. Ignores W which is returned unaltered.
+ */
+tup Min(tup const &A, float const B) { return tup{std::fmin(A.X, B), std::fmin(A.Y, B), std::fmin(A.Z, B), A.W}; }
 
 //------------------------------------------------------------------------------
 tup Mul(float const S, tup const &Tup)
@@ -397,9 +404,30 @@ tup VectorXY(float X, float Y)
 }
 
 //------------------------------------------------------------------------------
+tup VectorXYZ(tup const &A)
+{
+  tup Result{A.X, A.Y, A.Z, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorYZX(tup const &A)
+{
+  tup Result{A.Y, A.Z, A.X, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
 tup VectorXZY(tup const &A)
 {
   tup Result{A.X, A.Z, A.Y, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorZXY(tup const &A)
+{
+  tup Result{A.Z, A.X, A.Y, 0.f};
   return (Result);
 }
 
@@ -419,7 +447,17 @@ tup VectorXY(tup const &A)
  */
 tup VectorXZ(tup const &A)
 {
-  tup Result{A.X, A.Z, 0.f, 0.f};
+  tup Result{A.X, 0.f, A.Z, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: Vector where X<->Z and the resulting Y=0.
+ */
+tup VectorZX(tup const &A)
+{
+  tup Result{A.Z, 0.f, A.X, 0.f};
   return (Result);
 }
 
