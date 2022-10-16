@@ -390,6 +390,16 @@ tup Vector(float A, float B, float C)
 }
 
 //------------------------------------------------------------------------------
+tup Vector(tup A)
+{
+  // ---
+  // NOTE: Use the variable on the stack and convert the incoming tuple to a vector.
+  // --
+  A.W = 0.f;
+  return A;
+}
+
+//------------------------------------------------------------------------------
 tup VectorXZY(float X, float Y, float Z)
 {
   tup Result{X, Z, Y, 0.f};

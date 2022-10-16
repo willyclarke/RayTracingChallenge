@@ -493,6 +493,7 @@ tup Point(float A, float B, float C);
 tup Sub(tup const &A, tup const &B);
 tup Sin(tup const &Input);
 tup Vector(float A, float B, float C);
+tup Vector(tup A);
 tup VectorXZY(float X, float Y, float Z);
 tup VectorXY(float X, float Y);
 tup VectorXYZ(tup const &A);
