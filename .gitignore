@@ -8,3 +8,4 @@ GTAGS
 .clangd/
 .cache/
 .DS_Store
+tmp/
