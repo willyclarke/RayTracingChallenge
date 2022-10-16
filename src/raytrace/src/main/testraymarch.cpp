@@ -20,49 +20,49 @@ TEST(RayMarch, GetDistanceBox)
   ww::shared_ptr_shape pDefaultBox = ww::PtrDefaultCube();
 
   {
-    ww::tup const P1 = ww::Point(0.f, 0.f, -2.f);
+    ww::tup const P1 = ww::Vector(0.f, 0.f, -2.f);
     float D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 1.5f);
   }
 
   {
-    ww::tup const P1 = ww::Point(0.f, 0.f, 2.f);
+    ww::tup const P1 = ww::Vector(0.f, 0.f, 2.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 1.5f);
   }
 
   {
-    ww::tup const P1 = ww::Point(0.f, 2.f, 0.f);
+    ww::tup const P1 = ww::Vector(0.f, 2.f, 0.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 1.5f);
   }
 
   {
-    ww::tup const P1 = ww::Point(0.f, -2.f, 0.f);
+    ww::tup const P1 = ww::Vector(0.f, -2.f, 0.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 1.5f);
   }
 
   {
-    ww::tup const P1 = ww::Point(-2.f, 0.f, 0.f);
+    ww::tup const P1 = ww::Vector(-2.f, 0.f, 0.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 1.5f);
   }
 
   {
-    ww::tup const P1 = ww::Point(2.f, 0.f, 0.f);
+    ww::tup const P1 = ww::Vector(2.f, 0.f, 0.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 1.5f);
   }
 
   {
-    ww::tup const P1 = ww::Point(1.f, 1.f, 0.f);
+    ww::tup const P1 = ww::Vector(1.f, 1.f, 0.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(1.f / 2.f));
   }
 
   {
-    ww::tup const P1 = ww::Point(-1.f, 1.f, 0.f);
+    ww::tup const P1 = ww::Vector(-1.f, 1.f, 0.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(1.f / 2.f));
   }
@@ -73,67 +73,67 @@ TEST(RayMarch, GetDistanceBox)
   //       via the point 0.5, 0.5, 0.5 (the corner of the box.)
   // ---
   {
-    ww::tup const P1 = ww::Point(1.f, 1.f, 1.f);
+    ww::tup const P1 = ww::Vector(1.f, 1.f, 1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(1.f, 1.f, -1.f);
+    ww::tup const P1 = ww::Vector(1.f, 1.f, -1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(1.f, -1.f, 1.f);
+    ww::tup const P1 = ww::Vector(1.f, -1.f, 1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(1.f, -1.f, -1.f);
+    ww::tup const P1 = ww::Vector(1.f, -1.f, -1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(-1.f, -1.f, -1.f);
+    ww::tup const P1 = ww::Vector(-1.f, -1.f, -1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(-1.f, -1.f, 1.f);
+    ww::tup const P1 = ww::Vector(-1.f, -1.f, 1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(-1.f, 1.f, 1.f);
+    ww::tup const P1 = ww::Vector(-1.f, 1.f, 1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(-1.f, 1.f, -1.f);
+    ww::tup const P1 = ww::Vector(-1.f, 1.f, -1.f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, std::sqrtf(3.f) - std::sqrtf(3.f / 4.f));
   }
   {
-    ww::tup const P1 = ww::Point(0.5f, 0.5f, 0.5f);
+    ww::tup const P1 = ww::Vector(0.5f, 0.5f, 0.5f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 0.f);
   }
   {
-    ww::tup const P1 = ww::Point(-0.5f, -0.5f, -0.5f);
+    ww::tup const P1 = ww::Vector(-0.5f, -0.5f, -0.5f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, 0.f);
   }
   {  //!< Inside the box the value should be negative.
-    ww::tup const P1 = ww::Point(-0.25f, .0f, .0f);
+    ww::tup const P1 = ww::Vector(-0.25f, .0f, .0f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, -0.25f);
   }
   {  //!< Inside the box the value should be negative.
-    ww::tup const P1 = ww::Point(.0f, -.25f, .0f);
+    ww::tup const P1 = ww::Vector(.0f, -.25f, .0f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, -0.25f);
   }
   {  //!< Inside the box the value should be negative.
-    ww::tup const P1 = ww::Point(.0f, .0f, .25f);
+    ww::tup const P1 = ww::Vector(.0f, .0f, .25f);
     float const D = ww::rm::GetDistance(P1, pDefaultBox);
     EXPECT_FLOAT_EQ(D, -0.25f);
   }

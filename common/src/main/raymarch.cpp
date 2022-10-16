@@ -39,6 +39,8 @@ constexpr float MIN_DIST = 0.001f;
  */
 float SdfBox(tup const &P, tup const &B, float const Radius = 0.f)
 {
+  Assert(IsVector(P), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(B), __PRETTY_FUNCTION__, __LINE__);
   tup const Q = Abs(P) - B;
   float const Distance = Mag(Max(Q, 0.f)) + std::min(std::max(Q.X, std::max(Q.Y, Q.Z)), 0.f) - Radius;
 
@@ -55,6 +57,7 @@ float SdfBox(tup const &P, tup const &B, float const Radius = 0.f)
  */
 float SdfPlane(tup const &P, tup const &N, float H = 0.f)
 {
+  Assert(IsVector(P), __PRETTY_FUNCTION__, __LINE__);
   float const Result = Dot(P, N) + H;
   return Result;
 }
@@ -62,7 +65,8 @@ float SdfPlane(tup const &P, tup const &N, float H = 0.f)
 //------------------------------------------------------------------------------
 float SdfSphere(tup const &Center, float Radius, tup const &P)
 {
-  float const Distance = Mag(P - Center);
+  Assert(IsVector(P), __PRETTY_FUNCTION__, __LINE__);
+  float const Distance = Mag(P - Vector(Center));
   float const DistToSphere = Distance - Radius;
   return DistToSphere;
   float const DistToSphere2 = P.Y + Radius;
@@ -80,8 +84,8 @@ float sdPlane(tup const &Pos) { return Pos.Y; }
 //------------------------------------------------------------------------------
 float sdSphere(tup const &Pos, float S)
 {
-  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
-  return Mag(Pos - Point(0.f, 0.f, 0.f)) - S;
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  return Mag(Pos) - S;
 }
 
 //------------------------------------------------------------------------------
@@ -99,6 +103,8 @@ float sdBox(tup const &Pos, tup const &Box)
 //------------------------------------------------------------------------------
 float sdBoxFrame(tup Pos, tup const &Box, float e)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(Box), __PRETTY_FUNCTION__, __LINE__);
   Pos = Abs(Pos) - Box;
   tup const q = Abs(Pos + tup(e, e, e)) - tup(e, e, e);
 
@@ -112,6 +118,7 @@ float sdBoxFrame(tup Pos, tup const &Box, float e)
 //------------------------------------------------------------------------------
 float sdEllipsoid(tup const &Pos, tup const &Rad)  // approximated
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   float k0 = Mag(Pos / Rad);
   float k1 = Mag(Pos / (Rad * Rad));
   return k0 * (k0 - 1.0) / k1;
@@ -120,6 +127,7 @@ float sdEllipsoid(tup const &Pos, tup const &Rad)  // approximated
 //------------------------------------------------------------------------------
 float sdTorus(tup const &Pos, tup const &t)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   float Result = Mag(tup(Mag(tup(Pos.X, Pos.Z)) - t.X, Pos.Y)) - t.Y;
   return Result;
 }
@@ -127,6 +135,7 @@ float sdTorus(tup const &Pos, tup const &t)
 //------------------------------------------------------------------------------
 float sdCappedTorus(tup Pos, tup const &Sc, float RadA, float RadB)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   Pos.X = abs(Pos.X);
   float k = (Sc.Y * Pos.X > Sc.X * Pos.Y) ? Dot(VectorXY(Pos), Sc) : Mag(VectorXY(Pos));
   return std::sqrtf(Dot(Pos, Pos) + RadA * RadA - 2.f * RadA * k) - RadB;
@@ -135,6 +144,7 @@ float sdCappedTorus(tup Pos, tup const &Sc, float RadA, float RadB)
 //------------------------------------------------------------------------------
 float sdHexPrism(tup Pos, tup const &H)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   Pos = Abs(Pos);
 
   tup const k = Vector(-0.8660254f, 0.5f, 0.57735f);
@@ -147,6 +157,7 @@ float sdHexPrism(tup Pos, tup const &H)
 //------------------------------------------------------------------------------
 float sdOctogonPrism(tup Pos, float Rad, float H)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup const k = Vector(-0.9238795325f,  // sqrt(2+sqrt(2))/2
                        0.3826834323f,   // sqrt(2-sqrt(2))/2
                        0.4142135623f);  // sqrt(2)-1
@@ -174,6 +185,7 @@ float sdOctogonPrism(tup Pos, float Rad, float H)
 //------------------------------------------------------------------------------
 float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup pa = Pos - A;
   tup ba = B - A;
   float h = Clamp(Dot(pa, ba) / Dot(ba), 0.f, 1.f);
@@ -183,6 +195,7 @@ float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad)
 //------------------------------------------------------------------------------
 float sdRoundCone(tup Pos, float Rad1, float Rad2, float H)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup q = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
 
   float b = (Rad1 - Rad2) / H;
@@ -198,6 +211,7 @@ float sdRoundCone(tup Pos, float Rad1, float Rad2, float H)
 //------------------------------------------------------------------------------
 float sdRoundCone(tup Pos, tup A, tup B, float Rad1, float Rad2)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   // sampling independent computations (only depend on shape)
   tup ba = B - A;
   float l2 = Dot(ba, ba);
@@ -223,6 +237,7 @@ float sdRoundCone(tup Pos, tup A, tup B, float Rad1, float Rad2)
 //------------------------------------------------------------------------------
 float sdTriPrism(tup Pos, tup H)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup q = Abs(Pos);
   return std::fmax(q.Z - H.Y, std::fmax(q.X * 0.866025f + Pos.Y * 0.5f, -Pos.Y) - H.X * 0.5f);
 }
@@ -231,6 +246,7 @@ float sdTriPrism(tup Pos, tup H)
 // vertical
 float sdCylinder(tup const &Pos, tup const &H)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup d = Abs(VectorXY(Mag(VectorXZ(Pos)), Pos.Y)) - H;
   return std::min(std::max(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
 }
@@ -239,6 +255,7 @@ float sdCylinder(tup const &Pos, tup const &H)
 // arbitrary orientation
 float sdCylinder(tup const &Pos, tup const &A, tup const &B, float Rad)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup pa = Pos - A;
   tup ba = B - A;
   float baba = Dot(ba, ba);
@@ -256,6 +273,7 @@ float sdCylinder(tup const &Pos, tup const &A, tup const &B, float Rad)
 // vertical
 float sdCone(tup const &Pos, tup const &Center, float H)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup q = H * VectorXY(Center.X, -Center.Y) / Center.Y;
   tup w = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
   tup a = w - q * Clamp(Dot(w, q) / Dot(q, q), 0.f, 1.f);
@@ -269,6 +287,7 @@ float sdCone(tup const &Pos, tup const &Center, float H)
 //------------------------------------------------------------------------------
 float sdCappedCone(tup const &Pos, float H, float Rad1, float Rad2)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   tup q = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
 
   tup k1 = VectorXY(Rad2, H);
@@ -282,6 +301,7 @@ float sdCappedCone(tup const &Pos, float H, float Rad1, float Rad2)
 //------------------------------------------------------------------------------
 float sdCappedCone(tup Pos, tup A, tup B, float RadA, float RadB)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   float rba = RadB - RadA;
   float baba = Dot(B - A, B - A);
   float papa = Dot(Pos - A, Pos - A);
@@ -305,36 +325,38 @@ float sdCappedCone(tup Pos, tup A, tup B, float RadA, float RadB)
 
 //------------------------------------------------------------------------------
 // c is the sin/cos of the desired cone angle
-float sdSolidAngle(tup pos, tup c, float ra)
+float sdSolidAngle(tup Pos, tup c, float ra)
 {
-  tup p = VectorXY(Mag(VectorXZ(pos)), pos.Y);
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup p = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
   float l = Mag(p) - ra;
   float m = Mag(p - c * Clamp(Dot(p, c), 0.f, ra));
   return std::fmax(l, m * Sign(c.Y * p.X - c.X * p.Y));
 }
 
 //------------------------------------------------------------------------------
-float sdOctahedron(tup p, float s)
+float sdOctahedron(tup Pos, float s)
 {
-  p = Abs(p);
-  float m = p.X + p.Y + p.Z - s;
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Pos = Abs(Pos);
+  float m = Pos.X + Pos.Y + Pos.Z - s;
 
 // exact distance
 #if 0
-  tup o = Min(3.f * p - Vector(m, m, m), 0.f);
-  o = Max(6.f * p - Vector(m, m, m) * 2.f - o * 3.f + Vector(o.X + o.Y + o.Z, o.X + o.Y + o.Z, o.X + o.Y + o.Z), 0.f);
-  return Mag(p - s * o / (o.X + o.Y + o.Z));
+  tup o = Min(3.f * Pos - Vector(m, m, m), 0.f);
+  o = Max(6.f * Pos - Vector(m, m, m) * 2.f - o * 3.f + Vector(o.X + o.Y + o.Z, o.X + o.Y + o.Z, o.X + o.Y + o.Z), 0.f);
+  return Mag(Pos - s * o / (o.X + o.Y + o.Z));
 #endif
 
 // exact distance
 #if 1
   tup q{};
-  if (3.f * p.X < m)
-    q = VectorXYZ(p);
-  else if (3.f * p.Y < m)
-    q = VectorYZX(p);
-  else if (3.f * p.Z < m)
-    q = VectorZXY(p);
+  if (3.f * Pos.X < m)
+    q = VectorXYZ(Pos);
+  else if (3.f * Pos.Y < m)
+    q = VectorYZX(Pos);
+  else if (3.f * Pos.Z < m)
+    q = VectorZXY(Pos);
   else
     return m * 0.57735027f;
   float k = Clamp(0.5f * (q.Z - q.Y + s), 0.f, s);
@@ -350,6 +372,7 @@ float sdOctahedron(tup p, float s)
 //------------------------------------------------------------------------------
 float sdPyramid(tup Pos, float H)
 {
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
   float m2 = H * H + 0.25f;
 
   // symmetry
@@ -378,40 +401,42 @@ float sdPyramid(tup Pos, float H)
 // LenA,LenB = semi axis, H=height, Rad = corner radius
 float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
 {
+  Assert(IsVector(Pos), __FUNCTION__, __LINE__);
   Pos = Abs(Pos);
-  tup B = Vector(LenA, LenB, 0.f);
+  tup B = VectorXY(LenA, LenB);
   float F = Clamp(NDot(B, B - 2.f * tup(Pos.X, Pos.Z)) / Dot(B, B), -1.f, 1.f);
-  tup Q =
-      tup(Mag(tup(Pos.X, Pos.Z) - 0.5f * B * tup(1.f - F, 1.f + F)) * Sign(Pos.X * B.Y + Pos.Z * B.X - B.X * B.Y) - Rad,
-          Pos.Y - H);
+  // clang-format off
+  tup Q = tup(Mag(VectorXY(Pos.X, Pos.Z) - 0.5f * B * VectorXY(1.f - F, 1.f + F)) * Sign(Pos.X * B.Y + Pos.Z * B.X - B.X * B.Y) - Rad, Pos.Y - H);
   float Result = std::fmin(std::fmax(Q.X, Q.Y), 0.f) + Mag(Max(Q, 0.f));
+  // clang-format on
   return Result;
 }
 
 //------------------------------------------------------------------------------
-float sdHorseshoe(tup p, tup c, float r, float le, tup w)
+float sdHorseshoe(tup Pos, tup C, float Rad, float le, tup w)
 {
-  p.X = abs(p.X);
-  float l = Mag(VectorXY(p));
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Pos.X = abs(Pos.X);
+  float l = Mag(VectorXY(Pos));
 
-  matrix M = Matrix22(VectorXY(-c.X, c.Y), VectorXY(c.Y, c.X));
+  matrix M = Matrix22(VectorXY(-C.X, C.Y), VectorXY(C.Y, C.X));
 
   // p.xy = mat2(-c.x, c.y, c.y, c.x) * p.xy;
-  tup pXY = M * VectorXY(p);
-  p.X = pXY.X;
-  p.Y = pXY.Y;
+  tup pXY = M * VectorXY(Pos);
+  Pos.X = pXY.X;
+  Pos.Y = pXY.Y;
 
   // p.xy = vec2((p.y > 0.0 || p.x > 0.0) ? p.x : l * sign(-c.x), (p.x > 0.0) ? p.y : l);
-  p.X = (p.Y > 0.f || p.X > 0.f) ? p.X : l * Sign(-c.X);
-  p.Y = (p.X > 0.f) ? p.Y : l;
+  Pos.X = (Pos.Y > 0.f || Pos.X > 0.f) ? Pos.X : l * Sign(-C.X);
+  Pos.Y = (Pos.X > 0.f) ? Pos.Y : l;
 
   // p.xy = vec2(p.x, abs(p.y - r)) - vec2(le, 0.0);
-  tup pXY2 = VectorXY(p.X, std::fabs(p.Y - r)) - VectorXY(le, 0.f);
-  p.X = pXY2.X;
-  p.Y = pXY2.Y;
+  tup pXY2 = VectorXY(Pos.X, std::fabs(Pos.Y - Rad)) - VectorXY(le, 0.f);
+  Pos.X = pXY2.X;
+  Pos.Y = pXY2.Y;
 
   // vec2 q = vec2(length(max(p.xy,0.0)) + min(0.0,max(p.x,p.y)),p.z);
-  tup q = VectorXY(Mag(Max(VectorXY(p), 0.f)) + std::fmin(0.f, std::fmax(p.X, p.Y)), p.Z);
+  tup q = VectorXY(Mag(Max(VectorXY(Pos), 0.f)) + std::fmin(0.f, std::fmax(Pos.X, Pos.Y)), Pos.Z);
   tup d = Abs(q) - w;
 
   // return min(max(d.x,d.y),0.0) + length(max(d,0.0));
@@ -427,7 +452,7 @@ float sdHorseshoe(tup p, tup c, float r, float le, tup w)
 //------------------------------------------------------------------------------
 float GetDistance(tup const &P, shared_ptr_shape PtrShape)
 {
-  tup const LocalPoint = ww::Inverse(PtrShape->Transform) * P;
+  tup const LocalPoint = ww::Vector(ww::Inverse(PtrShape->Transform) * P);
   if (PtrShape->isA<sphere>())
   {
     sphere const *pSphere = dynamic_cast<sphere *>(PtrShape.get());
@@ -442,7 +467,7 @@ float GetDistance(tup const &P, shared_ptr_shape PtrShape)
   else if (PtrShape->isA<cube>())
   {
     cube const *pCube = dynamic_cast<cube *>(PtrShape.get());
-    tup const Box = Point(pCube->Transform.R[0].X / 2.f, pCube->Transform.R[1].Y / 2.f, pCube->Transform.R[2].Z / 2.f);
+    tup const Box = Vector(pCube->Transform.R[0].X / 2.f, pCube->Transform.R[1].Y / 2.f, pCube->Transform.R[2].Z / 2.f);
     float const Db = SdfBox(LocalPoint, Box, pCube->R);
     return Db;
   }
@@ -499,47 +524,47 @@ tup Map(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (true && sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (false && sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
   {
     // clang-format off
-    Res = OpU(Res, Point(sdSphere(Pos - Vector(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
-    // Res = OpU(Res, Point(sdRhombus(Pos - Vector(-2.f, 0.25f, 1.f), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
-    static matrix const MRhombus = TranslateScaleRotate(-2.f, 0.45f, 1.f, 1.5f, 1.5f, 1.5f, 0.f, 0.78f, -1.5708f);
-    Res = OpU(Res, Point(sdRhombus(Inverse(MRhombus) * Pos, 0.15f, 0.25f, 0.08f, 0.08f), 17.f, 0.f));
+    Res = OpU(Res, Point(sdSphere(Pos - Point(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
+    // Res = OpU(Res, Point(sdRhombus(VectorXZY(Pos - Point(-2.f, 0.35f, 1.f)), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    static matrix const MRhombus = TranslateScaleRotate (-2.f, 0.35f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    Res = OpU(Res, Point(sdRhombus(VectorXZY(Inverse(MRhombus) * Pos), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
     // clang-format on
   }
 
   // ---
   // Bounding box.
   // ---
-  if (true && sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
     static matrix const MCappedTorus = TranslateScaleRotate(0.f, 0.3f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
     Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f), Vector(0.866025f, -0.5f, 0.f), 0.25f, 0.05f), 25.f, 0.f));
-    Res = OpU(Res, Point(sdBoxFrame(Pos - Vector(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
-    Res = OpU(Res, Point(sdCone(Pos - Vector(0.f, 0.45f, -1.f), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
-    Res = OpU(Res, Point(sdCappedCone(Pos - Vector(0.f, 0.25f, -2.f), 0.25f, 0.25f, 0.1f), 13.67f, 0.f));
-    Res = OpU(Res, Point(sdSolidAngle(Pos - Vector(0.f, 0.f, -3.f), VectorXY(3.f, 4.f) / 5.f, 0.4f), 49.13f, 0.f));
+    Res = OpU(Res, Point(sdBoxFrame(Pos - Point(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
+    Res = OpU(Res, Point(sdCone(Pos - Point(0.f, 0.45f, -1.f), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
+    Res = OpU(Res, Point(sdCappedCone(Pos - Point(0.f, 0.25f, -2.f), 0.25f, 0.25f, 0.1f), 13.67f, 0.f));
+    Res = OpU(Res, Point(sdSolidAngle(Pos - Point(0.f, 0.f, -3.f), VectorXY(3.f, 4.f) / 5.f, 0.4f), 49.13f, 0.f));
     // clang-format on
   }
 
   // ---
   // Bounding box
   // ---
-  if (true && sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
-    Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)), Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
-    Res = OpU(Res, Point(sdBox(     Pos - Point(1.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
-    Res = OpU(Res, Point(sdCapsule( Pos - Point(1.f, 0.f, -1.f), Vector(-0.1f, 0.1f, -0.1f),  Vector(0.2f, 0.4f, 0.2f), 0.1f), 31.9f, 0.f));
-    Res = OpU(Res, Point(sdCylinder(Pos - Point(1.f, 0.25f, -2.f), VectorXY(0.15f, 0.25f)), 8.f, 0.f));
-    Res = OpU(Res, Point(sdHexPrism(Pos - Point(1.f, 0.2f, -3.f), VectorXY(0.2f, 0.05f)), 18.4f, 0.f));
+    Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)),  Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
+    Res = OpU(Res, Point(sdBox(            Pos - Point(1.f, 0.25f, 0.f),  Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
+    Res = OpU(Res, Point(sdCapsule(        Pos - Point(1.f, 0.f, -1.f),   Vector(-0.1f, 0.1f, -0.1f),  Vector(0.2f, 0.4f, 0.2f), 0.1f), 31.9f, 0.f));
+    Res = OpU(Res, Point(sdCylinder(       Pos - Point(1.f, 0.25f, -2.f), VectorXY(0.15f, 0.25f)), 8.f, 0.f));
+    Res = OpU(Res, Point(sdHexPrism(       Pos - Point(1.f, 0.2f, -3.f),  VectorXY(0.2f, 0.05f)), 18.4f, 0.f));
     // clang-format on
   }
 
   // bounding box
-  if (true && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdPyramid(   Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
@@ -1153,7 +1178,7 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
-  Cfg.FocalLength = 1.2f;
+  Cfg.FocalLength = 1.0f;
   Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.1f * Radians(45.f), 0.f);
 
   int const NumBlocksH = Camera.NumBlocksH;
