@@ -539,7 +539,7 @@ tup Map(tup const &Pos)
   }
 
   // bounding box
-  if (false && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  if (true && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdPyramid(   Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
@@ -1153,8 +1153,8 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
-  Cfg.FocalLength = 1.0f;
-  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.0f * Radians(45.f), 0.f);
+  Cfg.FocalLength = 1.2f;
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.1f * Radians(45.f), 0.f);
 
   int const NumBlocksH = Camera.NumBlocksH;
   int const NumBlocksV = Camera.NumBlocksV;
