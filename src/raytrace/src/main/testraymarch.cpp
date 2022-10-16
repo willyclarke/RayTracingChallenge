@@ -253,8 +253,9 @@ TEST(RayMarch, RayMarchMovedSphere)
 }
 
 //------------------------------------------------------------------------------
-TEST(RayMarch, MainImage)
+TEST(DISABLED_RayMarch, MainImage)
 {
+  return;
   ww::world World = ww::World();
   World.vPtrLights.clear();
   World.vPtrObjects.clear();
@@ -370,7 +371,10 @@ TEST(RayMarch, TestRaymarchPrimitives)
 {
   ww::tup const Coordinates = ww::Point(0.f, 0.f, 0.f);
   ww::mainimage_config Cfg{};
-  ww::rm::MainImage(Coordinates, Cfg);
+  Cfg.Map = ww::rm::MapDefault;
+  ww::tup FragColor = ww::rm::MainImage(Coordinates, Cfg);
+  ww::tup Res = Cfg.Map(Coordinates);
+
   ww::tup const &Resolution = Cfg.Resolution;
 
   EXPECT_EQ(ww::IsPoint(Cfg.Resolution), ww::IsPoint(ww::Point(0.f, 0.f, 0.f)));
@@ -391,3 +395,6 @@ TEST(RayMarch, TestRaymarchPrimitives)
   EXPECT_EQ(Coord3.X, 1.f);
   EXPECT_EQ(Coord3.Y, 1.f);
 }
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, TestMap) {}

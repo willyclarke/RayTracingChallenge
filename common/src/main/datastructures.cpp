@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "perlinnoise.hpp"
+#include "raymarch.hpp"
 
 // ---
 // NOTE: Stream operator
@@ -2038,6 +2039,8 @@ tup Lighting(material const &Material,  //!<
 world World()
 {
   world W{};
+
+  W.Map = ww::rm::MapDefault;
 
   light Light = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
   // W.vLights.push_back(Light);

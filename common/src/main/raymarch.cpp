@@ -21,6 +21,12 @@ namespace ww
 namespace rm
 {
 std::mutex gMutexPrint{};
+void PrintLine(char const *ptrFunc, char const *ptrLine)
+{
+  gMutexPrint.lock();
+  std::cout << ptrFunc << "." << ptrLine << std::endl;
+  gMutexPrint.unlock();
+}
 std::atomic<bool> gPrintMe{true};
 constexpr int MAX_STEPS = 100;
 constexpr float MAX_DIST = 100.f;
@@ -515,7 +521,7 @@ tup OpU(tup const &D1, tup const &D2, char const *pStr = nullptr)
 /**
  * Map the various Signed Distance Functions of the objects in the scene.
  */
-tup Map(tup const &Pos)
+tup MapDefault(tup const &Pos)
 {
   Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
 
@@ -592,7 +598,7 @@ tup Map(tup const &Pos)
 
 //------------------------------------------------------------------------------
 // https://iquilezles.org/articles/rmshadows
-float CalcSoftShadow(ray const &R, float tMin, float tMax)
+float CalcSoftShadow(ray const &R, float tMin, float tMax, funcPtrMap Map)
 {
   // bounding volume
   float tp = (0.8 - R.Origin.Y) / R.Direction.Y;
@@ -614,7 +620,7 @@ float CalcSoftShadow(ray const &R, float tMin, float tMax)
 
 //------------------------------------------------------------------------------
 // https://iquilezles.org/articles/normalsSDF
-tup CalcNormal(tup const &Pos)
+tup CalcNormal(tup const &Pos, funcPtrMap Map)
 {
 #if 1
   tup const e = Vector(1.f, -1.f, 0.f) * 0.5773f * 0.0005f;
@@ -803,7 +809,7 @@ tup iBox(ray const &R, tup const &Rad)
 /**
  * Raycast from Inigios primitive's example.
  */
-tup RayCast(ray const &R)
+tup RayCast(ray const &R, funcPtrMap Map)
 {
   tup Res = Vector(-1.f, -1.f, 0.f);
   float Tmin{1.f};
@@ -846,7 +852,7 @@ tup RayCast(ray const &R)
 
 //------------------------------------------------------------------------------
 // https://iquilezles.org/articles/rmshadows
-float CalcSoftshadow(ray const &R, float mint, float tmax)
+float CalcSoftshadow(ray const &R, float mint, float tmax, funcPtrMap Map)
 {
   // bounding volume
   float tp = (0.8f - R.Origin.Y) / R.Direction.Y;
@@ -878,7 +884,7 @@ float CalcSoftshadow(ray const &R, float mint, float tmax)
  * @N: Number of samples - optional.
  * @return: float describing the Occlusion after N samples.
  */
-float CalcAO(tup const &Pos, tup const &Nor, int N = 5)
+float CalcAO(tup const &Pos, tup const &Nor, funcPtrMap Map, int N = 5)
 {
   float Occ{};
   float Sca{1.f};
@@ -914,7 +920,7 @@ float CheckersGradBox(tup const &Pos, tup const &dPdx, tup const &dPdy)
 /**
  * Render from Inigios primitive's example.
  */
-tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
+tup Render(funcPtrMap Map, ray const &R, tup const &Rdx, tup const &Rdy)
 {
   // Background
   tup Col = Color(0.7f, 0.7f, 0.9f) - 0.3f * Color(std::max(R.Direction.Y, 0.f),  //!<
@@ -926,7 +932,7 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
   // Raycast scene
   // ---
 
-  tup Res = RayCast(R);
+  tup Res = RayCast(R, Map);
   float t = Res.X;
   float M = Res.Y;
 
@@ -934,7 +940,7 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
   {
     tup Pos = R.Origin + t * R.Direction;
 
-    tup Nor = (M < 1.5f) ? Vector(0.f, 1.f, 0.f) : CalcNormal(Pos);
+    tup Nor = (M < 1.5f) ? Vector(0.f, 1.f, 0.f) : CalcNormal(Pos, Map);
     tup Ref = Reflect(R.Direction, Nor);
 
     // Material
@@ -962,7 +968,7 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
     // ---
     // Calculate Ambient Occlusion.
     // ---
-    float Occ = CalcAO(Pos, Nor);
+    float Occ = CalcAO(Pos, Nor, Map);
 
     tup Lin{};
 
@@ -975,7 +981,7 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
       tup Hal = Normalize(Lig - R.Direction);
       float Dif = Clamp(Dot(Nor, Lig), 0.f, 1.f);
 
-      Dif *= CalcSoftShadow(Ray(Pos, Lig), 0.02f, 2.5f);
+      Dif *= CalcSoftShadow(Ray(Pos, Lig), 0.02f, 2.5f, Map);
       float Spe = std::powf(Clamp(Dot(Nor, Hal), 0.f, 1.f), 16.f);
       Spe *= Dif;
       Spe *= 0.04f + 0.96f * std::powf(Clamp(1.f - Dot(Hal, Lig), 0.f, 1.f), 5.f);
@@ -994,7 +1000,7 @@ tup Render(ray const &R, tup const &Rdx, tup const &Rdy)
       Spe *= Dif;
       Spe *= 0.04f + 0.96f * std::powf(Clamp(1.f + Dot(Nor, R.Direction), 0.f, 1.f), 5.f);
       // if( spe>0.001 )
-      Spe *= CalcSoftshadow(Ray(Pos, Ref), 0.02, 2.5);
+      Spe *= CalcSoftshadow(Ray(Pos, Ref), 0.02, 2.5, Map);
       Lin = Lin + Col * 0.60 * Dif * Vector(0.4f, 0.6f, 1.15f);
       Lin = Lin + 2.00 * Spe * Vector(0.4f, 0.6f, 1.3f) * Ks;
     }
@@ -1037,6 +1043,7 @@ matrix SetCamera(tup const &Origin, tup const &Ta, float const Cr)
  */
 tup MainImage(tup const &FragCoord, mainimage_config const &Cfg)
 {
+  Assert(Cfg.Map != nullptr, __PRETTY_FUNCTION__, __LINE__);
   ray R{};
   float const Time{};
   tup const Mouse{};
@@ -1087,7 +1094,7 @@ tup MainImage(tup const &FragCoord, mainimage_config const &Cfg)
   // ---
   // Render
   // ---
-  tup Color = Render(R, Rdx, Rdy);
+  tup Color = Render(Cfg.Map, R, Rdx, Rdy);
 
   // ---
   // Gain
@@ -1110,6 +1117,7 @@ canvas RenderSingleThread(camera const &Camera, world const &World)
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
   Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+  Cfg.Map = World.Map;
 
   for (int X = 0; X < Image.W; ++X)
     for (int Y = 0; Y < Image.H; ++Y)
@@ -1180,6 +1188,7 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
   Cfg.FocalLength = 1.0f;
   Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.1f * Radians(45.f), 0.f);
+  Cfg.Map = World.Map;
 
   int const NumBlocksH = Camera.NumBlocksH;
   int const NumBlocksV = Camera.NumBlocksV;

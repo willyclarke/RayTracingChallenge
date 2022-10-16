@@ -13,6 +13,11 @@ namespace rm
 {
 
 /**
+ * Default Map for the world of raymarching.
+ */
+tup MapDefault(tup const &Pos);
+
+/**
  * RayMarch - move along ray to find hit.
  * @param: R - Ray
  * @param: PtrShape - Shape to compute distance against
@@ -42,7 +47,7 @@ float GetDistance(tup const &P, world const &World);
 /**
  */
 tup GetNormal(tup const &P, shared_ptr_shape PtrShape);
-tup CalcNormal(tup const &P);
+tup CalcNormal(tup const &P, funcPtrMap = nullptr);
 
 };      // end namespace rm
 };      // end namespace ww

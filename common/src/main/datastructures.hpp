@@ -376,6 +376,11 @@ struct light
 
 typedef std::shared_ptr<light> shared_ptr_light;
 
+/**
+ * Function pointer to a Raymarch map.
+ */
+using funcPtrMap = tup (*)(tup const &);
+
 //------------------------------------------------------------------------------
 // \struct world :
 //                Contains a vector of the objects
@@ -385,6 +390,8 @@ struct world
 {
   std::vector<shared_ptr_shape> vPtrObjects{};
   std::vector<shared_ptr_light> vPtrLights{};
+  funcPtrMap Map{nullptr};
+
   int Count() const { return static_cast<int>(vPtrObjects.size()); }
   bool Print{};
   mutable ray LocalRayComputed{};  //!< For debugging purpose, storage for later printout.
@@ -398,6 +405,7 @@ struct mainimage_config
   float FocalLength{2.5f};
   tup Resolution{256.f, 256.f, 0.f, 1.f};
   matrix MCamera{};
+  funcPtrMap Map{nullptr};
 };
 
 //------------------------------------------------------------------------------
