@@ -192,6 +192,8 @@ float sdOctogonPrism(tup Pos, float Rad, float H)
 float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad)
 {
   Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(A), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(B), __PRETTY_FUNCTION__, __LINE__);
   tup pa = Pos - A;
   tup ba = B - A;
   float h = Clamp(Dot(pa, ba) / Dot(ba), 0.f, 1.f);
@@ -530,7 +532,7 @@ tup MapDefault(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (false && sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdSphere(Pos - Point(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
@@ -543,7 +545,7 @@ tup MapDefault(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
     static matrix const MCappedTorus = TranslateScaleRotate(0.f, 0.3f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
@@ -558,7 +560,7 @@ tup MapDefault(tup const &Pos)
   // ---
   // Bounding box
   // ---
-  if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)),  Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
@@ -570,7 +572,7 @@ tup MapDefault(tup const &Pos)
   }
 
   // bounding box
-  if (sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdPyramid(   Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
@@ -582,7 +584,7 @@ tup MapDefault(tup const &Pos)
   }
 
   // bounding box
-  if (sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (false && sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdOctogonPrism(Pos - Point(2.f, 0.2f, -3.f), 0.2f, 0.05f), 51.8f, 0.f));
@@ -593,6 +595,60 @@ tup MapDefault(tup const &Pos)
     // clang-format on
   }
 
+  return VectorXY(Res);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Map the various Signed Distance Functions of the objects in the scene.
+ */
+tup MapBoxAndSphere(tup const &Pos)
+{
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+
+  // tup Res = Point(Pos.Y, 0.f, 0.f);
+  tup Res = Point(Pos.Y, 0.f, 0.f);
+
+  // ---
+  // Bounding box.
+  // ---
+  // if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  {
+    // clang-format off
+    // Res = OpU(Res, Point(sdSphere(Pos - Point(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
+    float const Rad{0.1};
+    static tup const Centre = Vector(0.f, 0.1f, 0.f);
+    static tup const Delta = Vector(Rad, 1.5f * Rad, 0.f);
+    static matrix const M1 = TranslateScaleRotate (Centre.X, Centre.Y, Centre.Z, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+    static matrix const MI1 = Inverse(M1);
+    static matrix const M2 = TranslateScaleRotate (Centre.X + 2.f * Delta.X, Centre.Y + 3.f * Delta.Y, Centre.Z + 2.f * Delta.Z, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+    static matrix const MI2 = Inverse(M2);
+    Res = OpU(Res, Point(sdSphere(Vector(MI1 * Pos), 0.1f), 46.9f, 0.f));
+    Res = OpU(Res, Point(sdSphere(Vector(MI2 * Pos), 0.1f), 16.9f, 0.f));
+    // Res = OpU(Res, Point(sdRhombus(VectorXZY(Pos - Point(-2.f, 0.35f, 1.f)), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    // static matrix const MRhombus = TranslateScaleRotate (-2.f, 0.35f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    // Res = OpU(Res, Point(sdRhombus(VectorXZY(Inverse(MRhombus) * Pos), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    // clang-format on
+  }
+
+  // static matrix const MBox = TranslateScaleRotate(0.f, .0f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  // Res = OpU(Res,
+  //           Point(sdBoxFrame(Inverse(MBox) * Pos * Vector(1.f, 1.f, 1.f), Vector(0.3f, .25f, .20f), .010f),
+  //           0.0f, 5.f));
+
+  // ---
+  // Bounding box
+  // ---
+  // if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(1.f, 1.f, 1.f)) < Res.X)
+  {
+    // clang-format off
+    static matrix const MBox = TranslateScaleRotate (-10.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    static matrix const MBoxI = Inverse(MBox);
+    Res = OpU(Res, Point(sdBox(            Vector(MBoxI * Pos),  Vector(1.f, 1.f, 1.f)), 4.f, 0.f));
+    // Res = OpU(Res, Point(sdBox(            Pos - Point(-1.f, 1.f, 1.f),  Vector(1.0f, 1.f, 1.0f)), 2.f, 0.f));
+    // Res = OpU(Res, Point(sdCapsule(        Pos - Point(1.f, 0.f, -1.f),   Vector(-0.1f, 0.1f, -0.1f),  Vector(0.2f, 0.4f, 0.2f), 0.1f), 31.9f, 0.f));
+    // clang-format on
+  }
   return VectorXY(Res);
 }
 
@@ -1095,7 +1151,6 @@ tup MainImage(tup const &FragCoord, mainimage_config const &Cfg)
   // Render
   // ---
   tup Color = Render(Cfg.Map, R, Rdx, Rdy);
-
   // ---
   // Gain
   // ---
@@ -1154,9 +1209,9 @@ void RenderBlock(render_block const &RB)
          X < RB.HStart + RB.HLength;  ///<!
          ++X)
     {
+#if 0
       for (int ObjIdx = 0; ObjIdx < RB.ptrWorld->vPtrObjects.size(); ++ObjIdx)
       {
-#if 0
         shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
 
         if (Image.vXY[X + Image.W * Y].W < 1.f)
@@ -1168,10 +1223,10 @@ void RenderBlock(render_block const &RB)
             Image.vXY[X + Image.W * Y].W = 1.f;  // store the update
           }
         }
-#endif
-        tup const FragCoord = Point(X, Y, 0.f);
-        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, RB.Cfg);
       }
+#endif
+      tup const FragCoord = Point(X, Y, 0.f);
+      Image.vXY[X + Image.W * Y] = MainImage(FragCoord, RB.Cfg);
     }
   }
 }
@@ -1186,8 +1241,9 @@ void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
 {
   mainimage_config Cfg{};
   Cfg.Resolution = Point(Image.W, Image.H, 0.f);
-  Cfg.FocalLength = 1.0f;
-  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.1f * Radians(45.f), 0.f);
+  Cfg.FocalLength = 2.0f;
+  // Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.1f * Radians(45.f), 0.f);
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 5.9f * Radians(45.f), 0.f);
   Cfg.Map = World.Map;
 
   int const NumBlocksH = Camera.NumBlocksH;

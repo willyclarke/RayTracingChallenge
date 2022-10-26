@@ -16,6 +16,7 @@ namespace rm
  * Default Map for the world of raymarching.
  */
 tup MapDefault(tup const &Pos);
+tup MapBoxAndSphere(tup const &Pos);
 
 /**
  * RayMarch - move along ray to find hit.
@@ -48,6 +49,11 @@ float GetDistance(tup const &P, world const &World);
  */
 tup GetNormal(tup const &P, shared_ptr_shape PtrShape);
 tup CalcNormal(tup const &P, funcPtrMap = nullptr);
+
+
+float sdBox(tup const &Pos, tup const &Box);
+float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad);
+float sdSphere(tup const &Pos, float S);
 
 };      // end namespace rm
 };      // end namespace ww

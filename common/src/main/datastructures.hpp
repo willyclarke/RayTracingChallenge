@@ -131,7 +131,6 @@ union matrix
     Dimension = Other.Dimension;
     ID = Other.ID;
   }
-
   struct  //!< A matrix can be four tuple rows
   {
     tup R0{};
@@ -498,6 +497,7 @@ tup Mul(float const S, tup const &Tup);
 tup Negate(tup const &Tup);
 tup Normalize(tup const &Tup);
 tup Point(float A, float B, float C);
+tup Point(tup P);
 tup Sub(tup const &A, tup const &B);
 tup Sin(tup const &Input);
 tup Vector(float A, float B, float C);

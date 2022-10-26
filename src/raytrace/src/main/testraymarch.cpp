@@ -160,18 +160,18 @@ TEST(RayMarch, GetNormal)
 //------------------------------------------------------------------------------
 TEST(DISABLED_RayMarch, CalcNormal)
 {
-  auto TestNormal = [](ww::ray const &R)
+  auto TestNormal = [](ww::ray const &R, ww::funcPtrMap Map)
   {
-    ww::tup const N = ww::rm::CalcNormal(R.Origin);
+    ww::tup const N = ww::rm::CalcNormal(R.Origin, Map);
     EXPECT_FLOAT_EQ(ww::Mag(N), 1.0f);
     EXPECT_LT(ww::Mag(N - R.Direction), 0.01f);
   };
-  TestNormal(ww::Ray(ww::Point(0.f, 0.f, -1.f), ww::Vector(0.f, 0.f, -1.f)));
-  TestNormal(ww::Ray(ww::Point(0.f, 0.f, 1.f), ww::Vector(0.f, 0.f, 1.f)));
-  TestNormal(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)));
-  TestNormal(ww::Ray(ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)));
-  TestNormal(ww::Ray(ww::Point(1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f)));
-  TestNormal(ww::Ray(ww::Point(-1.f, 0.f, 0.f), ww::Vector(-1.f, 0.f, 0.f)));
+  TestNormal(ww::Ray(ww::Point(0.f, 0.f, -1.f), ww::Vector(0.f, 0.f, -1.f)), ww::rm::MapBoxAndSphere);
+  TestNormal(ww::Ray(ww::Point(0.f, 0.f, 1.f), ww::Vector(0.f, 0.f, 1.f)), ww::rm::MapBoxAndSphere);
+  TestNormal(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)), ww::rm::MapBoxAndSphere);
+  TestNormal(ww::Ray(ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)), ww::rm::MapBoxAndSphere);
+  TestNormal(ww::Ray(ww::Point(1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f)), ww::rm::MapBoxAndSphere);
+  TestNormal(ww::Ray(ww::Point(-1.f, 0.f, 0.f), ww::Vector(-1.f, 0.f, 0.f)), ww::rm::MapBoxAndSphere);
 }
 
 //------------------------------------------------------------------------------
@@ -282,7 +282,7 @@ TEST(DISABLED_RayMarch, MainImage)
 
 //------------------------------------------------------------------------------
 // Scenario:
-TEST(RayMarch, Test1)
+TEST(DISABLED_RayMarch, Test1)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
   ww::tup const ColorBrownLight =
@@ -367,7 +367,125 @@ TEST(RayMarch, Test1)
 }
 
 //------------------------------------------------------------------------------
-TEST(RayMarch, TestRaymarchPrimitives)
+// Scenario:
+TEST(RayMarch, Test2)
+{
+  ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
+  ww::tup const ColorBrownLight =
+      ww::Color(float(0xba) / float(0xff), float(0x8f) / float(0xff), float(0x5d) / float(0xff));
+
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+  World.Map = ww::rm::MapBoxAndSphere;
+
+  // ---
+  // We need some light, please.
+  // ---
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  // *pLight = ww::PointLight(ww::Point(-5.f, 25.f, 2.5f), ww::Color(1.f, 1.f, 1.f));
+  *pLight = ww::PointLight(ww::Point(-6.f, 10.f, -0.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  // ---
+  // NOTE: Write out the result so that it is possible to see whats going on.
+  // ---
+  ww::camera Camera = ww::Camera(512, 512, ww::Radians(50.f));
+  // Camera.RenderSingleThread = true;
+
+  ww::tup const ViewFrom = ww::Point(0.f, 7.0f, -7.f);
+  ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::rm::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "RayMarchTest3.ppm");
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, TestSignedDistanceFunctionsBox1)
+{
+  ww::tup BoxPos = ww::Vector(0.f, 0.f, 0.f);
+  ww::tup BoxSize = ww::Vector(1.f, 1.f, 1.f);
+  ww::tup BoxRot = ww::Vector(0.f, 0.f, 0.f);
+  ww::tup P1 = ww::Point(2.f, 0.f, 0.f);
+  ww::tup P2 = ww::Point(-2.f, 0.f, 0.f);
+  ww::tup P3 = ww::Point(0.f, 2.f, 0.f);
+  ww::tup P4 = ww::Point(0.f, -2.f, 0.f);
+  ww::tup P5 = ww::Point(0.f, 0.f, 0.f);
+  ww::tup P6 = ww::Point(0.f, 0.f, 0.f);
+
+  ww::matrix MBox = ww::TranslateScaleRotate(BoxPos.X, BoxPos.Y, BoxPos.Z,     //!<
+                                             BoxSize.X, BoxSize.Y, BoxSize.Z,  //!<
+                                             BoxRot.X, BoxRot.Y, BoxRot.Z      //!<
+  );
+  ww::matrix MBoxI = ww::Inverse(MBox);
+  float D1 = ww::rm::sdBox(ww::Vector(MBoxI * P1), BoxSize);
+  float D2 = ww::rm::sdBox(ww::Vector(MBoxI * P2), BoxSize);
+  float D3 = ww::rm::sdBox(ww::Vector(MBoxI * P3), BoxSize);
+  float D4 = ww::rm::sdBox(ww::Vector(MBoxI * P4), BoxSize);
+  float D5 = ww::rm::sdBox(ww::Vector(MBoxI * P5), BoxSize);
+
+  // ---
+  // NOTE: The Capsule is initially set up with A=1,0,0 and B=1,0,0.
+  //       This means that the distance between A and B is of length 2.
+  //       And that the overall length is 4 since the radius is 1.
+  //       So when the capsule is located at 10,0,0 the distance to
+  //       Origo will be 8.
+  // ---
+  ww::matrix MCapsule = ww::TranslateScaleRotate(10.f, 0.f, 0.f,  //!<
+                                                 1.f, 1.f, 1.f,   //!<
+                                                 0.f, 0.f, 0.f    //!<
+  );
+  ww::matrix MCapsuleI = ww::Inverse(MCapsule);
+  float D6 = ww::rm::sdCapsule(Vector(MCapsuleI * P6), ww::Vector(-1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f), 1.f);
+  EXPECT_FLOAT_EQ(D6, 8.f);
+  std::cout << "Distance to Capsule from point " << P6 << " is " << D6 << std::endl;
+
+  // ---
+  // NOTE: So now the Capsule is rotated around the Z-axis and the distance
+  //       should increase to reflect that distance increases by the radius.
+  // ---
+  MCapsule = ww::TranslateScaleRotate(10.f, 0.f, 0.f,              //!<
+                                      1.f, 1.f, 1.f,               //!<
+                                      0.f, 0.f, ww::Radians(90.f)  //!<
+  );
+  MCapsuleI = ww::Inverse(MCapsule);
+  float D7 = ww::rm::sdCapsule(Vector(MCapsuleI * P6), ww::Vector(-1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f), 1.f);
+  EXPECT_FLOAT_EQ(D7, 9.f);
+
+  auto CheckDist = [](ww::matrix const &M, ww::matrix const &MI, ww::tup const &P, ww::tup const &Box, float D,
+                      float DExpected) -> void
+  {
+    // std::cout << "MBox :" << M << std::endl;
+    // std::cout << "MBoxI:" << MI << std::endl;
+    // std::cout << "P    :" << P << std::endl;
+    // std::cout << "Pmov :" << MI * P << std::endl;
+    // std::cout << "-> Distance: " << D << " to BOX:  " << Box << std::endl;
+    EXPECT_FLOAT_EQ(D, DExpected);
+  };
+
+  CheckDist(MBox, MBoxI, P1, BoxPos, D1, 1.f);
+  CheckDist(MBox, MBoxI, P2, BoxPos, D2, 1.f);
+  CheckDist(MBox, MBoxI, P3, BoxPos, D3, 1.f);
+  CheckDist(MBox, MBoxI, P4, BoxPos, D4, 1.f);
+  CheckDist(MBox, MBoxI, P5, BoxPos, D5, -1.f);
+
+  // For sanity check from the book.
+  // ww::matrix Transform = ww::Translation(5.f, -3.f, 2.f);
+  // ww::tup P = ww::Point(-3.f, 4.f, 5.f);
+  // ww::tup PT = Transform * P;
+  // ww::tup InvPT = ww::Inverse(Transform) * PT;
+  // std::cout << "Translated point PT: " << PT << std::endl;
+  // std::cout << "Translated point InvPT: " << InvPT << std::endl;
+  // ww::matrix Inv = ww::Inverse(Transform);
+  // std::cout << "Translated point InvPT2: " << Inv * P << std::endl;
+}
+
+//------------------------------------------------------------------------------
+TEST(DISABLED_RayMarch, TestRaymarchPrimitives)
 {
   ww::tup const Coordinates = ww::Point(0.f, 0.f, 0.f);
   ww::mainimage_config Cfg{};

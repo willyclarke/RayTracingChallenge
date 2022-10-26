@@ -363,6 +363,13 @@ tup Point(float A, float B, float C)
 }
 
 //------------------------------------------------------------------------------
+tup Point(tup P)
+{
+  P.W = 1.f;
+  return P;
+}
+
+//------------------------------------------------------------------------------
 /**
  * @return: std::sinf to the elements X, Y, Z individually. W remains unchanged.
  */
