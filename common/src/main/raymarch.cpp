@@ -532,7 +532,7 @@ tup MapDefault(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (false && sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdSphere(Pos - Point(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
@@ -545,7 +545,7 @@ tup MapDefault(tup const &Pos)
   // ---
   // Bounding box.
   // ---
-  if (false && sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
     static matrix const MCappedTorus = TranslateScaleRotate(0.f, 0.3f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
@@ -560,7 +560,7 @@ tup MapDefault(tup const &Pos)
   // ---
   // Bounding box
   // ---
-  if (false && sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)),  Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
@@ -572,7 +572,7 @@ tup MapDefault(tup const &Pos)
   }
 
   // bounding box
-  if (false && sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  if (sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdPyramid(   Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
@@ -584,7 +584,7 @@ tup MapDefault(tup const &Pos)
   }
 
   // bounding box
-  if (false && sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  if (sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
   {
     // clang-format off
     Res = OpU(Res, Point(sdOctogonPrism(Pos - Point(2.f, 0.2f, -3.f), 0.2f, 0.05f), 51.8f, 0.f));
@@ -1196,7 +1196,6 @@ canvas RenderSingleThread(camera const &Camera, world const &World)
  */
 void RenderBlock(render_block const &RB)
 {
-  // world const &World = *RB.ptrWorld;
   canvas &Image = *RB.ptrImage;
   camera const &Camera = *RB.ptrCamera;
   tup const Resolution = Point(Camera.HSize, Camera.VSize, 0.f);
@@ -1210,6 +1209,14 @@ void RenderBlock(render_block const &RB)
          ++X)
     {
 #if 0
+      // ---
+      // NOTE:
+      // This section iterates over all the shapes for each pixel.
+      // It is not as efficient as the version with the global map.
+      // This section is used for testing some of the initial methods
+      // for Raymarching that was made.
+      // ---
+      world const &World = *RB.ptrWorld;
       for (int ObjIdx = 0; ObjIdx < RB.ptrWorld->vPtrObjects.size(); ++ObjIdx)
       {
         shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
@@ -1224,9 +1231,10 @@ void RenderBlock(render_block const &RB)
           }
         }
       }
-#endif
+#else
       tup const FragCoord = Point(X, Y, 0.f);
       Image.vXY[X + Image.W * Y] = MainImage(FragCoord, RB.Cfg);
+#endif
     }
   }
 }

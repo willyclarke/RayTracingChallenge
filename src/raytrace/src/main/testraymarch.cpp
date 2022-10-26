@@ -282,7 +282,7 @@ TEST(DISABLED_RayMarch, MainImage)
 
 //------------------------------------------------------------------------------
 // Scenario:
-TEST(DISABLED_RayMarch, Test1)
+TEST(RayMarch, Test1)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
   ww::tup const ColorBrownLight =
@@ -291,6 +291,7 @@ TEST(DISABLED_RayMarch, Test1)
   ww::world World = ww::World();
   World.vPtrLights.clear();
   World.vPtrObjects.clear();
+  World.Map = ww::rm::MapDefault;
 
   // ---
   // Add Sphere
@@ -363,7 +364,7 @@ TEST(DISABLED_RayMarch, Test1)
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 
   ww::canvas Canvas = ww::rm::Render(Camera, World);
-  ww::WriteToPPM(Canvas, "RayMarchTest2.ppm");
+  ww::WriteToPPM(Canvas, "RayMarchTest1.ppm");
 }
 
 //------------------------------------------------------------------------------
@@ -378,6 +379,7 @@ TEST(RayMarch, Test2)
   World.vPtrLights.clear();
   World.vPtrObjects.clear();
   World.Map = ww::rm::MapBoxAndSphere;
+  World.Map = ww::rm::MapDefault;
 
   // ---
   // We need some light, please.
@@ -401,7 +403,7 @@ TEST(RayMarch, Test2)
   Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
 
   ww::canvas Canvas = ww::rm::Render(Camera, World);
-  ww::WriteToPPM(Canvas, "RayMarchTest3.ppm");
+  ww::WriteToPPM(Canvas, "RayMarchTest2.ppm");
 }
 
 //------------------------------------------------------------------------------
