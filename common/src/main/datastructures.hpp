@@ -351,6 +351,22 @@ struct plane : public shape
 };
 
 //------------------------------------------------------------------------------
+/**
+ */
+struct capsule : public shape
+{
+  float R{};
+  tup A{};
+  tup B{};
+  tup Base{};
+  tup Tip{};
+  // bool isA()
+  // {
+  //   return (dynamic_cast<T *>(this) != NULL);
+  // }
+};
+
+//------------------------------------------------------------------------------
 struct canvas
 {
   canvas(int IW = 10, int IH = 10) : W{IW}, H{IH} { vXY.resize(W * H); }

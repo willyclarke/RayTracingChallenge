@@ -444,7 +444,7 @@ TEST(RayMarch, TestSignedDistanceFunctionsBox1)
   ww::matrix MCapsuleI = ww::Inverse(MCapsule);
   float D6 = ww::rm::sdCapsule(Vector(MCapsuleI * P6), ww::Vector(-1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f), 1.f);
   EXPECT_FLOAT_EQ(D6, 8.f);
-  std::cout << "Distance to Capsule from point " << P6 << " is " << D6 << std::endl;
+  // std::cout << "Distance to Capsule from point " << P6 << " is " << D6 << std::endl;
 
   // ---
   // NOTE: So now the Capsule is rotated around the Z-axis and the distance
@@ -489,7 +489,7 @@ TEST(RayMarch, TestSignedDistanceFunctionsBox1)
 //------------------------------------------------------------------------------
 TEST(RayMarch, TestSignedDistanceFunctionsBox2)
 {
-  char const *pTestDescription = "TestSignedDistanceFunctionsBox2";
+  // char const *pTestDescription = "TestSignedDistanceFunctionsBox2";
   ww::tup BoxPos = ww::Vector(15.f, 10.f, 0.f);
   ww::tup BoxSiz = ww::Vector(5.f, 1.f, 1.f);
   ww::tup BoxRot = ww::Vector(0.f, 0.f, 0.f);
@@ -526,7 +526,7 @@ TEST(RayMarch, TestSignedDistanceFunctionsBox2)
   ww::matrix MCapsuleI = ww::Inverse(MCapsule);
   float D6 = ww::rm::sdCapsule(Vector(MCapsuleI * P6), ww::Vector(-1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f), 1.f);
   EXPECT_FLOAT_EQ(D6, 8.f);
-  std::cout << pTestDescription << " -> Distance to Capsule from point " << P6 << " is " << D6 << std::endl;
+  // std::cout << pTestDescription << " -> Distance to Capsule from point " << P6 << " is " << D6 << std::endl;
 
   // ---
   // NOTE: So now the Capsule is rotated around the Z-axis and the distance
@@ -543,15 +543,15 @@ TEST(RayMarch, TestSignedDistanceFunctionsBox2)
   auto CheckDist = [&](ww::matrix const &M, ww::matrix const &MI, ww::tup const &P, ww::tup const &Box, float D,
                        float DExpected) -> void
   {
-    std::cout << "---------------------------------------------------" << std::endl;
-    std::cout << pTestDescription << ". Line:" << __LINE__ << std::endl;
-    std::cout << "MBox :" << M << std::endl;
-    std::cout << "MBoxI:" << MI << std::endl;
-
-    std::cout << "Box Center: " << Box << std::endl;
-    std::cout << "P         : " << P << std::endl;
-    std::cout << "Pmov      : " << MI * P << std::endl;
-    std::cout << "Distance  : " << D << std::endl;
+    // std::cout << "---------------------------------------------------" << std::endl;
+    // std::cout << pTestDescription << ". Line:" << __LINE__ << std::endl;
+    // std::cout << "MBox :" << M << std::endl;
+    // std::cout << "MBoxI:" << MI << std::endl;
+    //
+    // std::cout << "Box Center: " << Box << std::endl;
+    // std::cout << "P         : " << P << std::endl;
+    // std::cout << "Pmov      : " << MI * P << std::endl;
+    // std::cout << "Distance  : " << D << std::endl;
 
     EXPECT_FLOAT_EQ(D, DExpected);
   };
@@ -566,7 +566,7 @@ TEST(RayMarch, TestSignedDistanceFunctionsBox2)
 //------------------------------------------------------------------------------
 TEST(RayMarch, TestSignedDistanceFunctionsBox3)
 {
-  char const *pTestDescription = "TestSignedDistanceFunctionsBox3";
+  // char const *pTestDescription = "TestSignedDistanceFunctionsBox3";
   ww::tup BoxPos = ww::Vector(15.f, 10.f, 0.f);
   ww::tup BoxSiz = ww::Vector(5.f, 1.f, 2.f);
   ww::tup BoxRot = ww::Vector(ww::Radians(90.f), 0.f, 0.f);
@@ -603,7 +603,7 @@ TEST(RayMarch, TestSignedDistanceFunctionsBox3)
   ww::matrix MCapsuleI = ww::Inverse(MCapsule);
   float D6 = ww::rm::sdCapsule(Vector(MCapsuleI * P6), ww::Vector(-1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f), 1.f);
   EXPECT_FLOAT_EQ(D6, 8.f);
-  std::cout << pTestDescription << " -> Distance to Capsule from point " << P6 << " is " << D6 << std::endl;
+  // std::cout << pTestDescription << " -> Distance to Capsule from point " << P6 << " is " << D6 << std::endl;
 
   // ---
   // NOTE: So now the Capsule is rotated around the Z-axis and the distance
@@ -620,15 +620,15 @@ TEST(RayMarch, TestSignedDistanceFunctionsBox3)
   auto CheckDist = [&](ww::matrix const &M, ww::matrix const &MI, ww::tup const &P, ww::tup const &Box, float D,
                        float DExpected) -> void
   {
-    std::cout << "---------------------------------------------------" << std::endl;
-    std::cout << pTestDescription << ". Line:" << __LINE__ << std::endl;
-    std::cout << "MBox :" << M << std::endl;
-    std::cout << "MBoxI:" << MI << std::endl;
-
-    std::cout << "Box Center: " << Box << std::endl;
-    std::cout << "P         : " << P << std::endl;
-    std::cout << "Pmov      : " << MI * P << std::endl;
-    std::cout << "Distance  : " << D << std::endl;
+    // std::cout << "---------------------------------------------------" << std::endl;
+    // std::cout << pTestDescription << ". Line:" << __LINE__ << std::endl;
+    // std::cout << "MBox :" << M << std::endl;
+    // std::cout << "MBoxI:" << MI << std::endl;
+    //
+    // std::cout << "Box Center: " << Box << std::endl;
+    // std::cout << "P         : " << P << std::endl;
+    // std::cout << "Pmov      : " << MI * P << std::endl;
+    // std::cout << "Distance  : " << D << std::endl;
 
     EXPECT_FLOAT_EQ(D, DExpected);
   };
@@ -672,3 +672,349 @@ TEST(DISABLED_RayMarch, TestRaymarchPrimitives)
 
 //------------------------------------------------------------------------------
 TEST(RayMarch, TestMap) {}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, TestSphereSphere1)
+{
+  auto CheckDist = [](ww::tup const &PosA, float RadA, ww::tup const &PosB, float RadB,  //!<
+                      float ExpectD, float ExpectPd, bool ExpectC)                       //!<
+      -> void
+  {
+    float const D = ww::rm::sdSphereSphereDistance(PosA, RadA, PosB, RadB);
+    float const Pd = ww::rm::sdSphereSpherePenDist(PosA, RadA, PosB, RadB);
+    bool const C = ww::rm::sdSphereSphereCollision(PosA, RadA, PosB, RadB);
+    // std::cout << "Distance between \nSphA " << PosA << "\nSphB " << PosB << std::endl;
+    // std::cout << "is " << D << ". Penetration is " << Pd << " and Collision is " << C << std::endl;
+    EXPECT_FLOAT_EQ(D, ExpectD);
+    EXPECT_FLOAT_EQ(Pd, ExpectPd);
+    EXPECT_EQ(C, ExpectC);
+  };
+
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(3.f, 0.f, 0.f), 1.f, 1.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(2.f, 0.f, 0.f), 1.f, 0.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(1.f, 0.f, 0.f), 1.f, -1.f, -1.f, true);
+
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(0.f, 3.f, 0.f), 1.f, 1.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(0.f, 2.f, 0.f), 1.f, 0.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(0.f, 1.f, 0.f), 1.f, -1.f, -1.f, true);
+
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(0.f, 0.f, 3.f), 1.f, 1.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(0.f, 0.f, 2.f), 1.f, 0.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(0.f, 0.f, 1.f), 1.f, -1.f, -1.f, true);
+
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(-3.f, 0.f, 0.f), 1.f, 1.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(-2.f, 0.f, 0.f), 1.f, 0.f, 0.f, false);
+  CheckDist(ww::Point(0.f, 0.f, 0.f), 1.f, ww::Point(-1.f, 0.f, 0.f), 1.f, -1.f, -1.f, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, TestTriangle1)
+{
+  ww::tup V1 = ww::Point(-1.f, 0.f, 0.f);
+  ww::tup V2 = ww::Point(0.f, 1.f, 0.f);
+  ww::tup V3 = ww::Point(1.f, 0.f, 0.f);
+
+  auto CheckDistTriangle = [&](ww::tup const &Pos, float Expect) -> void
+  {
+    float D = ww::rm::udTriangle(V1, V2, V3, Pos);
+    EXPECT_FLOAT_EQ(D, Expect);
+    // std::cout << "Distance from " << Pos << "\n                to triangle is " << D << std::endl;
+  };
+
+  CheckDistTriangle(ww::Point(-1.f, 0.f, 0.f), 0.f);
+  CheckDistTriangle(ww::Point(0.f, 1.f, 0.f), 0.f);
+  CheckDistTriangle(ww::Point(1.f, 0.f, 0.f), 0.f);
+  CheckDistTriangle(ww::Point(0.f, 0.f, 0.f), 0.f);
+  CheckDistTriangle(ww::Point(0.5f, 0.f, 0.f), 0.f);
+  CheckDistTriangle(ww::Point(-0.5f, 0.f, 0.f), 0.f);
+  CheckDistTriangle(ww::Point(0.f, 0.f, 1.f), 1.f);
+  CheckDistTriangle(ww::Point(1.f, 0.f, 2.f), 2.f);
+  CheckDistTriangle(ww::Point(1.f, 1.f, 0.f), 1.f / std::sqrtf(2.f));
+  CheckDistTriangle(ww::Point(2.f, 2.f, 0.f), 1.f / std::sqrtf(2.f) + std::sqrtf(2.f));
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, TestTriangle2)
+{
+  struct triangle
+  {
+    ww::tup V1 = ww::Point(-1.f, 0.f, 0.f);
+    ww::tup V2 = ww::Point(0.f, 1.f, 0.f);
+    ww::tup V3 = ww::Point(1.f, 0.f, 0.f);
+  };
+
+  triangle T{};
+  // std::cout << "Triangle Pos\n" << T.V1 << "\n" << T.V2 << "\n" << T.V3 << "\n" << std::endl;
+
+  auto CheckDistTriangleSphere = [](ww::tup const &PosSphere, float Radius, triangle const &Triangle,
+                                    float Expect) -> void
+  {
+    auto const DSphereTriangle = ww::rm::sdSphereTriangle(Triangle.V1, Triangle.V2, Triangle.V3, PosSphere, Radius);
+    EXPECT_FLOAT_EQ(DSphereTriangle, Expect);
+
+    // auto const DPointTriangle = ww::rm::udTriangle(Triangle.V1, Triangle.V2, Triangle.V3, PosSphere);
+    // std::cout << "Distance from Sphere at " << PosSphere << "\n                to triangle is " << DSphereTriangle
+    //           << std::endl;
+    // std::cout << "Distance from Point at " << PosSphere << "\n                to triangle is " << DPointTriangle
+    //           << std::endl;
+  };
+
+  CheckDistTriangleSphere(ww::Point(1.f, 1.f, 0.f), 1.f, T, -(1.f - 1.f / std::sqrt(2.f)));
+
+  // Calculate position of sphere:
+  // h^2 = 1+1/sqrt(2)
+  // h^2 = sqrt(2*x^2) // x and y are of same length.
+  // => h^2 = sqrt(2)*x => x = h^2/sqrt(2) => x = (1+1/sqrt(2))/sqrt(2)
+  float const SQRT2 = std::sqrt(2.f);
+  float const X = (1.f + 1.f / SQRT2) / SQRT2;
+  float const Y = X;
+  CheckDistTriangleSphere(ww::Point(X, Y, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(-X, Y, 0.f), 1.f, T, 0.f);
+
+  CheckDistTriangleSphere(ww::Point(0.f, 2.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(0.f, -1.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(0.f, -2.f, 0.f), 1.f, T, 1.f);
+  CheckDistTriangleSphere(ww::Point(2.f, 0.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(-2.f, 0.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(-1.f, 0.f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(1.f, 0.f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(0.f, 1.f, 1.f), 1.f, T, 0.f);
+
+  // Inside the extrusion of the triangle
+  CheckDistTriangleSphere(ww::Point(0.f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(.5f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(-.5f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(0.f, .5f, -1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(.5f, .5f, -1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(ww::Point(-.5f, .5f, -1.f), 1.f, T, 0.f);
+}
+
+//------------------------------------------------------------------------------
+// Test to confirm a triangle that has moved - see the translation.
+TEST(RayMarch, TestTriangle3)
+{
+  struct triangle
+  {
+    ww::tup V1 = ww::Point(-1.f, 0.f, 0.f);
+    ww::tup V2 = ww::Point(0.f, 1.f, 0.f);
+    ww::tup V3 = ww::Point(1.f, 0.f, 0.f);
+  };
+
+  triangle T{};
+  // std::cout << "Triangle Pos\n" << T.V1 << "\n" << T.V2 << "\n" << T.V3 << "\n" << std::endl;
+
+  ww::matrix M = ww::Translation(10.f, 0.f, 0.f);
+  ww::matrix MI = ww::Inverse(M);
+
+  // std::cout << "M\n" << M << std::endl;
+  // std::cout << "MI\n" << MI << std::endl;
+  // std::cout << "M*MI\n" << M * MI << std::endl;  // sanity check, should become identity matrix.
+
+  T.V1 = M * T.V1;
+  T.V2 = M * T.V2;
+  T.V3 = M * T.V3;
+
+  auto CheckDistTriangleSphere = [](ww::tup const &PosSphere, float Radius, triangle const &T, float Expect) -> void
+  {
+    auto const DSphereTriangle = ww::rm::sdSphereTriangle(T.V1, T.V2, T.V3, PosSphere, Radius);
+    EXPECT_NEAR(DSphereTriangle, Expect, 1.e-6);
+
+    // auto const DPointTriangle = ww::rm::udTriangle(T.V1, T.V2, T.V3, PosSphere);
+    // std::cout << "Triangle Pos\n" << T.V1 << "\n" << T.V2 << "\n" << T.V3 << "\n" << std::endl;
+    // std::cout << "Distance from Sphere at " << PosSphere << "\n                to triangle is " << DSphereTriangle
+    //           << std::endl;
+    // std::cout << "Distance from Point at " << PosSphere << "\n                to triangle is " << DPointTriangle
+    //           << std::endl;
+  };
+
+  CheckDistTriangleSphere(M * ww::Point(1.f, 1.f, 0.f), 1.f, T, -(1.f - 1.f / std::sqrt(2.f)));
+  CheckDistTriangleSphere(ww::Point(11.f, 1.f, 0.f), 1.f, T, -(1.f - 1.f / std::sqrt(2.f)));
+
+  // Calculate position of sphere:
+  // h^2 = 1+1/sqrt(2)
+  // h^2 = sqrt(2*x^2) // x and y are of same length.
+  // => h^2 = sqrt(2)*x => x = h^2/sqrt(2) => x = (1+1/sqrt(2))/sqrt(2)
+  float const SQRT2 = std::sqrt(2.f);
+  float const X = (1.f + 1.f / SQRT2) / SQRT2;
+  float const Y = X;
+  CheckDistTriangleSphere(M * ww::Point(X, Y, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-X, Y, 0.f), 1.f, T, 0.f);
+  //
+  CheckDistTriangleSphere(M * ww::Point(0.f, 2.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, -1.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, -2.f, 0.f), 1.f, T, 1.f);
+  CheckDistTriangleSphere(M * ww::Point(2.f, 0.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-2.f, 0.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-1.f, 0.f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(1.f, 0.f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, 1.f, 1.f), 1.f, T, 0.f);
+
+  // Inside the extrusion of the triangle
+  CheckDistTriangleSphere(M * ww::Point(0.f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(.5f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-.5f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, .5f, -1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(.5f, .5f, -1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-.5f, .5f, -1.f), 1.f, T, 0.f);
+}
+
+//------------------------------------------------------------------------------
+// Test to confirm a triangle that has moved - see the translation.
+TEST(RayMarch, TestTriangle4)
+{
+  struct triangle
+  {
+    ww::tup V1 = ww::Point(-1.f, 0.f, 0.f);
+    ww::tup V2 = ww::Point(0.f, 1.f, 0.f);
+    ww::tup V3 = ww::Point(1.f, 0.f, 0.f);
+  };
+
+  triangle T{};
+  // std::cout << "Triangle Pos\n" << T.V1 << "\n" << T.V2 << "\n" << T.V3 << "\n" << std::endl;
+
+  ww::matrix M = ww::Translation(10.f, 10.f, 0.f);
+  ww::matrix MI = ww::Inverse(M);
+
+  // std::cout << "M\n" << M << std::endl;
+  // std::cout << "MI\n" << MI << std::endl;
+  // std::cout << "M*MI\n" << M * MI << std::endl;  // sanity check, should become identity matrix.
+
+  T.V1 = M * T.V1;
+  T.V2 = M * T.V2;
+  T.V3 = M * T.V3;
+
+  auto CheckDistTriangleSphere = [](ww::tup const &PosSphere, float Radius, triangle const &T, float Expect) -> void
+  {
+    auto const DSphereTriangle = ww::rm::sdSphereTriangle(T.V1, T.V2, T.V3, PosSphere, Radius);
+    EXPECT_NEAR(DSphereTriangle, Expect, 1.e-6);
+
+    // auto const DPointTriangle = ww::rm::udTriangle(T.V1, T.V2, T.V3, PosSphere);
+    // std::cout << "Triangle Pos\n" << T.V1 << "\n" << T.V2 << "\n" << T.V3 << "\n" << std::endl;
+    // std::cout << "Distance from Sphere at " << PosSphere << "\n                to triangle is " << DSphereTriangle
+    //           << std::endl;
+    // std::cout << "Distance from Point at " << PosSphere << "\n                to triangle is " << DPointTriangle
+    //           << std::endl;
+  };
+
+  CheckDistTriangleSphere(M * ww::Point(1.f, 1.f, 0.f), 1.f, T, -(1.f - 1.f / std::sqrt(2.f)));
+  CheckDistTriangleSphere(ww::Point(1.f + ww::Get(M, 0, 3), 1.f + ww::Get(M, 1, 3), ww::Get(M, 2, 3)), 1.f, T,
+                          -(1.f - 1.f / std::sqrt(2.f)));
+
+  // Calculate position of sphere:
+  // h^2 = 1+1/sqrt(2)
+  // h^2 = sqrt(2*x^2) // x and y are of same length.
+  // => h^2 = sqrt(2)*x => x = h^2/sqrt(2) => x = (1+1/sqrt(2))/sqrt(2)
+  float const SQRT2 = std::sqrt(2.f);
+  float const X = (1.f + 1.f / SQRT2) / SQRT2;
+  float const Y = X;
+  CheckDistTriangleSphere(M * ww::Point(X, Y, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-X, Y, 0.f), 1.f, T, 0.f);
+  //
+  CheckDistTriangleSphere(M * ww::Point(0.f, 2.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, -1.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, -2.f, 0.f), 1.f, T, 1.f);
+  CheckDistTriangleSphere(M * ww::Point(2.f, 0.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-2.f, 0.f, 0.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-1.f, 0.f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(1.f, 0.f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, 1.f, 1.f), 1.f, T, 0.f);
+
+  // Inside the extrusion of the triangle
+  CheckDistTriangleSphere(M * ww::Point(0.f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(.5f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-.5f, .5f, 1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(0.f, .5f, -1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(.5f, .5f, -1.f), 1.f, T, 0.f);
+  CheckDistTriangleSphere(M * ww::Point(-.5f, .5f, -1.f), 1.f, T, 0.f);
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, CreateCapsule)
+{
+  ww::tup A = ww::Point(0.f, 0.f, 0.f);
+  ww::tup B = ww::Point(1.f, 0.f, 0.f);
+
+  auto CheckDist = [](ww::tup const &A, ww::tup const &B, ww::tup const &Pos, ww::tup const &Expect,
+                      bool Debug = false) -> ww::tup
+  {
+    auto const D = ww::rm::ClosestPointOnLineSegment(A, B, Pos);
+    EXPECT_NEAR(D.X, Expect.X, 1e-6);
+    EXPECT_NEAR(D.Y, Expect.Y, 1e-6);
+    EXPECT_NEAR(D.Z, Expect.Z, 1e-6);
+
+    return D;
+  };
+
+  CheckDist(A, B, ww::Point(0.f, 1.f, 0.f), ww::Point(0.f, 0.f, 0.f));
+  CheckDist(A, B, ww::Point(0.f, 0.f, 1.f), ww::Point(0.f, 0.f, 0.f));
+
+  CheckDist(A, B, ww::Point(0.f, -1.f, 0.f), ww::Point(0.f, 0.f, 0.f));
+  CheckDist(A, B, ww::Point(0.f, 0.f, -1.f), ww::Point(0.f, 0.f, 0.f));
+
+  CheckDist(A, B, ww::Point(0.5f, 1.f, 0.f), ww::Point(0.5f, 0.f, 0.f));
+  CheckDist(A, B, ww::Point(0.5f, 0.f, 1.f), ww::Point(0.5f, 0.f, 0.f));
+
+  CheckDist(A, B, ww::Point(0.5f, 0.f, 0.f), ww::Point(0.5f, 0.f, 0.f));
+  CheckDist(A, B, ww::Point(1.5f, 0.f, 0.f), ww::Point(1.0f, 0.f, 0.f));
+
+  CheckDist(A, B, ww::Point(-0.5f, 0.f, 0.f), ww::Point(0.0f, 0.f, 0.f));
+  CheckDist(A, B, ww::Point(-1.5f, 0.f, 0.f), ww::Point(0.0f, 0.f, 0.f));
+
+  CheckDist(A, B, ww::Point(1.f, 1.f, 0.f), ww::Point(1.0f, 0.f, 0.f));
+  CheckDist(A, B, ww::Point(1.f, 1.f, 1.f), ww::Point(1.0f, 0.f, 0.f));
+  CheckDist(A, B, ww::Point(1.f, 1.f, -1.f), ww::Point(1.0f, 0.f, 0.f));
+
+  /*
+   * Create a capsule struct for test.
+   */
+
+  auto CreateCapsule = [](ww::tup const &A, ww::tup const &B, float R) -> ww::capsule
+  {
+    Assert(ww::IsPoint(A), __FUNCTION__, __LINE__);
+    Assert(ww::IsPoint(B), __FUNCTION__, __LINE__);
+
+    ww::capsule C{};
+    C.R = R;
+    C.A = A;
+    C.B = B;
+
+    ww::tup const AB = B - A;  // Vector created from A to B.
+    Assert(ww::IsVector(AB), __FUNCTION__, __LINE__);
+
+    C.Base = A - ww::Normalize(AB) * C.R;  // Subtract from point B to get to Base.
+    C.Tip = B + ww::Normalize(AB) * C.R;   // Add to point A to get to Tip.
+
+    std::cout << "Capsule ---" << std::endl;
+    std::cout << "From A: " << C.A << "\n  to B: " << C.B << "\n"
+              << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.R << std::endl;
+
+    return C;
+  };
+
+  {
+    ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
+    ww::capsule const Cb = CreateCapsule(ww::Point(0.f, 1.f, 0.f), ww::Point(1.f, 1.f, 0.f), 0.1f);
+    ww::rm::sdCapsuleCapsule(Ca, Cb);
+  }
+  {
+    ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
+    ww::capsule const Cb = CreateCapsule(ww::Point(0.f, 1.f, 0.f), ww::Point(0.f, 2.f, 0.f), 0.1f);
+    ww::rm::sdCapsuleCapsule(Ca, Cb);
+  }
+  {
+    ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
+    ww::capsule const Cb =
+        CreateCapsule(ww::Point(0.722183f, 1.177817f, 0.f), ww::Point(1.429289f, 0.470711f, 0.f), 0.1f);
+    ww::rm::sdCapsuleCapsule(Ca, Cb);
+  }
+  {
+    ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
+    ww::capsule const Cb = CreateCapsule(ww::Point(0.5f, -0.1f, 0.f), ww::Point(0.5f, -1.1f, 0.f), 0.1f);
+    ww::rm::sdCapsuleCapsule(Ca, Cb);
+  }
+  {
+    ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
+    ww::capsule const Cb = CreateCapsule(ww::Point(0.5f, 2.1f, 0.f), ww::Point(0.5f, 0.3f, 0.f), 0.1f);
+    ww::rm::sdCapsuleCapsule(Ca, Cb);
+  }
+}

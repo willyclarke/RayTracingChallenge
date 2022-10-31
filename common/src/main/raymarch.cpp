@@ -451,6 +451,153 @@ float sdHorseshoe(tup Pos, tup C, float Rad, float le, tup w)
   return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
 }
 
+//------------------------------------------------------------------------------
+/**
+ * @param: v1, v2, v3 - vertices of the triangle. Need to be a Point.
+ * @param: Pos - Position of the point of which the distance is to be
+ *               computed. Need to be a point.
+ * NOTE: Since the vertices are used for vector calculations the triangle is
+ *       always based around the world origo/base.
+ */
+float udTriangle(tup const &v1, tup const &v2, tup const &v3, tup const &Pos)
+{
+  Assert(IsPoint(v1), __FUNCTION__, __LINE__);
+  Assert(IsPoint(v2), __FUNCTION__, __LINE__);
+  Assert(IsPoint(v3), __FUNCTION__, __LINE__);
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+
+  // clang-format off
+    tup v21 = v2 - v1; tup p1 = Pos - v1;
+    tup v32 = v3 - v2; tup p2 = Pos - v2;
+    tup v13 = v1 - v3; tup p3 = Pos - v3;
+    tup nor = Cross( v21, v13 );
+
+    return std::sqrtf( (Sign(Dot(Cross( v21, nor ), p1)) +
+                        Sign(Dot(Cross( v32, nor ), p2)) +
+                        Sign(Dot(Cross( v13, nor ), p3)) < 2.f)
+                  ?
+                  std::fmin( std::fmin(
+                  Dot(v21 * Clamp(Dot( v21, p1) / Dot(v21), 0.f, 1.f) - p1),
+                  Dot(v32 * Clamp(Dot( v32, p2) / Dot(v32), 0.f, 1.f) - p2) ),
+                  Dot(v13 * Clamp(Dot( v13, p3) / Dot(v13), 0.f, 1.f) - p3) )
+                  :
+                  Dot(nor, p1) * Dot(nor, p1) / Dot(nor) );
+  // clang-format on
+}
+
+//------------------------------------------------------------------------------
+float sdSphereSphereDistance(tup const &PosA, float RadA, tup const &PosB, float RadB)
+{
+  float D = Mag(PosA - PosB) - RadA - RadB;
+  return D;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Calculate the penetration distance for collission between two spheres.
+ */
+float sdSphereSpherePenDist(tup const &PosA, float RadA, tup const &PosB, float RadB)
+{
+  float D = sdSphereSphereDistance(PosA, RadA, PosB, RadB);
+  float Pd = std::fmin(D, 0.f);
+  return Pd;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: true when there is a collission between the spheres.
+ */
+bool sdSphereSphereCollision(tup const &PosA, float RadA, tup const &PosB, float RadB)
+{
+  return sdSphereSpherePenDist(PosA, RadA, PosB, RadB) < 0.f;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: v1/2/3 - Vertice's
+ * @param: PosSphere - the world position of a sphere.
+ * @param: Radius - the sphere radius.
+ */
+float sdSphereTriangle(tup const &v1, tup const &v2, tup const &v3, tup const &PosSphere, float Radius)
+{
+  auto const D = udTriangle(v1, v2, v3, PosSphere) - Radius;
+  return D;
+}
+
+//------------------------------------------------------------------------------
+/**
+ */
+bool sdSphereTriangleCollision(tup const &v1, tup const &v2, tup const &v3, tup const &PosSphere, float Radius)
+{
+  auto const D = udTriangle(v1, v2, v3, PosSphere);
+  return (D < -Radius) || (D > Radius);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: A - Point starting the line segment.
+ * @param: B - Point ending the line segment.
+ * @param: Pos - Point of which the closest point is desired.
+ * @return: The closest point from Pos to the line segement set up between A and B.
+ * @reference: https://wickedengine.net/2020/04/26/capsule-collision-detection/
+ */
+tup ClosestPointOnLineSegment(tup const &A, tup const &B, tup const &Pos)
+{
+  Assert(IsPoint(A), __FUNCTION__, __LINE__);
+  Assert(IsPoint(B), __FUNCTION__, __LINE__);
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+  tup const AB = B - A;
+  float const t = Dot(Pos - A, AB) / Dot(AB);
+  tup Result = A + std::fmin(std::fmax(t, 0.f), 1.f) * AB;
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+/**
+ */
+float sdCapsuleCapsule(capsule const &Ca, capsule const &Cb)
+{
+  // Create vectors between line endpoints
+  ww::tup const V0 = Cb.A - Ca.A;
+  ww::tup const V1 = Cb.B - Ca.A;
+  ww::tup const V2 = Cb.A - Ca.B;
+  ww::tup const V3 = Cb.A - Ca.B;
+
+  auto const P0 = ww::rm::ClosestPointOnLineSegment(Ca.Base, Ca.Tip, Cb.Base);
+  auto const P1 = ww::rm::ClosestPointOnLineSegment(Ca.Base, Ca.Tip, Cb.Tip);
+  auto const P2 = ww::rm::ClosestPointOnLineSegment(Cb.Base, Cb.Tip, Ca.Base);
+  auto const P3 = ww::rm::ClosestPointOnLineSegment(Cb.Base, Cb.Tip, Ca.Tip);
+
+  // Squared distances
+  auto const D0 = ww::Dot(V0);  // Calculate Mag squared with dot product.
+  auto const D1 = ww::Dot(V1);  // Calculate Mag squared with dot product.
+  auto const D2 = ww::Dot(V2);  // Calculate Mag squared with dot product.
+  auto const D3 = ww::Dot(V3);  // Calculate Mag squared with dot product.
+                                //
+  // select best potential endpoint on capsule A:
+  ww::tup bestA{Ca.A};
+  if (D2 < D0 || D2 < D1 || D3 < D0 || D3 < D1)
+  {
+    bestA = Ca.B;
+  }
+
+  // select point on capsule B line segment nearest to best potential endpoint on A capsule:
+  ww::tup bestB = ww::rm::ClosestPointOnLineSegment(Cb.A, Cb.B, bestA);
+  // now do the same for capsule A segment:
+  bestA = ww::rm::ClosestPointOnLineSegment(Ca.A, Ca.B, bestB);
+
+  ww::tup const PenetrationNormal = bestA - bestB;
+  float const Len = ww::Mag(PenetrationNormal);
+  ww::tup const NormPenetrationNormal = ww::Normalize(PenetrationNormal);
+
+  float const SignedDistance = -(Ca.R + Cb.R - Len);
+
+  bool const Intersect = SignedDistance < 0.f;
+  std::cout << "Result: SignedDistance: " << SignedDistance << ". Intersect: " << Intersect << std::endl;
+
+  return SignedDistance;
+};
+
 /**
  * GetDistance to one particular object in the scene.
  * The point in world coordinates is moved into local coordinates by use of
