@@ -369,7 +369,7 @@ TEST(DISABLED_RayMarch, Test1)
 
 //------------------------------------------------------------------------------
 // Scenario:
-TEST(DISABLED_RayMarch, Test2)
+TEST(RayMarch, Test2)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
   ww::tup const ColorBrownLight =
@@ -379,7 +379,7 @@ TEST(DISABLED_RayMarch, Test2)
   World.vPtrLights.clear();
   World.vPtrObjects.clear();
   World.Map = ww::rm::MapBoxAndSphere;
-  World.Map = ww::rm::MapDefault;
+  // World.Map = ww::rm::MapDefault;
 
   // ---
   // We need some light, please.
@@ -994,27 +994,38 @@ TEST(RayMarch, CreateCapsule)
   {
     ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
     ww::capsule const Cb = CreateCapsule(ww::Point(0.f, 1.f, 0.f), ww::Point(1.f, 1.f, 0.f), 0.1f);
-    ww::rm::sdCapsuleCapsule(Ca, Cb);
+    auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
+    EXPECT_FLOAT_EQ(D, 0.8f);
   }
   {
     ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
     ww::capsule const Cb = CreateCapsule(ww::Point(0.f, 1.f, 0.f), ww::Point(0.f, 2.f, 0.f), 0.1f);
-    ww::rm::sdCapsuleCapsule(Ca, Cb);
+    auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
+    EXPECT_FLOAT_EQ(D, 0.8f);
   }
   {
     ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
     ww::capsule const Cb =
         CreateCapsule(ww::Point(0.722183f, 1.177817f, 0.f), ww::Point(1.429289f, 0.470711f, 0.f), 0.1f);
-    ww::rm::sdCapsuleCapsule(Ca, Cb);
+    auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
+    // ---
+    // NOTE: Handle floating point rounding error and compare against EPSILON.
+    // ---
+    EXPECT_LT(std::abs(D - 0.437195), ww::EPSILON);
   }
   {
     ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
     ww::capsule const Cb = CreateCapsule(ww::Point(0.5f, -0.1f, 0.f), ww::Point(0.5f, -1.1f, 0.f), 0.1f);
-    ww::rm::sdCapsuleCapsule(Ca, Cb);
+    auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
+    EXPECT_FLOAT_EQ(D, -0.1f);
   }
   {
     ww::capsule const Ca = CreateCapsule(ww::Point(0.f, 0.f, 0.f), ww::Point(1.f, 0.f, 0.f), 0.1f);
     ww::capsule const Cb = CreateCapsule(ww::Point(0.5f, 2.1f, 0.f), ww::Point(0.5f, 0.3f, 0.f), 0.1f);
-    ww::rm::sdCapsuleCapsule(Ca, Cb);
+    auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
+    // ---
+    // NOTE: Handle floating point rounding error and compare against EPSILON.
+    // ---
+    EXPECT_LT(std::abs(D - 0.1f), ww::EPSILON);
   }
 }

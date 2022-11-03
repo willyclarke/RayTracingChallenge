@@ -754,12 +754,13 @@ tup MapBoxAndSphere(tup const &Pos)
   Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
 
   // tup Res = Point(Pos.Y, 0.f, 0.f);
-  tup Res = Point(Pos.Y, 0.f, 0.f);
+  tup Res = Point(1000.f, 0.f, 0.f);
 
   // ---
   // Bounding box.
   // ---
   // if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (false)
   {
     // clang-format off
     // Res = OpU(Res, Point(sdSphere(Pos - Point(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
@@ -789,9 +790,9 @@ tup MapBoxAndSphere(tup const &Pos)
   // if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(1.f, 1.f, 1.f)) < Res.X)
   {
     // clang-format off
-    static matrix const MBox = TranslateScaleRotate (-10.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    static matrix const MBox = TranslateScaleRotate (-1.f, 0.f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
     static matrix const MBoxI = Inverse(MBox);
-    Res = OpU(Res, Point(sdBox(            Vector(MBoxI * Pos),  Vector(1.f, 1.f, 1.f)), 4.f, 0.f));
+    Res = OpU(Res, Point(sdBox(            Vector(MBoxI * Pos),  Vector(.1f, .1f, .1f)), 4.f, 0.f));
     // Res = OpU(Res, Point(sdBox(            Pos - Point(-1.f, 1.f, 1.f),  Vector(1.0f, 1.f, 1.0f)), 2.f, 0.f));
     // Res = OpU(Res, Point(sdCapsule(        Pos - Point(1.f, 0.f, -1.f),   Vector(-0.1f, 0.1f, -0.1f),  Vector(0.2f, 0.4f, 0.2f), 0.1f), 31.9f, 0.f));
     // clang-format on
