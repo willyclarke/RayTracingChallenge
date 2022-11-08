@@ -561,7 +561,7 @@ float sdCapsuleCapsule(capsule const &Ca, capsule const &Cb)
   ww::tup const V0 = Cb.A - Ca.A;
   ww::tup const V1 = Cb.B - Ca.A;
   ww::tup const V2 = Cb.A - Ca.B;
-  ww::tup const V3 = Cb.A - Ca.B;
+  ww::tup const V3 = Cb.B - Ca.B;
 
   auto const P0 = ww::rm::ClosestPointOnLineSegment(Ca.Base, Ca.Tip, Cb.Base);
   auto const P1 = ww::rm::ClosestPointOnLineSegment(Ca.Base, Ca.Tip, Cb.Tip);
