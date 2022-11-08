@@ -1028,4 +1028,14 @@ TEST(RayMarch, CreateCapsule)
     // ---
     EXPECT_LT(std::abs(D - 0.1f), ww::EPSILON);
   }
+
+  {
+    ww::capsule const Ca = CreateCapsule(ww::Point(1.f, 0.f, 0.f), ww::Point(0.f, 0.f, 0.f), 0.1f);
+    ww::capsule const Cb = CreateCapsule(ww::Point(0.f, 2.f, 0.f), ww::Point(0.f, 1.f, 0.f), 0.1f);
+    auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
+    // ---
+    // NOTE: Handle floating point rounding error and compare against EPSILON.
+    // ---
+    EXPECT_LT(std::abs(D - 0.8f), ww::EPSILON);
+  }
 }
