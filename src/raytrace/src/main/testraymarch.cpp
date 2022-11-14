@@ -1043,6 +1043,17 @@ TEST(RayMarch, CreateCapsule)
 //------------------------------------------------------------------------------
 TEST(RayMarch, DistanceBetweenPoints)
 {
+  /**
+   *            c
+   *            [0.5,1]
+   *            x
+   *            ^ \
+   *          V2|  \
+   *            |   \
+   *      x<----<----x b[1,0]
+   *      a[0,0]  V1
+   *
+   */
   ww::tup Pa = ww::Point(0.f, 0.f, 0.f);
   ww::tup Pb = ww::Point(1.f, 0.f, 0.f);
   ww::tup Pc = ww::Point(0.5f, 1.f, 0.f);
