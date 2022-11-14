@@ -1039,3 +1039,22 @@ TEST(RayMarch, CreateCapsule)
     EXPECT_LT(std::abs(D - 0.8f), ww::EPSILON);
   }
 }
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, DistanceBetweenPoints)
+{
+  ww::tup Pa = ww::Point(0.f, 0.f, 0.f);
+  ww::tup Pb = ww::Point(1.f, 0.f, 0.f);
+  ww::tup Pc = ww::Point(0.5f, 1.f, 0.f);
+
+  ww::tup Vba = Pa - Pb;
+  ww::tup Vbc = Pc - Pb;
+  float l1 = ww::Dot(Vba, Vbc);
+  EXPECT_FLOAT_EQ(l1, 0.5f);
+
+  // V1 + V2 = Vbc
+  // => V2 = Vbc - V1
+  ww::tup V1 = l1 * Vba;
+  ww::tup V2 = Vbc - V1;
+  EXPECT_FLOAT_EQ(ww::Mag(V2), 1.f);
+}
