@@ -360,12 +360,47 @@ struct capsule : public shape
   tup B{};
   tup Base{};
   tup Tip{};
-  // bool isA()
-  // {
-  //   return (dynamic_cast<T *>(this) != NULL);
-  // }
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
 };
 
+/**
+struct quad - a square plate
+*/
+struct quad : public shape
+{
+  tup A{-1.f, 0.f, -1.f, 1.f};
+  tup B{+1.f, 0.f, -1.f, 1.f};
+  tup C{+1.f, 0.f, +1.f, 1.f};
+  tup D{-1.f, 0.f, +1.f, 1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+//------------------------------------------------------------------------------
+/**
+struct triangle - a triangle made up of three vertices
+*/
+struct triangle : public shape
+{
+  tup VA{+0.f, 0.f, +0.f, 1.f};
+  tup VB{+1.f, 0.f, +0.f, 1.f};
+  tup VC{+0.f, 0.f, +1.f, 1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
 //------------------------------------------------------------------------------
 struct canvas
 {
@@ -793,6 +828,11 @@ tup CheckersPatternAt(pattern const &Pattern, tup const &Point);
 tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point);
 tup PerturbPatternAt(pattern const &Pattern, tup const &Point);
 tup SolidPatternAt(pattern const &Pattern, tup const &Point);
+
+/**
+ * Functions for Capsules.
+ */
+auto CreateCapsule(ww::tup const &A, ww::tup const &B, float R, bool Print) -> ww::capsule;
 
 // \fn SharedPtrSh
 //

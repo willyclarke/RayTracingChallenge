@@ -486,6 +486,43 @@ float udTriangle(tup const &v1, tup const &v2, tup const &v3, tup const &Pos)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * @param: a, b, c, d - the corners of the quad. Need to be a Point.
+ * @param: Pos - Position of the point of which the distance is to be
+ *               computed. Need to be a point.
+ * NOTE: Since the corners are used for vector calculations the quad is
+ *       always based around the world origo/base.
+ */
+float udQuad(tup const &p, tup const &a, tup const &b, tup const &c, tup const &d)
+{
+  tup ba = b - a;
+  tup pa = p - a;
+  tup cb = c - b;
+  tup pb = p - b;
+  tup dc = d - c;
+  tup pc = p - c;
+  tup ad = a - d;
+  tup pd = p - d;
+  tup nor = Cross(ba, ad);
+
+  // clang-format off
+  return std::sqrtf(
+    (Sign(Dot(Cross(ba, nor), pa)) +
+     Sign(Dot(Cross(cb, nor), pb)) +
+     Sign(Dot(Cross(dc, nor), pc)) +
+     Sign(Dot(Cross(ad, nor), pd))<3.f)
+     ?
+     std::min( std::min( std::min(
+     Dot(ba * Clamp(Dot(ba, pa) / Dot(ba), 0.0, 1.f) - pa),
+     Dot(cb * Clamp(Dot(cb, pb) / Dot(cb), 0.0, 1.f) - pb) ),
+     Dot(dc * Clamp(Dot(dc, pc) / Dot(dc), 0.0, 1.f) - pc) ),
+     Dot(ad * Clamp(Dot(ad, pd) / Dot(ad), 0.0, 1.f) - pd) )
+     :
+     Dot(nor, pa) * Dot(nor, pa) / Dot(nor) );
+  // clang-format on
+}
+
+//------------------------------------------------------------------------------
 float sdSphereSphereDistance(tup const &PosA, float RadA, tup const &PosB, float RadB)
 {
   float D = Mag(PosA - PosB) - RadA - RadB;
@@ -1007,6 +1044,338 @@ tup iBox(ray const &R, tup const &Rad)
   tup const t1 = -N - K;
   tup const t2 = -N + K;
   return tup(std::max(std::max(t1.X, t1.Y), t1.Z), std::min(std::min(t2.X, t2.Y), t2.Z));
+}
+
+//------------------------------------------------------------------------------
+// The following functions have been copied from
+// https://photodiode.github.io/article/triangle-capsule-intersection.html
+// Many thanks to 'photodiode' for sharing his experience.
+/**
+ */
+static inline float PointLineDistance(tup const &Pos, tup const &A, tup const &B)
+{
+  tup PosA = Pos - A;
+  tup BA = B - A;
+
+  float h = Dot(PosA, BA) / Dot(BA, BA);
+  h = std::fminf(std::fmaxf(h, 0.0f), 1.0f);
+
+  return Mag(PosA - BA * h);
+}
+
+/**
+ */
+static inline bool RayCapsuleIntersect(tup const &RayOrigin, tup const &RayDirection,  //!<
+                                       tup const &CapsuleA, tup const &CapsuleB,       //!<
+                                       float Radius, float *Distance)
+{
+  tup const BA = CapsuleB - CapsuleA;
+  tup const OA = RayOrigin - CapsuleA;
+
+  float const baba = Dot(BA, BA);
+  float const bard = Dot(BA, RayDirection);
+  float const baoa = Dot(BA, OA);
+  float const rdoa = Dot(RayDirection, OA);
+  float const oaoa = Dot(OA, OA);
+
+  float const a = baba - bard * bard;
+  float b = baba * rdoa - baoa * bard;
+  float c = baba * oaoa - baoa * baoa - Radius * Radius * baba;
+  float h = b * b - a * c;
+
+  if (h >= 0.0f)
+  {
+    float const t = (-b - std::sqrtf(h)) / a;
+    float const y = baoa + t * bard;
+
+    // body
+    if (y > 0.0f && y < baba)
+    {
+      *Distance = t;
+      return true;
+    }
+
+    // caps
+    tup const OC = (y <= 0.0) ? OA : RayOrigin - CapsuleB;
+
+    b = Dot(RayDirection, OC);
+    c = Dot(OC, OC) - Radius * Radius;
+    h = b * b - c;
+
+    if (h > 0.0f)
+    {
+      *Distance = -b - std::sqrtf(h);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ */
+static inline tup CapsuleNormal(tup const &Pos, tup const &CapA, tup const &CapB, float Radius)
+{
+  tup BA = CapB - CapA;
+  tup PA = Pos - CapA;
+
+  float h = Dot(PA, BA) / Dot(BA, BA);
+  h = std::fminf(std::fmaxf(h, 0.f), 1.f);
+
+  return (PA - BA * h) / Radius;
+}
+
+/**
+ * Find the intersection point between a capsule or SSV (Swept Sphere Volume) and a triangle.
+ * How it works
+ *
+ * a) Make an infinite plane out of the triangle surface.
+ *
+ * b) Move this plane towards the origin of the ray capsule by it's radius.
+ *
+ * c) Check if we intersect this plane
+ *
+ * d) If an intersection point is found check if the point is outside the triangle (as projected onto the moved plane)
+ *
+ * If outside:
+ *
+ * e) Find the closest edge to the capsule
+ *
+ * f) Perform a ray / capsule intersect test
+ *
+ * g) If it intersected calculate the capsule hit normal
+ *
+ * If inside:
+ *
+ * h) Get the normal
+ *
+ * The functions ray_capsule_intersect, point_line_distance and capsule_normal are all taken from iquilezles.org.
+ */
+bool CapsuleTriangleIntersect(tup const &CapA, tup const &CapB,  //!<
+                              float Radius,                      //!<
+                              tup const &V0,                     //!<
+                              tup const &V1,                     //!<
+                              tup const &V2,                     //!<
+                              float *ptrdistance, tup *ptrHitPoint, tup *ptrHitNormal, bool Print)
+{
+  Assert(IsPoint(CapA), __FUNCTION__, __LINE__);
+  Assert(IsPoint(CapB), __FUNCTION__, __LINE__);
+
+  tup const Origin = CapA;
+  tup const Velocity = CapB - CapA;
+
+  Assert(IsPoint(Origin), __FUNCTION__, __LINE__);
+  Assert(IsVector(Velocity), __FUNCTION__, __LINE__);
+
+  // plane normal
+  tup const E0 = V1 - V0;
+  tup const E1 = V2 - V0;
+  tup const E0E1 = Cross(E0, E1);
+  tup PN = Normalize(E0E1);
+  // ----
+
+  Assert(IsVector(E0E1), __FUNCTION__, __LINE__);
+  Assert(IsVector(PN), __FUNCTION__, __LINE__);
+
+  float cap_len = Mag(Velocity);
+  tup const CapNormal = Normalize(Velocity);
+
+  tup const CapBase = CapA - CapNormal * Radius;
+  tup const CapTip = CapB + CapNormal * Radius;
+
+  float const denom = Dot(PN, CapNormal);
+  if (std::fabsf(denom) < 0.00001f) return false;
+
+  // grow plane thickness by radius towards origin
+  float const r = (denom < 0.0f) ? Radius : -Radius;
+  tup const PO = V0 + PN * r;
+  Assert(IsPoint(PO), __FUNCTION__, __LINE__);
+  // ----
+
+  // find intersection point
+  float u = Dot(PN, PO - Origin) / denom;
+  if (u > cap_len) return false;
+  tup P = Origin + CapNormal * u;
+  tup const PInterSectDebug = P;  // for debug only
+  // ----
+
+  // is projected point outside triangle
+  bool outside = false;
+
+  tup const W = P - V0;
+  float const y = Dot(Cross(E0, W), E0E1) / Dot(E0E1);  // γ=[(u×w)⋅n]/n²
+  float const b = Dot(Cross(W, E1), E0E1) / Dot(E0E1);  // β=[(w×v)⋅n]/n²
+  float const a = 1.0f - y - b;
+
+  if ((0.0f <= a) && (a <= 1.0f) && (0.0f <= b) && (b <= 1.0f) && (0.0f <= y) && (y <= 1.0f))
+  {
+    outside = true;
+  }
+  // ----
+
+  if (outside)
+  {
+    // find closest edge
+    float const d1 = PointLineDistance(P, V0, V1);
+    float const d2 = PointLineDistance(P, V1, V2);
+    float const d3 = PointLineDistance(P, V2, V0);
+
+    if (Print)
+    {
+      std::cout << "d1:   " << d1 << std::endl;
+      std::cout << "d2:   " << d2 << std::endl;
+      std::cout << "d3:   " << d3 << std::endl;
+    }
+
+    tup VA = V0;
+    tup VB = V1;
+
+    float dt = d1;
+
+    if (d2 < dt)
+    {
+      dt = d2;
+      VA = V1;
+      VB = V2;
+    }
+    if (d3 < dt)
+    {
+      VA = V2;
+      VB = V0;
+    }
+    // ----
+
+    if (Print) std::cout << "u (orig)               :" << u << std::endl;
+    if (!RayCapsuleIntersect(Origin, CapNormal, VA, VB, Radius, &u)) return false;
+    if (Print) std::cout << "u (dist)               :" << u << std::endl;
+    if (u > cap_len) return false;
+
+    P = Origin + CapNormal * u;
+    PN = CapsuleNormal(P, VA, VB, Radius);
+  }
+
+  if (Print)
+  {
+    std::cout << "PlaneN (triangle) :" << PN << std::endl;
+    std::cout << "E0E1              :" << E0E1 << std::endl;
+    std::cout << "PO (plane origin) :" << PO << std::endl;
+    std::cout << "PInterSect        :" << PInterSectDebug << std::endl;
+    std::cout << "CapBase           :" << CapBase << std::endl;
+    std::cout << "CapTip            :" << CapTip << std::endl;
+    std::cout << "CapNormal         :" << CapNormal << std::endl;
+    std::cout << "Intersect at Pos  :" << P << std::endl;
+    std::cout << "cap_len           :" << cap_len << std::endl;
+    std::cout << "denom             :" << denom << std::endl;
+    std::cout << "u                 :" << u << std::endl;
+    std::cout << "outside           :" << outside << std::endl;
+  }
+
+  if (u < 0.0f) return false;
+
+  *ptrdistance = u;
+  *ptrHitPoint = P;
+  *ptrHitNormal = PN;
+
+  return true;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Detect Ray hit with a triangle.
+ *
+ * What : Detect a ray R = P + t*D hitting a triangle
+ *        given by vertices A, B, C.
+ *
+ * This involves solving the following equation:
+ *
+ *    R = A + AB * u + AC * v
+ * => P + t * D = A + AB * u + AC * v
+ *
+ * with the constraints t>=0, u>=0, v>=0, u+v<=1
+ *
+ * Use the method described in the book 'Geometry for programmers - chapter 3.'
+ * The https://live.sympy.org code to make the formulas is as follows:
+ *
+  from sympy import *
+  Px,Py,Pz=symbols('Px Py Pz')      #A - The point where the ray starts.
+  dx,dy,dz=symbols('dx dy dz')      #B - The ray direction vector.
+  Ax,Ay,Az=symbols('Ax,Ay,Az')      #C - Point A of the ABC triangle.
+  ABx,ABy,ABz=symbols('ABx ABy ABz')#D - The vector AB.
+  ACx,ACy,ACz=symbols('ACx ACy ACz')#E - The vector AC.
+  t,u,v=symbols('t u v')            #F - Parms that specify point on the ray and the point on the triangle's plane.
+
+  solution=solve([
+    Px + t*dx - (Ax + ABx*u + ACx*v),
+    Py + t*dy - (Ay + ABy*u + ACy*v),
+    Pz + t*dz - (Az + ABz*u + ACz*v)
+  ],(t, u, v))
+
+  print(pycode(solution))
+
+  tNominator=collect(
+  (ABx*ACy*Az - ABx*ACy*Pz - ABx*ACz*Ay + ABx*ACz*Py - ABy*ACx*Az + ABy*ACx*Pz
+  + ABy*ACz*Ax - ABy*ACz*Px + ABz*ACx*Ay - ABz*ACx*Py - ABz*ACy*Ax + ABz*ACy*Px)
+  ,(ACx,ACy,ACz)
+  )
+  print(tNominator)
+
+  uNumerator=collect(
+  (ACx*Ay*dz - ACx*Az*dy - ACx*Py*dz + ACx*Pz*dy - ACy*Ax*dz + ACy*Az*dx + ACy*Px*dz
+  - ACy*Pz*dx + ACz*Ax*dy - ACz*Ay*dx - ACz*Px*dy + ACz*Py*dx),
+  (dx,dy,dz))
+  print(uNumerator)
+
+  vNumerator=collect(
+  (-ABx*Ay*dz + ABx*Az*dy + ABx*Py*dz - ABx*Pz*dy + ABy*Ax*dz - ABy*Az*dx - ABy*Px*dz
+  + ABy*Pz*dx - ABz*Ax*dy + ABz*Ay*dx + ABz*Px*dy - ABz*Py*dx),
+  (dx,dy,dz)
+  print(vNumerator)
+)
+ */
+auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print) -> bool
+{
+  tup const &P = R.Origin;
+  tup const &d = R.Direction;
+  tup const &A = Triangle.VA;
+  tup const &B = Triangle.VB;
+  tup const &C = Triangle.VC;
+
+  tup const AB = B - A;
+  tup const AC = C - A;
+
+  // ---
+  // NOTE: Compute common divisor.
+  // ---
+  float const Div =
+      d.X * (AB.Y * AC.Z - AB.Z * AC.Y) + d.Y * (-AB.X * AC.Z + AB.Z * AC.X) + d.Z * (AB.X * AC.Y - AB.Y * AC.X);
+
+  if (std::fabs(Div) < 0.001f) return false;
+
+  float const tNumerator = AC.X * (-AB.Y * A.Z + AB.Y * P.Z + AB.Z * A.Y - AB.Z * P.Y) +
+                           AC.Y * (AB.X * A.Z - AB.X * P.Z - AB.Z * A.X + AB.Z * P.X) +
+                           AC.Z * (-AB.X * A.Y + AB.X * P.Y + AB.Y * A.X - AB.Y * P.X);
+  float const t = tNumerator / Div;
+
+  float const uNumerator = d.X * (AC.Y * A.Z - AC.Y * P.Z - AC.Z * A.Y + AC.Z * P.Y) +
+                           d.Y * (-AC.X * A.Z + AC.X * P.Z + AC.Z * A.X - AC.Z * P.X) +
+                           d.Z * (AC.X * A.Y - AC.X * P.Y - AC.Y * A.X + AC.Y * P.X);
+  float const u = uNumerator / Div;
+
+  float const vNumerator = d.X * (-AB.Y * A.Z + AB.Y * P.Z + AB.Z * A.Y - AB.Z * P.Y) +
+                           d.Y * (AB.X * A.Z - AB.X * P.Z - AB.Z * A.X + AB.Z * P.X) +
+                           d.Z * (-AB.X * A.Y + AB.X * P.Y + AB.Y * A.X - AB.Y * P.X);
+  float const v = vNumerator / Div;
+
+  if (Print)
+  {
+    std::cout << __FUNCTION__ << "\nAB: " << AB << std::endl;
+    std::cout << "AC: " << AC << std::endl;
+    std::cout << "Div: " << Div << std::endl;
+    std::cout << "t: " << t << ". u: " << u << ". v: " << v << std::endl;
+  }
+
+  if (t >= 0.f && u >= 0.f && v >= 0.f && (u + v) <= 1.f) return true;
+
+  return {};
 }
 
 //------------------------------------------------------------------------------

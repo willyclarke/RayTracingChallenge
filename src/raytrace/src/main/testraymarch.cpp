@@ -1038,6 +1038,172 @@ TEST(RayMarch, CreateCapsule)
     // ---
     EXPECT_LT(std::abs(D - 0.8f), ww::EPSILON);
   }
+
+  {
+    ww::capsule const Ca = CreateCapsule(ww::Point(3.23f, 25.16f, 1.84f), ww::Point(2.32f, 24.61f, 4.77f), 0.1f);
+    ww::capsule const Cb = CreateCapsule(ww::Point(18.06f, 23.f, -2.53f), ww::Point(0.94f, 25.f, 4.84f), 0.01f);
+    auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
+    EXPECT_FLOAT_EQ(D, 0.23186623);
+  }
+
+  {
+    ww::capsule const C1 =
+        CreateCapsule(ww::Point(2.82621f, 25.44422, 1.914072f), ww::Point(2.322477f, 24.60991f, 4.769926), 0.1f);
+    ww::capsule const C2 =
+        CreateCapsule(ww::Point(21.34589f, 24.f, -4.173028f), ww::Point(-6.346084, 26.f, 5.390827f), 0.01f);
+    auto const D = ww::rm::sdCapsuleCapsule(C1, C2);
+    EXPECT_FLOAT_EQ(D, 0.23186623);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, udSquare)
+{
+  ww::quad Q{};
+  EXPECT_FLOAT_EQ(Q.A.X, -1.f);
+  EXPECT_FLOAT_EQ(Q.A.Y, 0.f);
+  EXPECT_FLOAT_EQ(Q.A.Z, -1.f);
+  EXPECT_FLOAT_EQ(Q.A.W, 1.f);
+
+  EXPECT_FLOAT_EQ(Q.B.X, 1.f);
+  EXPECT_FLOAT_EQ(Q.B.Y, 0.f);
+  EXPECT_FLOAT_EQ(Q.B.Z, -1.f);
+  EXPECT_FLOAT_EQ(Q.B.W, 1.f);
+
+  EXPECT_FLOAT_EQ(Q.C.X, 1.f);
+  EXPECT_FLOAT_EQ(Q.C.Y, 0.f);
+  EXPECT_FLOAT_EQ(Q.C.Z, 1.f);
+  EXPECT_FLOAT_EQ(Q.C.W, 1.f);
+
+  EXPECT_FLOAT_EQ(Q.D.X, -1.f);
+  EXPECT_FLOAT_EQ(Q.D.Y, 0.f);
+  EXPECT_FLOAT_EQ(Q.D.Z, 1.f);
+  EXPECT_FLOAT_EQ(Q.D.W, 1.f);
+
+  auto CheckDist = [&Q](ww::tup const &P, float const Expect)
+  {
+    float const Dist = ww::rm::udQuad(P, Q.A, Q.B, Q.C, Q.D);
+    EXPECT_FLOAT_EQ(Dist, Expect);
+  };
+
+  CheckDist(ww::Point(0.f, 1.f, 0.f), 1.f);
+  CheckDist(ww::Point(1.f, 1.f, 0.f), 1.f);
+  CheckDist(ww::Point(-1.f, 1.f, -1.f), 1.f);
+  CheckDist(ww::Point(-1.f, 1.f, +1.f), 1.f);
+  CheckDist(ww::Point(+1.f, 1.f, -1.f), 1.f);
+  CheckDist(ww::Point(+1.f, 1.f, +1.f), 1.f);
+  CheckDist(ww::Point(+2.f, 0.f, +0.f), 1.f);
+  CheckDist(ww::Point(-2.f, 0.f, +0.f), 1.f);
+  CheckDist(ww::Point(0.f, 0.f, +2.f), 1.f);
+  CheckDist(ww::Point(0.f, 0.f, -2.f), 1.f);
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, udSquareTranslate)
+{
+  ww::quad QOrigin{};
+  ww::matrix M =
+      ww::TranslateScaleRotate(10.f, 0.f, 0.f, 1.f, 1.f, 1.f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+  ww::quad QTranslated{};
+
+  // Move the Quad as specified by the matrix to the desired world coordinates.
+  QTranslated.A = M * QOrigin.A;
+  QTranslated.B = M * QOrigin.B;
+  QTranslated.C = M * QOrigin.C;
+  QTranslated.D = M * QOrigin.D;
+
+  // Compute the inverse of the matrix in order to be able to use local coordinates.
+  ww::matrix MI = ww::Inverse(M);
+
+  // Compute the local position of the quad.
+  ww::quad QLocal{};
+  QLocal.A = MI * QTranslated.A;
+  QLocal.B = MI * QTranslated.B;
+  QLocal.C = MI * QTranslated.C;
+  QLocal.D = MI * QTranslated.D;
+
+  auto CheckDist = [&QLocal](ww::tup const &P, ww::matrix const &MI, float const Expect)
+  {
+    float const Dist = ww::rm::udQuad(MI * P, QLocal.A, QLocal.B, QLocal.C, QLocal.D);
+    EXPECT_FLOAT_EQ(Dist, Expect);
+  };
+
+  // Check distances from points given in world coordinates.
+  CheckDist(ww::Point(0.f, 0.f, 0.f), MI, 9.f);
+  CheckDist(ww::Point(9.f, 0.f, 0.f), MI, 0.f);
+  CheckDist(ww::Point(11.f, 0.f, 0.f), MI, 0.f);
+  CheckDist(ww::Point(20.f, 0.f, 0.f), MI, 9.f);
+  CheckDist(ww::Point(10.f, 1.f, 0.f), MI, 1.f);
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, CapsuleVsTriangle)
+{
+  // ---
+  // NOTE: Create a triangle with one vertex at origin.
+  // ---
+  ww::tup V0 = ww::Point(0.f, 0.f, 0.f);
+  ww::tup V1 = ww::Point(1.f, 0.f, 0.f);
+  ww::tup V2 = ww::Point(0.f, 0.f, 1.f);
+
+  /*
+   * Create a capsule struct for test.
+   */
+
+  // auto CreateCapsule = [](ww::tup const &A, ww::tup const &B, float R, bool Print) -> ww::capsule
+  // {
+  //   Assert(ww::IsPoint(A), __FUNCTION__, __LINE__);
+  //   Assert(ww::IsPoint(B), __FUNCTION__, __LINE__);
+  //
+  //   ww::capsule C{};
+  //   C.R = R;
+  //   C.A = A;
+  //   C.B = B;
+  //
+  //   ww::tup const AB = B - A;  // Vector created from A to B.
+  //   Assert(ww::IsVector(AB), __FUNCTION__, __LINE__);
+  //
+  //   C.Base = A - ww::Normalize(AB) * C.R;  // Subtract from point B to get to Base.
+  //   C.Tip = B + ww::Normalize(AB) * C.R;   // Add to point A to get to Tip.
+  //
+  //   if (Print)
+  //   {
+  //     std::cout << "Capsule ---" << std::endl;
+  //     std::cout << "From A: " << C.A << "\n  to B: " << C.B << "\n"
+  //               << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.R << std::endl;
+  //   }
+  //   return C;
+  // };
+
+  auto TestIntersect = [&](ww::tup const &CapA, ww::tup const &CapB, float Radius, bool Expect, bool Print) -> void
+  {
+    ww::capsule const C = CreateCapsule(CapA, CapB, Radius, Print);
+
+    float Distance{};
+    ww::tup HitPoint{};
+    ww::tup HitNormal{};
+
+    bool const Intersect =
+        ww::rm::CapsuleTriangleIntersect(C.A, C.B, C.R, V0, V1, V2, &Distance, &HitPoint, &HitNormal, Print);
+    EXPECT_EQ(Intersect, Expect);
+    if (Print)
+    {
+      std::cout << "\nDistance :" << Distance;
+      std::cout << "\nHitPoint :" << HitPoint;
+      std::cout << "\nHitNormal:" << HitNormal;
+      std::cout << "\nIntersect:" << Intersect;
+      std::cout << "\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" << std::endl;
+    }
+  };
+  auto Print = [](bool V) -> bool { return V; };
+  auto Expect = [](bool V) -> bool { return V; };
+  // auto Elevate = [](float h) -> float { return h; };
+
+  TestIntersect(ww::Point(-1.f, -0.7f, 0.f), ww::Point(1.f, 1.f, 0.f), 0.1, Expect(true), Print(false));
+  TestIntersect(ww::Point(-1.f, -1.f, 0.f), ww::Point(-1.f, 1.f, 0.f), 0.1, Expect(false), Print(false));
+  TestIntersect(ww::Point(-.1f, -1.f, 0.f), ww::Point(-.1f, 1.f, 0.f), 0.11, Expect(true), Print(false));
+  TestIntersect(ww::Point(0.f, 0.f, 0.f), ww::Point(0.f, 1.f, 0.f), 0.1, Expect(true), Print(false));
+  TestIntersect(ww::Point(0.25f, 0.1f, 0.25f), ww::Point(0.25f, 1.f, 0.25f), 0.15, Expect(true), Print(true));
 }
 
 //------------------------------------------------------------------------------
@@ -1060,6 +1226,8 @@ TEST(RayMarch, DistanceBetweenPoints)
 
   ww::tup Vba = Pa - Pb;
   ww::tup Vbc = Pc - Pb;
+
+  // Find the projection of vector from b->c onto vector from b->a.
   float l1 = ww::Dot(Vba, Vbc);
   EXPECT_FLOAT_EQ(l1, 0.5f);
 
@@ -1068,4 +1236,78 @@ TEST(RayMarch, DistanceBetweenPoints)
   ww::tup V1 = l1 * Vba;
   ww::tup V2 = Vbc - V1;
   EXPECT_FLOAT_EQ(ww::Mag(V2), 1.f);
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, RayIntersectTriangle)
+{
+  auto Expect = [](bool V) -> bool { return V; };
+
+  ww::triangle T{};
+  EXPECT_EQ(T.VA == ww::Point(0.f, 0.f, 0.f), true);
+  EXPECT_EQ(T.VB == ww::Point(1.f, 0.f, 0.f), true);
+  EXPECT_EQ(T.VC == ww::Point(0.f, 0.f, 1.f), true);
+
+  auto CheckRayIntersectTriangle = [](ww::ray const &R, ww::triangle const &T, bool TestValue)
+  { EXPECT_EQ(ww::rm::RayTriangleIntersect(R, T), TestValue); };
+
+  // Ray pointing down
+  CheckRayIntersectTriangle(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)), T, Expect(true));
+  CheckRayIntersectTriangle(ww::Ray(ww::Point(1.f, 1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)), T, Expect(true));
+  CheckRayIntersectTriangle(ww::Ray(ww::Point(0.f, 1.f, 1.f), ww::Vector(0.f, -1.f, 0.f)), T, Expect(true));
+  CheckRayIntersectTriangle(ww::Ray(ww::Point(1.f, 1.f, 1.f), ww::Vector(0.f, -1.f, 0.f)), T, Expect(false));
+  CheckRayIntersectTriangle(ww::Ray(ww::Point(.1f, 1.f, .1f), ww::Vector(0.f, -1.f, 0.f)), T, Expect(true));
+
+  // Ray pointing up
+  CheckRayIntersectTriangle(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)), T, Expect(false));
+
+  // Move the triangle up to +y=2:
+  T.VA.Y = 2.f;
+  T.VB.Y = 2.f;
+  T.VC.Y = 2.f;
+  CheckRayIntersectTriangle(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)), T, Expect(true));
+}
+
+//------------------------------------------------------------------------------
+TEST(RayMarch, LineSegmentIntersectTriangle)
+{
+  // ---
+  // NOTE: Convenience lambda for setting flags.
+  // ---
+  auto Print = [](bool V) -> bool { return V; };
+  auto Expect = [](bool V) -> bool { return V; };
+
+  ww::triangle T{};
+  ww::capsule C = ww::CreateCapsule(ww::Point(0.f, 1.f, .1f), ww::Point(0.f, -1.f, -.1f), 0.1f, Print(true));
+
+  auto CheckRayIntersectTriangle = [&Print](ww::ray const &R, ww::triangle const &T, bool TestValue)
+  {
+    auto const Hit = ww::rm::RayTriangleIntersect(R, T, Print(false));
+    EXPECT_EQ(Hit, TestValue);
+    return Hit;
+  };
+
+  // ---
+  // NOTE: Cast a ray from the base in the direction of the tip to see if there is a triangle hit.
+  // ---
+  bool HitTipBase{};
+  bool HitBaseTip{};
+
+  {
+    ww::ray const R = ww::Ray(C.Base, C.Tip - C.Base);
+    HitTipBase = CheckRayIntersectTriangle(R, T, Expect(true));
+  }
+
+  // ---
+  // NOTE: Cast a ray from the tip in the direction of the base to see if there is a triangle hit.
+  // ---
+  {
+    ww::ray const R = ww::Ray(C.Tip, C.Base - C.Tip);
+    HitBaseTip = CheckRayIntersectTriangle(R, T, Expect(true));
+  }
+
+  // ---
+  // NOTE: So there is an intersection when both rays hits the triangle.
+  // ---
+  EXPECT_EQ(HitBaseTip && HitTipBase, true);
 }

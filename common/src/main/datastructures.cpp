@@ -3362,6 +3362,32 @@ float Step(float Edge, float X)
   return 1.f;
 }
 
+/**
+ */
+auto CreateCapsule(tup const &A, tup const &B, float R, bool Print) -> capsule
+{
+  Assert(IsPoint(A), __FUNCTION__, __LINE__);
+  Assert(IsPoint(B), __FUNCTION__, __LINE__);
+
+  ww::capsule C{};
+  C.R = R;
+  C.A = A;
+  C.B = B;
+
+  ww::tup const AB = B - A;  // Vector created from A to B.
+  Assert(ww::IsVector(AB), __FUNCTION__, __LINE__);
+
+  C.Base = A - ww::Normalize(AB) * C.R;  // Subtract from point B to get to Base.
+  C.Tip = B + ww::Normalize(AB) * C.R;   // Add to point A to get to Tip.
+
+  if (Print)
+  {
+    std::cout << "Capsule ---" << std::endl;
+    std::cout << "From A: " << C.A << "\n  to B: " << C.B << "\n"
+              << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.R << std::endl;
+  }
+  return C;
+}
 };  // namespace ww
 
 // ---

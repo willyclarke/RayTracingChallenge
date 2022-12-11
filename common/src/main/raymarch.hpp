@@ -54,6 +54,7 @@ float sdBox(tup const &Pos, tup const &Box);
 float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad);
 float sdSphere(tup const &Pos, float S);
 float udTriangle(tup const &v1, tup const &v2, tup const &v3, tup const &Pos);
+float udQuad(tup const &A, tup const &B, tup const &C, tup const &D, tup const &Pos);
 
 float sdSphereSphereDistance(tup const &PosA, float RadA, tup const &PosB, float RadB);
 float sdSphereSpherePenDist(tup const &PosA, float RadA, tup const &PosB, float RadB);
@@ -63,6 +64,14 @@ bool sdSphereSphereCollision(tup const &PosA, float RadA, tup const &PosB, float
 bool sdSphereTriangleCollision(tup const &v1, tup const &v2, tup const &v3, tup const &PosSphere, float Radius);
 tup ClosestPointOnLineSegment(tup const &A, tup const &B, tup const &Pos);
 
+bool CapsuleTriangleIntersect(tup const &CapA, tup const &CapB,  //!<
+                              float Radius,                      //!<
+                              tup const &V0,                     //!<
+                              tup const &V1,                     //!<
+                              tup const &V2,                     //!<
+                              float *ptrdistance, tup *ptrHitPoint, tup *ptrHitNormal, bool Print = false);
+
+auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print = false) -> bool;
 };      // end namespace rm
 };      // end namespace ww
 #endif  // COMMON_SRC_MAIN_RAYMARCH_HPP
