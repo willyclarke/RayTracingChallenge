@@ -29,6 +29,12 @@ The intention is to use out of source build. So I normally do the following:
 
  * ninja
 
+Note:
+
+On OSX it sometimes is necessary to build with the following command:
+
+cmake ../../RayTracingChallenge  -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -GNinja -D CMAKE_BUILD_TYPE=Release -D CMAKE_PREFIX_PATH=/usr/local/opt/qt/lib/cmake
+
 == Executing the tests
 
 Execute the tests by running the following command from the 'build' directory:
