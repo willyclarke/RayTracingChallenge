@@ -1249,7 +1249,7 @@ TEST(RayMarch, RayIntersectTriangle)
   EXPECT_EQ(T.VC == ww::Point(0.f, 0.f, 1.f), true);
 
   auto CheckRayIntersectTriangle = [](ww::ray const &R, ww::triangle const &T, bool TestValue)
-  { EXPECT_EQ(ww::rm::RayTriangleIntersect(R, T), TestValue); };
+  { EXPECT_EQ(ww::rm::RayTriangleIntersect(R, T).Hit, TestValue); };
 
   // Ray pointing down
   CheckRayIntersectTriangle(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)), T, Expect(true));
@@ -1278,20 +1278,25 @@ TEST(RayMarch, LineSegmentIntersectTriangle)
   auto Expect = [](bool V) -> bool { return V; };
 
   ww::triangle T{};
-  ww::capsule C = ww::CreateCapsule(ww::Point(0.f, 1.f, .1f), ww::Point(0.f, -1.f, -.1f), 0.1f, Print(true));
+  ww::capsule C = ww::CreateCapsule(ww::Point(.1f, 1.f, .2f), ww::Point(.1f, -1.f, -.0f), 0.1f, Print(true));
 
   auto CheckRayIntersectTriangle = [&Print](ww::ray const &R, ww::triangle const &T, bool TestValue)
   {
-    auto const Hit = ww::rm::RayTriangleIntersect(R, T, Print(false));
-    EXPECT_EQ(Hit, TestValue);
-    return Hit;
+    auto const Result = ww::rm::RayTriangleIntersect(R, T, Print(false));
+    std::cout << "\n"
+              << R << "\nHit:" << Result.Hit << ". t:" << Result.t << ". u:" << Result.u << ". v:" << Result.v
+              << std::endl;
+    if (Result.Hit) std::cout << "\nPoint of Hit:" << Result.P << std::endl;
+
+    EXPECT_EQ(Result.Hit, TestValue);
+    return Result;
   };
 
   // ---
   // NOTE: Cast a ray from the base in the direction of the tip to see if there is a triangle hit.
   // ---
-  bool HitTipBase{};
-  bool HitBaseTip{};
+  ww::rm::rti_result HitTipBase{};
+  ww::rm::rti_result HitBaseTip{};
 
   {
     ww::ray const R = ww::Ray(C.Base, C.Tip - C.Base);
@@ -1309,5 +1314,5 @@ TEST(RayMarch, LineSegmentIntersectTriangle)
   // ---
   // NOTE: So there is an intersection when both rays hits the triangle.
   // ---
-  EXPECT_EQ(HitBaseTip && HitTipBase, true);
+  EXPECT_EQ(HitBaseTip.Hit && HitTipBase.Hit, true);
 }

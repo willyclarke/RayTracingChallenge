@@ -1331,7 +1331,7 @@ bool CapsuleTriangleIntersect(tup const &CapA, tup const &CapB,  //!<
   print(vNumerator)
 )
  */
-auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print) -> bool
+auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print) -> rti_result
 {
   tup const &P = R.Origin;
   tup const &d = R.Direction;
@@ -1348,7 +1348,7 @@ auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print) ->
   float const Div =
       d.X * (AB.Y * AC.Z - AB.Z * AC.Y) + d.Y * (-AB.X * AC.Z + AB.Z * AC.X) + d.Z * (AB.X * AC.Y - AB.Y * AC.X);
 
-  if (std::fabs(Div) < 0.001f) return false;
+  if (std::fabs(Div) < 0.001f) return {};
 
   float const tNumerator = AC.X * (-AB.Y * A.Z + AB.Y * P.Z + AB.Z * A.Y - AB.Z * P.Y) +
                            AC.Y * (AB.X * A.Z - AB.X * P.Z - AB.Z * A.X + AB.Z * P.X) +
@@ -1373,7 +1373,16 @@ auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print) ->
     std::cout << "t: " << t << ". u: " << u << ". v: " << v << std::endl;
   }
 
-  if (t >= 0.f && u >= 0.f && v >= 0.f && (u + v) <= 1.f) return true;
+  if (t >= 0.f && u >= 0.f && v >= 0.f && (u + v) <= 1.f)
+  {
+    rti_result Result{};
+    Result.Hit = true;
+    Result.t = t;
+    Result.u = u;
+    Result.v = v;
+    Result.P = u * AB + v * AC;
+    return Result;
+  }
 
   return {};
 }

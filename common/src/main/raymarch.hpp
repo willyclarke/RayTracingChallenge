@@ -71,7 +71,19 @@ bool CapsuleTriangleIntersect(tup const &CapA, tup const &CapB,  //!<
                               tup const &V2,                     //!<
                               float *ptrdistance, tup *ptrHitPoint, tup *ptrHitNormal, bool Print = false);
 
-auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print = false) -> bool;
+/**
+ * Result of Ray towards Triangle hit.
+ */
+struct rti_result
+{
+  float t{};
+  float u{};
+  float v{};
+  bool Hit {};
+  tup P{};
+};
+
+auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print = false) -> rti_result;
 };      // end namespace rm
 };      // end namespace ww
 #endif  // COMMON_SRC_MAIN_RAYMARCH_HPP
