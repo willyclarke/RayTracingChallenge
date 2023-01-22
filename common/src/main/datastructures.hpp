@@ -13,7 +13,6 @@
 #include <iomanip>  // for setw().
 #include <iostream>
 #include <limits>
-#include <strstream>
 #include <vector>
 
 //------------------------------------------------------------------------------
@@ -131,7 +130,6 @@ union matrix
     Dimension = Other.Dimension;
     ID = Other.ID;
   }
-
   struct  //!< A matrix can be four tuple rows
   {
     tup R0{};
@@ -246,7 +244,7 @@ struct intersections
 //    C: Finally the normal is normalized ( ;-) ) before returning it.
 struct shape
 {
-  tup Center{};
+  tup Center{0.f, 0.f, 0.f, 1.f};  //!< Set up the Center to be a point.
   material Material{};
 
   //!< The transform of the object, initialize to identity matrix
@@ -328,7 +326,7 @@ struct cylinder : public shape
 /// ---
 struct cube : public shape
 {
-  float L{1.f};
+  float R{};  //!< Radius for rounded box.
 
   template <typename T>
   bool isA()
@@ -342,7 +340,7 @@ struct plane
 */
 struct plane : public shape
 {
-  float L{1.f};
+  float H{};
 
   template <typename T>
   bool isA()
@@ -351,6 +349,57 @@ struct plane : public shape
   }
 };
 
+//------------------------------------------------------------------------------
+/**
+ */
+struct capsule : public shape
+{
+  float R{};
+  tup A{};
+  tup B{};
+  tup Base{};
+  tup Tip{};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+/**
+struct quad - a square plate
+*/
+struct quad : public shape
+{
+  tup A{-1.f, 0.f, -1.f, 1.f};
+  tup B{+1.f, 0.f, -1.f, 1.f};
+  tup C{+1.f, 0.f, +1.f, 1.f};
+  tup D{-1.f, 0.f, +1.f, 1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
+
+//------------------------------------------------------------------------------
+/**
+struct triangle - a triangle made up of three vertices
+*/
+struct triangle : public shape
+{
+  tup VA{+0.f, 0.f, +0.f, 1.f};
+  tup VB{+1.f, 0.f, +0.f, 1.f};
+  tup VC{+0.f, 0.f, +1.f, 1.f};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+};
 //------------------------------------------------------------------------------
 struct canvas
 {
@@ -376,6 +425,11 @@ struct light
 
 typedef std::shared_ptr<light> shared_ptr_light;
 
+/**
+ * Function pointer to a Raymarch map.
+ */
+using funcPtrMap = tup (*)(tup const &);
+
 //------------------------------------------------------------------------------
 // \struct world :
 //                Contains a vector of the objects
@@ -385,9 +439,22 @@ struct world
 {
   std::vector<shared_ptr_shape> vPtrObjects{};
   std::vector<shared_ptr_light> vPtrLights{};
+  funcPtrMap Map{nullptr};
+
   int Count() const { return static_cast<int>(vPtrObjects.size()); }
   bool Print{};
   mutable ray LocalRayComputed{};  //!< For debugging purpose, storage for later printout.
+};
+
+//------------------------------------------------------------------------------
+// \struct mainimage_config
+// Configuration for the main image when raymarching.
+struct mainimage_config
+{
+  float FocalLength{2.5f};
+  tup Resolution{256.f, 256.f, 0.f, 1.f};
+  matrix MCamera{};
+  funcPtrMap Map{nullptr};
 };
 
 //------------------------------------------------------------------------------
@@ -419,7 +486,7 @@ typedef std::shared_ptr<prepare_computation> shared_ptr_prepare_computation;
 struct camera
 {
   int HSize{160};
-  int VSize{120};
+  int VSize{160};
   int NumBlocksH{4};
   int NumBlocksV{4};
   float FieldOfView{};
@@ -449,6 +516,9 @@ tup Cross(tup const &A, tup const &B);
 //     : http://betterexplained.com/articles/vector-calculus-understanding-the-dot-product .
 // ---
 float Dot(tup const &A, tup const &B);
+float Dot(tup const &A);
+// Inigios negative dot product.
+float NDot(tup const &A, tup const &B);
 
 // ---
 // NOTE: For a discussion on how to do comparison with floating point number the following web
@@ -459,27 +529,44 @@ bool Equal(float const A, float const B);
 bool Equal(tup const &A, tup const &B);
 bool IsVector(tup const &Tup);
 bool IsPoint(tup const &Tup);
+float Fract(float const X);
 float MagSquared(tup const &Tup);
 float Mag(tup const &Tup);
-tup Mul(float const S, tup const &Tup);
 float Radians(float Deg);
 
+tup Abs(tup const &Tup);
+tup Div(float const S, tup const &Tup);
+tup Fract(tup const &X);
+tup Max(tup const &A, float const B);
+tup Min(tup const &A, float const B);
 // ---
 // NOTE: Multiply is also called Hadamard or Schur product.
 // ---
 tup Mul(tup const A, tup const B);
+tup Mul(float const S, tup const &Tup);
 tup Negate(tup const &Tup);
 tup Normalize(tup const &Tup);
 tup Point(float A, float B, float C);
+tup Point(tup P);
 tup Sub(tup const &A, tup const &B);
+tup Sin(tup const &Input);
 tup Vector(float A, float B, float C);
+tup Vector(tup A);
+tup VectorXZY(float X, float Y, float Z);
+tup VectorXY(float X, float Y);
+tup VectorXYZ(tup const &A);
+tup VectorYZX(tup const &A);
+tup VectorXZY(tup const &A);
+tup VectorZXY(tup const &A);
+tup VectorXY(tup const &A);
+tup VectorXZ(tup const &A);
+tup VectorZX(tup const &A);
 
 // ---
 // NOTE: Canvas declarations.
 // ---
 void WritePixel(canvas &Canvas, int X, int Y, tup const &Color);
 tup PixelAt(canvas const &Canvas, int X, int Y);
-std::strstream PPMHeader(canvas const &Canvas, int X, int Y);
 std::string PPMHeader(canvas const &Canvas);
 void WriteToPPM(canvas const &Canvas, std::string const &Filename = "test.ppm");
 int WriteToPPMFile(canvas const &Canvas, std::string const &Filename = "test.ppm");
@@ -693,6 +780,13 @@ tup RefractedColor(world const &World, prepare_computation const &Comps, int con
 float Schlick(prepare_computation const &Comps);
 
 //------------------------------------------------------------------------------
+float Clamp(float X, float MinVal, float MaxVal);
+tup Clamp(tup const &X, float MinVal, float MaxVal);
+tup Pow(tup const &X, tup const &Y);
+float Sign(float X);
+float SmoothStep(float Edge0, float Edge1, float X);
+float Step(float Edge, float X);
+//------------------------------------------------------------------------------
 // Functions for testing planes.
 //------------------------------------------------------------------------------
 shape TestShape();
@@ -733,6 +827,11 @@ tup CheckersGradientPatternAt(pattern const &Pattern, tup const &Point);
 tup PerturbPatternAt(pattern const &Pattern, tup const &Point);
 tup SolidPatternAt(pattern const &Pattern, tup const &Point);
 
+/**
+ * Functions for Capsules.
+ */
+auto CreateCapsule(ww::tup const &A, ww::tup const &B, float R, bool Print) -> ww::capsule;
+
 // \fn SharedPtrSh
 //
 // \brief Create shape object shared pointer updated with the content of \param Sh.
@@ -758,6 +857,19 @@ template std::shared_ptr<cube> SharedPtrSh<cube>(cube const &Sh);
 template std::shared_ptr<plane> SharedPtrSh<plane>(plane const &Sh);
 template std::shared_ptr<shape> SharedPtrSh<shape>(shape const &Sh);
 template std::shared_ptr<sphere> SharedPtrSh<sphere>(sphere const &Sh);
+
+struct render_block
+{
+  int HStart{};
+  int HLength{};
+  int VStart{};
+  int VHeigth{};
+  canvas *ptrImage{nullptr};
+  camera const *ptrCamera{nullptr};
+  world const *ptrWorld{nullptr};
+  mainimage_config Cfg{};
+};
+
 };  // namespace ww
 
 // ---
@@ -779,6 +891,8 @@ ww::tup operator*(float const S, ww::tup const &Tup);
 ww::tup operator*(ww::tup const &Tup, float const S);
 ww::tup operator*(ww::tup const &A, ww::tup const &B);
 ww::tup operator/(ww::tup const &Tup, float const S);
+ww::tup operator/(ww::tup const &A, ww::tup const &B);
+ww::tup operator/(float const A, ww::tup const &B);
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B);
 ww::tup operator*(ww::matrix const &A, ww::tup const &T);
 ww::ray operator*(ww::matrix const &M, ww::ray const &R);

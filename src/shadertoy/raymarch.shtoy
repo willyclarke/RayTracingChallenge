@@ -1,0 +1,95 @@
+#define MAX_STEPS 100
+#define MAX_DIST 100.
+#define MIN_DIST 0.001
+
+/**
+* @param: c - center point
+* @param: r - sphere radius
+* @param: p - position
+*/
+float sdfSphere(vec3 c, float r, vec3 p)
+{
+    float result = distance(p, c) - r;
+
+    return result;
+}
+
+/**
+* @param: pos - current position on the canvas
+*/
+float getDist(vec3 p)
+{
+    float result = 0.;
+
+    // Set up scene here
+    result = sdfSphere(vec3(0.), 0.4, p);
+
+    return result;
+}
+
+/**
+ * March with circles.
+ * @param: ro - ray origin
+ * @param: rd - ray direction
+ */
+float rayMarch(vec3 ro, vec3 rd)
+{
+    float dist = 0.;
+
+    for (int i = 0; i < MAX_STEPS; ++i)
+    {
+        vec3 iPos = ro + rd * dist;
+        float iDist = getDist(iPos);
+        dist += iDist;
+        if (dist > MAX_DIST || dist < MIN_DIST) break;
+    }
+
+    return dist;
+}
+
+/**
+* get the normal of any shape at point p
+* @param: p - point
+*/
+vec3 getNormal(vec3 p)
+{
+    vec2 e = vec2(0.01, 0.); // the epsilon
+    return normalize(vec3(getDist(p + e.xyy), getDist(p + e.yxy), getDist(p + e.yyx)));
+}
+
+/**
+* @param: p - point
+*/
+float getLight(vec3 p)
+{
+    vec3 lightPos = vec3(sin(iTime * 3.), 3., -2.2);
+    vec3 lightDir = normalize(vec3(p - lightPos));
+    return -dot(getNormal(p), lightDir);
+}
+
+/**
+*/
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    vec2 uv = fragCoord/iResolution.xy - 0.5;
+    uv.x *= iResolution.x / iResolution.y;
+
+    // Time varying pixel color
+    vec3 col = vec3(0.);//0.5 + 0.5*cos(iTime+uv.xyx+vec3(0,2,4));
+
+
+    float focalDistance = 0.6;
+    vec3 ro = vec3(0., 0., -1.6);
+    vec3 rd = vec3(uv.x, uv.y, focalDistance);
+
+    float dist = rayMarch(ro, rd);
+    if (dist < MAX_DIST)
+    {
+        vec3 pHit = ro + rd * dist;
+        col = vec3(0.5, 0.2, 0.6);
+        col *= vec3(getLight(pHit)) + vec3(0.1);
+    }
+
+    // Output to screen
+    fragColor = vec4(col,1.0);
+}
