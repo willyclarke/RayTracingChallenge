@@ -47,6 +47,7 @@ struct shape;
 struct shape_info;
 struct sphere;
 struct group;
+struct capsule;
 
 typedef std::shared_ptr<cone> shared_ptr_cone;
 typedef std::shared_ptr<cube> shared_ptr_cube;
@@ -56,6 +57,7 @@ typedef std::shared_ptr<plane> shared_ptr_plane;
 typedef std::shared_ptr<shape> shared_ptr_shape;
 typedef std::shared_ptr<shape_info> shared_ptr_shape_info;
 typedef std::shared_ptr<sphere> shared_ptr_sphere;
+typedef std::shared_ptr<capsule> shared_ptr_capsule;
 
 //------------------------------------------------------------------------------
 
@@ -386,24 +388,6 @@ struct plane : public shape
   }
 };
 
-//------------------------------------------------------------------------------
-/**
- */
-struct capsule : public shape
-{
-  float R{};
-  tup A{};
-  tup B{};
-  tup Base{};
-  tup Tip{};
-
-  template <typename T>
-  bool isA()
-  {
-    return (dynamic_cast<T *>(this) != NULL);
-  }
-};
-
 /**
 struct quad - a square plate
 */
@@ -437,6 +421,26 @@ struct triangle : public shape
     return (dynamic_cast<T *>(this) != NULL);
   }
 };
+
+//------------------------------------------------------------------------------
+struct capsule : public shape
+{
+  float Radius{};
+  tup A{};
+  tup B{};
+  tup Base{};
+  tup Tip{};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
+  shared_ptr_sphere pTopSphere{};
+  shared_ptr_sphere pBottomSphere{};
+  shared_ptr_cylinder pCylinder{};
+};
+
 //------------------------------------------------------------------------------
 struct canvas
 {
@@ -708,6 +712,11 @@ shared_ptr_plane PtrDefaultPlane();
 /// PtrDefaultCube - Create a cube and return a shared pointer to this object.
 /// ---
 shared_ptr_cube PtrDefaultCube();
+
+/// ---
+/// PtrDefaultCapsule - Create a capsule and return a shared pointer to this object.
+/// ---
+shared_ptr_capsule PtrDefaultCapsule();
 
 /// ---
 /// Ray releated functions.
