@@ -1923,16 +1923,19 @@ tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
  \brief Calculate normal vector at given point. The resulting vector will
         be normalized to a length of 1.f.
 */
-tup NormalAt(shape const &Shape, tup const &PointInput)
+tup NormalAt(shape const &Shape, tup const &WorldPoint)
 {
-  tup const LocalPoint = Inverse(Shape.Transform) * PointInput;
-  // tup const LocalNormal = LocalNormalAt(Shape, LocalPoint);
+  auto const LocalPoint = WorldToObject(Shape, WorldPoint);
   tup const LocalNormal = Shape.funcPtrLocalNormalAt(Shape, LocalPoint);
-  tup WorldNormal = Transpose(Inverse(Shape.Transform)) * LocalNormal;
-  WorldNormal.W = 0.f;
-
-  tup const Result = Normalize(WorldNormal);
-  return (Result);
+  auto WorldNormal = NormalToWorld(Shape, LocalNormal);
+  if (Shape.Print)
+  {
+    std::cout << __FUNCTION__ << " -> WorldPoint:" << WorldPoint << std::endl;
+    std::cout << __FUNCTION__ << " -> LocalPoint:" << LocalPoint << std::endl;
+    std::cout << __FUNCTION__ << " -> LocalNormal:" << LocalNormal << std::endl;
+    std::cout << __FUNCTION__ << " -> WorldNormal:" << WorldNormal << std::endl;
+  }
+  return (WorldNormal);
 }
 
 //------------------------------------------------------------------------------
@@ -2264,9 +2267,8 @@ prepare_computation PrepareComputations(intersection const &Hit, ray const &R, i
     {
       intersection const &I = ptrXS->vI[Idx];
       // ---
-      // NOTE: 1. If the intersection is the hit, set the refractive index to the refractive index of the last object in
-      // the
-      //          containers list. If that list is empty, then there is no containing object and n1 should be set to 1.
+      // NOTE: 1. If the intersection is the hit, set the refractive index to the refractive index of the last object
+      // in the containers list. If that list is empty, then there is no containing object and n1 should be set to 1.
       // ---
       if (I == Hit)
       {
@@ -2281,8 +2283,8 @@ prepare_computation PrepareComputations(intersection const &Hit, ray const &R, i
       }
 
       // ---
-      // NOTE: 2. If the intersection's object is already in the Containers list, then this intersection must be exiting
-      //          the object. Remove the object from the Containers list in this case. Otherwise, the intersection is
+      // NOTE: 2. If the intersection's object is already in the Containers list, then this intersection must be
+      // exiting the object. Remove the object from the Containers list in this case. Otherwise, the intersection is
       //          entering the object, and the object should be added to the end of the list.
       // ---
       //
@@ -2844,6 +2846,104 @@ shape TestShape()
 }
 
 //------------------------------------------------------------------------------
+// \brief Return a group object/struct.
+//------------------------------------------------------------------------------
+group Group()
+{
+  group G{};
+  G.funcPtrLocalIntersect = &LocalIntersectGroup;
+  return (G);
+}
+
+//------------------------------------------------------------------------------
+auto UpdateChildTransform(shared_ptr_shape Shape, matrix const &Transform) -> void
+{
+  if (Shape->isA<group>())
+  {
+    auto ptr = dynamic_cast<group *>(Shape.get());
+    for (auto ChildShape : ptr->vChildren)
+    {
+      // std::cout << __FUNCTION__ << ". Is a group. Will set transform recursively to shape." << std::endl;
+      UpdateChildTransform(ChildShape, Transform);
+    }
+  }
+  else
+  {
+    Shape->Transform = Shape->PtrParent->Transform * Shape->Transform;
+    // std::cout << __FUNCTION__ << "Setting transform for " << Shape << " to " << Transform << std::endl;
+  }
+};
+
+//------------------------------------------------------------------------------
+/**
+ * Add a shape to an existing group.
+ */
+void AddChild(shared_ptr_group PtrGroup, shared_ptr_shape PtrShape, char const *ptrDescr)
+{
+  if (ptrDescr) std::cout << "Got the following description:" << ptrDescr << std::endl;
+
+  PtrShape->PtrParent = PtrGroup;
+
+  PtrGroup->vChildren.push_back(PtrShape);
+}
+
+//------------------------------------------------------------------------------
+// NOTE: Convert a point into the parents space.
+//------------------------------------------------------------------------------
+tup WorldToObject(shared_ptr_shape PtrShape, tup Point)
+{
+  if (PtrShape->PtrParent)
+  {
+    Point = WorldToObject(PtrShape->PtrParent, Point);
+  }
+
+  return Inverse(PtrShape->Transform) * Point;
+}
+
+//------------------------------------------------------------------------------
+tup WorldToObject(shape const &Shape, tup Point)
+{
+  if (Shape.Print) std::cout << __FUNCTION__ << " -> Point: " << Point << std::endl;
+
+  if (Shape.PtrParent)
+  {
+    Point = WorldToObject(*Shape.PtrParent, Point);
+    if (Shape.Print) std::cout << __FUNCTION__ << " -> Has Parent. Point recalc: " << Point << std::endl;
+  }
+
+  return Inverse(Shape.Transform) * Point;
+}
+
+//------------------------------------------------------------------------------
+tup NormalToWorld(shared_ptr_shape PtrShape, tup const &Normal)
+{
+  auto N = Transpose(Inverse(PtrShape->Transform)) * Normal;
+  N.W = 0.f;
+  N = Normalize(N);
+
+  if (PtrShape->PtrParent)
+  {
+    N = NormalToWorld(PtrShape->PtrParent, N);
+  }
+
+  return N;
+}
+
+//------------------------------------------------------------------------------
+tup NormalToWorld(shape const &Shape, tup const &Normal)
+{
+  auto N = Transpose(Inverse(Shape.Transform)) * Normal;
+  N.W = 0.f;
+  N = Normalize(N);
+
+  if (Shape.PtrParent)
+  {
+    N = NormalToWorld(Shape.PtrParent, N);
+  }
+  return N;
+}
+
+//------------------------------------------------------------------------------
 // \fn TestShapePtr
 // \brief create an object and return a smart pointer to the object
 // \return smart pointer to shape
@@ -2854,6 +2954,22 @@ shared_ptr_shape SharedPtrShape(shape const &Shape)
   *PtrShape = Shape;
 
   return (PtrShape);
+}
+
+//------------------------------------------------------------------------------
+// \fn SharedPtrGroup
+// \brief create an object and return a smart pointer to the object
+// \return smart pointer to group
+shared_ptr_group SharedPtrGroup(group const &Group)
+{
+  ww::shared_ptr_group PtrGroup{};
+  PtrGroup.reset(new ww::group);
+  *PtrGroup = Group;
+  PtrGroup->funcPtrLocalNormalAt = nullptr;
+
+  if (PtrGroup->Print) std::cout << PtrGroup << "-> Group Transform:" << PtrGroup->Transform << std::endl;
+
+  return (PtrGroup);
 }
 
 //------------------------------------------------------------------------------
@@ -3113,11 +3229,17 @@ tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point)
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
 {
   Assert(Shape.Material.Pattern.funcPtrPatternAt != nullptr, __FILE__, __LINE__);
+
+  /**
+   * To support groups the world point need to be transferred into object space.
+   */
+  auto const LocalPoint = WorldToObject(Shape, Point);
+
   /**
    * Multiply the given world-space point by the inverse of the objects
    * transformation matrix to convert the point to object space.
    */
-  tup const ShapePoint = Inverse(Shape.Transform) * Point;
+  tup const ShapePoint = Inverse(Shape.Transform) * LocalPoint;
 
   tup const Color = Pattern.funcPtrPatternAt(Pattern, ShapePoint);
   return Color;

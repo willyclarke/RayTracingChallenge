@@ -1,0 +1,361 @@
+#include "gtest/gtest.h"
+#include <datastructures.hpp>
+
+#include <cmath>
+#include <memory>
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test1, CreatingANewGroup)
+{
+  auto Group = ww::Group();
+  EXPECT_EQ(Group.Transform == ww::I(), true);
+  EXPECT_EQ(Group.isA<ww::shape>(), true);
+}
+
+TEST(Ch14Test2, ShapeHasAParentAttribute)
+{
+  auto const S = ww::TestShape();
+  EXPECT_EQ(S.PtrParent == nullptr, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test3, AddingChildToAGroup)
+{
+  auto G = ww::Group();
+  auto S = ww::TestShape();
+  auto pS = ww::SharedPtrShape(S);
+  auto pG = ww::SharedPtrGroup(G);
+  ww::AddChild(pG, pS);
+  EXPECT_EQ(pG->vChildren.empty(), false);  // The group is not empty.
+  if (!pG->vChildren.empty())
+  {
+    EXPECT_EQ(pG->vChildren.front() == pS, true);  // The group includes S (a copy of).
+    EXPECT_EQ(pS->PtrParent == pG, true);          // The shape Parent is the group.
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test4, IntersectingARayWithAnEmptyGroup)
+{
+  auto G = ww::Group();
+  auto pG = ww::SharedPtrGroup(G);
+  auto R = ww::Ray(ww::Point(0.f, 0.f, 0.f), ww::Vector(0.f, 0.f, 1.f));
+  auto XS = ww::LocalIntersect(pG, R);
+  EXPECT_EQ(XS.Count(), 0);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test5, IntersectingARayWithAnNonEmptyGroup)
+{
+  auto G = ww::Group();
+  auto pG = ww::SharedPtrGroup(G);
+  auto pS1 = ww::PtrDefaultSphere();
+  auto pS2 = ww::PtrDefaultSphere();
+  pS2->Transform = ww::Translation(0.f, 0.f, -3.f);
+  auto pS3 = ww::PtrDefaultSphere();
+  pS3->Transform = ww::Translation(5.f, 0.f, 0.f);
+
+  ww::AddChild(pG, pS1);
+  ww::AddChild(pG, pS2);
+  ww::AddChild(pG, pS3);
+
+  auto R = ww::Ray(ww::Point(0.f, 0.f, -5.f), ww::Vector(0.f, 0.f, 1.f));
+
+  auto const XS = ww::LocalIntersect(pG, R);
+
+  EXPECT_EQ(XS.Count(), 4);
+  if (XS.Count() == 4)
+  {
+    EXPECT_EQ(XS.vI[0].pShape == pS2, true);
+    EXPECT_EQ(XS.vI[1].pShape == pS2, true);
+    EXPECT_EQ(XS.vI[2].pShape == pS1, true);
+    EXPECT_EQ(XS.vI[3].pShape == pS1, true);
+  }
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test6, IntersectingATransformedGroup)
+{
+  auto G = ww::Group();
+  G.Transform = ww::Scaling(2.f, 2.f, 2.f);
+  auto pG = ww::SharedPtrGroup(G);
+
+  auto pS1 = ww::PtrDefaultSphere();
+  pS1->Transform = ww::Translation(5.f, 0.f, 0.f);
+  ww::AddChild(pG, pS1);
+
+  auto R = ww::Ray(ww::Point(10.f, 0.f, -10.f), ww::Vector(0.f, 0.f, 1.f));
+  auto const XS = ww::LocalIntersect(pG, R);
+  EXPECT_EQ(XS.Count(), 2);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test7, ConvertingAPointFromWorldToObjectSpace)
+{
+  auto Ptest = ww::Point(-2.f, 0.f, -10.f);
+  auto PExpect = ww::Point(0.f, 0.f, -1.f);
+
+  auto Tm = ww::Translation(5.f, 0.f, 0.f);
+  auto Sm = ww::Scaling(2.f, 2.f, 2.f);
+  auto Rm = ww::RotateY(M_PI_2);
+  auto M = Rm * Sm * Tm;
+  auto LocalPoint1 = ww::Inverse(M) * Ptest;
+  EXPECT_EQ(LocalPoint1 == PExpect, true);
+
+  auto G = ww::Group();
+
+  G.Transform = Rm;
+  auto pG1 = ww::SharedPtrGroup(G);
+
+  G.Transform = Sm;
+
+  auto pG2 = ww::SharedPtrGroup(G);
+  ww::AddChild(pG1, pG2);
+
+  auto pS = ww::PtrDefaultSphere();
+  pS->Transform = Tm;
+
+  ww::AddChild(pG2, pS);
+
+  auto const P = ww::WorldToObject(pS, Ptest);
+
+  EXPECT_EQ(P == PExpect, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test8, ConvertingANormalFromObjectToWorldSpace)
+{
+  auto G = ww::Group();
+  G.PtrShapeInfo = std::make_shared<ww::shape_info>();
+
+  auto pG1 = ww::SharedPtrGroup(G);
+  pG1->Transform = ww::RotateY(M_PI_2);
+
+  auto pG2 = ww::SharedPtrGroup(G);
+  pG2->Transform = ww::Scaling(1.f, 2.f, 3.f);
+  ww::AddChild(pG1, pG2);
+
+  auto pS = ww::PtrDefaultSphere();
+  pS->Transform = ww::Translation(5.f, 0.f, 0.f);
+  ww::AddChild(pG2, pS);
+
+  auto const SQRT3_OVER_3 = std::sqrt(3.f) / 3.f;
+  auto const I = ww::Vector(SQRT3_OVER_3, SQRT3_OVER_3, SQRT3_OVER_3);
+
+  auto const N = ww::NormalToWorld(pS, I);
+  auto const E = ww::Vector(0.2857f, 0.4286f, -0.8571f);
+
+  // std::cout << "I test    : " << I << ". Len: " << ww::Mag(I) << std::endl;
+  // std::cout << "N computed: " << N << ". Len: " << ww::Mag(N) << std::endl;
+  // std::cout << "N expected: " << E << ". Len: " << ww::Mag(E) << std::endl;
+
+  EXPECT_EQ(N == E, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test9, FindTheNormalOnAnObjectInAGroup)
+{
+  auto G = ww::Group();
+
+  auto pG1 = ww::SharedPtrGroup(G);
+  pG1->Transform = ww::RotateY(M_PI_2);
+
+  auto pG2 = ww::SharedPtrGroup(G);
+  pG2->Transform = ww::Scaling(1.f, 2.f, 3.f);
+
+  ww::AddChild(pG1, pG2);
+
+  auto pS = ww::PtrDefaultSphere();
+  pS->Transform = ww::Translation(5.f, 0.f, 0.f);
+
+  ww::AddChild(pG2, pS);
+  EXPECT_EQ(pG1->isA<ww::group>(), true);
+  EXPECT_EQ(pG2->isA<ww::group>(), true);
+  EXPECT_EQ(pS->isA<ww::group>(), false);
+
+  auto const I = ww::Point(1.7321f, 1.1547f, -5.5774f);
+  auto const N = ww::NormalAt(*pS, I);
+  auto const E = ww::Vector(0.2857f, 0.4286f, -0.8571f);
+  // std::cout << "Computed normal N: " << N << std::endl;
+  // std::cout << "Expected normal E: " << E << std::endl;
+
+  EXPECT_EQ(N == E, true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test10, PuttingItAllTogether)
+{
+  ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
+  ww::tup const ColorBrownLight =
+      ww::Color(float(0xba) / float(0xff), float(0x8f) / float(0xff), float(0x5d) / float(0xff));
+
+  // float constexpr TWidth = 1.5f;
+  // float constexpr TDepth = 1.5f;
+  // float constexpr TThick = 0.05f;
+
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+
+  // Add the first plane
+  ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
+  ptrPlane->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  ptrPlane->Material.Shininess = 10.f;
+  ptrPlane->Material.Diffuse = 0.2f;
+  ptrPlane->Material.Ambient = 2.f;
+  ptrPlane->Material.Reflective = 1.f;
+  ptrPlane->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  ptrPlane->Transform = ww::RotateY(ww::Radians(45.f));
+  ptrPlane->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  World.vPtrObjects.push_back(ptrPlane);
+
+  // Add a second plane - this will act as the backdrop.
+  ww::shared_ptr_plane ptrPlane2 = ww::PtrDefaultPlane();
+  ptrPlane2->Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 10.f, 1.f, 1.f, 1.f, ww::Radians(90.f), 0.f, ww::Radians(45.f));
+  ptrPlane2->Material.Shininess = 100.f;
+  ptrPlane2->Material.Diffuse = 0.7f;
+  ptrPlane2->Material.Color =
+      ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  ptrPlane2->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrObjects.push_back(ptrPlane2);
+
+  // Add a third plane - this will act as the backdrop.
+  ww::shared_ptr_plane ptrPlane3 = ww::PtrDefaultPlane();
+  ptrPlane3->Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 10.f, 1.f, 1.f, 1.f, ww::Radians(90.f), 0.f, ww::Radians(-45.f));
+  ptrPlane3->Material.Shininess = 100.f;
+  ptrPlane3->Material.Diffuse = 0.7f;
+  ptrPlane3->Material.Ambient = 1.2f;
+  ptrPlane3->Material.Pattern = ww::StripePattern(ColorBrown, ColorBrownLight);
+  World.vPtrObjects.push_back(ptrPlane3);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(-5.f, 7.5f, -5.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  /**
+   * Test case for checking normals.
+   */
+  {
+    for (int N = 0; N < 6; ++N)
+    {
+      auto MRot = ww::RotateY(float(N) * M_PI / 3.f);
+      auto Corner = ww::PtrDefaultSphere();
+      Corner->Material.Color = ColorBrown;
+      Corner->Transform = MRot * ww::Translation(0.f, 2.f, -1.f) * ww::Scaling(0.25f, 0.25f, 0.25f);
+
+      auto Edge = ww::PtrDefaultCylinder();
+      Edge->Material.Color = ColorBrownLight;
+      Edge->Closed = true;
+      Edge->Minimum = 0.f;
+      Edge->Maximum = 1.f;
+      /**
+       * Matrix multiplication ensures that the shape is first scaled, rotated and finally translated.
+       */
+      Edge->Transform = MRot * ww::Translation(0.f, 2.f, -1.f) * ww::RotateY(-M_PI / 6.f) * ww::RotateZ(-M_PI_2) *
+                        ww::Scaling(0.25f, 1.f, 0.25f);
+
+      World.vPtrObjects.push_back(Corner);
+      World.vPtrObjects.push_back(Edge);
+    }
+  }
+
+  auto HexagonCorner = []() -> ww::shared_ptr_sphere
+  {
+    auto Corner = ww::PtrDefaultSphere();
+    /**
+     * Matrix multiplication ensures that the shape is first scaled, then translated.
+     */
+    Corner->Transform = ww::Translation(0.f, 0.f, -1.f) * ww::Scaling(0.25f, 0.25f, 0.25f);
+    return Corner;
+  };
+
+  auto HexagonEdge = []() -> ww::shared_ptr_cylinder
+  {
+    auto Edge = ww::PtrCappedCylinder(0.f, 1.f);
+    Edge->Transform = ww::Translation(0.f, 0.f, -1.f) * ww::RotateY(-M_PI / 6.f) * ww::RotateZ(-M_PI_2) *
+                      ww::Scaling(0.25f, 1.f, 0.25f);
+    return Edge;
+  };
+
+  auto HexagonSide = [&]() -> ww::shared_ptr_group
+  {
+    auto Side = ww::SharedPtrGroup({});
+    ww::AddChild(Side, HexagonCorner());
+    ww::AddChild(Side, HexagonEdge());
+
+    /**
+     * After using shared pointers to create everything we can return the actual object(aka group).
+     */
+    return Side;
+  };
+
+  /**
+   * Create a group of six sides to make up the Hexagon.
+   */
+  auto Hexagon = [&]() -> ww::shared_ptr_group
+  {
+    auto Hex = ww::SharedPtrGroup({});
+    for (int N{}; N < 6; ++N)
+    {
+      auto Side = HexagonSide();
+      // Side->Transform = ww::RotateY(float(N) * M_PI / 3.f);
+      Side->Transform = ww::Translation(0.f, 2.f, 0.f) * ww::RotateZ(45.f) * ww::RotateY(float(N) * M_PI / 3.f);
+      ww::AddChild(Hex, Side);
+    }
+    return Hex;
+  };
+
+  auto MyHexagon = Hexagon();
+
+  for (auto Side : MyHexagon->vChildren)
+  {
+    ww::group *SideGroup = dynamic_cast<ww::group *>(Side.get());
+    for (int Jdx{}; Jdx < SideGroup->vChildren.size(); ++Jdx)
+    {
+      auto PtrChild = SideGroup->vChildren[Jdx];
+      auto PtrParent = PtrChild->PtrParent;
+      auto T = PtrChild->Transform;
+
+      /**
+       * Move up until there are no more parents.
+       */
+      while (PtrParent)
+      {
+        T = PtrParent->Transform * T;
+        PtrParent = PtrParent->PtrParent;
+      }
+
+      PtrChild->Transform = T;
+
+      if (PtrChild->isA<ww::sphere>())
+      {
+        auto Corner = ww::PtrDefaultSphere();
+        Corner->Transform = T;
+        World.vPtrObjects.push_back(Corner);
+      }
+
+      else if (PtrChild->isA<ww::cylinder>())
+      {
+        auto Side = ww::PtrCappedCylinder(0.f, 1.f);
+        Side->Transform = T;
+        World.vPtrObjects.push_back(Side);
+      }
+    }
+  }
+
+  // ---
+  // NOTE: Write out the result so that it is possible to see whats going on.
+  // ---
+  ww::camera Camera = ww::Camera(1256, 1256, ww::Radians(50.f));
+
+  ww::tup const ViewFrom = ww::Point(-0.f, 4.5f, -5.f);
+  ww::tup const ViewTo = ww::Point(0.0f, -1.f, 5.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "Ch14PuttingItTogether.ppm");
+}

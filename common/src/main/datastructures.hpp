@@ -44,13 +44,17 @@ struct cube;
 struct cylinder;
 struct plane;
 struct shape;
+struct shape_info;
 struct sphere;
+struct group;
 
 typedef std::shared_ptr<cone> shared_ptr_cone;
 typedef std::shared_ptr<cube> shared_ptr_cube;
 typedef std::shared_ptr<cylinder> shared_ptr_cylinder;
+typedef std::shared_ptr<group> shared_ptr_group;
 typedef std::shared_ptr<plane> shared_ptr_plane;
 typedef std::shared_ptr<shape> shared_ptr_shape;
+typedef std::shared_ptr<shape_info> shared_ptr_shape_info;
 typedef std::shared_ptr<sphere> shared_ptr_sphere;
 
 //------------------------------------------------------------------------------
@@ -162,9 +166,9 @@ tup FuncDefaultPatternAt(pattern const &Pattern, tup const &Point);
 /// ---
 /// Surface normal functions
 /// ---
-tup NormalAt(shape const &Shape, tup const &P);
+tup NormalAt(shape const &Shape, tup const &WorldPoint);
 tup LocalNormalAt(shape const &Shape, tup const &LocalPoint);
-tup LocalNormalAtCone(shape const &Cube, tup const &LocalPoint);
+tup LocalNormalAtCone(shape const &Cone, tup const &LocalPoint);
 tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtCylinder(shape const &Cube, tup const &LocalPoint);
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint);
@@ -227,6 +231,14 @@ struct intersections
   int Count() const { return (int)vI.size(); }
 };
 
+// ---
+// NOTE: Debug info for a shape.
+// ---
+struct shape_info
+{
+  std::string Name{};
+};
+
 /// ---
 /// \struct base struct for the raytracing objects
 /// ---
@@ -244,6 +256,8 @@ struct intersections
 //    C: Finally the normal is normalized ( ;-) ) before returning it.
 struct shape
 {
+  shared_ptr_shape PtrParent{nullptr};
+
   tup Center{0.f, 0.f, 0.f, 1.f};  //!< Set up the Center to be a point.
   material Material{};
 
@@ -272,6 +286,23 @@ struct shape
 
   //!< Function pointer for the Local Normal at a point. Defaults to normal of sphere.
   tup (*funcPtrLocalNormalAt)(shape const &Shape, tup const &PointIn){&LocalNormalAt};
+
+  shared_ptr_shape_info PtrShapeInfo{nullptr};
+};
+
+/// ---
+/// \struct group
+/// \brief The group contains a list of shapes.
+/// ---
+struct group : public shape
+{
+  std::vector<shared_ptr_shape> vChildren{};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
 };
 
 /// ---
@@ -299,6 +330,12 @@ struct cone : public shape
   bool Closed{};
   float Minimum{-INIFINITY};
   float Maximum{INIFINITY};
+
+  template <typename T>
+  bool isA()
+  {
+    return (dynamic_cast<T *>(this) != NULL);
+  }
 };
 
 /**
@@ -790,8 +827,15 @@ float Step(float Edge, float X);
 // Functions for testing planes.
 //------------------------------------------------------------------------------
 shape TestShape();
+group Group();
+void AddChild(shared_ptr_group PtrGroup, shared_ptr_shape PtrShape, char const *pDescr = nullptr);
+tup WorldToObject(shared_ptr_shape PtrParent, tup Point);
+tup WorldToObject(shape const &Shape, tup Point);
+tup NormalToWorld(shared_ptr_shape PtrShape, tup const &Normal);
+tup NormalToWorld(shape const &Shape, tup const &Normal);
 
 shared_ptr_shape SharedPtrShape(shape const &Shape);
+shared_ptr_group SharedPtrGroup(group const &Group);
 
 //------------------------------------------------------------------------------
 //-Functions for testing patterns.
