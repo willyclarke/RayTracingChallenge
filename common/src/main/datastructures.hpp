@@ -837,6 +837,7 @@ float Step(float Edge, float X);
 //------------------------------------------------------------------------------
 shape TestShape();
 group Group();
+void AddGroupToWorld(world &World, shared_ptr_group Group);
 void AddChild(shared_ptr_group PtrGroup, shared_ptr_shape PtrShape, char const *pDescr = nullptr);
 tup WorldToObject(shared_ptr_shape PtrParent, tup Point);
 tup WorldToObject(shape const &Shape, tup Point);

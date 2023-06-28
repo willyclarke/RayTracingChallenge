@@ -3003,23 +3003,72 @@ group Group()
 }
 
 //------------------------------------------------------------------------------
-auto UpdateChildTransform(shared_ptr_shape Shape, matrix const &Transform) -> void
+auto AddVectorOfChildren(world &World, shared_ptr_shape Shape) -> void
 {
   if (Shape->isA<group>())
   {
-    auto ptr = dynamic_cast<group *>(Shape.get());
-    for (auto ChildShape : ptr->vChildren)
+    auto PtrGroup = std::dynamic_pointer_cast<group>(Shape);
+    for (auto Elem : PtrGroup->vChildren)
     {
-      // std::cout << __FUNCTION__ << ". Is a group. Will set transform recursively to shape." << std::endl;
-      UpdateChildTransform(ChildShape, Transform);
+      if (Elem->isA<group>())
+      {
+        AddVectorOfChildren(World, Elem);
+      }
+      else
+      {
+        auto PtrChild = Elem;
+        auto PtrParent = PtrChild->PtrParent;
+        auto T = PtrChild->Transform;
+
+        /**
+         * Move up until there are no more parents.
+         */
+        while (PtrParent)
+        {
+          T = PtrParent->Transform * T;
+          PtrParent = PtrParent->PtrParent;
+        }
+
+        PtrChild->Transform = T;
+
+        if (Elem->isA<sphere>())
+        {
+          auto Sphere = ww::PtrDefaultSphere();
+          Sphere->Transform = T;
+          World.vPtrObjects.push_back(Sphere);
+        }
+        else if (PtrChild->isA<ww::cylinder>())
+        {
+          auto Cylinder = ww::PtrCappedCylinder(0.f, 1.f);
+          Cylinder->Transform = T;
+          World.vPtrObjects.push_back(Cylinder);
+        }
+      }
     }
   }
-  else
-  {
-    Shape->Transform = Shape->PtrParent->Transform * Shape->Transform;
-    // std::cout << __FUNCTION__ << "Setting transform for " << Shape << " to " << Transform << std::endl;
-  }
-};
+}
+
+//------------------------------------------------------------------------------
+void AddGroupToWorld(world &World, shared_ptr_group PtrGroup) { AddVectorOfChildren(World, PtrGroup); }
+
+//------------------------------------------------------------------------------
+// auto UpdateChildTransform(shared_ptr_shape Shape, matrix const &Transform) -> void
+// {
+//   if (Shape->isA<group>())
+//   {
+//     auto ptr = dynamic_cast<group *>(Shape.get());
+//     for (auto ChildShape : ptr->vChildren)
+//     {
+//       // std::cout << __FUNCTION__ << ". Is a group. Will set transform recursively to shape." << std::endl;
+//       UpdateChildTransform(ChildShape, Transform);
+//     }
+//   }
+//   else
+//   {
+//     Shape->Transform = Shape->PtrParent->Transform * Shape->Transform;
+//     // std::cout << __FUNCTION__ << "Setting transform for " << Shape << " to " << Transform << std::endl;
+//   }
+// };
 
 //------------------------------------------------------------------------------
 /**
