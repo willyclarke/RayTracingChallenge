@@ -463,3 +463,170 @@ TEST(Ch14Test11, AddGroupToWorld)
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch14AddGroupToWorld.ppm");
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test12, TransformingPatterns)
+{
+  ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
+  ww::tup const ColorBrownLight =
+      ww::Color(float(0xba) / float(0xff), float(0x8f) / float(0xff), float(0x5d) / float(0xff));
+
+  ww::pattern Stripes = ww::StripePattern(ColorBrown, ColorBrownLight);
+
+  ww::material Material{};
+  Material.Pattern = ww::StripePattern(ww::Color(1.f, 1.f, 1.f), ww::Color(0.f, 0.f, 0.f));
+  Material.Ambient = 1.f;
+  Material.Diffuse = 0.f;
+  Material.Specular = 0.f;
+
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+  EXPECT_EQ(World.Count(), 0);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(-5.f, 7.5f, -5.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  auto G = ww::Group();
+
+  auto pG1 = ww::SharedPtrGroup(G);
+  pG1->Transform = ww::Translation(-4.f, -2.f, 5.f) * ww::RotateX(2.f * M_PI_4) * ww::RotateY(2.0f * M_PI_2);
+  // pG1->Material.Pattern = ww::CheckersPattern(ww::Color(1.f, 0.5f, 0.f), ww::Color(0.f, 1.f, 0.2f));
+  // pG1->Material.Pattern.Transform =
+  //     ww::TranslateScaleRotate(0.f, 0.f, 0.f, .4f, .4f, .4f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+  //
+  // auto pG2 = ww::SharedPtrGroup(G);
+  // pG2->Transform = ww::Scaling(1.f, 2.f, 3.f);
+  //
+  // ww::AddChild(pG1, pG2);
+  //
+  // auto pS = ww::PtrDefaultSphere();
+  // pS->Transform = ww::Translation(5.f, 0.f, 0.f);
+  // auto pS1 = ww::PtrDefaultSphere();
+  // pS->Transform = ww::Translation(1.f, 1.f, 0.f);
+  //
+  // ww::AddChild(pG2, pS);
+  // ww::AddChild(pG2, pS1);
+
+  // ww::AddGroupToWorld(World, pG1);
+
+  // EXPECT_EQ(pG1->isA<ww::group>(), true);
+  // EXPECT_EQ(pG2->isA<ww::group>(), true);
+  // EXPECT_EQ(pS->isA<ww::group>(), false);
+  // EXPECT_EQ(pS1->isA<ww::group>(), false);
+
+  auto HexagonCorner = [&]() -> ww::shared_ptr_sphere
+  {
+    auto Corner = ww::PtrDefaultSphere();
+    /**
+     * Matrix multiplication ensures that the shape is first scaled, then translated.
+     */
+    Corner->Transform = ww::Translation(0.f, 0.f, -1.f) * ww::Scaling(0.25f, 0.25f, 0.25f);
+    // Corner->Material.Pattern = ww::CheckersPattern(ColorBrown, ColorBrownLight);
+    return Corner;
+  };
+
+  auto HexagonEdge = [&]() -> ww::shared_ptr_cylinder
+  {
+    auto Edge = ww::PtrCappedCylinder(0.f, 1.f);
+    Edge->Transform = ww::Translation(0.f, 0.f, -1.f) * ww::RotateY(-M_PI / 6.f) * ww::RotateZ(-M_PI_2) *
+                      ww::Scaling(0.25f, 1.f, 0.25f);
+    // Edge->Material.Pattern = ww::CheckersPattern(ColorBrown, ColorBrownLight);
+    return Edge;
+  };
+
+  auto HexagonSide = [&]() -> ww::shared_ptr_group
+  {
+    auto Side = ww::SharedPtrGroup({});
+    ww::AddChild(Side, HexagonCorner());
+    ww::AddChild(Side, HexagonEdge());
+
+    /**
+     * After using shared pointers to create everything we can return the actual object(aka group).
+     */
+    return Side;
+  };
+
+  /**
+   * Create a group of six sides to make up the Hexagon.
+   */
+  auto Hexagon = [&]() -> ww::shared_ptr_group
+  {
+    auto Hex = ww::SharedPtrGroup({});
+    for (int N{}; N < 6; ++N)
+    {
+      auto Side = HexagonSide();
+      Side->Transform = ww::Translation(0.f, 0.f, 0.f) * ww::RotateZ(0.f) * ww::RotateY(float(N) * M_PI / 3.f);
+      ww::AddChild(Hex, Side);
+    }
+    return Hex;
+  };
+
+  auto MyHexagon = Hexagon();
+  MyHexagon->Material.Pattern = ww::StripePattern(ColorBrown, ColorBrownLight);
+  MyHexagon->Material.Pattern.Transform = ww::Scaling(0.32f, 0.32f, 0.32f) * ww::RotateZ(ww::Radians(95.f));
+  ww::AddGroupToWorld(World, MyHexagon);
+
+  auto MyHexagon2 = Hexagon();
+  MyHexagon2->Transform =
+      ww::TranslateScaleRotate(2.f, 1.5f, 1.f, 1.f, 1.f, 1.f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+  MyHexagon2->Material.Pattern = ww::CheckersGradientPattern(ww::Color(1.f, 0.5f, 0.f), ww::Color(0.f, 1.f, 0.2f));
+  MyHexagon2->Material.Pattern.Transform = ww::Scaling(1.5f, 1.5f, 1.5f) * ww::RotateZ(ww::Radians(45.f));
+  ww::AddGroupToWorld(World, MyHexagon2);
+
+  // ---
+  // NOTE: Add a primitive object for comparison.
+  // ---
+  auto pObject1 = ww::PtrCappedCylinder(-1.f, 3.f);
+  auto pObject2 = ww::PtrDefaultSphere();
+  pObject2->Transform =
+      ww::TranslateScaleRotate(-2.f, 1.5f, 1.f, 1.f, 1.f, 1.f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+  auto pObject3 = ww::PtrDefaultCube();
+  pObject3->Transform =
+      ww::TranslateScaleRotate(-1.5f, 0.f, 0.f, 1.f, 1.f, 1.f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+
+  ww::AddChild(pG1, pObject1);
+  ww::AddChild(pG1, pObject2);
+  ww::AddChild(pG1, pObject3);
+  // ww::AddGroupToWorld(World, pG1);
+
+  auto pG3 = ww::SharedPtrGroup(G);
+  ww::AddChild(pG3, pG1);
+
+  auto pObject4 = ww::PtrCappedCylinder(-1.f, 3.f);
+  auto pObject5 = ww::PtrDefaultSphere();
+  pObject5->Transform =
+      ww::TranslateScaleRotate(-2.f, 1.5f, 1.f, 1.f, 1.f, 1.f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+  auto pObject6 = ww::PtrDefaultCube();
+  pObject6->Transform =
+      ww::TranslateScaleRotate(-1.5f, 0.f, 0.f, 1.f, 1.f, 1.f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+
+  auto pG2 = ww::SharedPtrGroup(G);
+  pG2->Transform =
+      ww::TranslateScaleRotate(3.f, 0.f, 0.f, .25f, .25f, .25f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+  ww::AddChild(pG2, pObject4);
+  ww::AddChild(pG2, pObject5);
+  ww::AddChild(pG2, pObject6);
+
+  ww::AddChild(pG3, pG2);
+  pG3->Material.Pattern = ww::CheckersPattern(ww::Color(1.f, 0.5f, 0.f), ww::Color(0.f, 1.f, 0.2f));
+  pG3->Material.Pattern.Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 0.f, .4f, .4f, .4f, ww::Radians(0.f), ww::Radians(0.f), ww::Radians(0.f));
+
+  ww::AddGroupToWorld(World, pG3);
+
+  // ---
+  // NOTE: Write out the result so that it is possible to see whats going on.
+  // ---
+  ww::camera Camera = ww::Camera(256, 256, ww::Radians(50.f));
+
+  ww::tup const ViewFrom = ww::Point(0.f, 5.0f, -5.f);
+  ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "Ch14AddPatternToGroup.ppm");
+}

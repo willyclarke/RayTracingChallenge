@@ -3019,6 +3019,7 @@ auto AddVectorOfChildren(world &World, shared_ptr_shape Shape) -> void
         auto PtrChild = Elem;
         auto PtrParent = PtrChild->PtrParent;
         auto T = PtrChild->Transform;
+        auto Pattern = PtrChild->Material.Pattern;
 
         /**
          * Move up until there are no more parents.
@@ -3026,22 +3027,50 @@ auto AddVectorOfChildren(world &World, shared_ptr_shape Shape) -> void
         while (PtrParent)
         {
           T = PtrParent->Transform * T;
+
+          /**
+           * Use the pattern from the to level group to the Child.
+           */
+          if (PtrParent->Material.Pattern != pattern{})
+          {
+            Pattern = PtrParent->Material.Pattern;
+            Pattern.Transform = PtrParent->Material.Pattern.Transform;
+          }
+
+          /**
+           * Move up to the next parent.
+           */
           PtrParent = PtrParent->PtrParent;
         }
 
-        PtrChild->Transform = T;
-
+        /**
+         * Create the group by use of the fundamental building blocks.
+         */
         if (Elem->isA<sphere>())
         {
-          auto Sphere = ww::PtrDefaultSphere();
+          auto Sphere = PtrDefaultSphere();
           Sphere->Transform = T;
+          Sphere->Material.Pattern = Pattern;
+
           World.vPtrObjects.push_back(Sphere);
         }
-        else if (PtrChild->isA<ww::cylinder>())
+        else if (PtrChild->isA<cylinder>())
         {
-          auto Cylinder = ww::PtrCappedCylinder(0.f, 1.f);
+          auto PtrInputCylinder = std::dynamic_pointer_cast<cylinder>(PtrChild);
+          auto Cylinder = PtrCappedCylinder(0.f, 1.f);
+          Cylinder->Minimum = PtrInputCylinder->Minimum;
+          Cylinder->Maximum = PtrInputCylinder->Maximum;
           Cylinder->Transform = T;
+          Cylinder->Material.Pattern = Pattern;
           World.vPtrObjects.push_back(Cylinder);
+        }
+        else if (PtrChild->isA<cube>())
+        {
+          auto PtrInputCube = std::dynamic_pointer_cast<cube>(PtrChild);
+          auto Cube = PtrDefaultCube();
+          Cube->Transform = T;
+          Cube->Material.Pattern = Pattern;
+          World.vPtrObjects.push_back(Cube);
         }
       }
     }
@@ -3083,9 +3112,10 @@ void AddChild(shared_ptr_group PtrGroup, shared_ptr_shape PtrShape, char const *
   PtrGroup->vChildren.push_back(PtrShape);
 }
 
-//------------------------------------------------------------------------------
-// NOTE: Convert a point into the parents space.
-//------------------------------------------------------------------------------
+/**
+ * Multiply the given world-space point by the inverse of the objects
+ * transformation matrix to convert the point to object space.
+ */
 tup WorldToObject(shared_ptr_shape PtrShape, tup Point)
 {
   if (PtrShape->PtrParent)
@@ -3096,7 +3126,10 @@ tup WorldToObject(shared_ptr_shape PtrShape, tup Point)
   return Inverse(PtrShape->Transform) * Point;
 }
 
-//------------------------------------------------------------------------------
+/**
+ * Multiply the given world-space point by the inverse of the objects
+ * transformation matrix to convert the point to object space.
+ */
 tup WorldToObject(shape const &Shape, tup Point)
 {
   if (Shape.Print) std::cout << __FUNCTION__ << " -> Point: " << Point << std::endl;
@@ -3431,13 +3464,7 @@ tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
    */
   auto const LocalPoint = WorldToObject(Shape, Point);
 
-  /**
-   * Multiply the given world-space point by the inverse of the objects
-   * transformation matrix to convert the point to object space.
-   */
-  tup const ShapePoint = Inverse(Shape.Transform) * LocalPoint;
-
-  tup const Color = Pattern.funcPtrPatternAt(Pattern, ShapePoint);
+  tup const Color = Pattern.funcPtrPatternAt(Pattern, LocalPoint);
   return Color;
 }
 

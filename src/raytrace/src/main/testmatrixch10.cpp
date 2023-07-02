@@ -614,6 +614,11 @@ TEST(DISABLED_Ch10Patterns, PuttingItTogetherPerturbedPattern)
   Middle.Material.Pattern.Transform = ww::Scaling(0.15f, 0.5f, 0.5f) * ww::RotateZ(0.78);
   World.vPtrObjects.push_back(PtrMiddle);
 
+  auto Edge = ww::PtrCappedCylinder(0.f, 1.f);
+  Edge->Transform = ww::Translation(3.f, 0.f, 0.f);
+  Edge->Material.Pattern = P1Perturbed;
+  World.vPtrObjects.push_back(Edge);
+
   ww::shared_ptr_light pLight{};
   pLight.reset(new ww::light);
   *pLight = ww::PointLight(ww::Point(-10.f, 25.f, 0.f), ww::Color(1.f, 1.f, 1.f));
