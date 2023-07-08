@@ -465,7 +465,7 @@ TEST(Ch14Test11, AddGroupToWorld)
 }
 
 //------------------------------------------------------------------------------
-TEST(Ch14Test12, TransformingPatterns)
+TEST(DISABLED_Ch14Test12, TransformingPatterns)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
   ww::tup const ColorBrownLight =
@@ -629,4 +629,129 @@ TEST(Ch14Test12, TransformingPatterns)
 
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch14AddPatternToGroup.ppm");
+}
+
+//------------------------------------------------------------------------------
+TEST(DISABLED_Ch14Test13, UseBoxes)
+{
+  ww::tup const ColorBrown = ww::Color(float(0x07) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
+  ww::tup const ColorBrownLight =
+      ww::Color(float(0x1a) / float(0xff), float(0x8f) / float(0xff), float(0x5d) / float(0xff));
+
+  ww::pattern Stripes = ww::StripePattern(ColorBrown, ColorBrownLight);
+
+  ww::material Material{};
+  Material.Pattern = ww::CheckersPattern(ww::Color(1.f, 0.4f, 1.f), ww::Color(1.f, 0.f, 0.f));
+  Material.Pattern.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 0.5f, 0.5f, 0.5f, 0.f, ww::Radians(40.f), 0.f);
+  Material.Ambient = 1.f;
+  Material.Diffuse = 1.f;
+  Material.Specular = 0.5f;
+  ww::material Material2 = Material;
+  Material2.Pattern = ww::GradientPattern(ww::Color(.9f, 0.5f, 1.f), ww::Color(.8f, .4f, 0.f));
+  Material2.Pattern.Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 0.5f, 0.5f, 0.5f, 0.f, ww::Radians(40.f), 0.f);
+
+  ww::world World = ww::World();
+  World.vPtrLights.clear();
+  World.vPtrObjects.clear();
+  EXPECT_EQ(World.Count(), 0);
+
+  // Add the first plane
+  ww::shared_ptr_plane ptrPlane = ww::PtrDefaultPlane();
+  ptrPlane->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  ptrPlane->Material.Shininess = 10.f;
+  ptrPlane->Material.Diffuse = 0.2f;
+  ptrPlane->Material.Ambient = 2.f;
+  ptrPlane->Material.Reflective = 1.f;
+  ptrPlane->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  ptrPlane->Transform = ww::RotateY(ww::Radians(45.f));
+  ptrPlane->Material.Color = ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  World.vPtrObjects.push_back(ptrPlane);
+
+  // Add a second plane - this will act as the backdrop.
+  ww::shared_ptr_plane ptrPlane2 = ww::PtrDefaultPlane();
+  ptrPlane2->Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 10.f, 1.f, 1.f, 1.f, ww::Radians(90.f), 0.f, ww::Radians(45.f));
+  ptrPlane2->Material.Shininess = 100.f;
+  ptrPlane2->Material.Diffuse = 0.7f;
+  ptrPlane2->Material.Color =
+      ww::Color(float(0xff) / float(0xff), float(0xe9) / float(0xff), float(0xca) / float(0xff));
+  ptrPlane2->Material.Pattern = ww::CheckersPattern(ww::Color(0.f, 0.f, 0.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrObjects.push_back(ptrPlane2);
+
+  // Add a third plane - this will act as the backdrop.
+  ww::shared_ptr_plane ptrPlane3 = ww::PtrDefaultPlane();
+  ptrPlane3->Transform =
+      ww::TranslateScaleRotate(0.f, 0.f, 10.f, 1.f, 1.f, 1.f, ww::Radians(90.f), 0.f, ww::Radians(-45.f));
+  ptrPlane3->Material.Shininess = 100.f;
+  ptrPlane3->Material.Diffuse = 0.7f;
+  ptrPlane3->Material.Ambient = 1.2f;
+  ptrPlane3->Material.Pattern = ww::StripePattern(ColorBrown, ColorBrownLight);
+  World.vPtrObjects.push_back(ptrPlane3);
+
+  ww::shared_ptr_light pLight{};
+  pLight.reset(new ww::light);
+  *pLight = ww::PointLight(ww::Point(-5.f, 20.f, -15.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight);
+
+  ww::shared_ptr_light pLight2{};
+  pLight2.reset(new ww::light);
+  *pLight2 = ww::PointLight(ww::Point(5.f, 40.f, -25.f), ww::Color(1.f, 1.f, 1.f));
+  World.vPtrLights.push_back(pLight2);
+
+  auto G = ww::Group();
+
+  auto pG1 = ww::SharedPtrGroup(G);
+  pG1->Transform = ww::Translation(0.f, 6.f, -20.f) * ww::RotateX(0.f * M_PI_4) * ww::RotateY(0.f * M_PI_2);
+  pG1->Material = Material;
+
+  // ---
+  // NOTE: Add a primitive object for comparison.
+  // ---
+  constexpr int NumObjects = 6;
+  auto CreateGroup = [](int NumObjects, float X, float Y, float Z, ww::material const &Material) -> ww::shared_ptr_group
+  {
+    auto G = ww::Group();
+    auto pG = ww::SharedPtrGroup(G);
+
+    pG->Transform = ww::Translation(X, Y, Z) * ww::RotateX(0.f * M_PI_4) * ww::RotateY(0.f * M_PI_2);
+    pG->Material = Material;
+
+    for (int Idx = -NumObjects / 2; Idx < NumObjects / 2; ++Idx)
+    {
+      auto pObject = ww::PtrDefaultCube();
+      pObject->Transform = ww::TranslateScaleRotate(float(Idx) * 3.f, 0.f, 0.f, 1.f, 1.f, 1.f, ww::Radians(0.f),
+                                                    ww::Radians(0.f), ww::Radians(0.f));
+      pObject->Material.Shininess = 10.f;
+      pObject->Material.Diffuse = 0.2f;
+      pObject->Material.Ambient = 2.f;
+      pObject->Material.Reflective = 1.f;
+
+      ww::AddChild(pG, pObject);
+    }
+    return pG;
+  };
+
+  for (int Idy = -3; Idy < 3; ++Idy)
+  {
+    for (int Idz = -3; Idz < 3; ++Idz)
+    {
+      auto pG = CreateGroup(NumObjects, 0.f, float(Idy) * 3.f, float(Idz) * 3.f, Material2);
+      ww::AddChild(pG1, pG);
+    }
+  }
+  ww::AddGroupToWorld(World, pG1);
+
+  // ---
+  // NOTE: Write out the result so that it is possible to see whats going on.
+  // ---
+  // ww::camera Camera = ww::Camera(2256, 2256, ww::Radians(80.f));
+  ww::camera Camera = ww::Camera(556, 556, ww::Radians(50.f));
+
+  ww::tup const ViewFrom = ww::Point(0.f, 20.0f, -49.f);
+  ww::tup const ViewTo = ww::Point(0.0f, 0.f, 0.f);
+  ww::tup const UpIsY = ww::Vector(0.f, 1.f, 0.f);
+  Camera.Transform = ww::ViewTransform(ViewFrom, ViewTo, UpIsY);
+
+  ww::canvas Canvas = ww::Render(Camera, World);
+  ww::WriteToPPM(Canvas, "Ch14UseBoxes.ppm");
 }
