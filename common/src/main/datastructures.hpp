@@ -39,15 +39,16 @@ constexpr float PI_F = 3.14159265358979f;
 /// ---
 /// \declarations
 /// ---
+struct bounds;
 struct cone;
+struct capsule;
 struct cube;
 struct cylinder;
+struct group;
 struct plane;
 struct shape;
 struct shape_info;
 struct sphere;
-struct group;
-struct capsule;
 
 typedef std::shared_ptr<cone> shared_ptr_cone;
 typedef std::shared_ptr<cube> shared_ptr_cube;
@@ -58,6 +59,7 @@ typedef std::shared_ptr<shape> shared_ptr_shape;
 typedef std::shared_ptr<shape_info> shared_ptr_shape_info;
 typedef std::shared_ptr<sphere> shared_ptr_sphere;
 typedef std::shared_ptr<capsule> shared_ptr_capsule;
+typedef std::shared_ptr<bounds> shared_ptr_bounds;
 
 //------------------------------------------------------------------------------
 
@@ -305,6 +307,16 @@ struct group : public shape
   {
     return (dynamic_cast<T *>(this) != NULL);
   }
+};
+
+/// ---
+/// \struct bounds
+/// \brief Axis Aligned Bounding Box AABB definition
+///
+struct bounds
+{
+  tup Min{};
+  tup Max{};
 };
 
 /// ---
@@ -717,6 +729,11 @@ shared_ptr_cube PtrDefaultCube();
 /// PtrDefaultCapsule - Create a capsule and return a shared pointer to this object.
 /// ---
 shared_ptr_capsule PtrDefaultCapsule();
+
+/// ---
+/// PtrDefaultBounds - Create a bounds struct and return a shared pointer the struct.
+/// ---
+shared_ptr_bounds PtrDefaultBounds();
 
 /// ---
 /// Ray releated functions.

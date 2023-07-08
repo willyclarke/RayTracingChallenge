@@ -755,3 +755,12 @@ TEST(DISABLED_Ch14Test13, UseBoxes)
   ww::canvas Canvas = ww::Render(Camera, World);
   ww::WriteToPPM(Canvas, "Ch14UseBoxes.ppm");
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test14, CreateBounds)
+{
+  auto pBounds = ww::PtrDefaultBounds();
+  auto &Bounds = *pBounds.get();
+  EXPECT_EQ(Bounds.Min == ww::Point(-1.f, -1.f, -1.f), true);
+  EXPECT_EQ(Bounds.Max == ww::Point(1.f, 1.f, 1.f), true);
+}

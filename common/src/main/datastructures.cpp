@@ -2363,6 +2363,15 @@ shared_ptr_capsule PtrDefaultCapsule()
 }
 
 //------------------------------------------------------------------------------
+shared_ptr_bounds PtrDefaultBounds()
+{
+  shared_ptr_bounds pBounds = std::make_shared<bounds>();
+  pBounds->Min = Point(-1.f, -1.f, -1.f);
+  pBounds->Max = Point(1.f, 1.f, 1.f);
+  return pBounds;
+}
+
+//------------------------------------------------------------------------------
 shared_ptr_cube PtrDefaultCube()
 {
   shared_ptr_cube pCube{};
