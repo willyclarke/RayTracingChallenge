@@ -465,7 +465,7 @@ TEST(Ch14Test11, AddGroupToWorld)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_Ch14Test12, TransformingPatterns)
+TEST(Ch14Test12, TransformingPatterns)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
   ww::tup const ColorBrownLight =
@@ -761,6 +761,74 @@ TEST(Ch14Test14, CreateBounds)
 {
   auto pBounds = ww::PtrDefaultBounds();
   auto &Bounds = *pBounds.get();
-  EXPECT_EQ(Bounds.Min == ww::Point(-1.f, -1.f, -1.f), true);
-  EXPECT_EQ(Bounds.Max == ww::Point(1.f, 1.f, 1.f), true);
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-1.f, -1.f, -1.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(1.f, 1.f, 1.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test14, VerifyBoundsOfSphere)
+{
+  auto pSphere = ww::PtrDefaultSphere();
+  auto Bounds = ww::Bounds(pSphere);
+
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-1.f, -1.f, -1.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(1.f, 1.f, 1.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test14, VerifyBoundsOfCube)
+{
+  auto pCube = ww::PtrDefaultCube();
+  auto Bounds = ww::Bounds(pCube);
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-1.f, -1.f, -1.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(1.f, 1.f, 1.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test15, VerifyBoundsOfCappedCylinder)
+{
+  constexpr float CYLMINIMUM = 0.f;
+  constexpr float CYLMAXIMUM = 2.f;
+  auto pCylinder = ww::PtrCappedCylinder(CYLMINIMUM, CYLMAXIMUM);
+  auto Bounds = ww::Bounds(pCylinder);
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-1.f, CYLMINIMUM, -1.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(1.f, CYLMAXIMUM, 1.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test16, VerifyBoundsOfCylinder)
+{
+  auto pCylinder = ww::PtrDefaultCylinder();
+  auto Bounds = ww::Bounds(pCylinder);
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-1.f, -ww::INIFINITY, -1.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(1.f, ww::INIFINITY, 1.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test17, VerifyBoundsOfCone)
+{
+  auto pCone = ww::PtrDefaultCone();
+  auto Bounds = ww::Bounds(pCone);
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-1.f, -ww::INIFINITY, -1.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(1.f, ww::INIFINITY, 1.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test18, VerifyBoundsOfCappedCone)
+{
+  constexpr float CONEMINIMUM = 0.f;
+  constexpr float CONEMAXIMUM = 2.f;
+  auto pCone = ww::PtrCappedCone(CONEMINIMUM, CONEMAXIMUM);
+  auto Bounds = ww::Bounds(pCone);
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-1.f, CONEMINIMUM, -1.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(1.f, CONEMAXIMUM, 1.f), true);
+}
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test19, VerifyBoundsOfPlane)
+{
+  auto pPlane = ww::PtrDefaultPlane();
+  auto Bounds = ww::Bounds(pPlane);
+  EXPECT_EQ(Bounds.Minimum == ww::Point(-ww::INIFINITY, -ww::INIFINITY, 0.f), true);
+  EXPECT_EQ(Bounds.Maximum == ww::Point(ww::INIFINITY, ww::INIFINITY, 0.f), true);
 }

@@ -315,8 +315,8 @@ struct group : public shape
 ///
 struct bounds
 {
-  tup Min{};
-  tup Max{};
+  tup Minimum{};
+  tup Maximum{};
 };
 
 /// ---
@@ -734,6 +734,7 @@ shared_ptr_capsule PtrDefaultCapsule();
 /// PtrDefaultBounds - Create a bounds struct and return a shared pointer the struct.
 /// ---
 shared_ptr_bounds PtrDefaultBounds();
+bounds Bounds(shared_ptr_shape const pShape);
 
 /// ---
 /// Ray releated functions.

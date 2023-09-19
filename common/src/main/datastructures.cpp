@@ -2366,9 +2366,54 @@ shared_ptr_capsule PtrDefaultCapsule()
 shared_ptr_bounds PtrDefaultBounds()
 {
   shared_ptr_bounds pBounds = std::make_shared<bounds>();
-  pBounds->Min = Point(-1.f, -1.f, -1.f);
-  pBounds->Max = Point(1.f, 1.f, 1.f);
+  pBounds->Minimum = Point(-1.f, -1.f, -1.f);
+  pBounds->Maximum = Point(1.f, 1.f, 1.f);
   return pBounds;
+}
+
+//------------------------------------------------------------------------------
+bounds Bounds(shared_ptr_shape const pShape)
+{
+  bounds Result{};
+  if (pShape->isA<cube>())
+  {
+    cube *pCube = dynamic_cast<cube *>(pShape.get());
+    Result.Minimum = Point(-pCube->Transform.R0.X, -pCube->Transform.R1.Y, -pCube->Transform.R2.Z);
+    Result.Maximum = Point(pCube->Transform.R0.X, pCube->Transform.R1.Y, pCube->Transform.R2.Z);
+  }
+  else if (pShape->isA<cone>())
+  {
+    cone *pCone = dynamic_cast<cone *>(pShape.get());
+    Result.Minimum = Point(-pCone->Transform.R0.X, pCone->Transform.R1.Y * pCone->Minimum, -pCone->Transform.R2.Z);
+    Result.Maximum = Point(pCone->Transform.R0.X, pCone->Transform.R1.Y * pCone->Maximum, pCone->Transform.R2.Z);
+  }
+  else if (pShape->isA<cylinder>())
+  {
+    cylinder *pCylinder = dynamic_cast<cylinder *>(pShape.get());
+    Result.Minimum =
+        Point(-pCylinder->Transform.R0.X, pCylinder->Transform.R1.Y * pCylinder->Minimum, -pCylinder->Transform.R2.Z);
+    Result.Maximum =
+        Point(pCylinder->Transform.R0.X, pCylinder->Transform.R1.Y * pCylinder->Maximum, pCylinder->Transform.R2.Z);
+  }
+  else if (pShape->isA<plane>())
+  {
+    Result.Minimum = Point(-INIFINITY, -INIFINITY, 0.f);
+    Result.Maximum = Point(INIFINITY, INIFINITY, 0.f);
+  }
+  else if (pShape->isA<sphere>())
+  {
+    sphere *pSphere = dynamic_cast<sphere *>(pShape.get());
+    Result.Minimum = Point(-pSphere->Transform.R0.X, -pSphere->Transform.R1.Y, -pSphere->Transform.R2.Z);
+    Result.Maximum = Point(pSphere->Transform.R0.X, pSphere->Transform.R1.Y, pSphere->Transform.R2.Z);
+  }
+  else
+  {
+    std::cerr << __FUNCTION__ << " -> Unhandled Shape type: " << pShape << ". Transform:" << pShape->Transform
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+  }
+
+  return Result;
 }
 
 //------------------------------------------------------------------------------
