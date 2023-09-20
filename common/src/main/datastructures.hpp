@@ -315,8 +315,8 @@ struct group : public shape
 ///
 struct bounds
 {
-  tup Minimum{};
-  tup Maximum{};
+  tup Minimum{0.f, 0.f, 0.f, 1.f};
+  tup Maximum{0.f, 0.f, 0.f, 1.f};
 };
 
 /// ---
@@ -735,6 +735,7 @@ shared_ptr_capsule PtrDefaultCapsule();
 /// ---
 shared_ptr_bounds PtrDefaultBounds();
 bounds Bounds(shared_ptr_shape const pShape);
+bounds Bounds(shared_ptr_group const pGroup);
 
 /// ---
 /// Ray releated functions.

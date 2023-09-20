@@ -832,3 +832,24 @@ TEST(Ch14Test19, VerifyBoundsOfPlane)
   EXPECT_EQ(Bounds.Minimum == ww::Point(-ww::INIFINITY, -ww::INIFINITY, 0.f), true);
   EXPECT_EQ(Bounds.Maximum == ww::Point(ww::INIFINITY, ww::INIFINITY, 0.f), true);
 }
+
+//------------------------------------------------------------------------------
+TEST(Ch14Test20, MakeABoundsForGroup)
+{
+  auto G = ww::Group();
+
+  /**
+   * Create a sphere with scale ...
+   */
+  auto pS = ww::PtrDefaultSphere();
+  pS->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+
+  auto pG = ww::SharedPtrGroup(G);
+  ww::AddChild(pG, pS);
+
+  auto BoundsGroup = ww::Bounds(pG);
+  auto BoundsShape = ww::Bounds(pS);
+
+  EXPECT_EQ(BoundsGroup.Minimum == BoundsShape.Minimum, true);
+  EXPECT_EQ(BoundsGroup.Maximum == BoundsShape.Maximum, true);
+}

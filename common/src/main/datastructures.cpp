@@ -2417,6 +2417,29 @@ bounds Bounds(shared_ptr_shape const pShape)
 }
 
 //------------------------------------------------------------------------------
+bounds Bounds(shared_ptr_group const pGroup)
+{
+  bounds Result{};
+
+  for (size_t Idx = 0;                  //!<
+       Idx < pGroup->vChildren.size();  //!<
+       ++Idx)
+  {
+    auto pShape = pGroup->vChildren[Idx];
+    auto ShapeBounds = Bounds(pShape);
+
+    Result.Maximum.X = std::max(Result.Maximum.X, ShapeBounds.Maximum.X);
+    Result.Maximum.Y = std::max(Result.Maximum.Y, ShapeBounds.Maximum.Y);
+    Result.Maximum.Z = std::max(Result.Maximum.Z, ShapeBounds.Maximum.Z);
+
+    Result.Minimum.X = std::min(Result.Minimum.X, ShapeBounds.Minimum.X);
+    Result.Minimum.Y = std::min(Result.Minimum.Y, ShapeBounds.Minimum.Y);
+    Result.Minimum.Z = std::min(Result.Minimum.Z, ShapeBounds.Minimum.Z);
+  }
+  return Result;
+}
+
+//------------------------------------------------------------------------------
 shared_ptr_cube PtrDefaultCube()
 {
   shared_ptr_cube pCube{};
