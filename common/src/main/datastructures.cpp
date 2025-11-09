@@ -2402,9 +2402,11 @@ bounds Bounds(shared_ptr_shape const pShape)
   }
   else if (pShape->isA<sphere>())
   {
-    sphere *pSphere = dynamic_cast<sphere *>(pShape.get());
-    Result.Minimum = Point(-pSphere->Transform.R0.X, -pSphere->Transform.R1.Y, -pSphere->Transform.R2.Z);
-    Result.Maximum = Point(pSphere->Transform.R0.X, pSphere->Transform.R1.Y, pSphere->Transform.R2.Z);
+    Result.Minimum = Point(-1.f, -1.f, -1.f);
+    Result.Maximum = Point(1.f, 1.f, 1.f);
+    // sphere *pSphere = dynamic_cast<sphere *>(pShape.get());
+    // Result.Minimum = Point(-pSphere->Transform.R0.X, -pSphere->Transform.R1.Y, -pSphere->Transform.R2.Z);
+    // Result.Maximum = Point(pSphere->Transform.R0.X, pSphere->Transform.R1.Y, pSphere->Transform.R2.Z);
   }
   else
   {
@@ -2428,13 +2430,20 @@ bounds Bounds(shared_ptr_group const pGroup)
     auto pShape = pGroup->vChildren[Idx];
     auto ShapeBounds = Bounds(pShape);
 
-    Result.Maximum.X = std::max(Result.Maximum.X, ShapeBounds.Maximum.X);
-    Result.Maximum.Y = std::max(Result.Maximum.Y, ShapeBounds.Maximum.Y);
-    Result.Maximum.Z = std::max(Result.Maximum.Z, ShapeBounds.Maximum.Z);
+    /**
+     * Move the shape's bounds into the parents space by Multiplying
+     * with the transform for the shape.
+     */
+    auto ShapesParentSpaceBoundsMaximum = pShape->Transform * ShapeBounds.Maximum;
+    auto ShapesParentSpaceBoundsMinimum = pShape->Transform * ShapeBounds.Minimum;
 
-    Result.Minimum.X = std::min(Result.Minimum.X, ShapeBounds.Minimum.X);
-    Result.Minimum.Y = std::min(Result.Minimum.Y, ShapeBounds.Minimum.Y);
-    Result.Minimum.Z = std::min(Result.Minimum.Z, ShapeBounds.Minimum.Z);
+    Result.Maximum.X = std::max(Result.Maximum.X, ShapesParentSpaceBoundsMaximum.X);
+    Result.Maximum.Y = std::max(Result.Maximum.Y, ShapesParentSpaceBoundsMaximum.Y);
+    Result.Maximum.Z = std::max(Result.Maximum.Z, ShapesParentSpaceBoundsMaximum.Z);
+
+    Result.Minimum.X = std::min(Result.Minimum.X, ShapesParentSpaceBoundsMinimum.X);
+    Result.Minimum.Y = std::min(Result.Minimum.Y, ShapesParentSpaceBoundsMinimum.Y);
+    Result.Minimum.Z = std::min(Result.Minimum.Z, ShapesParentSpaceBoundsMinimum.Z);
   }
   return Result;
 }

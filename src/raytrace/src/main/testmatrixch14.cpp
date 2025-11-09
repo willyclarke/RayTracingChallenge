@@ -844,12 +844,22 @@ TEST(Ch14Test20, MakeABoundsForGroup)
   auto pS = ww::PtrDefaultSphere();
   pS->Transform = ww::TranslateScaleRotate(0.f, 0.f, 0.f, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
 
+  auto pSGlass = ww::PtrGlassSphere();
+  pSGlass->Transform = ww::TranslateScaleRotate(10.f, 10.f, 10.f, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+
   auto pG = ww::SharedPtrGroup(G);
   ww::AddChild(pG, pS);
+  ww::AddChild(pG, pSGlass);
 
   auto BoundsGroup = ww::Bounds(pG);
   auto BoundsShape = ww::Bounds(pS);
+  auto BoundsSGlass = ww::Bounds(pSGlass);
 
-  EXPECT_EQ(BoundsGroup.Minimum == BoundsShape.Minimum, true);
-  EXPECT_EQ(BoundsGroup.Maximum == BoundsShape.Maximum, true);
+  EXPECT_EQ(BoundsGroup.Minimum == ww::Point(-2.f, -2.f, -2.f), true);
+  EXPECT_EQ(BoundsGroup.Maximum == ww::Point(12.f, 12.f, 12.f), true);
+
+  std::cout << "GMinimum:" << BoundsGroup.Minimum << std::endl;
+  std::cout << "GMaximum:" << BoundsGroup.Maximum << std::endl;
+  std::cout << "BoundsGlass Maximum:" << BoundsSGlass.Maximum << std::endl;
+  std::cout << "BoundsGlass Minimum:" << BoundsSGlass.Minimum << std::endl;
 }
