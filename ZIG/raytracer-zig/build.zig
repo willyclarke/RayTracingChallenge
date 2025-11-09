@@ -83,6 +83,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // Register src/tuple.zig as a named module "tuple"
+    const tuple_mod = b.addModule("tuple", .{
+        .root_source_file = b.path("src/tuple.zig"), 
+
+    });
+    exe.root_module.addImport("tuple", tuple_mod);
+
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
