@@ -10,6 +10,7 @@ pub fn main() !void {
 
     const t = tuple.Tuple.init(4.3, -4.2, 3.1, 1.0);
     print("t = ({}, {}, {}, {})\n", .{ t.x, t.y, t.z, t.w });
+    print("tt = {}\n", .{t});
 }
 
 test "simple test" {
