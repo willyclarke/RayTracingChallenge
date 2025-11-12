@@ -71,7 +71,8 @@ pub const Tuple = struct {
         return .{ .x = -a.x, .y = -a.y, .z = -a.z, .w = -a.w };
     }
 
-    pub fn mul(a: Tuple, s: Scalar) Tuple {
+    /// Scalar multiplication
+    pub fn muls(a: Tuple, s: Scalar) Tuple {
         return .{ .x = a.x * s, .y = a.y * s, .z = a.z * s, .w = a.w * s };
     }
 
@@ -83,12 +84,25 @@ pub const Tuple = struct {
         return std.math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w);
     }
 
+    /// Magnitude squared
+    pub fn mags(a: Tuple) Scalar {
+        return a.x * a.x + a.y * a.y + a.z * a.z + a.w * a.w;
+    }
+
+    /// Normalize to length 1
     pub fn normalize(a: Tuple) Tuple {
         return a.div(a.mag());
     }
 
+    /// Inner product of a tuple
     pub fn dot(a: Tuple, b: Tuple) Scalar {
         return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+    }
+
+    /// Tuple multiplication
+    /// Also called Hadamard product or Schur product
+    pub fn mult(a: Tuple, b: Tuple) Tuple {
+        return .{ .x = a.x * b.x, .y = a.y * b.y, .z = a.z * b.z, .w = a.w * b.w };
     }
 
     pub fn cross(a: Tuple, b: Tuple) Tuple {
@@ -110,7 +124,36 @@ pub const Tuple = struct {
         // Forward to the value formatter
         return Tuple.format(self.*, writer);
     }
+
+    /// Color - red channel
+    pub inline fn red(self: Tuple) Scalar {
+        return self.x;
+    }
+
+    /// Color - green channel
+    pub inline fn green(self: Tuple) Scalar {
+        return self.y;
+    }
+
+    /// Color - blue channel
+    pub inline fn blue(self: Tuple) Scalar {
+        return self.z;
+    }
+
+    /// Color - alpha channel
+    pub inline fn alpha(self: Tuple) Scalar {
+        return self.w;
+    }
 };
+
+/// Alias: Color *is* Tuple (same type)
+pub const Color = Tuple;
+
+/// Helper constructors & accessors for color semantics
+pub inline fn color(red: Scalar, green: Scalar, blue: Scalar) Color {
+    // store in x,y,z; keep w = 0 since it's a “vector-like” quantity
+    return .{ .x = red, .y = green, .z = blue, .w = S(0) };
+}
 
 pub const Projectile = struct {
     position: Tuple,
@@ -218,14 +261,14 @@ test "Chap1 -negate a tuple" {
 
 test "Chap1 -multiplying a tuple by scalar" {
     const a = Tuple.init(1, -2, 3, -4);
-    const amult = Tuple.mul(a, 3.5);
+    const amult = Tuple.muls(a, 3.5);
     const e = Tuple.init(3.5, -7, 10.5, -14);
     try std.testing.expect(Tuple.equals(amult, e));
 }
 
 test "Chap1 -multiplying a tuple by a fraction" {
     const a = Tuple.init(1, -2, 3, -4);
-    const amult = Tuple.mul(a, 0.5);
+    const amult = Tuple.muls(a, 0.5);
     const e = Tuple.init(0.5, -1, 1.5, -2);
     try std.testing.expect(Tuple.equals(amult, e));
 }
@@ -333,4 +376,43 @@ test "Chap1 -Putting it together" {
         print("projectile.position: {f} projectile.velocity: {f}\n", .{ &projectile.position, projectile.velocity });
         projectile = tick(e, projectile);
     }
+}
+
+test "Chap2 -Colors are (red, green, blue) Tuples" {
+    const c = color(-0.5, 0.4, 1.7);
+    try std.testing.expect(almostEqual(c.red(), -0.5));
+    try std.testing.expect(almostEqual(c.green(), 0.4));
+    try std.testing.expect(almostEqual(c.blue(), 1.7));
+}
+
+test "Chap2 -Adding colors" {
+    const c1 = color(0.9, 0.6, 0.75);
+    const c2 = color(0.7, 0.1, 0.25);
+    const csum = c1.add(c2);
+    const expect = color(c1.x + c2.x, c1.y + c2.y, c1.z + c2.z);
+    try std.testing.expect(Tuple.equals(csum, expect));
+}
+
+test "Chap2 -Subtracting colors" {
+    const c1 = color(0.9, 0.6, 0.75);
+    const c2 = color(0.7, 0.1, 0.25);
+    const csum = c1.sub(c2);
+    const expect = color(c1.x - c2.x, c1.y - c2.y, c1.z - c2.z);
+    try std.testing.expect(Tuple.equals(csum, expect));
+}
+
+test "Chap2 -Multiplying color by a scalar" {
+    const c1 = color(0.2, 0.3, 0.4);
+    const val: Scalar = S(2);
+    const result = c1.muls(val);
+    const expect = color(0.4, 0.6, 0.8);
+    try std.testing.expect(Tuple.equals(result, expect));
+}
+
+test "Chap2 -Multiplying colors" {
+    const c1 = color(1, 0.2, 0.4);
+    const c2 = color(0.9, 1, 0.1);
+    const result = c1.mult(c2);
+    const expect = color(0.9, 0.2, 0.04);
+    try std.testing.expect(Tuple.equals(result, expect));
 }
