@@ -52,19 +52,19 @@ pub const Tuple = struct {
         return .{ .x = x, .y = y, .z = z, .w = 0.0 };
     }
 
-    pub fn equals(a: Tuple, b: Tuple) bool {
-        return almostEqual(a.x, b.x) and
-            almostEqual(a.y, b.y) and
-            almostEqual(a.z, b.z) and
-            almostEqual(a.w, b.w);
+    pub fn equals(a: Tuple, d: Tuple) bool {
+        return almostEqual(a.x, d.x) and
+            almostEqual(a.y, d.y) and
+            almostEqual(a.z, d.z) and
+            almostEqual(a.w, d.w);
     }
 
-    pub fn add(a: Tuple, b: Tuple) Tuple {
-        return .{ .x = a.x + b.x, .y = a.y + b.y, .z = a.z + b.z, .w = a.w + b.w };
+    pub fn add(a: Tuple, d: Tuple) Tuple {
+        return .{ .x = a.x + d.x, .y = a.y + d.y, .z = a.z + d.z, .w = a.w + d.w };
     }
 
-    pub fn sub(a: Tuple, b: Tuple) Tuple {
-        return .{ .x = a.x - b.x, .y = a.y - b.y, .z = a.z - b.z, .w = a.w - b.w };
+    pub fn sub(a: Tuple, d: Tuple) Tuple {
+        return .{ .x = a.x - d.x, .y = a.y - d.y, .z = a.z - d.z, .w = a.w - d.w };
     }
 
     pub fn neg(a: Tuple) Tuple {
@@ -95,18 +95,18 @@ pub const Tuple = struct {
     }
 
     /// Inner product of a tuple
-    pub fn dot(a: Tuple, b: Tuple) Scalar {
-        return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+    pub fn dot(a: Tuple, d: Tuple) Scalar {
+        return a.x * d.x + a.y * d.y + a.z * d.z + a.w * d.w;
     }
 
     /// Tuple multiplication
     /// Also called Hadamard product or Schur product
-    pub fn mult(a: Tuple, b: Tuple) Tuple {
-        return .{ .x = a.x * b.x, .y = a.y * b.y, .z = a.z * b.z, .w = a.w * b.w };
+    pub fn mult(a: Tuple, d: Tuple) Tuple {
+        return .{ .x = a.x * d.x, .y = a.y * d.y, .z = a.z * d.z, .w = a.w * d.w };
     }
 
-    pub fn cross(a: Tuple, b: Tuple) Tuple {
-        return vector(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
+    pub fn cross(a: Tuple, d: Tuple) Tuple {
+        return vector(a.y * d.z - a.z * d.y, a.z * d.x - a.x * d.z, a.x * d.y - a.y * d.x);
     }
 
     /// Custom formatter so `{}` prints nicely.
@@ -126,17 +126,17 @@ pub const Tuple = struct {
     }
 
     /// Color - red channel
-    pub inline fn red(self: Tuple) Scalar {
+    pub inline fn r(self: Tuple) Scalar {
         return self.x;
     }
 
     /// Color - green channel
-    pub inline fn green(self: Tuple) Scalar {
+    pub inline fn g(self: Tuple) Scalar {
         return self.y;
     }
 
     /// Color - blue channel
-    pub inline fn blue(self: Tuple) Scalar {
+    pub inline fn b(self: Tuple) Scalar {
         return self.z;
     }
 
@@ -380,9 +380,9 @@ test "Chap1 -Putting it together" {
 
 test "Chap2 -Colors are (red, green, blue) Tuples" {
     const c = color(-0.5, 0.4, 1.7);
-    try std.testing.expect(almostEqual(c.red(), -0.5));
-    try std.testing.expect(almostEqual(c.green(), 0.4));
-    try std.testing.expect(almostEqual(c.blue(), 1.7));
+    try std.testing.expect(almostEqual(c.r(), -0.5));
+    try std.testing.expect(almostEqual(c.g(), 0.4));
+    try std.testing.expect(almostEqual(c.b(), 1.7));
 }
 
 test "Chap2 -Adding colors" {
