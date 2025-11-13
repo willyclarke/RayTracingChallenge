@@ -163,13 +163,18 @@ test "Chap2 -Putting it together" {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    var c = try Canvas.init(alloc, 500, 300);
+    var c = try Canvas.init(alloc, 900, 550);
     defer c.deinit(alloc);
 
     // Projectile starts one unit above the origin.
     // Velocity is normalized to 1 unit/tick.
-    var projectile = Projectile.init(Tuple.point(0, 1, 0), Tuple.normalize(Tuple.vector(1, 1, 0)));
-    const e = tuple.Environment.init(Tuple.vector(0, -0.0015, 0), Tuple.vector(-0.0005, 0, 0));
+    const start = Tuple.point(0, 1, 0);
+    const velocity = Tuple.muls(Tuple.normalize(Tuple.vector(1, 1.8, 0)), 11.25);
+    var projectile = Projectile.init(start, velocity);
+
+    const gravity = Tuple.vector(0, -0.1, 0);
+    const wind = Tuple.vector(-0.01, 0, 0);
+    const e = tuple.Environment.init(gravity, wind);
 
     while (projectile.position.y > tuple.S(0)) {
         projectile = tuple.tick(e, projectile);
