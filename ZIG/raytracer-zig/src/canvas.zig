@@ -2,21 +2,24 @@ const std = @import("std");
 const print = @import("std").debug.print;
 
 const tuple = @import("tuple.zig");
-const Scalar = tuple.Scalar;
 const Color = tuple.Color;
+const Projectile = tuple.Projectile;
 const rgb = tuple.color;
+const Scalar = tuple.Scalar;
+const Tuple = tuple.Tuple;
 
 pub const Canvas = struct {
     width: usize,
     height: usize,
     pixels: []Color,
+    count: usize,
 
     /// Construct from components.
     pub fn init(alloc: std.mem.Allocator, width: usize, height: usize) !Canvas {
         const count = width * height;
         const pixels = try alloc.alloc(Color, count);
         @memset(pixels, rgb(0, 0, 0)); // mutate the slice contents
-        return .{ .width = width, .height = height, .pixels = pixels };
+        return .{ .width = width, .height = height, .pixels = pixels, .count = count };
     }
 
     pub inline fn index(self: Canvas, x: usize, y: usize) usize {
@@ -24,11 +27,16 @@ pub const Canvas = struct {
     }
 
     pub fn writePixel(self: *Canvas, x: usize, y: usize, c: Color) void {
-        self.pixels[self.index(x, y)] = c;
+        const idx = self.index(x, y);
+        if (idx < self.count)
+            self.pixels[idx] = c;
     }
 
     pub fn pixelAt(self: Canvas, x: usize, y: usize) Color {
-        return self.pixels[self.index(x, y)];
+        const idx = self.index(x, y);
+        if (idx < self.count)
+            return self.pixels[idx];
+        return Color.init(0.0, 0.0, 0.0, 0.0);
     }
 
     pub fn deinit(self: *Canvas, alloc: std.mem.Allocator) void {
@@ -40,6 +48,11 @@ pub const Canvas = struct {
 // Common/safer: clamp to [0,255] then cast to u8
 fn toByteSaturated(x: Scalar) u8 {
     const clamped = std.math.clamp(std.math.round(x), 0.0, 255.0);
+    return @intFromFloat(clamped); // truncates toward 0
+}
+
+fn toUsizeSaturated(x: Scalar, min: Scalar, max: Scalar) usize {
+    const clamped = std.math.clamp(std.math.round(x), min, max);
     return @intFromFloat(clamped); // truncates toward 0
 }
 
@@ -140,4 +153,33 @@ test "Chap2 -Contructing the PPM header" {
     }
 
     try createCanvasFile(&c, "image.ppm");
+}
+
+test "Chap2 -Putting it together" {
+    const r = error.SkipZigTest;
+    if (r == error.SkipZigTest) return; // make not equal to for running this one
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    var c = try Canvas.init(alloc, 500, 300);
+    defer c.deinit(alloc);
+
+    // Projectile starts one unit above the origin.
+    // Velocity is normalized to 1 unit/tick.
+    var projectile = Projectile.init(Tuple.point(0, 1, 0), Tuple.normalize(Tuple.vector(1, 1, 0)));
+    const e = tuple.Environment.init(Tuple.vector(0, -0.0015, 0), Tuple.vector(-0.0005, 0, 0));
+
+    while (projectile.position.y > tuple.S(0)) {
+        projectile = tuple.tick(e, projectile);
+
+        const x = toUsizeSaturated(projectile.position.x, tuple.S(0), tuple.S(c.width));
+        const y = c.height - toUsizeSaturated(projectile.position.y, tuple.S(0), tuple.S(c.height));
+        // print("projectile.position: {f} projectile.velocity: {f} canvaspos x:{} y:{}\n", .{ &projectile.position, projectile.velocity, x, y });
+        const color = rgb(tuple.S(y) / tuple.S(c.height), tuple.S(x) / tuple.S(c.width), tuple.S(y) / tuple.S(c.height));
+        c.writePixel(x, y, color);
+    }
+
+    try createCanvasFile(&c, "projectile.ppm");
 }
