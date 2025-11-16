@@ -9,6 +9,10 @@ const Tuple = tuple.Tuple;
 const approxEq = tuple.approxEq;
 const log = utils.log;
 
+// ───── INVERSE STRATEGY — change this one line to switch! ─────
+const UseFast4x4Inverse = true; // ← set to false → uses generic cofactor version
+// const UseFast4x4Inverse = false;
+
 /// Generic N×N matrix of Scalars
 pub fn Matrix(comptime N: usize) type {
     return struct {
@@ -139,10 +143,13 @@ pub fn Matrix(comptime N: usize) type {
         /// Returns an (N-1)×(N-1) submatrix by removing one row and one column.
         /// Works for any N (2, 3, 4, ...) → returns Matrix(N-1)
         /// Runtime indices → fully safe, no runtime branching cost (inline loops unroll)
-        pub inline fn subMatrix(self: *const Self, remove_row: usize, remove_col: usize) Matrix(N - 1) {
+        pub inline fn subMatrix(self: *const Self, comptime remove_row: usize, comptime remove_col: usize) Matrix(N - 1) {
             var result: Matrix(N - 1) = undefined;
 
             var dst_row: usize = 0;
+            comptime {
+                @setEvalBranchQuota(100_000);
+            }
             inline for (0..N) |src_row| {
                 if (src_row == remove_row) continue;
 
@@ -164,9 +171,9 @@ pub fn Matrix(comptime N: usize) type {
                 return self.data[0][0] * self.data[1][1] - self.data[0][1] * self.data[1][0];
             }
 
-            var det = S(0);
+            var det: Scalar = 0;
             inline for (0..N) |c| {
-                det = det + self.data[0][c] * cofactor(self, 0, c);
+                det += self.data[0][c] * self.cofactor(0, c);
             }
             return det;
         }
@@ -175,17 +182,15 @@ pub fn Matrix(comptime N: usize) type {
         /// The minor is the determinant of the
         /// matrix of which remove_row and remove_col
         /// are removed.
-        pub inline fn minor(self: *const Self, remove_row: usize, remove_col: usize) Scalar {
-            const A = self.subMatrix(remove_row, remove_col);
-            return A.determinant();
+        pub inline fn minor(self: *const Self, comptime r: usize, comptime c: usize) Scalar {
+            return self.subMatrix(r, c).determinant();
         }
 
         /// Compute the cofactor of a matrix
         /// The cofactor change sign of the minor when the sum of row + col is odd.
-        pub inline fn cofactor(self: *const Self, remove_row: usize, remove_col: usize) Scalar {
-            const isOdd = (remove_row + remove_col) % 2;
-            const sign = if (1 == isOdd) S(-1) else S(1);
-            return sign * minor(self, remove_row, remove_col);
+        pub inline fn cofactor(self: *const Self, comptime r: usize, comptime c: usize) Scalar {
+            const sign = if (((r + c) % 2) == 0) S(1) else S(-1);
+            return sign * self.minor(r, c);
         }
 
         /// Check if determinant is not 0 to verify that it is possible to invert
@@ -195,55 +200,95 @@ pub fn Matrix(comptime N: usize) type {
         }
 
         /// Slow version with cofactors
-        pub fn inverse(self: *const Self) Self {
-            const M = self.*;
-            return M;
-            // const det = self.determinant();
-            //
-            // // fail when not invertible.
-            // if (approxEq(det, S(0))) return Self.zero();
-            //
-            // var adjugate = Self.zero();
-            //
-            // for (0..N) |r| {
-            //     for (0..N) |c| {
-            //         const cof = self.cofactor(r, c);
-            //         adjugate.data[c][r] = cof / det; // NOTE: col row order accomplish the transpose.
-            //     }
-            // }
-            // // log(@src(), "\nM2:{f}\ndeterminant:{}\n", .{ adjugate, det });
-            // return adjugate;
+        pub fn inverseGeneric(self: *const Self) Self {
+            const det = self.determinant();
+
+            // fail when not invertible.
+            if (approxEq(det, S(0))) @panic("singular matrix");
+            if (approxEq(det, S(0))) return Self.zero();
+
+            var inv = Self.zero();
+
+            inline for (0..N) |r| {
+                inline for (0..N) |c| {
+                    inv.data[c][r] = self.cofactor(r, c) / det; // NOTE: col row order accomplish the transpose.
+                }
+            }
+            log(@src(), "\ninv:{f}\ndeterminant:{}\n", .{ inv, det });
+            return inv;
         }
 
-        // pub fn inverseGausJordan(self: *const Self) Self {
-        //     if (N == 2) {
-        //         const det = self.determinant();
-        //         if (approxEq(det, S(0))) @panic("singular 2x2");
-        //         return .{
-        //             .data = .{
-        //                 .{ self.data[1][1] / det, -self.data[0][1] / det },
-        //                 .{ -self.data[1][0] / det, self.data[0][0] / det },
-        //             },
-        //         };
-        //     }
-        //
-        //     if (N == 3) {
-        //         // You can hardcode 3×3 inverse too — very fast
-        //         // ... or let generic version run (it's acceptable)
-        //     }
-        //
-        //     // Generic version — works perfectly for all N including 4
-        //     const det = self.determinant();
-        //     if (approxEq(det, S(0))) @panic("Matrix is singular");
-        //
-        //     var inv = Self.zero();
-        //     inline for (0..N) |r| {
-        //         inline for (0..N) |c| {
-        //             inv.data[c][r] = self.cofactor(r, c) / det;
-        //         }
-        //     }
-        //     return inv;
-        // }
+        pub fn inverse4x4Fast(self: *const Self) Self {
+            if (N != 4) {
+                // 2x2 and 3x3: generic is fine
+                const det = self.determinant();
+                if (approxEq(det, 0)) @panic("singular");
+                var inv = Self.zero();
+                inline for (0..N) |r| {
+                    inline for (0..N) |c| {
+                        inv.data[c][r] = self.cofactor(r, c) / det;
+                    }
+                }
+                return inv;
+            }
+
+            // === FAST 4x4 INVERSE (analytical, ~50 FLOPs) ===
+            // Source: https://github.com/g-truc/glm/blob/master/glm/detail/func_matrix.inl
+            // Adapted to Zig — this is what everyone uses in production
+            const m = self.data;
+
+            var inv: [4][4]Scalar = undefined;
+
+            // Row 0
+            inv[0][0] = m[1][1] * m[2][2] * m[3][3] - m[1][1] * m[2][3] * m[3][2] - m[2][1] * m[1][2] * m[3][3] + m[2][1] * m[1][3] * m[3][2] + m[3][1] * m[1][2] * m[2][3] - m[3][1] * m[1][3] * m[2][2];
+            inv[0][1] = -m[0][1] * m[2][2] * m[3][3] + m[0][1] * m[2][3] * m[3][2] + m[2][1] * m[0][2] * m[3][3] - m[2][1] * m[0][3] * m[3][2] - m[3][1] * m[0][2] * m[2][3] + m[3][1] * m[0][3] * m[2][2];
+            inv[0][2] = m[0][1] * m[1][2] * m[3][3] - m[0][1] * m[1][3] * m[3][2] - m[1][1] * m[0][2] * m[3][3] + m[1][1] * m[0][3] * m[3][2] + m[3][1] * m[0][2] * m[1][3] - m[3][1] * m[0][3] * m[1][2];
+            inv[0][3] = -m[0][1] * m[1][2] * m[2][3] + m[0][1] * m[1][3] * m[2][2] + m[1][1] * m[0][2] * m[2][3] - m[1][1] * m[0][3] * m[2][2] - m[2][1] * m[0][2] * m[1][3] + m[2][1] * m[0][3] * m[1][2];
+
+            // Row 1
+            inv[1][0] = -m[1][0] * m[2][2] * m[3][3] + m[1][0] * m[2][3] * m[3][2] + m[2][0] * m[1][2] * m[3][3] - m[2][0] * m[1][3] * m[3][2] - m[3][0] * m[1][2] * m[2][3] + m[3][0] * m[1][3] * m[2][2];
+            inv[1][1] = m[0][0] * m[2][2] * m[3][3] - m[0][0] * m[2][3] * m[3][2] - m[2][0] * m[0][2] * m[3][3] + m[2][0] * m[0][3] * m[3][2] + m[3][0] * m[0][2] * m[2][3] - m[3][0] * m[0][3] * m[2][2];
+            inv[1][2] = -m[0][0] * m[1][2] * m[3][3] + m[0][0] * m[1][3] * m[3][2] + m[1][0] * m[0][2] * m[3][3] - m[1][0] * m[0][3] * m[3][2] - m[3][0] * m[0][2] * m[1][3] + m[3][0] * m[0][3] * m[1][2];
+            inv[1][3] = m[0][0] * m[1][2] * m[2][3] - m[0][0] * m[1][3] * m[2][2] - m[1][0] * m[0][2] * m[2][3] + m[1][0] * m[0][3] * m[2][2] + m[2][0] * m[0][2] * m[1][3] - m[2][0] * m[0][3] * m[1][2];
+
+            // Row 2
+            inv[2][0] = m[1][0] * m[2][1] * m[3][3] - m[1][0] * m[2][3] * m[3][1] - m[2][0] * m[1][1] * m[3][3] + m[2][0] * m[1][3] * m[3][1] + m[3][0] * m[1][1] * m[2][3] - m[3][0] * m[1][3] * m[2][1];
+            inv[2][1] = -m[0][0] * m[2][1] * m[3][3] + m[0][0] * m[2][3] * m[3][1] + m[2][0] * m[0][1] * m[3][3] - m[2][0] * m[0][3] * m[3][1] - m[3][0] * m[0][1] * m[2][3] + m[3][0] * m[0][3] * m[2][1];
+            inv[2][2] = m[0][0] * m[1][1] * m[3][3] - m[0][0] * m[1][3] * m[3][1] - m[1][0] * m[0][1] * m[3][3] + m[1][0] * m[0][3] * m[3][1] + m[3][0] * m[0][1] * m[1][3] - m[3][0] * m[0][3] * m[1][1];
+            inv[2][3] = -m[0][0] * m[1][1] * m[2][3] + m[0][0] * m[1][3] * m[2][1] + m[1][0] * m[0][1] * m[2][3] - m[1][0] * m[0][3] * m[2][1] - m[2][0] * m[0][1] * m[1][3] + m[2][0] * m[0][3] * m[1][1];
+
+            // Row 3
+            inv[3][0] = -m[1][0] * m[2][1] * m[3][2] + m[1][0] * m[2][2] * m[3][1] + m[2][0] * m[1][1] * m[3][2] - m[2][0] * m[1][2] * m[3][1] - m[3][0] * m[1][1] * m[2][2] + m[3][0] * m[1][2] * m[2][1];
+            inv[3][1] = m[0][0] * m[2][1] * m[3][2] - m[0][0] * m[2][2] * m[3][1] - m[2][0] * m[0][1] * m[3][2] + m[2][0] * m[0][2] * m[3][1] + m[3][0] * m[0][1] * m[2][2] - m[3][0] * m[0][2] * m[2][1];
+            inv[3][2] = -m[0][0] * m[1][1] * m[3][2] + m[0][0] * m[1][2] * m[3][1] + m[1][0] * m[0][1] * m[3][2] - m[1][0] * m[0][2] * m[3][1] - m[3][0] * m[0][1] * m[1][2] + m[3][0] * m[0][2] * m[1][1];
+            inv[3][3] = m[0][0] * m[1][1] * m[2][2] - m[0][0] * m[1][2] * m[2][1] - m[1][0] * m[0][1] * m[2][2] + m[1][0] * m[0][2] * m[2][1] + m[2][0] * m[0][1] * m[1][2] - m[2][0] * m[0][2] * m[1][1];
+
+            const det = m[0][0] * inv[0][0] + m[0][1] * inv[1][0] + m[0][2] * inv[2][0] + m[0][3] * inv[3][0];
+            if (approxEq(det, 0)) @panic("singular");
+
+            // Then scale all entries by 1/det
+            inline for (0..4) |r| {
+                inline for (0..4) |c| {
+                    inv[r][c] /= det;
+                }
+            }
+
+            return .{ .data = inv };
+        }
+
+        pub fn inverse(self: *const Self) Self {
+            if (N != 4) {
+                // 2x2 and 3x3: always use generic (it's fast enough)
+                return self.inverseGeneric();
+            }
+
+            // 4x4: choose strategy at compile time
+            if (comptime UseFast4x4Inverse) {
+                return self.inverse4x4Fast();
+            } else {
+                return self.inverseGeneric();
+            }
+        }
 
         /// Pretty printing for `{f}` – works for all N.
         pub fn format(self: Self, w: anytype) !void {
@@ -675,12 +720,12 @@ test "Chap3 -Calculating the inverse of a matrix" {
     const cofactorA23 = A.cofactor(2, 3);
     const cofactorA32 = A.cofactor(3, 2);
     const determinantA = A.determinant();
-    const inverseA = A.inverse();
 
-    log(@src(), "\n       A:{f}\n", .{A});
-    log(@src(), "\n       B:{f}\n", .{B});
-    log(@src(), "\ninverseA:{f}\n", .{inverseA});
-    log(@src(), "\ncofactorA23:{}\ncofactorA32:{}\ndeterminantA:{}\n", .{ cofactorA23, cofactorA32, determinantA });
+    // const inverseA = A.inverse();
+    // log(@src(), "\n       A:{f}\n", .{A});
+    // log(@src(), "\n       B:{f}\n", .{B});
+    // log(@src(), "\ninverseA:{f}\n", .{inverseA});
+    // log(@src(), "\ncofactorA23:{}\ncofactorA32:{}\ndeterminantA:{}\n", .{ cofactorA23, cofactorA32, determinantA });
 
     try std.testing.expect(approxEq(S(-160), cofactorA23));
     try std.testing.expect(approxEq(S(105), cofactorA32));
@@ -689,5 +734,5 @@ test "Chap3 -Calculating the inverse of a matrix" {
     try std.testing.expect(approxEq(B.get(3, 2), cofactorA23 / determinantA));
 
     try std.testing.expect(true == A.isInvertible());
-    // try std.testing.expect(A.inverse().equals(&B));
+    try std.testing.expect(A.inverse().equals(&B));
 }
