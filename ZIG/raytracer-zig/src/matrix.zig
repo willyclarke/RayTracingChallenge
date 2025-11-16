@@ -780,3 +780,35 @@ test "Chap3 -Calculating the inverse of a third matrix" {
     try std.testing.expect(true == A.isInvertible());
     try std.testing.expect(A.inverse().equals(&B));
 }
+
+test "Chap3 -Multiplying a product by its invers" {
+    const A = Mat4{
+        .data = .{
+            .{ 3, -9, 7, 3 },
+            .{ 3, -8, 2, -9 },
+            .{ -4, 4, 4, 1 },
+            .{ -6, 5, -1, 1 },
+        },
+    };
+
+    const B = Mat4{
+        .data = .{
+            .{ 8, 2, 2, 2 },
+            .{ 3, -1, 7, 0 },
+            .{ 7, 0, 5, 4 },
+            .{ 6, -2, 0, 5 },
+        },
+    };
+
+    const C = A.mulM(&B);
+
+    // Explanation:
+    //“One last thing to note about the inverse: at the beginning of this section,
+    // you read that “if you multiply some matrix A by another matrix B, 
+    // producing C, you can multiply C by the inverse of B to get A again.” 
+    // Well, we can’t let such a statement slide by unproven! 
+    // Add one more test to show that the inverse does, in truth, 
+    // behave as described.”
+
+    try std.testing.expect(C.mulM(&B.inverse()).equals(&A));
+}
