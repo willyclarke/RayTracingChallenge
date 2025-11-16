@@ -9,3 +9,4 @@ GTAGS
 .cache/
 .DS_Store
 tmp/
+ZIG/raytracer-zig/image.ppm
