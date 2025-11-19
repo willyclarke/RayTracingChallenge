@@ -1,11 +1,14 @@
 const std = @import("std");
 const print = @import("std").debug.print;
+const canvas = @import("canvas.zig");
 const tuple = @import("tuple.zig");
 const utils = @import("utils.zig");
 
 const S = tuple.S;
 const Scalar = tuple.Scalar;
 const Tuple = tuple.Tuple;
+const point = tuple.Point;
+const vector = tuple.Vector;
 const approxEq = tuple.approxEq;
 const log = utils.log;
 
@@ -124,8 +127,31 @@ pub fn Matrix(comptime N: usize) type {
             return result;
         }
 
-        /// 4×4 matrix × tuple
-        pub inline fn mulT(self: *const Self, t: Tuple) Tuple {
+        /// CTOR for translation of x, y, z.
+        pub inline fn translation(x: Scalar, y: Scalar, z: Scalar) Self {
+            return .{
+                .data = .{
+                    .{ S(1), S(0), S(0), x },
+                    .{ S(0), S(1), S(0), y },
+                    .{ S(0), S(0), S(1), z },
+                    .{ S(0), S(0), S(0), S(1) },
+                },
+            };
+        }
+        /// CTOR for translation of x, y, z.
+        pub inline fn scaling(x: Scalar, y: Scalar, z: Scalar) Self {
+            return .{
+                .data = .{
+                    .{ x, S(0), S(0), S(0) },
+                    .{ S(0), y, S(0), S(0) },
+                    .{ S(0), S(0), z, S(0) },
+                    .{ S(0), S(0), S(0), S(1) },
+                },
+            };
+        }
+
+        /// Multiplication of 4×4 matrix × tuple
+        pub inline fn mulT(self: *const Self, t: *const Tuple) Tuple {
             comptime if (N != 4)
                 @compileError("multiplyTuple is only defined for N == 4");
 
@@ -290,6 +316,54 @@ pub fn Matrix(comptime N: usize) type {
             }
         }
 
+        /// Rotation matrix around the x-axis.
+        pub fn rotx(r: Scalar) Self {
+            return .{
+                .data = .{
+                    .{ S(1), S(0), S(0), S(0) },
+                    .{ S(0), std.math.cos(r), -std.math.sin(r), S(0) },
+                    .{ S(0), std.math.sin(r), std.math.cos(r), S(0) },
+                    .{ S(0), S(0), S(0), S(1) },
+                },
+            };
+        }
+
+        /// Rotation matrix around the y-axis.
+        pub fn roty(r: Scalar) Self {
+            return .{
+                .data = .{
+                    .{ std.math.cos(r), S(0), std.math.sin(r), S(0) },
+                    .{ S(0), S(1), S(0), S(0) },
+                    .{ -std.math.sin(r), S(0), std.math.cos(r), S(0) },
+                    .{ S(0), S(0), S(0), S(1) },
+                },
+            };
+        }
+
+        /// Rotation matrix around the z-axis.
+        pub fn rotz(r: Scalar) Self {
+            return .{
+                .data = .{
+                    .{ std.math.cos(r), -std.math.sin(r), S(0), S(0) },
+                    .{ std.math.sin(r), std.math.cos(r), S(0), S(0) },
+                    .{ S(0), S(0), S(1), S(0) },
+                    .{ S(0), S(0), S(0), S(1) },
+                },
+            };
+        }
+
+        /// Rotation matrix around the z-axis.
+        pub fn shearing(xy: Scalar, xz: Scalar, yx: Scalar, yz: Scalar, zx: Scalar, zy: Scalar) Self {
+            return .{
+                .data = .{
+                    .{ S(1), xy, xz, S(0) },
+                    .{ yx, S(1), yz, S(0) },
+                    .{ zx, zy, S(1), S(0) },
+                    .{ S(0), S(0), S(0), S(1) },
+                },
+            };
+        }
+
         /// Pretty printing for `{f}` – works for all N.
         pub fn format(self: Self, w: anytype) !void {
             try w.print("Matrix{}(\n", .{N});
@@ -438,7 +512,7 @@ test "matrix: Chap3 -A matrix multiplied by a tuple" {
         },
     };
     const t = Tuple.init(1, 2, 3, 1);
-    const result = M.mulT(t);
+    const result = M.mulT(&t);
     const expected = Tuple.init(18, 24, 33, 1);
     try std.testing.expect(result.equals(&expected));
 }
@@ -475,7 +549,7 @@ test "matrix: Chap3 -Multiplying a matrix by the identity matrix" {
 
 test "matrix: Chap3 -Identity matrix multiplied by a tuple" {
     const t = Tuple.init(1, 2, 3, 4);
-    const result = Mat4.identity().mulT(t);
+    const result = Mat4.identity().mulT(&t);
     const expected = Tuple.init(1, 2, 3, 4);
     try std.testing.expect(result.equals(&expected));
 }
@@ -804,11 +878,289 @@ test "Chap3 -Multiplying a product by its invers" {
 
     // Explanation:
     //“One last thing to note about the inverse: at the beginning of this section,
-    // you read that “if you multiply some matrix A by another matrix B, 
-    // producing C, you can multiply C by the inverse of B to get A again.” 
-    // Well, we can’t let such a statement slide by unproven! 
-    // Add one more test to show that the inverse does, in truth, 
+    // you read that “if you multiply some matrix A by another matrix B,
+    // producing C, you can multiply C by the inverse of B to get A again.”
+    // Well, we can’t let such a statement slide by unproven!
+    // Add one more test to show that the inverse does, in truth,
     // behave as described.”
 
     try std.testing.expect(C.mulM(&B.inverse()).equals(&A));
+}
+
+test "Chap4 -Multiplying by a translation matrix" {
+    const transform = Mat4.translation(5, -3, 2);
+    const p = point(-3, 4, 5);
+    const translp = transform.mulT(&p);
+    const expected = point(2, 1, 7);
+    // log(@src(), "\ntransform:{f}\np:{f}\ntranslp:{f}\n", .{ transform, p, translp });
+    try std.testing.expect(expected.equals(&translp));
+}
+
+// Further, if you take the inverse of a translation matrix, you get another
+// translation matrix that moves points in reverse.
+test "Chap4 -Multiplying by the inverse of a translation matrix" {
+    const transform = Mat4.translation(5, -3, 2);
+    const inv = transform.inverse();
+    const p = point(-3, 4, 5);
+    const translp = inv.mulT(&p);
+    const expected = point(-8, 7, 3);
+    // log(@src(), "\ntransform:{f}\np:{f}\ntranslp:{f}\n", .{ transform, p, translp });
+    try std.testing.expect(expected.equals(&translp));
+}
+
+test "Chap4 -Translation does not affect vectors" {
+    const transform = Mat4.translation(5, -3, 2);
+    const v = Tuple.vector(-3, 4, 5);
+    const translv = transform.mulT(&v);
+    // log(@src(), "\ntransform:{f}\nv      :{f}\ntranslv:{f}\n", .{ transform, v, translv });
+    try std.testing.expect(v.equals(&translv));
+}
+
+test "Chap4 -A scaling matrix applied to a point" {
+    const transform = Mat4.scaling(2, 3, 4);
+    const p = point(-4, 6, 8);
+    const scaledp = transform.mulT(&p);
+    const expectedp = point(-8, 18, 32);
+    // log(@src(), "\ntransform:{f}\np:{f}\nscaledp:{f}\n", .{ transform, p, scaledp });
+    try std.testing.expect(scaledp.equals(&expectedp));
+}
+
+test "Chap4 -A scaling matrix applied to a vector" {
+    const transform = Mat4.scaling(2, 3, 4);
+    const v = Tuple.vector(-4, 6, 8);
+    const scaledv = transform.mulT(&v);
+    const expectedv = Tuple.vector(-8, 18, 32);
+    // log(@src(), "\ntransform:{f}\nv      :{f}\nscaledv:{f}\n", .{ transform, v, scaledv });
+    try std.testing.expect(scaledv.equals(&expectedv));
+}
+
+test "Chap4 -Multiplying by the inverse of a scaling matrix" {
+    const transform = Mat4.scaling(2, 3, 4);
+    const inv = transform.inverse();
+    const v = Tuple.vector(-4, 6, 8);
+    const invv = inv.mulT(&v);
+    const expectedv = Tuple.vector(-2, 2, 2);
+    // log(@src(), "\ntransform:{f}\nv          :{f}\ninv scaledv:{f}\n", .{ transform, v, invv });
+    try std.testing.expect(invv.equals(&expectedv));
+}
+
+test "Chap4 -Reflection is scaling by a negative value" {
+    const transform = Mat4.scaling(-1, 1, 1);
+    const p = point(2, 3, 4);
+    const expectedp = point(-2, 3, 4);
+    const reflectedp = transform.mulT(&p);
+    try std.testing.expect(reflectedp.equals(&expectedp));
+}
+
+test "Chap4 -Convert from Degrees to Radians" {
+    const angle = S(180);
+    const anglerad = tuple.Deg2Rad(angle);
+    try std.testing.expect(approxEq(anglerad, std.math.pi));
+}
+
+test "Chap4 -Rotating a point around the x axis" {
+    const p = point(0, 1, 0);
+    const half_quarter = Mat4.rotx(std.math.pi / S(4));
+    const full_quarter = Mat4.rotx(std.math.pi / S(2));
+    const point_hq = half_quarter.mulT(&p);
+    const point_fq = full_quarter.mulT(&p);
+    const expect_hq = point(0, std.math.sqrt2 / S(2), std.math.sqrt2 / S(2));
+    const expect_fq = point(0, 0, 1);
+    try std.testing.expect(point_hq.equals(&expect_hq));
+    try std.testing.expect(point_fq.equals(&expect_fq));
+}
+
+test "Chap4 -The inverse of an x-rotation rotates in the opposite direction" {
+    const p = point(0, 1, 0);
+    const half_quarter = Mat4.rotx(std.math.pi / S(4));
+    const inv = half_quarter.inverse();
+    const point_opposite = inv.mulT(&p);
+    const expectedp = point(S(0), std.math.sqrt2 / S(2), -std.math.sqrt2 / S(2));
+    try std.testing.expect(point_opposite.equals(&expectedp));
+}
+
+test "Chap4 -Rotating a point around the y axis" {
+    const p = point(0, 0, 1);
+    const half_quarter = Mat4.roty(std.math.pi / S(4));
+    const full_quarter = Mat4.roty(std.math.pi / S(2));
+    const point_hq = half_quarter.mulT(&p);
+    const point_fq = full_quarter.mulT(&p);
+    const expect_hq = point(std.math.sqrt2 / S(2), 0, std.math.sqrt2 / S(2));
+    const expect_fq = point(1, 0, 0);
+    try std.testing.expect(point_hq.equals(&expect_hq));
+    try std.testing.expect(point_fq.equals(&expect_fq));
+}
+
+test "Chap4 -Rotating a point around the z axis" {
+    const p = point(0, 1, 0);
+    const half_quarter = Mat4.rotz(std.math.pi / S(4));
+    const full_quarter = Mat4.rotz(std.math.pi / S(2));
+    const point_hq = half_quarter.mulT(&p);
+    const point_fq = full_quarter.mulT(&p);
+    const expect_hq = point(-std.math.sqrt2 / S(2), std.math.sqrt2 / S(2), 0);
+    const expect_fq = point(-1, 0, 0);
+    try std.testing.expect(point_hq.equals(&expect_hq));
+    try std.testing.expect(point_fq.equals(&expect_fq));
+}
+
+test "Rotating a point around the z axis" {
+    const p = point(0, 1, 0);
+    const half_quarter = Mat4.rotz(std.math.pi / S(4));
+    const full_quarter = Mat4.rotz(std.math.pi / S(2));
+    const point_hq = half_quarter.mulT(&p);
+    const point_fq = full_quarter.mulT(&p);
+    const expect_hq = point(-std.math.sqrt2 / S(2), std.math.sqrt2 / S(2), 0);
+    const expect_fq = point(-1, 0, 0);
+    try std.testing.expect(point_hq.equals(&expect_hq));
+    try std.testing.expect(point_fq.equals(&expect_fq));
+}
+
+test "Chap4 -A shearing transformation moves x in proportion to y" {
+    const transform = Mat4.shearing(1, 0, 0, 0, 0, 0);
+    const p = point(2, 3, 4);
+    const transformedp = transform.mulT(&p);
+    const expectedp = Tuple.point(5, 3, 4);
+    // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
+    try std.testing.expect(transformedp.equals(&expectedp));
+}
+
+test "Chap4 -A shearing transformation moves x in proportion to z" {
+    const transform = Mat4.shearing(0, 1, 0, 0, 0, 0);
+    const p = point(2, 3, 4);
+    const transformedp = transform.mulT(&p);
+    const expectedp = Tuple.point(6, 3, 4);
+    // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
+    try std.testing.expect(transformedp.equals(&expectedp));
+}
+
+test "Chap4 -A shearing transformation moves y in proportion to x" {
+    const transform = Mat4.shearing(0, 0, 1, 0, 0, 0);
+    const p = point(2, 3, 4);
+    const transformedp = transform.mulT(&p);
+    const expectedp = Tuple.point(2, 5, 4);
+    // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
+    try std.testing.expect(transformedp.equals(&expectedp));
+}
+
+test "Chap4 -A shearing transformation moves y in proportion to z" {
+    const transform = Mat4.shearing(0, 0, 0, 1, 0, 0);
+    const p = point(2, 3, 4);
+    const transformedp = transform.mulT(&p);
+    const expectedp = Tuple.point(2, 7, 4);
+    // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
+    try std.testing.expect(transformedp.equals(&expectedp));
+}
+
+test "Chap4 -A shearing transformation moves z in proportion to x" {
+    const transform = Mat4.shearing(0, 0, 0, 0, 1, 0);
+    const p = point(2, 3, 4);
+    const transformedp = transform.mulT(&p);
+    const expectedp = Tuple.point(2, 3, 6);
+    // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
+    try std.testing.expect(transformedp.equals(&expectedp));
+}
+
+test "Chap4 -A shearing transformation moves z in proportion to y" {
+    const transform = Mat4.shearing(0, 0, 0, 0, 0, 1);
+    const p = point(2, 3, 4);
+    const transformedp = transform.mulT(&p);
+    const expectedp = Tuple.point(2, 3, 7);
+    // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
+    try std.testing.expect(transformedp.equals(&expectedp));
+}
+
+test "Chap4 -Individual transformations are applied in sequence" {
+    const p = point(1, 0, 1);
+    const A = Mat4.rotx(std.math.pi / S(2));
+    const B = Mat4.scaling(5, 5, 5);
+    const C = Mat4.translation(10, 5, 7);
+
+    // Apply rotation around x first.
+    const p2 = A.mulT(&p);
+    try std.testing.expect(p2.equals(&point(1, -1, 0)));
+
+    // then apply scaling.
+    const p3 = B.mulT(&p2);
+    try std.testing.expect(p3.equals(&point(5, -5, 0)));
+
+    // then apply translation.
+    const p4 = C.mulT(&p3);
+    try std.testing.expect(p4.equals(&point(15, 0, 7)));
+}
+
+test "Chap4 -Chained transformations must be applied in reverse order" {
+    const p = point(1, 0, 1);
+    const A = Mat4.rotx(std.math.pi / S(2));
+    const B = Mat4.scaling(5, 5, 5);
+    const C = Mat4.translation(10, 5, 7);
+    const T = C.mulM(&B.mulM(&A));
+    const transformedp = T.mulT(&p);
+    const exptectedp = point(15, 0, 7);
+    try std.testing.expect(transformedp.equals(&exptectedp));
+}
+
+test "Chap4 -Fluent Chained transformations must be applied in reverse order" {
+    const p = point(1, 0, 1);
+    const T = Mat4.translation(10, 5, 7).mulM(&Mat4.scaling(5, 5, 5).mulM(&Mat4.rotx(std.math.pi / S(2))));
+    const transformedp = T.mulT(&p);
+    const exptectedp = point(15, 0, 7);
+    try std.testing.expect(transformedp.equals(&exptectedp));
+}
+
+fn drawSquare(
+    ptrCanvas: *canvas.Canvas,
+    center_x: usize,
+    center_y: usize,
+    half_size: usize,
+    ptrcolor: *const tuple.Color,
+) void {
+    var y: usize = center_y - half_size;
+    while (y <= center_y + half_size) : (y += 1) {
+        var x: usize = center_x - half_size;
+        while (x <= center_x + half_size) : (x += 1) {
+            ptrCanvas.writePixel(x, y, ptrcolor.*);
+        }
+    }
+}
+
+test "Chap4 -Putting It Together" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    var c = try canvas.Canvas.init(alloc, 900, 900);
+    defer c.deinit(alloc);
+
+    const origin = point(0, 0, 0);
+    var p = point(0, 0, 0);
+    try std.testing.expect(p.equals(&origin));
+
+    var color = tuple.color(1, 0, 0);
+
+    const canvastranslate = Mat4.translation(S(c.width) / S(2), S(c.height) / S(2), 0);
+
+    // Use the translation number x a percentage t set scaling.
+    const scale = Mat4.scaling(canvastranslate.get(0, 3) * S(0.75), canvastranslate.get(1, 3) * S(0.75), 0);
+
+    var canvpoint = canvastranslate.mulM(&scale).mulT(&p);
+    var centerx = tuple.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
+    var centery = tuple.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
+    const squaresize = tuple.toUsizeSaturated(S(c.width) / S(20), S(3), S(10));
+    drawSquare(&c, centerx, centery, squaresize, &color);
+
+    color.z = 1;
+    p.x = 1;
+
+    for (0..12) |idx| {
+        const alfa = S(idx) / S(12) * std.math.tau;
+        color.y = S(1) - color.z;
+        color.z = S(idx) / S(12);
+
+        canvpoint = canvastranslate.mulM(&scale.mulM(&Mat4.rotz(alfa))).mulT(&p);
+        centerx = tuple.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
+        centery = tuple.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
+        drawSquare(&c, centerx, centery, squaresize, &color);
+    }
+
+    try canvas.createCanvasFile(&c, "chap4clock.ppm");
 }

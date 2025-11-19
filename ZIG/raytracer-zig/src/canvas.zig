@@ -46,16 +46,6 @@ pub const Canvas = struct {
 };
 
 // Common/safer: clamp to [0,255] then cast to u8
-fn toByteSaturated(x: Scalar) u8 {
-    const clamped = std.math.clamp(std.math.round(x), 0.0, 255.0);
-    return @intFromFloat(clamped); // truncates toward 0
-}
-
-fn toUsizeSaturated(x: Scalar, min: Scalar, max: Scalar) usize {
-    const clamped = std.math.clamp(std.math.round(x), min, max);
-    return @intFromFloat(clamped); // truncates toward 0
-}
-
 pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
     const a = std.heap.page_allocator;
 
@@ -71,9 +61,9 @@ pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
     var NumCharsOnLine: u32 = 0;
     for (0..canvas.height) |y| {
         for (0..canvas.width) |x| {
-            const R = toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).r());
-            const G = toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).g());
-            const B = toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).b());
+            const R = tuple.toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).r());
+            const G = tuple.toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).g());
+            const B = tuple.toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).b());
             try buffer.writer(a).print("{:03} {:03} {:03} ", .{ R, G, B });
 
             NumCharsOnLine = NumCharsOnLine + Increment;
@@ -134,7 +124,7 @@ test "Chap2 -Writing pixels to a canvas" {
     // write and read
     const red = rgb(1, 0, 0);
     c.writePixel(2, 3, red);
-    try std.testing.expect(tuple.Tuple.equals(c.pixelAt(2, 3), red));
+    try std.testing.expect(tuple.Tuple.equals(&c.pixelAt(2, 3), &red));
 }
 
 test "Chap2 -Contructing the PPM header" {
@@ -179,8 +169,8 @@ test "Chap2 -Putting it together" {
     while (projectile.position.y > tuple.S(0)) {
         projectile = tuple.tick(e, projectile);
 
-        const x = toUsizeSaturated(projectile.position.x, tuple.S(0), tuple.S(c.width));
-        const y = c.height - toUsizeSaturated(projectile.position.y, tuple.S(0), tuple.S(c.height));
+        const x = tuple.toUsizeSaturated(projectile.position.x, tuple.S(0), tuple.S(c.width));
+        const y = c.height - tuple.toUsizeSaturated(projectile.position.y, tuple.S(0), tuple.S(c.height));
         // print("projectile.position: {f} projectile.velocity: {f} canvaspos x:{} y:{}\n", .{ &projectile.position, projectile.velocity, x, y });
         const color = rgb(tuple.S(y) / tuple.S(c.height), tuple.S(x) / tuple.S(c.width), tuple.S(y) / tuple.S(c.height));
         c.writePixel(x, y, color);

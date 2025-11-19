@@ -20,6 +20,20 @@ pub inline fn S(x: anytype) Scalar {
     return scalar(x);
 }
 
+pub inline fn Deg2Rad(x: anytype) Scalar {
+    return scalar(std.math.pi / S(180) * x);
+}
+
+pub fn toByteSaturated(x: Scalar) u8 {
+    const clamped = std.math.clamp(std.math.round(x), 0.0, 255.0);
+    return @intFromFloat(clamped); // truncates toward 0
+}
+
+pub fn toUsizeSaturated(x: Scalar, min: Scalar, max: Scalar) usize {
+    const clamped = std.math.clamp(std.math.round(x), min, max);
+    return @intFromFloat(clamped); // truncates toward 0
+}
+
 pub const EPSILON: Scalar = 1e-5;
 
 // pub inline fn approxEq(a: Scalar, b: Scalar) bool {
@@ -157,6 +171,8 @@ pub const Tuple = struct {
 
 /// Alias: Color *is* Tuple (same type)
 pub const Color = Tuple;
+pub const Point = Tuple.point;
+pub const Vector = Tuple.vector;
 
 /// Helper constructors & accessors for color semantics
 pub inline fn color(red: Scalar, green: Scalar, blue: Scalar) Color {
