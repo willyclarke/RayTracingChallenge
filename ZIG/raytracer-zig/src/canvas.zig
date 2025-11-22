@@ -4,7 +4,7 @@ const print = @import("std").debug.print;
 const tuple = @import("tuple.zig");
 const Color = tuple.Color;
 const Projectile = tuple.Projectile;
-const rgb = tuple.color;
+const rgb = tuple.Color;
 const Scalar = tuple.Scalar;
 const Tuple = tuple.Tuple;
 
@@ -18,7 +18,8 @@ pub const Canvas = struct {
     pub fn init(alloc: std.mem.Allocator, width: usize, height: usize) !Canvas {
         const count = width * height;
         const pixels = try alloc.alloc(Color, count);
-        @memset(pixels, rgb(0, 0, 0)); // mutate the slice contents
+        const black = rgb.init(0, 0, 0, 0);
+        @memset(pixels, black); // mutate the slice contents
         return .{ .width = width, .height = height, .pixels = pixels, .count = count };
     }
 
@@ -122,9 +123,9 @@ test "Chap2 -Writing pixels to a canvas" {
     defer c.deinit(alloc);
 
     // write and read
-    const red = rgb(1, 0, 0);
+    const red = rgb.init(1, 0, 0, 0);
     c.writePixel(2, 3, red);
-    try std.testing.expect(tuple.Tuple.equals(&c.pixelAt(2, 3), &red));
+    try std.testing.expect(tuple.Tuple.equals(c.pixelAt(2, 3), red));
 }
 
 test "Chap2 -Contructing the PPM header" {
@@ -137,7 +138,7 @@ test "Chap2 -Contructing the PPM header" {
 
     for (0..c.height) |y| {
         for (0..c.width) |x| {
-            const color = rgb(tuple.S(y) / tuple.S(c.height), tuple.S(x) / tuple.S(c.width), tuple.S(y) / tuple.S(c.height));
+            const color = rgb.init(tuple.S(y) / tuple.S(c.height), tuple.S(x) / tuple.S(c.width), tuple.S(y) / tuple.S(c.height), 0);
             c.writePixel(x, y, color);
         }
     }

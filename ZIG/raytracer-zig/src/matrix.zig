@@ -514,7 +514,7 @@ test "matrix: Chap3 -A matrix multiplied by a tuple" {
     const t = Tuple.init(1, 2, 3, 1);
     const result = M.mulT(&t);
     const expected = Tuple.init(18, 24, 33, 1);
-    try std.testing.expect(result.equals(&expected));
+    try std.testing.expect(result.equals(expected));
 }
 
 test "matrix: generic multiplication works for 2×2" {
@@ -551,7 +551,7 @@ test "matrix: Chap3 -Identity matrix multiplied by a tuple" {
     const t = Tuple.init(1, 2, 3, 4);
     const result = Mat4.identity().mulT(&t);
     const expected = Tuple.init(1, 2, 3, 4);
-    try std.testing.expect(result.equals(&expected));
+    try std.testing.expect(result.equals(expected));
 }
 
 test "matrix: Chap3 -Transposing a matrix" {
@@ -893,7 +893,7 @@ test "Chap4 -Multiplying by a translation matrix" {
     const translp = transform.mulT(&p);
     const expected = point(2, 1, 7);
     // log(@src(), "\ntransform:{f}\np:{f}\ntranslp:{f}\n", .{ transform, p, translp });
-    try std.testing.expect(expected.equals(&translp));
+    try std.testing.expect(expected.equals(translp));
 }
 
 // Further, if you take the inverse of a translation matrix, you get another
@@ -905,7 +905,7 @@ test "Chap4 -Multiplying by the inverse of a translation matrix" {
     const translp = inv.mulT(&p);
     const expected = point(-8, 7, 3);
     // log(@src(), "\ntransform:{f}\np:{f}\ntranslp:{f}\n", .{ transform, p, translp });
-    try std.testing.expect(expected.equals(&translp));
+    try std.testing.expect(expected.equals(translp));
 }
 
 test "Chap4 -Translation does not affect vectors" {
@@ -913,7 +913,7 @@ test "Chap4 -Translation does not affect vectors" {
     const v = Tuple.vector(-3, 4, 5);
     const translv = transform.mulT(&v);
     // log(@src(), "\ntransform:{f}\nv      :{f}\ntranslv:{f}\n", .{ transform, v, translv });
-    try std.testing.expect(v.equals(&translv));
+    try std.testing.expect(v.equals(translv));
 }
 
 test "Chap4 -A scaling matrix applied to a point" {
@@ -922,7 +922,7 @@ test "Chap4 -A scaling matrix applied to a point" {
     const scaledp = transform.mulT(&p);
     const expectedp = point(-8, 18, 32);
     // log(@src(), "\ntransform:{f}\np:{f}\nscaledp:{f}\n", .{ transform, p, scaledp });
-    try std.testing.expect(scaledp.equals(&expectedp));
+    try std.testing.expect(scaledp.equals(expectedp));
 }
 
 test "Chap4 -A scaling matrix applied to a vector" {
@@ -931,7 +931,7 @@ test "Chap4 -A scaling matrix applied to a vector" {
     const scaledv = transform.mulT(&v);
     const expectedv = Tuple.vector(-8, 18, 32);
     // log(@src(), "\ntransform:{f}\nv      :{f}\nscaledv:{f}\n", .{ transform, v, scaledv });
-    try std.testing.expect(scaledv.equals(&expectedv));
+    try std.testing.expect(scaledv.equals(expectedv));
 }
 
 test "Chap4 -Multiplying by the inverse of a scaling matrix" {
@@ -941,7 +941,7 @@ test "Chap4 -Multiplying by the inverse of a scaling matrix" {
     const invv = inv.mulT(&v);
     const expectedv = Tuple.vector(-2, 2, 2);
     // log(@src(), "\ntransform:{f}\nv          :{f}\ninv scaledv:{f}\n", .{ transform, v, invv });
-    try std.testing.expect(invv.equals(&expectedv));
+    try std.testing.expect(invv.equals(expectedv));
 }
 
 test "Chap4 -Reflection is scaling by a negative value" {
@@ -949,7 +949,7 @@ test "Chap4 -Reflection is scaling by a negative value" {
     const p = point(2, 3, 4);
     const expectedp = point(-2, 3, 4);
     const reflectedp = transform.mulT(&p);
-    try std.testing.expect(reflectedp.equals(&expectedp));
+    try std.testing.expect(reflectedp.equals(expectedp));
 }
 
 test "Chap4 -Convert from Degrees to Radians" {
@@ -966,8 +966,8 @@ test "Chap4 -Rotating a point around the x axis" {
     const point_fq = full_quarter.mulT(&p);
     const expect_hq = point(0, std.math.sqrt2 / S(2), std.math.sqrt2 / S(2));
     const expect_fq = point(0, 0, 1);
-    try std.testing.expect(point_hq.equals(&expect_hq));
-    try std.testing.expect(point_fq.equals(&expect_fq));
+    try std.testing.expect(point_hq.equals(expect_hq));
+    try std.testing.expect(point_fq.equals(expect_fq));
 }
 
 test "Chap4 -The inverse of an x-rotation rotates in the opposite direction" {
@@ -976,7 +976,7 @@ test "Chap4 -The inverse of an x-rotation rotates in the opposite direction" {
     const inv = half_quarter.inverse();
     const point_opposite = inv.mulT(&p);
     const expectedp = point(S(0), std.math.sqrt2 / S(2), -std.math.sqrt2 / S(2));
-    try std.testing.expect(point_opposite.equals(&expectedp));
+    try std.testing.expect(point_opposite.equals(expectedp));
 }
 
 test "Chap4 -Rotating a point around the y axis" {
@@ -987,8 +987,8 @@ test "Chap4 -Rotating a point around the y axis" {
     const point_fq = full_quarter.mulT(&p);
     const expect_hq = point(std.math.sqrt2 / S(2), 0, std.math.sqrt2 / S(2));
     const expect_fq = point(1, 0, 0);
-    try std.testing.expect(point_hq.equals(&expect_hq));
-    try std.testing.expect(point_fq.equals(&expect_fq));
+    try std.testing.expect(point_hq.equals(expect_hq));
+    try std.testing.expect(point_fq.equals(expect_fq));
 }
 
 test "Chap4 -Rotating a point around the z axis" {
@@ -999,8 +999,8 @@ test "Chap4 -Rotating a point around the z axis" {
     const point_fq = full_quarter.mulT(&p);
     const expect_hq = point(-std.math.sqrt2 / S(2), std.math.sqrt2 / S(2), 0);
     const expect_fq = point(-1, 0, 0);
-    try std.testing.expect(point_hq.equals(&expect_hq));
-    try std.testing.expect(point_fq.equals(&expect_fq));
+    try std.testing.expect(point_hq.equals(expect_hq));
+    try std.testing.expect(point_fq.equals(expect_fq));
 }
 
 test "Rotating a point around the z axis" {
@@ -1011,8 +1011,8 @@ test "Rotating a point around the z axis" {
     const point_fq = full_quarter.mulT(&p);
     const expect_hq = point(-std.math.sqrt2 / S(2), std.math.sqrt2 / S(2), 0);
     const expect_fq = point(-1, 0, 0);
-    try std.testing.expect(point_hq.equals(&expect_hq));
-    try std.testing.expect(point_fq.equals(&expect_fq));
+    try std.testing.expect(point_hq.equals(expect_hq));
+    try std.testing.expect(point_fq.equals(expect_fq));
 }
 
 test "Chap4 -A shearing transformation moves x in proportion to y" {
@@ -1021,7 +1021,7 @@ test "Chap4 -A shearing transformation moves x in proportion to y" {
     const transformedp = transform.mulT(&p);
     const expectedp = Tuple.point(5, 3, 4);
     // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
-    try std.testing.expect(transformedp.equals(&expectedp));
+    try std.testing.expect(transformedp.equals(expectedp));
 }
 
 test "Chap4 -A shearing transformation moves x in proportion to z" {
@@ -1030,7 +1030,7 @@ test "Chap4 -A shearing transformation moves x in proportion to z" {
     const transformedp = transform.mulT(&p);
     const expectedp = Tuple.point(6, 3, 4);
     // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
-    try std.testing.expect(transformedp.equals(&expectedp));
+    try std.testing.expect(transformedp.equals(expectedp));
 }
 
 test "Chap4 -A shearing transformation moves y in proportion to x" {
@@ -1039,7 +1039,7 @@ test "Chap4 -A shearing transformation moves y in proportion to x" {
     const transformedp = transform.mulT(&p);
     const expectedp = Tuple.point(2, 5, 4);
     // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
-    try std.testing.expect(transformedp.equals(&expectedp));
+    try std.testing.expect(transformedp.equals(expectedp));
 }
 
 test "Chap4 -A shearing transformation moves y in proportion to z" {
@@ -1048,7 +1048,7 @@ test "Chap4 -A shearing transformation moves y in proportion to z" {
     const transformedp = transform.mulT(&p);
     const expectedp = Tuple.point(2, 7, 4);
     // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
-    try std.testing.expect(transformedp.equals(&expectedp));
+    try std.testing.expect(transformedp.equals(expectedp));
 }
 
 test "Chap4 -A shearing transformation moves z in proportion to x" {
@@ -1057,7 +1057,7 @@ test "Chap4 -A shearing transformation moves z in proportion to x" {
     const transformedp = transform.mulT(&p);
     const expectedp = Tuple.point(2, 3, 6);
     // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
-    try std.testing.expect(transformedp.equals(&expectedp));
+    try std.testing.expect(transformedp.equals(expectedp));
 }
 
 test "Chap4 -A shearing transformation moves z in proportion to y" {
@@ -1066,7 +1066,7 @@ test "Chap4 -A shearing transformation moves z in proportion to y" {
     const transformedp = transform.mulT(&p);
     const expectedp = Tuple.point(2, 3, 7);
     // log(@src(), "\ninput point:{f}\ntransform:{f}\ntransformedp:{f}\n", .{ p, transform, transformedp });
-    try std.testing.expect(transformedp.equals(&expectedp));
+    try std.testing.expect(transformedp.equals(expectedp));
 }
 
 test "Chap4 -Individual transformations are applied in sequence" {
@@ -1077,15 +1077,15 @@ test "Chap4 -Individual transformations are applied in sequence" {
 
     // Apply rotation around x first.
     const p2 = A.mulT(&p);
-    try std.testing.expect(p2.equals(&point(1, -1, 0)));
+    try std.testing.expect(p2.equals(point(1, -1, 0)));
 
     // then apply scaling.
     const p3 = B.mulT(&p2);
-    try std.testing.expect(p3.equals(&point(5, -5, 0)));
+    try std.testing.expect(p3.equals(point(5, -5, 0)));
 
     // then apply translation.
     const p4 = C.mulT(&p3);
-    try std.testing.expect(p4.equals(&point(15, 0, 7)));
+    try std.testing.expect(p4.equals(point(15, 0, 7)));
 }
 
 test "Chap4 -Chained transformations must be applied in reverse order" {
@@ -1096,7 +1096,7 @@ test "Chap4 -Chained transformations must be applied in reverse order" {
     const T = C.mulM(&B.mulM(&A));
     const transformedp = T.mulT(&p);
     const exptectedp = point(15, 0, 7);
-    try std.testing.expect(transformedp.equals(&exptectedp));
+    try std.testing.expect(transformedp.equals(exptectedp));
 }
 
 test "Chap4 -Fluent Chained transformations must be applied in reverse order" {
@@ -1104,7 +1104,7 @@ test "Chap4 -Fluent Chained transformations must be applied in reverse order" {
     const T = Mat4.translation(10, 5, 7).mulM(&Mat4.scaling(5, 5, 5).mulM(&Mat4.rotx(std.math.pi / S(2))));
     const transformedp = T.mulT(&p);
     const exptectedp = point(15, 0, 7);
-    try std.testing.expect(transformedp.equals(&exptectedp));
+    try std.testing.expect(transformedp.equals(exptectedp));
 }
 
 fn drawSquare(
@@ -1133,7 +1133,7 @@ test "Chap4 -Putting It Together" {
 
     const origin = point(0, 0, 0);
     var p = point(0, 0, 0);
-    try std.testing.expect(p.equals(&origin));
+    try std.testing.expect(p.equals(origin));
 
     var color = tuple.color(1, 0, 0);
 
