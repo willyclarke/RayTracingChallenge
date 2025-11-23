@@ -1,5 +1,9 @@
 //! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
+pub const types = @import("types.zig");
+pub const canvas = @import("canvas.zig");
+pub const matrix = @import("matrix.zig");
+pub const shapes = @import("shapes.zig");
 
 pub fn bufferedPrint() !void {
     // Stdout is for the actual output of your application, for example if you
@@ -20,4 +24,9 @@ pub fn add(a: i32, b: i32) i32 {
 
 test "basic add functionality" {
     try std.testing.expect(add(3, 7) == 10);
+}
+
+test {
+    // This forces Zig to discover and run tests in ALL imported files
+    std.testing.refAllDecls(@This());
 }

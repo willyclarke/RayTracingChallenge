@@ -18,53 +18,6 @@ pub inline fn scalar(x: anytype) Scalar {
 }
 
 /// ---
-/// Intersection used by the various types of objects like spheres, cubes, etc...
-/// ---
-pub const Intersection = struct {
-    t: Scalar,
-    object_id: usize,
-
-    pub fn init() Intersection {
-        return .{
-            .t = S(0),
-            .object_id = 0,
-        };
-    }
-};
-
-/// ---
-/// Intersections used by the various types of objects like spheres, cubes, etc...
-/// ---
-pub const Intersections = struct {
-    intersectionarray: [2]Intersection,
-    count: usize,
-
-    pub fn init() Intersections {
-        return .{
-            .intersectionarray = undefined, // safe because count starts at 0
-            .count = 0,
-        };
-    }
-
-    pub fn append(self: *Intersections, hit: Intersection) !void {
-        if (self.count >= self.intersectionarray.len)
-            return error.OutOfCapacity;
-        self.intersectionarray[self.count] = hit;
-        self.count += 1;
-    }
-
-    pub fn get(self: *const Intersections, index: usize) !Intersection {
-        if (index >= self.intersectionarray.len)
-            return error.OutOfBounds;
-        return self.intersectionarray[index];
-    }
-
-    pub fn slice(self: *const Intersections) []const Intersection {
-        return self.intersectionarray[0..self.count];
-    }
-};
-
-/// ---
 /// Alias to convert anytype to the Scalar type
 /// ---
 pub inline fn S(x: anytype) Scalar {
@@ -277,6 +230,52 @@ pub fn format(t: Tuple, comptime fmt: []const u8, options: std.fmt.FormatOptions
     try writer.print("Tuple({d:.6}, {d:.6}, {d:.6}, {d:.6})", .{ t.x, t.y, t.z, t.w });
 }
 
+/// ---
+/// Intersection used by the various types of objects like spheres, cubes, etc...
+/// ---
+pub const Intersection = struct {
+    t: Scalar,
+    object_id: usize,
+
+    pub fn init() Intersection {
+        return .{
+            .t = S(0),
+            .object_id = 0,
+        };
+    }
+};
+
+/// ---
+/// Intersections used by the various types of objects like spheres, cubes, etc...
+/// ---
+pub const Intersections = struct {
+    intersectionarray: [2]Intersection,
+    count: usize,
+
+    pub fn init() Intersections {
+        return .{
+            .intersectionarray = undefined, // safe because count starts at 0
+            .count = 0,
+        };
+    }
+
+    pub fn append(self: *Intersections, hit: Intersection) !void {
+        if (self.count >= self.intersectionarray.len)
+            return error.OutOfCapacity;
+        self.intersectionarray[self.count] = hit;
+        self.count += 1;
+    }
+
+    pub fn get(self: *const Intersections, index: usize) !Intersection {
+        if (index >= self.intersectionarray.len)
+            return error.OutOfBounds;
+        return self.intersectionarray[index];
+    }
+
+    pub fn slice(self: *const Intersections) []const Intersection {
+        return self.intersectionarray[0..self.count];
+    }
+};
 test "Chap1 -tuple initialization (Scalar)" {
     const eps: Scalar = 1e-6;
 

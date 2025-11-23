@@ -1,12 +1,12 @@
 const std = @import("std");
 const print = @import("std").debug.print;
 
-const tuple = @import("tuple.zig");
-const Color = tuple.Color;
-const Projectile = tuple.Projectile;
-const rgb = tuple.Color;
-const Scalar = tuple.Scalar;
-const Tuple = tuple.Tuple;
+const types = @import("types.zig");
+const Color = types.Color;
+const Projectile = types.Projectile;
+const rgb = types.Color;
+const Scalar = types.Scalar;
+const Tuple = types.Tuple;
 
 pub const Canvas = struct {
     width: usize,
@@ -62,9 +62,9 @@ pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
     var NumCharsOnLine: u32 = 0;
     for (0..canvas.height) |y| {
         for (0..canvas.width) |x| {
-            const R = tuple.toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).r());
-            const G = tuple.toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).g());
-            const B = tuple.toByteSaturated(tuple.S(255) * canvas.pixelAt(x, y).b());
+            const R = types.toByteSaturated(types.S(255) * canvas.pixelAt(x, y).r());
+            const G = types.toByteSaturated(types.S(255) * canvas.pixelAt(x, y).g());
+            const B = types.toByteSaturated(types.S(255) * canvas.pixelAt(x, y).b());
             try buffer.writer(a).print("{:03} {:03} {:03} ", .{ R, G, B });
 
             NumCharsOnLine = NumCharsOnLine + Increment;
@@ -99,17 +99,17 @@ test "Chap2 -Creating a canvas" {
     // default to black
     for (0..c.height) |y| {
         for (0..c.width) |x| {
-            try std.testing.expectEqual(c.pixels[y * c.width + x].r(), tuple.S(0));
-            try std.testing.expectEqual(c.pixels[y * c.width + x].g(), tuple.S(0));
-            try std.testing.expectEqual(c.pixels[y * c.width + x].b(), tuple.S(0));
+            try std.testing.expectEqual(c.pixels[y * c.width + x].r(), types.S(0));
+            try std.testing.expectEqual(c.pixels[y * c.width + x].g(), types.S(0));
+            try std.testing.expectEqual(c.pixels[y * c.width + x].b(), types.S(0));
         }
     }
 
     for (0..c.height) |y| {
         for (0..c.width) |x| {
-            try std.testing.expectEqual(c.pixelAt(x, y).r(), tuple.S(0));
-            try std.testing.expectEqual(c.pixelAt(x, y).g(), tuple.S(0));
-            try std.testing.expectEqual(c.pixelAt(x, y).b(), tuple.S(0));
+            try std.testing.expectEqual(c.pixelAt(x, y).r(), types.S(0));
+            try std.testing.expectEqual(c.pixelAt(x, y).g(), types.S(0));
+            try std.testing.expectEqual(c.pixelAt(x, y).b(), types.S(0));
         }
     }
 }
@@ -125,7 +125,7 @@ test "Chap2 -Writing pixels to a canvas" {
     // write and read
     const red = rgb.init(1, 0, 0, 0);
     c.writePixel(2, 3, red);
-    try std.testing.expect(tuple.Tuple.equals(c.pixelAt(2, 3), red));
+    try std.testing.expect(types.Tuple.equals(c.pixelAt(2, 3), red));
 }
 
 test "Chap2 -Contructing the PPM header" {
@@ -138,7 +138,7 @@ test "Chap2 -Contructing the PPM header" {
 
     for (0..c.height) |y| {
         for (0..c.width) |x| {
-            const color = rgb.init(tuple.S(y) / tuple.S(c.height), tuple.S(x) / tuple.S(c.width), tuple.S(y) / tuple.S(c.height), 0);
+            const color = rgb.init(types.S(y) / types.S(c.height), types.S(x) / types.S(c.width), types.S(y) / types.S(c.height), 0);
             c.writePixel(x, y, color);
         }
     }
@@ -165,15 +165,15 @@ test "Chap2 -Putting it together" {
 
     const gravity = Tuple.vector(0, -0.1, 0);
     const wind = Tuple.vector(-0.01, 0, 0);
-    const e = tuple.Environment.init(gravity, wind);
+    const e = types.Environment.init(gravity, wind);
 
-    while (projectile.position.y > tuple.S(0)) {
-        projectile = tuple.tick(e, projectile);
+    while (projectile.position.y > types.S(0)) {
+        projectile = types.tick(e, projectile);
 
-        const x = tuple.toUsizeSaturated(projectile.position.x, tuple.S(0), tuple.S(c.width));
-        const y = c.height - tuple.toUsizeSaturated(projectile.position.y, tuple.S(0), tuple.S(c.height));
+        const x = types.toUsizeSaturated(projectile.position.x, types.S(0), types.S(c.width));
+        const y = c.height - types.toUsizeSaturated(projectile.position.y, types.S(0), types.S(c.height));
         // print("projectile.position: {f} projectile.velocity: {f} canvaspos x:{} y:{}\n", .{ &projectile.position, projectile.velocity, x, y });
-        const color = rgb(tuple.S(y) / tuple.S(c.height), tuple.S(x) / tuple.S(c.width), tuple.S(y) / tuple.S(c.height));
+        const color = rgb(types.S(y) / types.S(c.height), types.S(x) / types.S(c.width), types.S(y) / types.S(c.height));
         c.writePixel(x, y, color);
     }
 

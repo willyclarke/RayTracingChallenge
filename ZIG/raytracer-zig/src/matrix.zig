@@ -1,15 +1,15 @@
 const std = @import("std");
 const print = @import("std").debug.print;
 const canvas = @import("canvas.zig");
-const tuple = @import("tuple.zig");
+const types = @import("types.zig");
 const utils = @import("utils.zig");
 
-const S = tuple.S;
-const Scalar = tuple.Scalar;
-const Tuple = tuple.Tuple;
-const point = tuple.Point;
-const vector = tuple.Vector;
-const approxEq = tuple.approxEq;
+const S = types.S;
+const Scalar = types.Scalar;
+const Tuple = types.Tuple;
+const point = types.Point;
+const vector = types.Vector;
+const approxEq = types.approxEq;
 const log = utils.log;
 
 // ───── INVERSE STRATEGY — change this one line to switch! ─────
@@ -954,7 +954,7 @@ test "Chap4 -Reflection is scaling by a negative value" {
 
 test "Chap4 -Convert from Degrees to Radians" {
     const angle = S(180);
-    const anglerad = tuple.Deg2Rad(angle);
+    const anglerad = types.Deg2Rad(angle);
     try std.testing.expect(approxEq(anglerad, std.math.pi));
 }
 
@@ -1112,7 +1112,7 @@ fn drawSquare(
     center_x: usize,
     center_y: usize,
     half_size: usize,
-    ptrcolor: *const tuple.Color,
+    ptrcolor: *const types.Color,
 ) void {
     var y: usize = center_y - half_size;
     while (y <= center_y + half_size) : (y += 1) {
@@ -1135,7 +1135,7 @@ test "Chap4 -Putting It Together" {
     var p = point(0, 0, 0);
     try std.testing.expect(p.equals(origin));
 
-    var color = tuple.color(1, 0, 0);
+    var color = types.color(1, 0, 0);
 
     const canvastranslate = Mat4.translation(S(c.width) / S(2), S(c.height) / S(2), 0);
 
@@ -1143,9 +1143,9 @@ test "Chap4 -Putting It Together" {
     const scale = Mat4.scaling(canvastranslate.get(0, 3) * S(0.75), canvastranslate.get(1, 3) * S(0.75), 0);
 
     var canvpoint = canvastranslate.mulM(&scale).mulT(&p);
-    var centerx = tuple.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
-    var centery = tuple.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
-    const squaresize = tuple.toUsizeSaturated(S(c.width) / S(20), S(3), S(10));
+    var centerx = types.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
+    var centery = types.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
+    const squaresize = types.toUsizeSaturated(S(c.width) / S(20), S(3), S(10));
     drawSquare(&c, centerx, centery, squaresize, &color);
 
     color.z = 1;
@@ -1157,8 +1157,8 @@ test "Chap4 -Putting It Together" {
         color.z = S(idx) / S(12);
 
         canvpoint = canvastranslate.mulM(&scale.mulM(&Mat4.rotz(alfa))).mulT(&p);
-        centerx = tuple.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
-        centery = tuple.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
+        centerx = types.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
+        centery = types.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
         drawSquare(&c, centerx, centery, squaresize, &color);
     }
 

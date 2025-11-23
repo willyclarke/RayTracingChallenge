@@ -1,16 +1,14 @@
 const std = @import("std");
 const print = @import("std").debug.print;
 const raytracer_zig = @import("raytracer_zig");
-const tuple = @import("tuple"); // comes from build.zig registration
+const types = raytracer_zig.types;
+const canvas = raytracer_zig.canvas;
+const matrix = raytracer_zig.matrix;
+const shapes = raytracer_zig.shapes;
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
-    print("Xll your {s} are belong to us.\n", .{"codebase"});
     try raytracer_zig.bufferedPrint();
-
-    const t = tuple.Tuple.init(4.3, -4.2, 3.1, 1.0);
-    print("t = ({}, {}, {}, {})\n", .{ t.x, t.y, t.z, t.w });
-    print("tt = {f}\n", .{t});
 }
 
 test "simple test" {

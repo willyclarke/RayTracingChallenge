@@ -1,18 +1,18 @@
 const std = @import("std");
 const print = @import("std").debug.print;
-const canvas = @import("canvas.zig");
-const tuple = @import("tuple.zig");
-const utils = @import("utils.zig");
+const types = @import("../types.zig");
+const canvas = @import("../canvas.zig");
+const utils = @import("../utils.zig");
 
-const S = tuple.S;
-const Ray = tuple.Ray;
-const Scalar = tuple.Scalar;
-const Tuple = tuple.Tuple;
-const Intersection = tuple.Intersection;
-const Intersections = tuple.Intersections;
-const point = tuple.Point;
-const vector = tuple.Vector;
-const approxEq = tuple.approxEq;
+const S = types.S;
+const Ray = types.Ray;
+const Scalar = types.Scalar;
+const Tuple = types.Tuple;
+const Intersection = types.Intersection;
+const Intersections = types.Intersections;
+const point = types.Point;
+const vector = types.Vector;
+const approxEq = types.approxEq;
 const log = utils.log;
 
 var NEXT_SPHERE_ID: std.atomic.Value(usize) = .{ .raw = 0 };
@@ -46,8 +46,8 @@ pub fn intersect(sphere: Sphere, ray: Ray) !Intersections {
     const t1 = (-b - std.math.sqrt(discriminant)) / (S(2) * a);
     const t2 = (-b + std.math.sqrt(discriminant)) / (S(2) * a);
 
-    const intersection0 = tuple.Intersection{ .t = t1, .object_id = sphere.object_id };
-    const intersection1 = tuple.Intersection{ .t = t2, .object_id = sphere.object_id };
+    const intersection0 = types.Intersection{ .t = t1, .object_id = sphere.object_id };
+    const intersection1 = types.Intersection{ .t = t2, .object_id = sphere.object_id };
 
     var intersections = Intersections.init();
     try intersections.append(intersection0);
