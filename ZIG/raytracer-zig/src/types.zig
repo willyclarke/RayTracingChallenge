@@ -283,12 +283,6 @@ pub const Intersections = struct {
         self.items.deinit(allocator);
     }
 
-    pub fn intersections_is_this_used(allocator: std.mem.Allocator, ints: []const Intersection) Intersections {
-        var xs = Intersections.init(allocator);
-        xs.items.appendSlice(ints) catch @panic("OOM");
-        return xs;
-    }
-
     pub fn count(self: *const Intersections) usize {
         return self.items.items.len;
     }
