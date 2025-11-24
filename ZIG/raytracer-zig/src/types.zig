@@ -246,36 +246,72 @@ pub const Intersection = struct {
 };
 
 /// ---
+/// Fixed size used by LocalIntersections.
+/// ---
+pub const MaxIntersectionsPerShape = 2;
+
+/// ---
+/// return: array of up to two intersections.
+/// ---
+pub const LocalIntersections = struct {
+    count: usize,
+    data: [MaxIntersectionsPerShape]Intersection,
+
+    pub fn init() LocalIntersections {
+        return .{ .count = 0, .data = undefined };
+    }
+
+    pub fn add(self: *LocalIntersections, i: Intersection) void {
+        if (self.count < MaxIntersectionsPerShape) {
+            self.data[self.count] = i;
+            self.count += 1;
+        }
+    }
+};
+
+/// ---
 /// Intersections used by the various types of objects like spheres, cubes, etc...
 /// ---
 pub const Intersections = struct {
-    intersectionarray: [2]Intersection,
-    count: usize,
+    items: std.ArrayListUnmanaged(Intersection) = .{},
 
     pub fn init() Intersections {
-        return .{
-            .intersectionarray = undefined, // safe because count starts at 0
-            .count = 0,
-        };
+        return .{};
     }
 
-    pub fn append(self: *Intersections, hit: Intersection) !void {
-        if (self.count >= self.intersectionarray.len)
-            return error.OutOfCapacity;
-        self.intersectionarray[self.count] = hit;
-        self.count += 1;
+    pub fn deinit(self: *Intersections, allocator: std.mem.Allocator) void {
+        self.items.deinit(allocator);
+    }
+
+    pub fn intersections_is_this_used(allocator: std.mem.Allocator, ints: []const Intersection) Intersections {
+        var xs = Intersections.init(allocator);
+        xs.items.appendSlice(ints) catch @panic("OOM");
+        return xs;
+    }
+
+    pub fn count(self: *const Intersections) usize {
+        return self.items.items.len;
+    }
+
+    pub fn add(self: *Intersections, allocator: std.mem.Allocator, hit: Intersection) void {
+        self.items.append(allocator, hit) catch @panic("OOM");
     }
 
     pub fn get(self: *const Intersections, index: usize) !Intersection {
-        if (index >= self.intersectionarray.len)
+        if (index >= self.items.items.len)
             return error.OutOfBounds;
-        return self.intersectionarray[index];
+        return self.items.items[index];
     }
 
-    pub fn slice(self: *const Intersections) []const Intersection {
-        return self.intersectionarray[0..self.count];
+    pub fn aggregate(allocator: std.mem.Allocator, ints: anytype) Intersections {
+        var xs = Intersections.init();
+        inline for (ints) |i| {
+            xs.add(allocator, i);
+        }
+        return xs;
     }
 };
+
 test "Chap1 -tuple initialization (Scalar)" {
     const eps: Scalar = 1e-6;
 
