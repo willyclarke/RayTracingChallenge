@@ -97,10 +97,10 @@ test "Chap5 -The hit, when all intersections have positive t" {
 
     const i = xs.hit();
 
-    try std.testing.expect(i.object_id == i_1.object_id);
+    try std.testing.expect(i.?.object_id == i_1.object_id);
+    try std.testing.expect(i != null);
     try std.testing.expect(std.meta.eql(i, i_1));
-    try std.testing.expect(i.eql(i_1));
-    try std.testing.expect(!i.eql(i_2));
+    try std.testing.expect(!std.meta.eql(i, i_2));
 }
 
 test "Chap5 -The hit, when some intersections have negative t" {
@@ -112,10 +112,10 @@ test "Chap5 -The hit, when some intersections have negative t" {
 
     const i = xs.hit();
 
-    try std.testing.expect(i.object_id == i_2.object_id);
+    try std.testing.expect(i.?.object_id == i_2.object_id);
     try std.testing.expect(std.meta.eql(i, i_2));
-    try std.testing.expect(i.eql(i_2));
-    try std.testing.expect(!i.eql(i_1));
+    try std.testing.expect(i.?.eql(i_2));
+    try std.testing.expect(!i.?.eql(i_1));
 }
 
 test "Chap5 -The hit, when all intersections have negative t" {
@@ -127,10 +127,9 @@ test "Chap5 -The hit, when all intersections have negative t" {
 
     const i = xs.hit();
 
-    try std.testing.expect(i.object_id == 0);
+    try std.testing.expect(i == null);
+    try std.testing.expect(!std.meta.eql(i, i_1));
     try std.testing.expect(!std.meta.eql(i, i_2));
-    try std.testing.expect(!i.eql(i_2));
-    try std.testing.expect(!i.eql(i_1));
 }
 
 test "Chap5 -The hit is always the lowest nonnegative intersection" {
@@ -144,10 +143,11 @@ test "Chap5 -The hit is always the lowest nonnegative intersection" {
 
     const i = xs.hit();
 
-    try std.testing.expect(i.object_id == i_4.object_id);
+    try std.testing.expect(i.?.object_id == i_4.object_id);
     try std.testing.expect(std.meta.eql(i, i_4));
-    try std.testing.expect(!i.eql(i_1));
-    try std.testing.expect(!i.eql(i_2));
-    try std.testing.expect(!i.eql(i_3));
-    try std.testing.expect(i.eql(i_4));
+    try std.testing.expect(!i.?.eql(i_1));
+    try std.testing.expect(!i.?.eql(i_2));
+    try std.testing.expect(!i.?.eql(i_3));
+    try std.testing.expect(i.?.eql(i_4));
+    try std.testing.expect(std.meta.eql(xs.hit(), i_4));
 }

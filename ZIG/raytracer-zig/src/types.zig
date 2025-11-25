@@ -314,17 +314,29 @@ pub const Intersections = struct {
     /// has been a hit and the initialized version otherwise.
     /// i.e. no hit: t=0 and object_id=0.
     /// ---
-    pub fn hit(self: *const Intersections) Intersection {
-        var result = Intersection.init();
+    pub fn hit(self: *const Intersections) ?Intersection {
+        var best: ?Intersection = null;
 
-        for (self.intersections_items.items) |item| {
-            if (item.t > S(0) and result.object_id == 0) {
-                result = item;
-            } else if (item.t < result.t and item.t > 0) {
-                result = item;
+        for (self.intersections_items.items) |i| {
+            if (i.t >= 0) { // includes t=0!
+                if (best) |b| {
+                    if (i.t < b.t) best = i;
+                } else {
+                    best = i;
+                }
             }
         }
-        return result;
+        return best;
+        // var result = Intersection.init();
+        //
+        // for (self.intersections_items.items) |item| {
+        //     if (item.t >= S(0) and result.object_id == 0) {
+        //         result = item;
+        //     } else if (item.t < result.t and item.t > 0) {
+        //         result = item;
+        //     }
+        // }
+        // return result;
     }
 };
 
