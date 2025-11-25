@@ -237,6 +237,10 @@ pub const Intersection = struct {
     t: Scalar,
     object_id: usize,
 
+    pub fn eql(a: Intersection, b: Intersection) bool {
+        return approxEq(a.t, b.t) and a.object_id == b.object_id;
+    }
+
     pub fn init() Intersection {
         return .{
             .t = S(0),
@@ -255,15 +259,15 @@ pub const MaxIntersectionsPerShape = 2;
 /// ---
 pub const LocalIntersections = struct {
     count: usize,
-    data: [MaxIntersectionsPerShape]Intersection,
+    local_intersections_items: [MaxIntersectionsPerShape]Intersection,
 
     pub fn init() LocalIntersections {
-        return .{ .count = 0, .data = undefined };
+        return .{ .count = 0, .local_intersections_items = undefined };
     }
 
     pub fn add(self: *LocalIntersections, i: Intersection) void {
         if (self.count < MaxIntersectionsPerShape) {
-            self.data[self.count] = i;
+            self.local_intersections_items[self.count] = i;
             self.count += 1;
         }
     }
@@ -273,28 +277,28 @@ pub const LocalIntersections = struct {
 /// Intersections used by the various types of objects like spheres, cubes, etc...
 /// ---
 pub const Intersections = struct {
-    items: std.ArrayListUnmanaged(Intersection) = .{},
+    intersections_items: std.ArrayListUnmanaged(Intersection) = .{},
 
     pub fn init() Intersections {
         return .{};
     }
 
     pub fn deinit(self: *Intersections, allocator: std.mem.Allocator) void {
-        self.items.deinit(allocator);
+        self.intersections_items.deinit(allocator);
     }
 
     pub fn count(self: *const Intersections) usize {
-        return self.items.items.len;
+        return self.intersections_items.items.len;
     }
 
-    pub fn add(self: *Intersections, allocator: std.mem.Allocator, hit: Intersection) void {
-        self.items.append(allocator, hit) catch @panic("OOM");
+    pub fn add(self: *Intersections, allocator: std.mem.Allocator, hit_to_add: Intersection) void {
+        self.intersections_items.append(allocator, hit_to_add) catch @panic("OOM");
     }
 
     pub fn get(self: *const Intersections, index: usize) !Intersection {
-        if (index >= self.items.items.len)
+        if (index >= self.intersections_items.items.len)
             return error.OutOfBounds;
-        return self.items.items[index];
+        return self.intersections_items.items[index];
     }
 
     pub fn aggregate(allocator: std.mem.Allocator, ints: anytype) Intersections {
@@ -303,6 +307,24 @@ pub const Intersections = struct {
             xs.add(allocator, i);
         }
         return xs;
+    }
+
+    /// ---
+    /// Return the Intersection item with the t > 0 when there
+    /// has been a hit and the initialized version otherwise.
+    /// i.e. no hit: t=0 and object_id=0.
+    /// ---
+    pub fn hit(self: *const Intersections) Intersection {
+        var result = Intersection.init();
+
+        for (self.intersections_items.items) |item| {
+            if (item.t > S(0) and result.object_id == 0) {
+                result = item;
+            } else if (item.t < result.t and item.t > 0) {
+                result = item;
+            }
+        }
+        return result;
     }
 };
 
