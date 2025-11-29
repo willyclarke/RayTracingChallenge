@@ -1,8 +1,11 @@
 const std = @import("std");
 const print = @import("std").debug.print;
+const utils = @import("utils.zig");
+const log = utils.log;
 
 const types = @import("types.zig");
 const shapes = @import("shapes.zig");
+const matrix = @import("matrix.zig");
 const Color = types.Color;
 const Projectile = types.Projectile;
 const rgb = types.Color;
@@ -201,7 +204,12 @@ test "Chap5 -Putting it together" {
     const pixel_size = S(wall_size) / S(canvas_pixels);
     const half = wall_size / S(2);
     const color = types.color(1, 0, 0);
-    const s = shapes.Shape.fromSphere(shapes.Sphere.init());
+    var s = shapes.Shape.fromSphere(shapes.Sphere.init());
+
+    // const mxform = matrix.Mat4.rotz(std.math.pi / S(4)).mulM(&matrix.Mat4.scaling(0.5, 1, 1));
+    // s.set_transform(&mxform);
+
+    s.set_transform(&matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1)));
 
     for (0..canvas_pixels) |y| {
         const world_y = half - pixel_size * S(y);
@@ -210,7 +218,7 @@ test "Chap5 -Putting it together" {
             const position = types.Point(world_x, world_y, wall_z);
             const r = types.Ray.init(ray_origin, position.sub(ray_origin).normalize());
             const xs = s.intersect(r);
-            if (xs.hit()) { 
+            if (xs.hit()) {
                 canvas.writePixel(x, y, color);
             }
         }
