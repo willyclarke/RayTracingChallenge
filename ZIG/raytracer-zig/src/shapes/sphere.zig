@@ -4,12 +4,14 @@ const types = @import("../types.zig");
 const canvas = @import("../canvas.zig");
 const utils = @import("../utils.zig");
 const shapes = @import("../shapes.zig");
+const matrix = @import("../matrix.zig");
 
 const S = types.S;
 const Ray = types.Ray;
 const Scalar = types.Scalar;
 const Shape = shapes.Shape;
 const Tuple = types.Tuple;
+const Matrix = matrix.Mat4;
 const Intersection = types.Intersection;
 const Intersections = types.Intersections;
 const LocalIntersections = types.LocalIntersections;
@@ -24,6 +26,8 @@ pub const Sphere = struct {
     xs: Intersections,
     radius: Scalar,
     object_id: usize,
+    trform: matrix.Mat4,
+    trforminv: matrix.Mat4,
 
     pub fn init() Sphere {
         const obj_id = NEXT_SPHERE_ID.fetchAdd(1, .seq_cst);
@@ -31,6 +35,8 @@ pub const Sphere = struct {
             .xs = Intersections.init(),
             .radius = S(1),
             .object_id = obj_id,
+            .trform = matrix.Mat4.identity(),
+            .trforminv = matrix.Mat4.identity(),
         };
     }
 
@@ -43,10 +49,23 @@ pub const Sphere = struct {
         return i;
     }
 
-    pub fn intersect(sphere: *const Sphere, ray: Ray) LocalIntersections {
-        const sphere2ray = ray.origin.sub(point(0, 0, 0));
-        const a = ray.direction.dot(ray.direction);
-        const b = S(2) * ray.direction.dot(sphere2ray);
+    /// ---
+    /// Compute a local ray by applying the inverse of the sphere
+    /// transform. Use the local rays origin and direction to
+    /// compute the Intersections.
+    /// ---
+    pub fn intersect(self: *const Sphere, ray: Ray) LocalIntersections {
+
+        // ---
+        // NOTE: Two options
+        // 1. Compute the inverse of the sphere transform.
+        // 2. Use the already computed invers.
+        // ---
+        // const lr = Ray{ .origin = self.inverse().mulT(ray.origin), .direction = self.inverse().mulT(ray.direction) };
+        const lr = Ray{ .origin = self.trforminv.mulT(ray.origin), .direction = self.trforminv.mulT(ray.direction) };
+        const sphere2ray = lr.origin.sub(point(0, 0, 0));
+        const a = lr.direction.dot(lr.direction);
+        const b = S(2) * lr.direction.dot(sphere2ray);
         const c = sphere2ray.dot(sphere2ray) - S(1);
         const discriminant = b * b - S(4) * a * c;
 
@@ -57,14 +76,28 @@ pub const Sphere = struct {
         const t1 = (-b - std.math.sqrt(discriminant)) / (S(2) * a);
         const t2 = (-b + std.math.sqrt(discriminant)) / (S(2) * a);
 
-        // const intersection0 = types.Intersection{ .t = t1, .object_id = sphere.id() };
-        // const intersection1 = types.Intersection{ .t = t2, .object_id = sphere.id() };
-
         var xs = LocalIntersections.init();
-        xs.add(Shape.intersection(S(t1), @ptrCast(sphere)));
-        xs.add(Shape.intersection(S(t2), @ptrCast(sphere)));
+        xs.add(Shape.intersection(S(t1), @ptrCast(self)));
+        xs.add(Shape.intersection(S(t2), @ptrCast(self)));
 
         return xs;
+    }
+
+    /// ---
+    /// Setting the transform matrix.
+    /// NOTE: Also computes the inverse as a side effect...
+    /// ---
+    pub fn set_transform(self: *Sphere, m: *const matrix.Mat4) void {
+        self.trform = m.*;
+        self.trforminv = self.trform.inverse();
+    }
+
+    pub fn transform(self: *const Sphere) matrix.Mat4 {
+        return self.trform;
+    }
+
+    pub fn inverse(self: *const Sphere) matrix.Mat4 {
+        return self.trforminv;
     }
 };
 

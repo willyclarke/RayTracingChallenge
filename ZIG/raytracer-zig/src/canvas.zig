@@ -2,11 +2,15 @@ const std = @import("std");
 const print = @import("std").debug.print;
 
 const types = @import("types.zig");
+const shapes = @import("shapes.zig");
 const Color = types.Color;
 const Projectile = types.Projectile;
 const rgb = types.Color;
 const Scalar = types.Scalar;
+const S = types.S;
 const Tuple = types.Tuple;
+const Ray = types.Ray;
+const approxEq = types.approxEq;
 
 pub const Canvas = struct {
     width: usize,
@@ -178,4 +182,42 @@ test "Chap2 -Putting it together" {
     }
 
     try createCanvasFile(&c, "projectile.ppm");
+}
+
+test "Chap5 -Putting it together" {
+    try std.testing.expect(3 == 3);
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const canvas_pixels: usize = 100;
+    var canvas = try Canvas.init(alloc, canvas_pixels, canvas_pixels);
+    defer canvas.deinit(alloc);
+
+    const ray_origin = types.Point(0, 0, -5);
+    const wall_z = S(10);
+    const wall_size = S(7);
+    const pixel_size = S(wall_size) / S(canvas_pixels);
+    const half = wall_size / S(2);
+    const color = types.color(1, 0, 0);
+    const s = shapes.Shape.fromSphere(shapes.Sphere.init());
+
+    for (0..canvas_pixels) |y| {
+        const world_y = half - pixel_size * S(y);
+        for (0..canvas_pixels) |x| {
+            const world_x = -half + pixel_size * S(x);
+            const position = types.Point(world_x, world_y, wall_z);
+            const r = types.Ray.init(ray_origin, position.sub(ray_origin).normalize());
+            const xs = s.intersect(r);
+            if (xs.hit()) { 
+                canvas.writePixel(x, y, color);
+            }
+        }
+    }
+
+    try std.testing.expect(approxEq(ray_origin.z, S(-5)));
+    try std.testing.expect(pixel_size > S(0));
+
+    try createCanvasFile(&canvas, "chap5puttingtogether.ppm");
 }

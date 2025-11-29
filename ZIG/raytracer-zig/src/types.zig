@@ -94,30 +94,30 @@ pub const Tuple = struct {
         return .{ .x = self.x - other.x, .y = self.y - other.y, .z = self.z - other.z, .w = self.w - other.w };
     }
 
-    pub fn neg(self: *const Tuple) Tuple {
+    pub fn neg(self: Tuple) Tuple {
         return .{ .x = -self.x, .y = -self.y, .z = -self.z, .w = -self.w };
     }
 
     /// Scalar multiplication
-    pub fn muls(self: *const Tuple, s: Scalar) Tuple {
+    pub fn muls(self: Tuple, s: Scalar) Tuple {
         return .{ .x = self.x * s, .y = self.y * s, .z = self.z * s, .w = self.w * s };
     }
 
-    pub fn div(self: *const Tuple, s: Scalar) Tuple {
+    pub fn div(self: Tuple, s: Scalar) Tuple {
         return .{ .x = self.x / s, .y = self.y / s, .z = self.z / s, .w = self.w / s };
     }
 
-    pub fn mag(self: *const Tuple) Scalar {
+    pub fn mag(self: Tuple) Scalar {
         return std.math.sqrt(mags(self));
     }
 
     /// Magnitude squared
-    pub fn mags(self: *const Tuple) Scalar {
+    pub fn mags(self: Tuple) Scalar {
         return self.x * self.x + self.y * self.y + self.z * self.z + self.w * self.w;
     }
 
     /// Normalize to length 1
-    pub fn normalize(self: *const Tuple) Tuple {
+    pub fn normalize(self: Tuple) Tuple {
         return self.div(self.mag());
     }
 
@@ -128,17 +128,17 @@ pub const Tuple = struct {
 
     /// Tuple multiplication
     /// Also called Hadamard product or Schur product
-    pub fn mult(self: *const Tuple, other: *const Tuple) Tuple {
+    pub fn mult(self: Tuple, other: Tuple) Tuple {
         return .{ .x = self.x * other.x, .y = self.y * other.y, .z = self.z * other.z, .w = self.w * other.w };
     }
 
-    pub fn cross(self: *const Tuple, other: *const Tuple) Tuple {
+    pub fn cross(self: Tuple, other: Tuple) Tuple {
         return vector(self.y * other.z - self.z * other.y, self.z * other.x - self.x * other.z, self.x * other.y - self.y * other.x);
     }
 
     /// Custom formatter so `{}` prints nicely.
     /// `fmt` and `options` let you add variants later; for now we ignore them.
-    pub fn format(self: *const Tuple, writer: anytype) !void {
+    pub fn format(self: Tuple, writer: anytype) !void {
         if (self.w != S(0)) {
             try writer.print("P({d:8.15}, {d:8.15}, {d:8.15}, {d:8.15})", .{ self.x, self.y, self.z, self.w });
         } else {
@@ -149,26 +149,26 @@ pub const Tuple = struct {
     /// Handle printing via a *const Tuple pointer
     pub fn formatPtr(self: *const Tuple, writer: anytype) !void {
         // Forward to the value formatter
-        return Tuple.format(self.*, writer);
+        return Tuple.format(self, writer);
     }
 
     /// Color - red channel
-    pub inline fn r(self: *const Tuple) Scalar {
+    pub inline fn r(self: Tuple) Scalar {
         return self.x;
     }
 
     /// Color - green channel
-    pub inline fn g(self: *const Tuple) Scalar {
+    pub inline fn g(self: Tuple) Scalar {
         return self.y;
     }
 
     /// Color - blue channel
-    pub inline fn b(self: *const Tuple) Scalar {
+    pub inline fn b(self: Tuple) Scalar {
         return self.z;
     }
 
     /// Color - alpha channel
-    pub inline fn alpha(self: *const Tuple) Scalar {
+    pub inline fn alpha(self: Tuple) Scalar {
         return self.w;
     }
 };
@@ -270,6 +270,10 @@ pub const LocalIntersections = struct {
             self.local_intersections_items[self.count] = i;
             self.count += 1;
         }
+    }
+
+    pub fn hit(self: *const LocalIntersections) bool {
+        return self.count > 0;
     }
 };
 
@@ -412,85 +416,85 @@ test "Chap1 -subtractin two vectors" {
 
 test "Chap1 -negate a tuple" {
     const a = Tuple.init(1, -2, 3, -4);
-    const aneg = Tuple.neg(&a);
+    const aneg = Tuple.neg(a);
     const e = Tuple.init(-1, 2, -3, 4);
     try std.testing.expect(Tuple.equals(aneg, e));
 }
 
 test "Chap1 -multiplying a tuple by scalar" {
     const a = Tuple.init(1, -2, 3, -4);
-    const amult = Tuple.muls(&a, 3.5);
+    const amult = Tuple.muls(a, 3.5);
     const e = Tuple.init(3.5, -7, 10.5, -14);
     try std.testing.expect(Tuple.equals(amult, e));
 }
 
 test "Chap1 -multiplying a tuple by a fraction" {
     const a = Tuple.init(1, -2, 3, -4);
-    const amult = Tuple.muls(&a, 0.5);
+    const amult = Tuple.muls(a, 0.5);
     const e = Tuple.init(0.5, -1, 1.5, -2);
     try std.testing.expect(Tuple.equals(amult, e));
 }
 
 test "Chap1 -dividing a tuple by a scalar" {
     const a = Tuple.init(1, -2, 3, -4);
-    const amult = Tuple.div(&a, 2);
+    const amult = Tuple.div(a, 2);
     const e = Tuple.init(0.5, -1, 1.5, -2);
     try std.testing.expect(Tuple.equals(amult, e));
 }
 
 test "Chap1 -computing the magnitude of vector(1, 0, 0)" {
     const v = Tuple.vector(1, 0, 0);
-    const mag = Tuple.mag(&v);
+    const mag = Tuple.mag(v);
     const e = 1;
     try std.testing.expect(approxEq(mag, e));
 }
 
 test "Chap1 -computing the magnitude of vector(0, 1, 0)" {
     const v = Tuple.vector(0, 1, 0);
-    const mag = Tuple.mag(&v);
+    const mag = Tuple.mag(v);
     const e = 1;
     try std.testing.expect(approxEq(mag, e));
 }
 
 test "Chap1 -computing the magnitude of vector(0, 0, 1)" {
     const v = Tuple.vector(0, 0, 1);
-    const mag = Tuple.mag(&v);
+    const mag = Tuple.mag(v);
     const e = 1;
     try std.testing.expect(approxEq(mag, e));
 }
 
 test "Chap1 -computing the magnitude of vector(1, 2, 3)" {
     const v = Tuple.vector(1, 2, 3);
-    const mag = Tuple.mag(&v);
+    const mag = Tuple.mag(v);
     const e = std.math.sqrt(S(14));
     try std.testing.expect(approxEq(mag, e));
 }
 
 test "Chap1 -computing the magnitude of vector(-1, -2, -3)" {
     const v = Tuple.vector(-1, -2, -3);
-    const mag = Tuple.mag(&v);
+    const mag = Tuple.mag(v);
     const e = std.math.sqrt(S(14));
     try std.testing.expect(approxEq(mag, e));
 }
 
 test "Chap1 -Normalizing vector(4, 0, 0)" {
     const v = Tuple.vector(4, 0, 0);
-    const norm = Tuple.normalize(&v);
+    const norm = Tuple.normalize(v);
     const e = Tuple.vector(1, 0, 0);
     try std.testing.expect(Tuple.equals(norm, e));
 }
 
 test "Chap1 -Normalizing vector(1, 2, 3)" {
     const v = Tuple.vector(1, 2, 3);
-    const norm = Tuple.normalize(&v);
+    const norm = Tuple.normalize(v);
     const e = Tuple.vector(S(1) / std.math.sqrt(S(14)), S(2) / std.math.sqrt(S(14)), S(3) / std.math.sqrt(S(14)));
     try std.testing.expect(Tuple.equals(norm, e));
 }
 
 test "Chap1 -The magnitude of a normalized vector" {
     const v = Tuple.vector(1, 2, 3);
-    const norm = Tuple.normalize(&v);
-    const magnitude = Tuple.mag(&norm);
+    const norm = Tuple.normalize(v);
+    const magnitude = Tuple.mag(norm);
     try std.testing.expect(approxEq(S(1), magnitude));
 }
 
@@ -504,8 +508,8 @@ test "Chap1 -The dot product of two tuples" {
 test "Chap1 -The cross product of two vectors" {
     const a = Tuple.vector(1, 2, 3);
     const b = Tuple.vector(2, 3, 4);
-    const crossab = Tuple.cross(&a, &b);
-    const crossba = Tuple.cross(&b, &a);
+    const crossab = Tuple.cross(a, b);
+    const crossba = Tuple.cross(b, a);
     try std.testing.expect(Tuple.equals(crossab, Tuple.vector(-1, 2, -1)));
     try std.testing.expect(Tuple.equals(crossba, Tuple.vector(1, -2, 1)));
 }
@@ -527,7 +531,7 @@ test "Chap1 -Putting it together" {
 
     // Projectile starts one unit above the origin.
     // Velocity is normalized to 1 unit/tick.
-    var projectile = Projectile.init(Tuple.point(0, 1, 0), Tuple.normalize(&Tuple.vector(1, 1, 0)));
+    var projectile = Projectile.init(Tuple.point(0, 1, 0), Tuple.normalize(Tuple.vector(1, 1, 0)));
     const e = Environment.init(Tuple.vector(0, -0.1, 0), Tuple.vector(-0.01, 0, 0));
 
     while (projectile.position.y > S(0)) {
@@ -570,7 +574,7 @@ test "Chap2 -Multiplying color by a scalar" {
 test "Chap2 -Multiplying colors" {
     const c1 = color(1, 0.2, 0.4);
     const c2 = color(0.9, 1, 0.1);
-    const result = c1.mult(&c2);
+    const result = c1.mult(c2);
     const expect = color(0.9, 0.2, 0.04);
     try std.testing.expect(Tuple.equals(result, expect));
 }

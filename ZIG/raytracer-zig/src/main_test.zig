@@ -24,6 +24,8 @@ test {
     // If you have tests inside shapes/sphere.zig, etc., import them too:
     // const sphere = @import("shapes/sphere.zig");
     // std.testing.refAllDecls(sphere);
+    const sphere = @import("shapes/sphere.zig");
+    std.testing.refAllDecls(sphere);
 }
 
 // Optional: keep your simple add test here too

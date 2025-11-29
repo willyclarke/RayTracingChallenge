@@ -5,9 +5,11 @@ const utils = @import("utils.zig");
 const log = utils.log;
 
 const types = @import("types.zig");
-const sphere_mod = @import("shapes/sphere.zig");
-const Sphere = sphere_mod.Sphere;
+const matrix = @import("matrix.zig");
+pub const sphere_mod = @import("shapes/sphere.zig");
+pub const Sphere = sphere_mod.Sphere;
 
+pub const approxEq = types.approxEq;
 pub const Scalar = types.Scalar;
 pub const S = types.S;
 pub const Ray = types.Ray;
@@ -47,6 +49,27 @@ pub const Shape = union(enum) {
     // Helper: wrap a Sphere into a Shape
     pub fn fromSphere(s: Sphere) Shape {
         return .{ .sphere = s };
+    }
+
+    pub fn set_transform(self: *Shape, m: *const matrix.Mat4) void {
+        return switch (self.*) {
+            .sphere => |*s| s.set_transform(m),
+            // .cube => |*c| c.set_transform(m),
+        };
+    }
+
+    pub fn transform(self: *const Shape) matrix.Mat4 {
+        return switch (self.*) {
+            .sphere => |s| s.transform(),
+            // .cube => |c| c.transform(m),
+        };
+    }
+
+    pub fn inverse(self: *const Shape) matrix.Mat4 {
+        return switch (self.*) {
+            .sphere => |s| s.inverse(),
+            // .cube => |c| c.inverse(m),
+        };
     }
 };
 
@@ -150,4 +173,34 @@ test "Chap5 -The hit is always the lowest nonnegative intersection" {
     try std.testing.expect(!i.?.eql(i_3));
     try std.testing.expect(i.?.eql(i_4));
     try std.testing.expect(std.meta.eql(xs.hit(), i_4));
+}
+
+test "Chap5 -A sphere's default transformation" {
+    const s = Shape.fromSphere(Sphere.init());
+    try std.testing.expect(matrix.Mat4.identity().equals(&s.transform()));
+}
+
+test "Chap5 -Changing a sphere's transformation" {
+    var s = Shape.fromSphere(Sphere.init());
+    const t = matrix.Mat4.translation(2, 3, 4);
+    s.set_transform(&t);
+    try std.testing.expect(s.transform().equals(&t));
+}
+
+test "Chap5 -Intersecting a scaled sphere with a ray" {
+    const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
+    var s = Shape.fromSphere(Sphere.init());
+    s.set_transform(&matrix.Mat4.scaling(2, 2, 2));
+    const xs = s.intersect(r);
+    try std.testing.expect(xs.count == 2);
+    try std.testing.expect(approxEq(xs.local_intersections_items[0].t, S(3)));
+    try std.testing.expect(approxEq(xs.local_intersections_items[1].t, S(7)));
+}
+
+test "Chap5 -Intersecting a translated sphere with a ray" {
+    const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
+    var s = Shape.fromSphere(Sphere.init());
+    s.set_transform(&matrix.Mat4.translation(5, 0, 0));
+    const xs = s.intersect(r);
+    try std.testing.expect(xs.count == 0);
 }
