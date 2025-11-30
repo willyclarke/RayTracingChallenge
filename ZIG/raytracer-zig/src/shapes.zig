@@ -10,11 +10,15 @@ pub const sphere_mod = @import("shapes/sphere.zig");
 pub const Sphere = sphere_mod.Sphere;
 
 pub const approxEq = types.approxEq;
-pub const Scalar = types.Scalar;
-pub const S = types.S;
+pub const Mat4 = matrix.Mat4;
 pub const Ray = types.Ray;
+pub const S = types.S;
+pub const Scalar = types.Scalar;
+pub const Tuple = types.Tuple;
+
 pub const point = types.Point;
 pub const vector = types.Vector;
+
 pub const Intersection = types.Intersection;
 pub const Intersections = types.Intersections;
 pub const LocalIntersections = types.LocalIntersections;
@@ -32,6 +36,11 @@ pub const Shape = union(enum) {
         };
     }
 
+    // Helper: wrap a Sphere into a Shape
+    pub fn fromSphere(s: Sphere) Shape {
+        return .{ .sphere = s };
+    }
+
     pub fn intersect(self: *const Shape, ray: Ray) LocalIntersections {
         return switch (self.*) {
             .sphere => |s| s.intersect(ray),
@@ -46,9 +55,18 @@ pub const Shape = union(enum) {
         return .{ .t = t, .object_id = shape.id() }; // shape.id() works!
     }
 
-    // Helper: wrap a Sphere into a Shape
-    pub fn fromSphere(s: Sphere) Shape {
-        return .{ .sphere = s };
+    pub fn inverse(self: *const Shape) matrix.Mat4 {
+        return switch (self.*) {
+            .sphere => |s| s.inverse(),
+            // .cube => |c| c.inverse(m),
+        };
+    }
+
+    pub fn normal_at(self: *const Shape, position: Tuple) Tuple {
+        return switch (self.*) {
+            .sphere => |s| s.normal_at(position),
+            // .cube => |c| c.normal_at(position),
+        };
     }
 
     pub fn set_transform(self: *Shape, m: *const matrix.Mat4) void {
@@ -62,13 +80,6 @@ pub const Shape = union(enum) {
         return switch (self.*) {
             .sphere => |s| s.transform(),
             // .cube => |c| c.transform(m),
-        };
-    }
-
-    pub fn inverse(self: *const Shape) matrix.Mat4 {
-        return switch (self.*) {
-            .sphere => |s| s.inverse(),
-            // .cube => |c| c.inverse(m),
         };
     }
 };
@@ -203,4 +214,63 @@ test "Chap5 -Intersecting a translated sphere with a ray" {
     s.set_transform(&matrix.Mat4.translation(5, 0, 0));
     const xs = s.intersect(r);
     try std.testing.expect(xs.count == 0);
+}
+
+test "Chap6 -The normal on a sphere at a point on the x axis" {
+    const s = Shape.fromSphere(Sphere.init());
+    const n = s.normal_at(point(1, 0, 0));
+    try std.testing.expect(n.equals(vector(1, 0, 0)));
+}
+
+test "Chap6 -The normal on a sphere at a point on the y axis" {
+    const s = Shape.fromSphere(Sphere.init());
+    const n = s.normal_at(point(0, 1, 0));
+    try std.testing.expect(n.equals(vector(0, 1, 0)));
+}
+
+test "Chap6 -The normal on a sphere at a point on the z axis" {
+    const s = Shape.fromSphere(Sphere.init());
+    const n = s.normal_at(point(0, 0, 1));
+    try std.testing.expect(n.equals(vector(0, 0, 1)));
+}
+
+test "Chap6 -The normal on a sphere at a nonaxial point" {
+    const s = Shape.fromSphere(Sphere.init());
+    const sqrt3 = std.math.sqrt(S(3));
+    const x = sqrt3 / S(3);
+    const y = x;
+    const z = x;
+    const n = s.normal_at(point(x, y, z));
+    try std.testing.expect(n.equals(vector(x, x, y)));
+}
+
+test "Chap6 -The normal is a normalized vector" {
+    const s = Shape.fromSphere(Sphere.init());
+    const sqrt3 = std.math.sqrt(S(3));
+    const x = sqrt3 / S(3);
+    const y = x;
+    const z = x;
+    const n = s.normal_at(point(x, y, z));
+    try std.testing.expect(n.equals(n.normalize()));
+}
+
+test "Chap6 -Computing the normal on a translated sphere" {
+    var s = Shape.fromSphere(Sphere.init());
+    s.set_transform(&Mat4.translation(0, 1, 0));
+    const x = S(0);
+    const y = S(1.70711);
+    const z = S(-0.70711);
+    const n = s.normal_at(point(x, y, z));
+    try std.testing.expect(n.equals(vector(0, -z, z)));
+}
+
+test "Chap6 -Computing the normal on a transformed sphere" {
+    var s = Shape.fromSphere(Sphere.init());
+    const m = Mat4.scaling(1, 0.5, 1).mulM(&Mat4.rotz(std.math.pi / S(5)));
+    s.set_transform(&m);
+    const x = S(0);
+    const y = std.math.sqrt2 / S(2);
+    const z = -std.math.sqrt2 / S(2);
+    const n = s.normal_at(point(x, y, z));
+    try std.testing.expect(n.equals(vector(0, S(0.97014), S(-0.24254))));
 }

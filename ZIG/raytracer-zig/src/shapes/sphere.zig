@@ -26,8 +26,10 @@ pub const Sphere = struct {
     xs: Intersections,
     radius: Scalar,
     object_id: usize,
-    trform: matrix.Mat4,
-    trforminv: matrix.Mat4,
+    transformed_m: matrix.Mat4,
+    transformed_m_inv: matrix.Mat4,
+    transposed_m: matrix.Mat4,
+    transposed_m_inv: matrix.Mat4,
 
     pub fn init() Sphere {
         const obj_id = NEXT_SPHERE_ID.fetchAdd(1, .seq_cst);
@@ -35,8 +37,10 @@ pub const Sphere = struct {
             .xs = Intersections.init(),
             .radius = S(1),
             .object_id = obj_id,
-            .trform = matrix.Mat4.identity(),
-            .trforminv = matrix.Mat4.identity(),
+            .transformed_m = matrix.Mat4.identity(),
+            .transformed_m_inv = matrix.Mat4.identity(),
+            .transposed_m = matrix.Mat4.identity(),
+            .transposed_m_inv = matrix.Mat4.identity(),
         };
     }
 
@@ -62,7 +66,7 @@ pub const Sphere = struct {
         // 2. Use the already computed invers.
         // ---
         // const lr = Ray{ .origin = self.inverse().mulT(ray.origin), .direction = self.inverse().mulT(ray.direction) };
-        const lr = Ray{ .origin = self.trforminv.mulT(ray.origin), .direction = self.trforminv.mulT(ray.direction) };
+        const lr = Ray{ .origin = self.transformed_m_inv.mulT(ray.origin), .direction = self.transformed_m_inv.mulT(ray.direction) };
         const sphere2ray = lr.origin.sub(point(0, 0, 0));
         const a = lr.direction.dot(lr.direction);
         const b = S(2) * lr.direction.dot(sphere2ray);
@@ -84,20 +88,35 @@ pub const Sphere = struct {
     }
 
     /// ---
+    /// NOTE: Compute the normal at the given world_point.
+    ///       This function uses cached matrix's for the
+    ///       inverted transform and the inverted transpose.
+    /// ---
+    pub fn normal_at(self: *const Sphere, world_point: Tuple) Tuple {
+        const object_point = self.transformed_m_inv.mulT(world_point);
+        const object_normal = (object_point.sub(Tuple.point(0, 0, 0)));
+        var world_normal = self.transposed_m_inv.mulT(object_normal);
+        world_normal.w = S(0);
+        return world_normal.normalize();
+    }
+
+    /// ---
     /// Setting the transform matrix.
     /// NOTE: Also computes the inverse as a side effect...
     /// ---
     pub fn set_transform(self: *Sphere, m: *const matrix.Mat4) void {
-        self.trform = m.*;
-        self.trforminv = self.trform.inverse();
+        self.transformed_m = m.*;
+        self.transformed_m_inv = (m.*).inverse();
+        self.transposed_m = (m.*).transpose();
+        self.transposed_m_inv = (m.*).transpose().inverse();
     }
 
     pub fn transform(self: *const Sphere) matrix.Mat4 {
-        return self.trform;
+        return self.transformed_m;
     }
 
     pub fn inverse(self: *const Sphere) matrix.Mat4 {
-        return self.trforminv;
+        return self.transformed_m_inv;
     }
 };
 
