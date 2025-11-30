@@ -136,6 +136,10 @@ pub const Tuple = struct {
         return vector(self.y * other.z - self.z * other.y, self.z * other.x - self.x * other.z, self.x * other.y - self.y * other.x);
     }
 
+    pub fn reflect(in: Tuple, normal: Tuple) Tuple {
+        return in.sub(normal.muls(S(2) * in.dot(normal)));
+    }
+
     /// Custom formatter so `{}` prints nicely.
     /// `fmt` and `options` let you add variants later; for now we ignore them.
     pub fn format(self: Tuple, writer: anytype) !void {

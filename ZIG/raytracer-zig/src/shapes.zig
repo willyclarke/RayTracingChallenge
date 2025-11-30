@@ -274,3 +274,10 @@ test "Chap6 -Computing the normal on a transformed sphere" {
     const n = s.normal_at(point(x, y, z));
     try std.testing.expect(n.equals(vector(0, S(0.97014), S(-0.24254))));
 }
+
+test "Chap6 -Reflecting a vector approaching at 45°" {
+    const v = vector(1, -1, 0);
+    const n = vector(0, 1, 0);
+    const r = v.reflect(n);
+    try std.testing.expect(r.equals(vector(1, 1, 0)));
+}
