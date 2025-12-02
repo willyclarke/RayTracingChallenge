@@ -5,6 +5,7 @@ const canvas = @import("../canvas.zig");
 const utils = @import("../utils.zig");
 const shapes = @import("../shapes.zig");
 const matrix = @import("../matrix.zig");
+const mat_module = @import("../material.zig");
 
 const S = types.S;
 const Ray = types.Ray;
@@ -19,6 +20,7 @@ const point = types.Point;
 const vector = types.Vector;
 const approxEq = types.approxEq;
 const log = utils.log;
+const material = mat_module.Material;
 
 var NEXT_SPHERE_ID: std.atomic.Value(usize) = .{ .raw = 0 };
 
@@ -30,6 +32,7 @@ pub const Sphere = struct {
     transformed_m_inv: matrix.Mat4,
     transposed_m: matrix.Mat4,
     transposed_m_inv: matrix.Mat4,
+    material: mat_module.Material,
 
     pub fn init() Sphere {
         const obj_id = NEXT_SPHERE_ID.fetchAdd(1, .seq_cst);
@@ -41,6 +44,7 @@ pub const Sphere = struct {
             .transformed_m_inv = matrix.Mat4.identity(),
             .transposed_m = matrix.Mat4.identity(),
             .transposed_m_inv = matrix.Mat4.identity(),
+            .material = material.init(),
         };
     }
 
@@ -81,8 +85,8 @@ pub const Sphere = struct {
         const t2 = (-b + std.math.sqrt(discriminant)) / (S(2) * a);
 
         var xs = LocalIntersections.init();
-        xs.add(Shape.intersection(S(t1), @ptrCast(self)));
-        xs.add(Shape.intersection(S(t2), @ptrCast(self)));
+        xs.add(Shape.intersection(S(t1), @ptrCast(self)), self.object_id);
+        xs.add(Shape.intersection(S(t2), @ptrCast(self)), self.object_id);
 
         return xs;
     }
@@ -166,4 +170,19 @@ test "Chap5 -A sphere is behind a ray" {
     try std.testing.expect(xs.count == 2);
     try std.testing.expect((xs.local_intersections_items[0]).t == S(-6));
     try std.testing.expect((xs.local_intersections_items[1]).t == S(-4));
+}
+
+test "Chap6 -A sphere has a default material" {
+    const m = material.init();
+    const s = Sphere.init();
+    try std.testing.expect(m.equals(s.material));
+}
+
+test "Chap6 -A sphere may be assigned a material" {
+    var m = material.init();
+    m.ambient = S(1);
+    var s = Sphere.init();
+    s.material = m;
+    try std.testing.expect(m.equals(s.material));
+    try std.testing.expect(s.material.equals(m));
 }

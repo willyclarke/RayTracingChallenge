@@ -6,22 +6,26 @@ const log = utils.log;
 
 const types = @import("types.zig");
 const matrix = @import("matrix.zig");
+const material_mod = @import("material.zig");
 pub const sphere_mod = @import("shapes/sphere.zig");
 pub const Sphere = sphere_mod.Sphere;
 
-pub const approxEq = types.approxEq;
 pub const Mat4 = matrix.Mat4;
+
+pub const approxEq = types.approxEq;
 pub const Ray = types.Ray;
 pub const S = types.S;
 pub const Scalar = types.Scalar;
 pub const Tuple = types.Tuple;
-
 pub const point = types.Point;
 pub const vector = types.Vector;
 
 pub const Intersection = types.Intersection;
 pub const Intersections = types.Intersections;
 pub const LocalIntersections = types.LocalIntersections;
+
+const material = material_mod.Material;
+const Material = material_mod.Material;
 
 // BEST PATTERN: union(enum) — no manual enum needed!
 pub const Shape = union(enum) {
@@ -66,6 +70,13 @@ pub const Shape = union(enum) {
         return switch (self.*) {
             .sphere => |s| s.normal_at(position),
             // .cube => |c| c.normal_at(position),
+        };
+    }
+
+    pub fn material(self: *const Shape) Material {
+        return switch (self.*) {
+            .sphere => |s| s.material,
+            // .cube => |c| c.material,
         };
     }
 

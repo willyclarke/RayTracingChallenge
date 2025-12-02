@@ -6,6 +6,18 @@ const log = utils.log;
 const types = @import("types.zig");
 const shapes = @import("shapes.zig");
 const matrix = @import("matrix.zig");
+
+const material_mod = @import("material.zig");
+const material = material_mod.Material;
+const Material = material_mod.Material;
+
+const light_mod = @import("lights.zig");
+const point_light_mod = @import("lights/point_light.zig");
+const light = light_mod.Light;
+const Light = light_mod.Light;
+const PointLight = point_light_mod.PointLight;
+const lighting = light_mod.lighting;
+
 const Color = types.Color;
 const Projectile = types.Projectile;
 const rgb = types.Color;
@@ -14,6 +26,8 @@ const S = types.S;
 const Tuple = types.Tuple;
 const Ray = types.Ray;
 const approxEq = types.approxEq;
+const point = types.Point;
+const vector = types.Vector;
 
 pub const Canvas = struct {
     width: usize,
@@ -206,9 +220,6 @@ test "Chap5 -Putting it together" {
     const color = types.color(1, 0, 0);
     var s = shapes.Shape.fromSphere(shapes.Sphere.init());
 
-    // const mxform = matrix.Mat4.rotz(std.math.pi / S(4)).mulM(&matrix.Mat4.scaling(0.5, 1, 1));
-    // s.set_transform(&mxform);
-
     s.set_transform(&matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1)));
 
     for (0..canvas_pixels) |y| {
@@ -228,4 +239,48 @@ test "Chap5 -Putting it together" {
     try std.testing.expect(pixel_size > S(0));
 
     try createCanvasFile(&canvas, "chap5puttingtogether.ppm");
+}
+
+test "Chap6 -Putting it together" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    const canvas_pixels: usize = 100;
+    var canvas = try Canvas.init(alloc, canvas_pixels, canvas_pixels);
+    defer canvas.deinit(alloc);
+
+    const ray_origin = types.Point(0, 0, -5);
+    const wall_z = S(10);
+    const wall_size = S(7);
+    const pixel_size = S(wall_size) / S(canvas_pixels);
+    const half = wall_size / S(2);
+    // const color = types.color(1, 0, 0);
+    var s = shapes.Shape.fromSphere(shapes.Sphere.init());
+    s.sphere.material.col = types.color(1, 0.2, 1);
+
+    const light_position = point(-10, 10, -10);
+    const light_color = types.color(1, 1, 1);
+    const pl = Light.fromPointLight(PointLight.init_at(light_position, light_color));
+    // s.set_transform(&matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1)));
+
+    for (0..canvas_pixels) |y| {
+        const world_y = half - pixel_size * S(y);
+        for (0..canvas_pixels) |x| {
+            const world_x = -half + pixel_size * S(x);
+            const position = types.Point(world_x, world_y, wall_z);
+            const r = Ray.init(ray_origin, position.sub(ray_origin).normalize());
+            const xs = s.intersect(r);
+
+            if (xs.hit()) {
+                const hitpoint = r.position(xs.tmin());
+                const normal = s.normal_at(hitpoint);
+                const eye = r.direction.muls(S(-1));
+                const color = lighting(s.material(), pl, hitpoint, eye, normal);
+                canvas.writePixel(x, y, color);
+            }
+        }
+    }
+
+    try createCanvasFile(&canvas, "chap6puttingtogether.ppm");
 }

@@ -5,6 +5,8 @@ const types = raytracer_zig.types;
 const canvas = raytracer_zig.canvas;
 const matrix = raytracer_zig.matrix;
 const shapes = raytracer_zig.shapes;
+const lights = raytracer_zig.lights;
+const material = raytracer_zig.material;
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.

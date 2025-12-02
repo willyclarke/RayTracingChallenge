@@ -9,6 +9,8 @@ const types = @import("types.zig");
 const canvas = @import("canvas.zig");
 const matrix = @import("matrix.zig");
 const shapes = @import("shapes.zig");
+const lights = @import("lights.zig");
+const material = @import("material.zig");
 
 // These lines are CRUCIAL — they force Zig to include and run the tests
 test {
@@ -20,12 +22,14 @@ test {
     std.testing.refAllDecls(canvas);
     std.testing.refAllDecls(matrix);
     std.testing.refAllDecls(shapes);
+    std.testing.refAllDecls(lights);
+    std.testing.refAllDecls(material);
 
-    // If you have tests inside shapes/sphere.zig, etc., import them too:
-    // const sphere = @import("shapes/sphere.zig");
-    // std.testing.refAllDecls(sphere);
     const sphere = @import("shapes/sphere.zig");
     std.testing.refAllDecls(sphere);
+
+    const point_light = @import("lights/point_light.zig");
+    std.testing.refAllDecls(point_light);
 }
 
 // Optional: keep your simple add test here too

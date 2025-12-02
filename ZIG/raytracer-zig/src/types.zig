@@ -201,7 +201,10 @@ pub const Color = Tuple;
 pub const Point = Tuple.point;
 pub const Vector = Tuple.vector;
 
+/// ---
 /// Helper constructors & accessors for color semantics
+/// Sets the .w (alpha channel) to 0 thus making it a vector.
+/// ---
 pub inline fn color(red: Scalar, green: Scalar, blue: Scalar) Color {
     // store in x,y,z; keep w = 0 since it's a “vector-like” quantity
     return .{ .x = red, .y = green, .z = blue, .w = S(0) };
@@ -264,16 +267,34 @@ pub const MaxIntersectionsPerShape = 2;
 pub const LocalIntersections = struct {
     count: usize,
     local_intersections_items: [MaxIntersectionsPerShape]Intersection,
+    min_t_intersection: Intersection,
+    object_id: usize,
 
     pub fn init() LocalIntersections {
-        return .{ .count = 0, .local_intersections_items = undefined };
+        return .{
+            .count = 0, //
+            .local_intersections_items = undefined, //
+            .min_t_intersection = undefined, //
+            .object_id = undefined, //
+        };
     }
 
-    pub fn add(self: *LocalIntersections, i: Intersection) void {
+    pub fn add(self: *LocalIntersections, i: Intersection, object_id: usize) void {
         if (self.count < MaxIntersectionsPerShape) {
             self.local_intersections_items[self.count] = i;
             self.count += 1;
+            self.object_id = object_id;
+
+            if (self.count == 1) {
+                self.min_t_intersection = i;
+            } else if (i.t < self.min_t_intersection.t) {
+                self.min_t_intersection = i;
+            }
         }
+    }
+
+    pub fn tmin(self: *const LocalIntersections) Scalar {
+        return self.min_t_intersection.t;
     }
 
     pub fn hit(self: *const LocalIntersections) bool {
@@ -335,16 +356,6 @@ pub const Intersections = struct {
             }
         }
         return best;
-        // var result = Intersection.init();
-        //
-        // for (self.intersections_items.items) |item| {
-        //     if (item.t >= S(0) and result.object_id == 0) {
-        //         result = item;
-        //     } else if (item.t < result.t and item.t > 0) {
-        //         result = item;
-        //     }
-        // }
-        // return result;
     }
 };
 
