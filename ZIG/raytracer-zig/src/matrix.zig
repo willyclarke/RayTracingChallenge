@@ -1,6 +1,6 @@
 const std = @import("std");
 const print = @import("std").debug.print;
-const canvas = @import("canvas.zig");
+// const canvas = @import("canvas.zig");
 const types = @import("types.zig");
 const utils = @import("utils.zig");
 
@@ -33,7 +33,7 @@ pub fn Matrix(comptime N: usize) type {
         pub fn identity() Self {
             var m = Self.zero();
             inline for (0..N) |i| {
-                m.data[i][i] = 1.0;
+                m.data[i][i] = @as(Scalar, 1);
             }
             return m;
         }
@@ -52,39 +52,46 @@ pub fn Matrix(comptime N: usize) type {
             self.data[r][c] = v;
         }
 
+        /// ---
         /// Pointer to element (so you can assign with `.*`)
         /// r - row
         /// c - col
+        /// ---
         pub inline fn ptr(self: *Self, r: usize, c: usize) *Scalar {
             return &self.data[r][c];
         }
 
+        /// ---
         /// Comparison - use approxEq
+        /// ---
         pub inline fn equals(self: *const Self, other: *const Self) bool {
-            comptime var i = 0;
-            inline while (i < N * N) : (i += 1) {
-                const r = i / N;
-                const c = i % N;
-                if (!approxEq(self.data[r][c], other.data[r][c])) {
-                    return false;
+            inline for (0..N) |r| {
+                inline for (0..N) |c| {
+                    if (!approxEq(self.data[r][c], other.data[r][c])) return false;
                 }
             }
             return true;
         }
 
+        /// ---
         /// Row view (useful for bulk ops)
         /// r - row
+        /// ---
         pub inline fn row(self: *Self, r: usize) *[N]Scalar {
             return &self.data[r];
         }
 
+        /// ---
         /// Const row view
         /// r - row
+        /// ---
         pub inline fn rowConst(self: *const Self, r: usize) *const [N]Scalar {
             return &self.data[r];
         }
 
+        /// ---
         /// CTOR from Tuple rows
+        /// ---
         pub inline fn rows(r: [N]Tuple) Self {
             comptime if (N != 4)
                 @compileError("rows([N]Tuple) is only defined for N == 4");
@@ -98,7 +105,9 @@ pub fn Matrix(comptime N: usize) type {
             };
         }
 
-        // Generic matrix transpose
+        /// ---
+        /// Generic matrix transpose
+        /// ---
         pub inline fn transpose(self: *const Self) Self {
             var result = Self.zero();
 
@@ -111,7 +120,9 @@ pub fn Matrix(comptime N: usize) type {
             return result;
         }
 
-        // Generic matrix multiplication
+        /// ---
+        /// Generic matrix multiplication
+        /// ---
         pub inline fn mulM(self: *const Self, other: *const Self) Self {
             var result = Self.zero();
 
@@ -398,6 +409,17 @@ pub fn Matrix(comptime N: usize) type {
 pub const Mat2 = Matrix(2);
 pub const Mat3 = Matrix(3);
 pub const Mat4 = Matrix(4);
+
+pub fn mat4FromRows(r1: Tuple, r2: Tuple, r3: Tuple, r4: Tuple) Mat4 {
+    return .{
+        .data = .{
+            .{ r1.x, r1.y, r1.z, r1.w },
+            .{ r2.x, r2.y, r2.z, r2.w },
+            .{ r3.x, r3.y, r3.z, r3.w },
+            .{ r4.x, r4.y, r4.z, r4.w },
+        },
+    };
+}
 
 test "matrix:Mat4 getters/setters" {
     var M = Mat4.zero();
@@ -1115,64 +1137,6 @@ test "Chap4 -Fluent Chained transformations must be applied in reverse order" {
     const transformedp = T.mulT(p);
     const exptectedp = point(15, 0, 7);
     try std.testing.expect(transformedp.equals(exptectedp));
-}
-
-fn drawSquare(
-    ptrCanvas: *canvas.Canvas,
-    center_x: usize,
-    center_y: usize,
-    half_size: usize,
-    ptrcolor: *const types.Color,
-) void {
-    var y: usize = center_y - half_size;
-    while (y <= center_y + half_size) : (y += 1) {
-        var x: usize = center_x - half_size;
-        while (x <= center_x + half_size) : (x += 1) {
-            ptrCanvas.writePixel(x, y, ptrcolor.*);
-        }
-    }
-}
-
-test "Chap4 -Putting It Together" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
-
-    var c = try canvas.Canvas.init(alloc, 900, 900);
-    defer c.deinit(alloc);
-
-    const origin = point(0, 0, 0);
-    var p = point(0, 0, 0);
-    try std.testing.expect(p.equals(origin));
-
-    var color = types.color(1, 0, 0);
-
-    const canvastranslate = Mat4.translation(S(c.width) / S(2), S(c.height) / S(2), 0);
-
-    // Use the translation number x a percentage t set scaling.
-    const scale = Mat4.scaling(canvastranslate.get(0, 3) * S(0.75), canvastranslate.get(1, 3) * S(0.75), 0);
-
-    var canvpoint = canvastranslate.mulM(&scale).mulT(p);
-    var centerx = types.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
-    var centery = types.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
-    const squaresize = types.toUsizeSaturated(S(c.width) / S(20), S(3), S(10));
-    drawSquare(&c, centerx, centery, squaresize, &color);
-
-    color.z = 1;
-    p.x = 1;
-
-    for (0..12) |idx| {
-        const alfa = S(idx) / S(12) * std.math.tau;
-        color.y = S(1) - color.z;
-        color.z = S(idx) / S(12);
-
-        canvpoint = canvastranslate.mulM(&scale.mulM(&Mat4.rotz(alfa))).mulT(p);
-        centerx = types.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
-        centery = types.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
-        drawSquare(&c, centerx, centery, squaresize, &color);
-    }
-
-    try canvas.createCanvasFile(&c, "chap4clock.ppm");
 }
 
 test "Chap5 -Translating a ray" {

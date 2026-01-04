@@ -1,12 +1,13 @@
 const std = @import("std");
 const print = @import("std").debug.print;
 const raytracer_zig = @import("raytracer_zig");
-const types = raytracer_zig.types;
-const canvas = raytracer_zig.canvas;
-const matrix = raytracer_zig.matrix;
-const shapes = raytracer_zig.shapes;
-const lights = raytracer_zig.lights;
-const material = raytracer_zig.material;
+// const types = raytracer_zig.types;
+// const matrix = raytracer_zig.matrix;
+// const shapes = raytracer_zig.shapes;
+// const lights = raytracer_zig.lights;
+// const canvas = raytracer_zig.canvas;
+// const material = raytracer_zig.material;
+// const world = raytracer_zig.world;
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.

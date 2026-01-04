@@ -30,6 +30,12 @@ pub const PointLight = point_light_mod.PointLight;
 pub const Light = union(enum) {
     point_light: PointLight,
 
+    pub fn equals(self: *const Light, other: Light) bool {
+        return switch (self.*) {
+            .point_light => |pl| pl.equals(other.point_light),
+        };
+    }
+
     pub fn fromPointLight(pl: PointLight) Light {
         return .{ .point_light = pl };
     }
@@ -40,6 +46,9 @@ pub const Light = union(enum) {
         };
     }
 
+    /// ---
+    /// intensity is the color with a magnitude i.e. a vector.
+    /// ---
     pub fn intensity(self: *const Light) Tuple {
         return switch (self.*) {
             .point_light => |pl| pl.intensity(),

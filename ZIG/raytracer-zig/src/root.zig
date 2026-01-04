@@ -1,11 +1,12 @@
 //! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
 pub const types = @import("types.zig");
-pub const canvas = @import("canvas.zig");
 pub const matrix = @import("matrix.zig");
-pub const shapes = @import("shapes.zig");
-pub const lights = @import("lights.zig");
-pub const material = @import("material.zig");
+// pub const material = @import("material.zig");
+// pub const shapes = @import("shapes.zig");
+// pub const lights = @import("lights.zig");
+// pub const canvas = @import("canvas.zig");
+// pub const world = @import("world.zig");
 
 pub fn bufferedPrint() !void {
     // Stdout is for the actual output of your application, for example if you

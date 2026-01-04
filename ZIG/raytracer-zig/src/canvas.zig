@@ -6,6 +6,7 @@ const log = utils.log;
 const types = @import("types.zig");
 const shapes = @import("shapes.zig");
 const matrix = @import("matrix.zig");
+const Mat4 = matrix.Mat4;
 
 const material_mod = @import("material.zig");
 const material = material_mod.Material;
@@ -201,6 +202,64 @@ test "Chap2 -Putting it together" {
     try createCanvasFile(&c, "projectile.ppm");
 }
 
+fn drawSquare(
+    ptrCanvas: *Canvas,
+    center_x: usize,
+    center_y: usize,
+    half_size: usize,
+    ptrcolor: *const types.Color,
+) void {
+    var y: usize = center_y - half_size;
+    while (y <= center_y + half_size) : (y += 1) {
+        var x: usize = center_x - half_size;
+        while (x <= center_x + half_size) : (x += 1) {
+            ptrCanvas.writePixel(x, y, ptrcolor.*);
+        }
+    }
+}
+
+test "Chap4 -Putting It Together" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const alloc = gpa.allocator();
+
+    var c = try Canvas.init(alloc, 900, 900);
+    defer c.deinit(alloc);
+
+    const origin = point(0, 0, 0);
+    var p = point(0, 0, 0);
+    try std.testing.expect(p.equals(origin));
+
+    var color = types.color(1, 0, 0);
+
+    const canvastranslate = Mat4.translation(S(c.width) / S(2), S(c.height) / S(2), 0);
+
+    // Use the translation number x a percentage t set scaling.
+    const scale = Mat4.scaling(canvastranslate.get(0, 3) * S(0.75), canvastranslate.get(1, 3) * S(0.75), 0);
+
+    var canvpoint = canvastranslate.mulM(&scale).mulT(p);
+    var centerx = types.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
+    var centery = types.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
+    const squaresize = types.toUsizeSaturated(S(c.width) / S(20), S(3), S(10));
+    drawSquare(&c, centerx, centery, squaresize, &color);
+
+    color.z = 1;
+    p.x = 1;
+
+    for (0..12) |idx| {
+        const alfa = S(idx) / S(12) * std.math.tau;
+        color.y = S(1) - color.z;
+        color.z = S(idx) / S(12);
+
+        canvpoint = canvastranslate.mulM(&scale.mulM(&Mat4.rotz(alfa))).mulT(p);
+        centerx = types.toUsizeSaturated(canvpoint.x, S(0), S(c.width));
+        centery = types.toUsizeSaturated(canvpoint.y, S(0), S(c.height));
+        drawSquare(&c, centerx, centery, squaresize, &color);
+    }
+
+    try createCanvasFile(&c, "chap4clock.ppm");
+}
+
 test "Chap5 -Putting it together" {
     try std.testing.expect(3 == 3);
 
@@ -218,9 +277,10 @@ test "Chap5 -Putting it together" {
     const pixel_size = S(wall_size) / S(canvas_pixels);
     const half = wall_size / S(2);
     const color = types.color(1, 0, 0);
-    var s = shapes.Shape.fromSphere(shapes.Sphere.init());
+    var sph = shapes.Sphere.init();
+    var s = shapes.Shape.fromSphere(&sph);
 
-    s.set_transform(&matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1)));
+    s.setTransform(matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1)));
 
     for (0..canvas_pixels) |y| {
         const world_y = half - pixel_size * S(y);
@@ -256,8 +316,9 @@ test "Chap6 -Putting it together" {
     const pixel_size = S(wall_size) / S(canvas_pixels);
     const half = wall_size / S(2);
     // const color = types.color(1, 0, 0);
-    var s = shapes.Shape.fromSphere(shapes.Sphere.init());
-    s.sphere.material.col = types.color(1, 0.2, 1);
+    var sph = shapes.Sphere.init();
+    var s = shapes.Shape.fromSphere(&sph);
+    s.sphere.h.material.col = types.color(1, 0.2, 1);
 
     const light_position = point(-10, 10, -10);
     const light_color = types.color(1, 1, 1);
@@ -276,7 +337,7 @@ test "Chap6 -Putting it together" {
                 const hitpoint = r.position(xs.tmin());
                 const normal = s.normal_at(hitpoint);
                 const eye = r.direction.muls(S(-1));
-                const color = lighting(s.material(), pl, hitpoint, eye, normal);
+                const color = lighting(s.material().*, pl, hitpoint, eye, normal);
                 canvas.writePixel(x, y, color);
             }
         }

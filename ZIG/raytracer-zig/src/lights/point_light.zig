@@ -23,6 +23,10 @@ pub const PointLight = struct {
     pos: Tuple,
     intsty: Tuple,
 
+    pub fn equals(self: *const PointLight, other: PointLight) bool {
+        return self.pos.equals(other.pos) and self.intsty.equals(other.intsty);
+    }
+
     pub fn init() PointLight {
         return .{ .pos = Tuple.point(0, 0, 0), .intsty = color(1, 1, 1) };
     }

@@ -44,9 +44,11 @@ pub const EPSILON: Scalar = 1e-5;
 //     return @abs(a - b) < EPSILON;
 // }
 
+/// ---
 /// Returns true when |a - b| < EPSILON
 /// Compare by using absolute tolerance for small values
 /// and relative tolerance for big values.
+/// ---
 pub inline fn approxEq(a: Scalar, b: Scalar) bool {
     const diff = @abs(a - b);
     if (diff <= EPSILON) return true;

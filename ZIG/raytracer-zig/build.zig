@@ -126,7 +126,8 @@ pub fn build(b: *std.Build) void {
     // ====================================================================
 
     const test_root_module = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
+        // .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path("src/main_test.zig"),
         .target = target, // ← CRUCIAL: explicitly set target here
         .imports = &.{
             .{ .name = "raytracer_zig", .module = mod },

@@ -29,19 +29,20 @@ const Material = material_mod.Material;
 
 // BEST PATTERN: union(enum) — no manual enum needed!
 pub const Shape = union(enum) {
-    sphere: Sphere,
+    sphere: *Sphere,
     // cube: Cube,
     // plane: Plane,
 
     // Real methods — these work because they're inside the struct scope
-    pub fn id(self: *const Shape) usize {
-        return switch (self.*) {
-            inline else => |obj| obj.id(),
+    pub fn id(self: Shape) usize {
+        return switch (self) {
+            .sphere => |s| s.id(),
+            // .plane => |p| p.id(),
         };
     }
 
-    // Helper: wrap a Sphere into a Shape
-    pub fn fromSphere(s: Sphere) Shape {
+    // Helper: wrap a Sphere into a Shape using a mutable pointer
+    pub fn fromSphere(s: *Sphere) Shape {
         return .{ .sphere = s };
     }
 
@@ -59,37 +60,56 @@ pub const Shape = union(enum) {
         return .{ .t = t, .object_id = shape.id() }; // shape.id() works!
     }
 
-    pub fn inverse(self: *const Shape) matrix.Mat4 {
-        return switch (self.*) {
-            .sphere => |s| s.inverse(),
+    pub fn inverse(self: Shape) *matrix.Mat4 {
+        return switch (self) {
+            .sphere => |s| &s.inverse(),
             // .cube => |c| c.inverse(m),
         };
     }
 
-    pub fn normal_at(self: *const Shape, position: Tuple) Tuple {
-        return switch (self.*) {
+    pub fn normal_at(self: Shape, position: Tuple) Tuple {
+        return switch (self) {
             .sphere => |s| s.normal_at(position),
             // .cube => |c| c.normal_at(position),
         };
     }
 
-    pub fn material(self: *const Shape) Material {
-        return switch (self.*) {
-            .sphere => |s| s.material,
+    pub fn material(self: Shape) *Material {
+        return switch (self) {
+            .sphere => |s| &s.h.material,
             // .cube => |c| c.material,
         };
     }
 
-    pub fn set_transform(self: *Shape, m: *const matrix.Mat4) void {
-        return switch (self.*) {
-            .sphere => |*s| s.set_transform(m),
+    pub fn setMaterial(self: Shape, mat: Material) void {
+        switch (self) {
+            .sphere => |s| s.h.material = mat,
+            // .cube => |c| c.material,
+        }
+    }
+
+    pub fn setTransform(self: Shape, m: matrix.Mat4) void {
+        switch (self) {
+            .sphere => |s| {
+                s.h.transformed_m = m;
+                s.h.transposed_m = m.transpose();
+                s.h.transformed_m_inv = m.inverse();
+                s.h.transposed_m_inv = s.h.transformed_m_inv.transpose();
+            },
             // .cube => |*c| c.set_transform(m),
+        }
+    }
+
+    pub fn transform(self: Shape) *matrix.Mat4 {
+        return switch (self) {
+            .sphere => |s| &s.h.transformed_m,
+            // .cube => |c| c.transform(m),
         };
     }
 
-    pub fn transform(self: *const Shape) matrix.Mat4 {
+    pub fn reset_id(self: *const Shape) void {
         return switch (self.*) {
-            .sphere => |s| s.transform(),
+            .sphere => |s| s.reset_id(),
             // .cube => |c| c.transform(m),
         };
     }
@@ -97,19 +117,22 @@ pub const Shape = union(enum) {
 
 // Your tests — now work perfectly!
 test "sphere works" {
-    const s = Sphere.init();
-    try std.testing.expect(s.radius == 1.0);
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
+    try std.testing.expect(s.sphere.radius == 1.0);
 }
 
 test "Chap5 - An intersection encapsulates t and object" {
-    const s = Shape.fromSphere(Sphere.init()); // wrap it
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const i = Shape.intersection(3.5, &s); // create intersection
     try std.testing.expect(s.id() == i.object_id);
     try std.testing.expect(types.approxEq(i.t, 3.5));
 }
 
 test "Chap5 -Aggregating intersections" {
-    const s = Shape.fromSphere(Sphere.init()); // wrap it
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere); // wrap it
     const i_1 = Shape.intersection(1, &s); // create intersection
     const i_2 = Shape.intersection(2, &s); // create intersection
 
@@ -125,7 +148,8 @@ test "Chap5 -Aggregating intersections" {
 
 test "Chap5 -Intersect sets the object on the intersection" {
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     // const xs = Shape.intersect(&s, r);
     const xs = s.intersect(r);
     try std.testing.expect(xs.count == 2);
@@ -134,7 +158,8 @@ test "Chap5 -Intersect sets the object on the intersection" {
 }
 
 test "Chap5 -The hit, when all intersections have positive t" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const i_1 = Shape.intersection(1, &s); // create intersection
     const i_2 = Shape.intersection(2, &s); // create intersection
     var xs = Intersections.aggregate(std.testing.allocator, .{ i_1, i_2 });
@@ -149,7 +174,8 @@ test "Chap5 -The hit, when all intersections have positive t" {
 }
 
 test "Chap5 -The hit, when some intersections have negative t" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const i_1 = Shape.intersection(-1, &s); // create intersection
     const i_2 = Shape.intersection(1, &s); // create intersection
     var xs = Intersections.aggregate(std.testing.allocator, .{ i_1, i_2 });
@@ -164,7 +190,8 @@ test "Chap5 -The hit, when some intersections have negative t" {
 }
 
 test "Chap5 -The hit, when all intersections have negative t" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const i_1 = Shape.intersection(-2, &s); // create intersection
     const i_2 = Shape.intersection(-1, &s); // create intersection
     var xs = Intersections.aggregate(std.testing.allocator, .{ i_1, i_2 });
@@ -178,7 +205,8 @@ test "Chap5 -The hit, when all intersections have negative t" {
 }
 
 test "Chap5 -The hit is always the lowest nonnegative intersection" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const i_1 = Shape.intersection(5, &s); // create intersection
     const i_2 = Shape.intersection(7, &s); // create intersection
     const i_3 = Shape.intersection(-3, &s); // create intersection
@@ -198,22 +226,26 @@ test "Chap5 -The hit is always the lowest nonnegative intersection" {
 }
 
 test "Chap5 -A sphere's default transformation" {
-    const s = Shape.fromSphere(Sphere.init());
-    try std.testing.expect(matrix.Mat4.identity().equals(&s.transform()));
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
+    try std.testing.expect(matrix.Mat4.identity().equals(s.transform()));
 }
 
 test "Chap5 -Changing a sphere's transformation" {
-    var s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    var s = Shape.fromSphere(&sphere);
     const t = matrix.Mat4.translation(2, 3, 4);
-    s.set_transform(&t);
+    s.setTransform(t);
     try std.testing.expect(s.transform().equals(&t));
 }
 
 test "Chap5 -Intersecting a scaled sphere with a ray" {
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
-    var s = Shape.fromSphere(Sphere.init());
-    s.set_transform(&matrix.Mat4.scaling(2, 2, 2));
+    var sphere = Sphere.init();
+    var s = Shape.fromSphere(&sphere);
+    s.setTransform(matrix.Mat4.scaling(2, 2, 2));
     const xs = s.intersect(r);
+
     try std.testing.expect(xs.count == 2);
     try std.testing.expect(approxEq(xs.local_intersections_items[0].t, S(3)));
     try std.testing.expect(approxEq(xs.local_intersections_items[1].t, S(7)));
@@ -221,32 +253,37 @@ test "Chap5 -Intersecting a scaled sphere with a ray" {
 
 test "Chap5 -Intersecting a translated sphere with a ray" {
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
-    var s = Shape.fromSphere(Sphere.init());
-    s.set_transform(&matrix.Mat4.translation(5, 0, 0));
+    var sphere = Sphere.init();
+    var s = Shape.fromSphere(&sphere);
+    s.setTransform(matrix.Mat4.translation(5, 0, 0));
     const xs = s.intersect(r);
     try std.testing.expect(xs.count == 0);
 }
 
 test "Chap6 -The normal on a sphere at a point on the x axis" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const n = s.normal_at(point(1, 0, 0));
     try std.testing.expect(n.equals(vector(1, 0, 0)));
 }
 
 test "Chap6 -The normal on a sphere at a point on the y axis" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const n = s.normal_at(point(0, 1, 0));
     try std.testing.expect(n.equals(vector(0, 1, 0)));
 }
 
 test "Chap6 -The normal on a sphere at a point on the z axis" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const n = s.normal_at(point(0, 0, 1));
     try std.testing.expect(n.equals(vector(0, 0, 1)));
 }
 
 test "Chap6 -The normal on a sphere at a nonaxial point" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const sqrt3 = std.math.sqrt(S(3));
     const x = sqrt3 / S(3);
     const y = x;
@@ -256,7 +293,8 @@ test "Chap6 -The normal on a sphere at a nonaxial point" {
 }
 
 test "Chap6 -The normal is a normalized vector" {
-    const s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    const s = Shape.fromSphere(&sphere);
     const sqrt3 = std.math.sqrt(S(3));
     const x = sqrt3 / S(3);
     const y = x;
@@ -266,8 +304,9 @@ test "Chap6 -The normal is a normalized vector" {
 }
 
 test "Chap6 -Computing the normal on a translated sphere" {
-    var s = Shape.fromSphere(Sphere.init());
-    s.set_transform(&Mat4.translation(0, 1, 0));
+    var sphere = Sphere.init();
+    var s = Shape.fromSphere(&sphere);
+    s.setTransform(Mat4.translation(0, 1, 0));
     const x = S(0);
     const y = S(1.70711);
     const z = S(-0.70711);
@@ -276,9 +315,10 @@ test "Chap6 -Computing the normal on a translated sphere" {
 }
 
 test "Chap6 -Computing the normal on a transformed sphere" {
-    var s = Shape.fromSphere(Sphere.init());
+    var sphere = Sphere.init();
+    var s = Shape.fromSphere(&sphere);
     const m = Mat4.scaling(1, 0.5, 1).mulM(&Mat4.rotz(std.math.pi / S(5)));
-    s.set_transform(&m);
+    s.setTransform(m);
     const x = S(0);
     const y = std.math.sqrt2 / S(2);
     const z = -std.math.sqrt2 / S(2);
