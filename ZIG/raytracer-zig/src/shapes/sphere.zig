@@ -25,7 +25,7 @@ const approxEq = types.approxEq;
 const log = utils.log;
 const Material = mat_module.Material;
 
-var NEXT_SPHERE_ID: std.atomic.Value(usize) = .{ .raw = 0 };
+var NEXT_SPHERE_ID: std.atomic.Value(usize) = .{ .raw = 1 };
 
 pub const Sphere = struct {
     h: ShapeHeader,
@@ -128,7 +128,7 @@ pub const Sphere = struct {
     pub fn reset_id() void {
         // const obj_id = NEXT_SPHERE_ID.load(.seq_cst);
         // log(@src(), "\nNext Sphere Id:{}\n", .{obj_id});
-        NEXT_SPHERE_ID.store(0, .seq_cst);
+        NEXT_SPHERE_ID.store(1, .seq_cst);
     }
 };
 
