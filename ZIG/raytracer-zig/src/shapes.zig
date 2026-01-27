@@ -139,11 +139,11 @@ test "Chap5 -Aggregating intersections" {
     var xs = Intersections.aggregate(std.testing.allocator, .{ i_1, i_2 });
     defer xs.deinit(std.testing.allocator);
 
-    try std.testing.expect(xs.count() == 2);
-    try std.testing.expect((try xs.get(0)).t == S(1));
-    try std.testing.expect((try xs.get(1)).t == S(2));
-    try std.testing.expect((try xs.get(0)).t == i_1.t);
-    try std.testing.expect((try xs.get(1)).t == i_2.t);
+    try std.testing.expect(xs.items().len == 2);
+    try std.testing.expect(xs.intersections_items.items[0].t == S(1));
+    try std.testing.expect(xs.intersections_items.items[1].t == S(2));
+    try std.testing.expect(xs.intersections_items.items[0].t == i_1.t);
+    try std.testing.expect(xs.intersections_items.items[1].t == i_2.t);
 }
 
 test "Chap5 -Intersect sets the object on the intersection" {
@@ -153,8 +153,8 @@ test "Chap5 -Intersect sets the object on the intersection" {
     // const xs = Shape.intersect(&s, r);
     const xs = s.intersect(r);
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect(xs.local_intersections_items[0].object_id == s.id());
-    try std.testing.expect(xs.local_intersections_items[1].object_id == s.id());
+    try std.testing.expect(xs.items[0].object_id == s.id());
+    try std.testing.expect(xs.items[1].object_id == s.id());
 }
 
 test "Chap5 -The hit, when all intersections have positive t" {
@@ -247,8 +247,8 @@ test "Chap5 -Intersecting a scaled sphere with a ray" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect(approxEq(xs.local_intersections_items[0].t, S(3)));
-    try std.testing.expect(approxEq(xs.local_intersections_items[1].t, S(7)));
+    try std.testing.expect(approxEq(xs.items[0].t, S(3)));
+    try std.testing.expect(approxEq(xs.items[1].t, S(7)));
 }
 
 test "Chap5 -Intersecting a translated sphere with a ray" {

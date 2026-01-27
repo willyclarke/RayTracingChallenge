@@ -138,8 +138,8 @@ test "Chap5 -A ray intersects a sphere at two points" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.local_intersections_items[0]).t == S(4));
-    try std.testing.expect((xs.local_intersections_items[1]).t == S(6));
+    try std.testing.expect((xs.items[0]).t == S(4));
+    try std.testing.expect((xs.items[1]).t == S(6));
 }
 
 test "Chap5 -A ray intersects a sphere at a tangent" {
@@ -148,8 +148,8 @@ test "Chap5 -A ray intersects a sphere at a tangent" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.local_intersections_items[0]).t == S(5));
-    try std.testing.expect((xs.local_intersections_items[1]).t == S(5));
+    try std.testing.expect((xs.items[0]).t == S(5));
+    try std.testing.expect((xs.items[1]).t == S(5));
 }
 
 test "Chap5 -A ray misses a sphere" {
@@ -166,8 +166,8 @@ test "Chap5 -A ray originates inside a sphere" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.local_intersections_items[0]).t == S(-1));
-    try std.testing.expect((xs.local_intersections_items[1]).t == S(1));
+    try std.testing.expect((xs.items[0]).t == S(-1));
+    try std.testing.expect((xs.items[1]).t == S(1));
 }
 
 test "Chap5 -A sphere is behind a ray" {
@@ -176,8 +176,8 @@ test "Chap5 -A sphere is behind a ray" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.local_intersections_items[0]).t == S(-6));
-    try std.testing.expect((xs.local_intersections_items[1]).t == S(-4));
+    try std.testing.expect((xs.items[0]).t == S(-6));
+    try std.testing.expect((xs.items[1]).t == S(-4));
 }
 
 test "Chap6 -A sphere has a default material" {

@@ -192,6 +192,9 @@ pub const Ray = struct {
         };
     }
 
+    /// ---
+    /// Get ray position at a given t
+    /// ---
     pub fn position(self: Self, t: Scalar) Tuple {
         const p = self.origin.add(self.direction.muls(t));
         return p;
@@ -268,14 +271,14 @@ pub const MaxIntersectionsPerShape = 2;
 /// ---
 pub const LocalIntersections = struct {
     count: usize,
-    local_intersections_items: [MaxIntersectionsPerShape]Intersection,
+    items: [MaxIntersectionsPerShape]Intersection,
     min_t_intersection: Intersection,
     object_id: usize,
 
     pub fn init() LocalIntersections {
         return .{
             .count = 0, //
-            .local_intersections_items = undefined, //
+            .items = undefined, //
             .min_t_intersection = undefined, //
             .object_id = undefined, //
         };
@@ -283,7 +286,7 @@ pub const LocalIntersections = struct {
 
     pub fn add(self: *LocalIntersections, i: Intersection, object_id: usize) void {
         if (self.count < MaxIntersectionsPerShape) {
-            self.local_intersections_items[self.count] = i;
+            self.items[self.count] = i;
             self.count += 1;
             self.object_id = object_id;
 
@@ -318,26 +321,37 @@ pub const Intersections = struct {
         self.intersections_items.deinit(allocator);
     }
 
-    pub fn count(self: *const Intersections) usize {
-        return self.intersections_items.items.len;
-    }
+    // pub fn count(self: *const Intersections) usize {
+    //     return self.intersections_items.items.len;
+    // }
 
-    pub fn add(self: *Intersections, allocator: std.mem.Allocator, hit_to_add: Intersection) void {
+    pub fn add(self: *Intersections, allocator: std.mem.Allocator, hit_to_add: Intersection) !void {
         self.intersections_items.append(allocator, hit_to_add) catch @panic("OOM");
     }
 
-    pub fn get(self: *const Intersections, index: usize) !Intersection {
-        if (index >= self.intersections_items.items.len)
-            return error.OutOfBounds;
-        return self.intersections_items.items[index];
+    pub fn items(self: *const Intersections) []const Intersection {
+        return self.intersections_items.items;
     }
 
+    /// ---
+    /// Convenience helper for tests: aggregate a fixed list of intersections.
+    /// ---
     pub fn aggregate(allocator: std.mem.Allocator, ints: anytype) Intersections {
         var xs = Intersections.init();
         inline for (ints) |i| {
-            xs.add(allocator, i);
+            try xs.add(allocator, i);
         }
         return xs;
+    }
+
+    /// Custom formatter so `{}` prints nicely.
+    /// `fmt` and `options` let you add variants later; for now we ignore them.
+    pub fn format(self: Intersections, writer: anytype) !void {
+        try writer.print("Count: {}. ", .{self.items().len});
+        for (self.items()) |i| {
+            try writer.print("Shape {} at t [ {} ] :: ", .{ i.object_id, i.t });
+        }
+        try writer.print("\n", .{});
     }
 
     /// ---
@@ -349,7 +363,8 @@ pub const Intersections = struct {
         var best: ?Intersection = null;
 
         for (self.intersections_items.items) |i| {
-            if (i.t >= 0) { // includes t=0!
+            // if (i.t >= 0) { // includes t=0!
+            if (i.t > 0) {
                 if (best) |b| {
                     if (i.t < b.t) best = i;
                 } else {
