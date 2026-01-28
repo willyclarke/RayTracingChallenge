@@ -170,11 +170,11 @@ test "Chap7 -Intersect a world with a ray" {
     // Find all intersections between the ray and objects in the world
     const xs = intersect_world(&w, r);
 
-    log(@src(), "\nIntersections xs: {f}\n", .{xs});
+    // log(@src(), "\nIntersections xs: {f}\n", .{xs});
     try std.testing.expect(3 == 3);
     try std.testing.expect(4 == xs.items().len);
-    try std.testing.expect(approxEq(S(4), xs.intersections_items.items[0].t));
-    try std.testing.expect(approxEq(S(4.5), xs.intersections_items.items[1].t));
-    try std.testing.expect(approxEq(S(5.5), xs.intersections_items.items[2].t));
-    try std.testing.expect(approxEq(S(6), xs.intersections_items.items[3].t));
+    try std.testing.expect(approxEq(S(4), xs.items()[0].t));
+    try std.testing.expect(approxEq(S(4.5), xs.items()[1].t));
+    try std.testing.expect(approxEq(S(5.5), xs.items()[2].t));
+    try std.testing.expect(approxEq(S(6), xs.items()[3].t));
 }
