@@ -4,9 +4,10 @@ const types = @import("../types.zig");
 // const canvas = @import("../canvas.zig");
 const utils = @import("../utils.zig");
 
-const shapes = @import("../shapes.zig");
+const shapes = @import("shapes.zig");
 const matrix = @import("../matrix.zig");
 const mat_module = @import("../material.zig");
+const intersection_mod = @import("intersections.zig");
 
 const ShapeHeader = @import("shape_header.zig").ShapeHeader;
 
@@ -16,9 +17,9 @@ const Scalar = types.Scalar;
 const Shape = shapes.Shape;
 const Tuple = types.Tuple;
 const Matrix = matrix.Mat4;
-const Intersection = types.Intersection;
-const Intersections = types.Intersections;
-const LocalIntersections = types.LocalIntersections;
+const Intersection = intersection_mod.Intersection;
+const Intersections = intersection_mod.Intersections;
+const LocalIntersections = intersection_mod.LocalIntersections;
 const point = types.Point;
 const vector = types.Vector;
 const approxEq = types.approxEq;
@@ -70,10 +71,10 @@ pub const Sphere = struct {
         // 2. Use the already computed invers.
         // ---
         // const lr = Ray{ .origin = self.inverse().mulT(ray.origin), .direction = self.inverse().mulT(ray.direction) };
-        const lr = Ray{ .origin = self.h.transformed_m_inv.mulT(ray.origin), .direction = self.h.transformed_m_inv.mulT(ray.direction) };
-        const sphere2ray = lr.origin.sub(point(0, 0, 0));
-        const a = lr.direction.dot(lr.direction);
-        const b = S(2) * lr.direction.dot(sphere2ray);
+        const localray = Ray{ .origin = self.h.transformed_m_inv.mulT(ray.origin), .direction = self.h.transformed_m_inv.mulT(ray.direction) };
+        const sphere2ray = localray.origin.sub(point(0, 0, 0));
+        const a = localray.direction.dot(localray.direction);
+        const b = S(2) * localray.direction.dot(sphere2ray);
         const c = sphere2ray.dot(sphere2ray) - S(1);
         const discriminant = b * b - S(4) * a * c;
 

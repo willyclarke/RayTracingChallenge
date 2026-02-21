@@ -15,6 +15,7 @@ const approxEq = types.approxEq;
 const log = utils.log;
 
 pub const Material = struct {
+    /// Color
     col: Tuple,
     ambient: Scalar,
     diffuse: Scalar,

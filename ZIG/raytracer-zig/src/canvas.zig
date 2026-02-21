@@ -4,7 +4,7 @@ const utils = @import("utils.zig");
 const log = utils.log;
 
 const types = @import("types.zig");
-const shapes = @import("shapes.zig");
+const shapes = @import("shapes/shapes.zig");
 const matrix = @import("matrix.zig");
 const Mat4 = matrix.Mat4;
 
@@ -280,7 +280,8 @@ test "Chap5 -Putting it together" {
     var sph = shapes.Sphere.init();
     var s = shapes.Shape.fromSphere(&sph);
 
-    s.setTransform(matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1)));
+    const sxform = matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1));
+    s.setTransform(&sxform);
 
     for (0..canvas_pixels) |y| {
         const world_y = half - pixel_size * S(y);

@@ -8,10 +8,13 @@ const std = @import("std");
 const types = @import("types.zig");
 const matrix = @import("matrix.zig");
 const material = @import("material.zig");
-const shapes = @import("shapes.zig");
+const shapes = @import("shapes/shapes.zig");
+const intersections = @import("shapes/intersections.zig");
 const lights = @import("lights.zig");
 const canvas = @import("canvas.zig");
+const camera = @import("camera.zig");
 const world = @import("world.zig");
+const render = @import("render.zig");
 
 // These lines are CRUCIAL — they force Zig to include and run the tests
 test {
@@ -25,7 +28,10 @@ test {
     std.testing.refAllDecls(shapes);
     std.testing.refAllDecls(lights);
     std.testing.refAllDecls(canvas);
+    std.testing.refAllDecls(camera);
     std.testing.refAllDecls(world);
+    std.testing.refAllDecls(render);
+    std.testing.refAllDecls(intersections);
 
     const sphere = @import("shapes/sphere.zig");
     std.testing.refAllDecls(sphere);

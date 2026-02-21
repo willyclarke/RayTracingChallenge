@@ -1,13 +1,14 @@
 // src/shapes/shape.zig
 const std = @import("std");
 const print = @import("std").debug.print;
-const utils = @import("utils.zig");
+const utils = @import("../utils.zig");
 const log = utils.log;
 
-const types = @import("types.zig");
-const matrix = @import("matrix.zig");
-const material_mod = @import("material.zig");
-pub const sphere_mod = @import("shapes/sphere.zig");
+const types = @import("../types.zig");
+const matrix = @import("../matrix.zig");
+const material_mod = @import("../material.zig");
+const intersection_mod = @import("intersections.zig");
+pub const sphere_mod = @import("sphere.zig");
 pub const Sphere = sphere_mod.Sphere;
 
 pub const Mat4 = matrix.Mat4;
@@ -20,9 +21,9 @@ pub const Tuple = types.Tuple;
 pub const point = types.Point;
 pub const vector = types.Vector;
 
-pub const Intersection = types.Intersection;
-pub const Intersections = types.Intersections;
-pub const LocalIntersections = types.LocalIntersections;
+pub const Intersection = intersection_mod.Intersection;
+pub const Intersections = intersection_mod.Intersections;
+pub const LocalIntersections = intersection_mod.LocalIntersections;
 
 const material = material_mod.Material;
 const Material = material_mod.Material;
@@ -34,8 +35,8 @@ pub const Shape = union(enum) {
     // plane: Plane,
 
     // Real methods — these work because they're inside the struct scope
-    pub fn id(self: Shape) usize {
-        return switch (self) {
+    pub fn id(self: *const Shape) usize {
+        return switch (self.*) {
             .sphere => |s| s.id(),
             // .plane => |p| p.id(),
         };
@@ -56,42 +57,46 @@ pub const Shape = union(enum) {
     /// ---
     /// Factory: create an Intersection from any shape
     /// ---
-    pub fn intersection(t: Scalar, shape: *const Shape) Intersection {
-        return .{ .t = t, .object_id = shape.id() }; // shape.id() works!
+    pub fn intersection(t: Scalar, ptrShape: *const Shape) Intersection {
+        return .{ .t = t, .ptrShape = ptrShape };
     }
 
-    pub fn inverse(self: Shape) *matrix.Mat4 {
-        return switch (self) {
-            .sphere => |s| &s.inverse(),
+    /// ---
+    /// return a pointer to the cached inverse. Does not calculate.
+    /// ---
+    pub fn inverse(self: *const Shape) *matrix.Mat4 {
+        return switch (self.*) {
+            .sphere => |s| &s.h.transformed_m_inv,
             // .cube => |c| c.inverse(m),
         };
     }
 
-    pub fn normal_at(self: Shape, position: Tuple) Tuple {
-        return switch (self) {
+    pub fn normal_at(self: *const Shape, position: Tuple) Tuple {
+        return switch (self.*) {
             .sphere => |s| s.normal_at(position),
             // .cube => |c| c.normal_at(position),
         };
     }
 
-    pub fn material(self: Shape) *Material {
-        return switch (self) {
+    pub fn material(self: *const Shape) *Material {
+        return switch (self.*) {
             .sphere => |s| &s.h.material,
             // .cube => |c| c.material,
         };
     }
 
-    pub fn setMaterial(self: Shape, mat: Material) void {
-        switch (self) {
-            .sphere => |s| s.h.material = mat,
-            // .cube => |c| c.material,
-        }
+    pub fn setMaterial(self: *Shape, mat: Material) void {
+        self.material().* = mat;
+        // switch (self) {
+        //     .sphere => |s| s.h.material = mat,
+        //     // .cube => |c| c.material,
+        // }
     }
 
-    pub fn setTransform(self: Shape, m: matrix.Mat4) void {
-        switch (self) {
+    pub fn setTransform(self: *Shape, m: *const matrix.Mat4) void {
+        switch (self.*) {
             .sphere => |s| {
-                s.h.transformed_m = m;
+                s.h.transformed_m = m.*;
                 s.h.transposed_m = m.transpose();
                 s.h.transformed_m_inv = m.inverse();
                 s.h.transposed_m_inv = s.h.transformed_m_inv.transpose();
@@ -100,8 +105,8 @@ pub const Shape = union(enum) {
         }
     }
 
-    pub fn transform(self: Shape) *matrix.Mat4 {
-        return switch (self) {
+    pub fn transform(self: *const Shape) *matrix.Mat4 {
+        return switch (self.*) {
             .sphere => |s| &s.h.transformed_m,
             // .cube => |c| c.transform(m),
         };
@@ -126,7 +131,7 @@ test "Chap5 - An intersection encapsulates t and object" {
     var sphere = Sphere.init();
     const s = Shape.fromSphere(&sphere);
     const i = Shape.intersection(3.5, &s); // create intersection
-    try std.testing.expect(s.id() == i.object_id);
+    try std.testing.expect(s.id() == i.ptrShape.id());
     try std.testing.expect(types.approxEq(i.t, 3.5));
 }
 
@@ -153,8 +158,8 @@ test "Chap5 -Intersect sets the object on the intersection" {
     // const xs = Shape.intersect(&s, r);
     const xs = s.intersect(r);
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect(xs.items[0].object_id == s.id());
-    try std.testing.expect(xs.items[1].object_id == s.id());
+    try std.testing.expect(xs.items[0].ptrShape.id() == s.id());
+    try std.testing.expect(xs.items[1].ptrShape.id() == s.id());
 }
 
 test "Chap5 -The hit, when all intersections have positive t" {
@@ -167,7 +172,7 @@ test "Chap5 -The hit, when all intersections have positive t" {
 
     const i = xs.hit();
 
-    try std.testing.expect(i.?.object_id == i_1.object_id);
+    try std.testing.expect(i.?.ptrShape.id() == i_1.ptrShape.id());
     try std.testing.expect(i != null);
     try std.testing.expect(std.meta.eql(i, i_1));
     try std.testing.expect(!std.meta.eql(i, i_2));
@@ -183,7 +188,7 @@ test "Chap5 -The hit, when some intersections have negative t" {
 
     const i = xs.hit();
 
-    try std.testing.expect(i.?.object_id == i_2.object_id);
+    try std.testing.expect(i.?.ptrShape.id() == i_2.ptrShape.id());
     try std.testing.expect(std.meta.eql(i, i_2));
     try std.testing.expect(i.?.eql(i_2));
     try std.testing.expect(!i.?.eql(i_1));
@@ -216,7 +221,7 @@ test "Chap5 -The hit is always the lowest nonnegative intersection" {
 
     const i = xs.hit();
 
-    try std.testing.expect(i.?.object_id == i_4.object_id);
+    try std.testing.expect(i.?.ptrShape.id() == i_4.ptrShape.id());
     try std.testing.expect(std.meta.eql(i, i_4));
     try std.testing.expect(!i.?.eql(i_1));
     try std.testing.expect(!i.?.eql(i_2));
@@ -235,7 +240,7 @@ test "Chap5 -Changing a sphere's transformation" {
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
     const t = matrix.Mat4.translation(2, 3, 4);
-    s.setTransform(t);
+    s.setTransform(&t);
     try std.testing.expect(s.transform().equals(&t));
 }
 
@@ -243,7 +248,7 @@ test "Chap5 -Intersecting a scaled sphere with a ray" {
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
-    s.setTransform(matrix.Mat4.scaling(2, 2, 2));
+    s.setTransform(&matrix.Mat4.scaling(2, 2, 2));
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
@@ -255,7 +260,7 @@ test "Chap5 -Intersecting a translated sphere with a ray" {
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
-    s.setTransform(matrix.Mat4.translation(5, 0, 0));
+    s.setTransform(&matrix.Mat4.translation(5, 0, 0));
     const xs = s.intersect(r);
     try std.testing.expect(xs.count == 0);
 }
@@ -306,7 +311,7 @@ test "Chap6 -The normal is a normalized vector" {
 test "Chap6 -Computing the normal on a translated sphere" {
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
-    s.setTransform(Mat4.translation(0, 1, 0));
+    s.setTransform(&Mat4.translation(0, 1, 0));
     const x = S(0);
     const y = S(1.70711);
     const z = S(-0.70711);
@@ -318,7 +323,7 @@ test "Chap6 -Computing the normal on a transformed sphere" {
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
     const m = Mat4.scaling(1, 0.5, 1).mulM(&Mat4.rotz(std.math.pi / S(5)));
-    s.setTransform(m);
+    s.setTransform(&m);
     const x = S(0);
     const y = std.math.sqrt2 / S(2);
     const z = -std.math.sqrt2 / S(2);

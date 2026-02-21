@@ -126,6 +126,8 @@ pub fn Matrix(comptime N: usize) type {
         pub inline fn mulM(self: *const Self, other: *const Self) Self {
             var result = Self.zero();
 
+            @setEvalBranchQuota(2000);
+
             inline for (0..N) |i| {
                 const a_row = self.rowConst(i);
                 inline for (0..N) |j| {
