@@ -34,32 +34,31 @@ pub const Canvas = struct {
     width: usize,
     height: usize,
     pixels: []Color,
-    count: usize,
 
-    /// Construct from components.
     pub fn init(alloc: std.mem.Allocator, width: usize, height: usize) !Canvas {
         const count = width * height;
         const pixels = try alloc.alloc(Color, count);
-        const black = rgb.init(0, 0, 0, 0);
-        @memset(pixels, black); // mutate the slice contents
-        return .{ .width = width, .height = height, .pixels = pixels, .count = count };
+        const black = Color.init(0, 0, 0, 0);
+        @memset(pixels, black);
+        return .{ .width = width, .height = height, .pixels = pixels };
     }
 
-    pub inline fn index(self: Canvas, x: usize, y: usize) usize {
+    pub inline fn index(self: *const Canvas, x: usize, y: usize) usize {
         return y * self.width + x;
     }
 
     pub fn writePixel(self: *Canvas, x: usize, y: usize, c: Color) void {
-        const idx = self.index(x, y);
-        if (idx < self.count)
-            self.pixels[idx] = c;
+        if (x >= self.width or y >= self.height) return;
+        self.pixels[self.index(x, y)] = c;
     }
 
-    pub fn pixelAt(self: Canvas, x: usize, y: usize) Color {
-        const idx = self.index(x, y);
-        if (idx < self.count)
-            return self.pixels[idx];
-        return Color.init(0.0, 0.0, 0.0, 0.0);
+    pub fn pixelAt(self: *const Canvas, x: usize, y: usize) Color {
+        if (x >= self.width or y >= self.height) return Color.init(0, 0, 0, 0);
+        return self.pixels[self.index(x, y)];
+    }
+
+    pub fn pixelsSlice(self: *const Canvas) []const Color {
+        return self.pixels;
     }
 
     pub fn deinit(self: *Canvas, alloc: std.mem.Allocator) void {
@@ -69,7 +68,8 @@ pub const Canvas = struct {
 };
 
 // Common/safer: clamp to [0,255] then cast to u8
-pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
+pub fn createCanvasFileP3(canvas: *const Canvas, filename: []const u8) !void {
+    utils.log(@src(), "Starting\n", .{});
     const a = std.heap.page_allocator;
 
     var buffer: std.ArrayList(u8) = .empty;
@@ -105,6 +105,84 @@ pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
     const file = try std.fs.cwd().createFile(filename, .{ .truncate = true });
     defer file.close();
     try file.writeAll(buffer.items);
+    utils.log(@src(), "Ending\n", .{});
+}
+
+pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
+    utils.log(@src(), "Starting\n", .{});
+    var file = try std.fs.cwd().createFile(filename, .{ .truncate = true });
+    defer file.close();
+
+    // Zig 0.15.x: the buffer is provided to the writer
+    var buf: [64 * 1024]u8 = undefined; // tweak size if you like
+    var fw = file.writer(&buf);
+    const out = &fw.interface;
+
+    try out.print("P6\n{} {}\n255\n", .{ canvas.width, canvas.height });
+
+    for (0..canvas.height) |y| {
+        for (0..canvas.width) |x| {
+            const px = canvas.pixelAt(x, y);
+
+            const r: u8 = types.toByteSaturated(types.S(255) * px.r());
+            const g: u8 = types.toByteSaturated(types.S(255) * px.g());
+            const b: u8 = types.toByteSaturated(types.S(255) * px.b());
+
+            // Write 3 bytes (binary PPM)
+            try out.writeAll(&.{ r, g, b });
+        }
+    }
+
+    try out.flush(); // important
+    utils.log(@src(), "Ending\n", .{});
+}
+
+pub fn createCanvasFile2(
+    alloc: std.mem.Allocator,
+    canvas: *const Canvas,
+    filename: []const u8,
+) !void {
+    utils.log(@src(), "Starting\n", .{});
+
+    var file = try std.fs.cwd().createFile(filename, .{ .truncate = true });
+    defer file.close();
+
+    // Zig 0.15.x: buffered output is done by providing a buffer to the writer.
+    var out_buf: [1024 * 1024]u8 = undefined;
+    var fw = file.writer(&out_buf);
+    const out = &fw.interface;
+
+    // P6 header (binary PPM)
+    try out.print("P6\n{} {}\n255\n", .{ canvas.width, canvas.height });
+
+    // Row buffer: width * 3 bytes (RGB)
+    var row = try alloc.alloc(u8, canvas.width * 3);
+    defer alloc.free(row);
+
+    const pixels = canvas.pixelsSlice();
+
+    // Safety: make sure the slice matches width*height
+    // (optional in ReleaseFast; great for Debug)
+    std.debug.assert(pixels.len == canvas.width * canvas.height);
+
+    for (0..canvas.height) |y| {
+        const row_start = y * canvas.width;
+        const row_px = pixels[row_start .. row_start + canvas.width];
+
+        var i: usize = 0;
+        for (row_px) |px| {
+            row[i + 0] = types.toByteSaturated(types.S(255) * px.r());
+            row[i + 1] = types.toByteSaturated(types.S(255) * px.g());
+            row[i + 2] = types.toByteSaturated(types.S(255) * px.b());
+            i += 3;
+        }
+
+        try out.writeAll(row);
+    }
+
+    try out.flush();
+
+    utils.log(@src(), "Ending\n", .{});
 }
 
 test "Chap2 -Creating a canvas" {

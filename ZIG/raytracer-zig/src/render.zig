@@ -1,6 +1,9 @@
 const std = @import("std");
 const print = @import("std").debug.print;
 
+const utils = @import("utils.zig");
+const log = utils.log;
+
 const camera_mod = @import("camera.zig");
 const Camera = camera_mod.Camera;
 const ray_for_pixel = camera_mod.ray_for_pixel;
@@ -18,6 +21,7 @@ const color_at = world_mod.color_at;
 const canvas_mod = @import("canvas.zig");
 const Canvas = canvas_mod.Canvas;
 const createCanvasFile = canvas_mod.createCanvasFile;
+const createCanvasFile2 = canvas_mod.createCanvasFile2;
 
 const sMod = @import("shapes/shapes.zig");
 
@@ -35,20 +39,122 @@ const matrix = mMod.Mat4;
 const Matrix = mMod.Mat4;
 const Ray = tMod.Ray;
 
-pub fn render(alloc: std.mem.Allocator, camera: *const Camera, world: *World) !Canvas {
+pub fn renderSingleThread(alloc: std.mem.Allocator, camera: *const Camera, world: *const World) !Canvas {
     var image = try Canvas.init(alloc, camera.hsize, camera.vsize);
     errdefer image.deinit(alloc);
 
+    // scratch arena for per-ray allocations (intersections, etc.)
+    var scratch = std.heap.ArenaAllocator.init(alloc);
+    defer scratch.deinit();
+    const temp_alloc = scratch.allocator();
+
     var y: usize = 0;
     while (y < camera.vsize) : (y += 1) {
+        _ = scratch.reset(.retain_capacity); // key: reuse memory without hitting OS
         var x: usize = 0;
         while (x < camera.hsize) : (x += 1) {
             const r = ray_for_pixel(camera, x, y);
-            const c = color_at(world, r);
+            const c = color_at(world, r, temp_alloc);
             image.writePixel(x, y, c);
         }
     }
 
+    return image;
+}
+
+pub fn render(alloc: std.mem.Allocator, camera: *const Camera, world: *const World) !Canvas {
+    var image = try Canvas.init(alloc, camera.hsize, camera.vsize);
+    errdefer image.deinit(alloc);
+
+    // Decide number of workers.
+    const cpu_count = (std.Thread.getCpuCount() catch 1);
+    const worker_count = @min(cpu_count, camera.vsize);
+    print("worker_count: {}\n", .{worker_count});
+
+    utils.log(@src(), "Worker count: {}...\n", .{worker_count});
+
+    if (worker_count <= 1) {
+        utils.log(@src(), "Rendering single threaded...\n", .{});
+
+        // scratch arena for per-ray allocations (intersections, etc.)
+        var scratch = std.heap.ArenaAllocator.init(alloc);
+        defer scratch.deinit();
+        const temp_alloc = scratch.allocator();
+
+        var y: usize = 0;
+        while (y < camera.vsize) : (y += 1) {
+            _ = scratch.reset(.retain_capacity); // key: reuse memory without hitting OS
+            var x: usize = 0;
+            while (x < camera.hsize) : (x += 1) {
+                const r = ray_for_pixel(camera, x, y);
+                const c = color_at(world, r, temp_alloc);
+                image.writePixel(x, y, c);
+            }
+        }
+
+        return image;
+    }
+
+    utils.log(@src(), "Rendering multi threaded. Starting...\n", .{});
+    const Worker = struct {
+        camera: *const Camera,
+        world: *const World,
+        image: *Canvas,
+        y0: usize,
+        y1: usize,
+        parent_alloc: std.mem.Allocator,
+
+        fn run(self: @This()) void {
+            var arena = std.heap.ArenaAllocator.init(self.parent_alloc);
+            defer arena.deinit();
+            const temp_alloc = arena.allocator();
+
+            var y: usize = self.y0;
+            while (y < self.y1) : (y += 1) {
+
+                // optional: clear between rows
+                _ = arena.reset(.retain_capacity);
+                var x: usize = 0;
+                while (x < self.camera.hsize) : (x += 1) {
+                    const r = ray_for_pixel(self.camera, x, y);
+                    const c = color_at(@constCast(self.world), r, temp_alloc);
+                    self.image.writePixel(x, y, c);
+                }
+            }
+        }
+    };
+
+    // Spawn workers
+    var threads = try alloc.alloc(std.Thread, worker_count);
+    defer alloc.free(threads);
+
+    // Divide scanlines into chunks
+    const rows_per = camera.vsize / worker_count;
+    const rem = camera.vsize % worker_count;
+
+    var y_start: usize = 0;
+    var i: usize = 0;
+    while (i < worker_count) : (i += 1) {
+        const extra: usize = if (i < rem) 1 else 0;
+        const y_end = y_start + rows_per + extra;
+
+        const w = Worker{
+            .camera = camera,
+            .world = world,
+            .image = &image,
+            .y0 = y_start,
+            .y1 = y_end,
+            .parent_alloc = alloc,
+        };
+
+        threads[i] = try std.Thread.spawn(.{}, Worker.run, .{w});
+        y_start = y_end;
+    }
+
+    // Join all
+    for (threads) |t| t.join();
+
+    utils.log(@src(), "Rendering multi threaded. Ended...\n", .{});
     return image;
 }
 
@@ -68,7 +174,7 @@ test "Chap7 -Rendering a world with a camera" {
     const up = vector(0, 1, 0);
     c.transform = view_transform(from, to, up);
 
-    var image = try render(gpa.allocator(), &c, &w);
+    var image = try renderSingleThread(gpa.allocator(), &c, &w);
     defer image.deinit(gpa.allocator());
 
     const px5y5 = image.pixelAt(5, 5);
@@ -161,7 +267,8 @@ test "Chap7 -Putting it together" {
         try w.addShape(sMod.Shape.fromSphere(left));
     }
 
-    var c = Camera.init(100, 40, std.math.pi / S(3));
+    var c = Camera.init(600, 400, std.math.pi / S(3));
+    // var c = Camera.init(3456, 2234, std.math.pi / S(3));
     const from = point(0, 1.5, -5);
     const to = point(0, 1, 0);
     const up = vector(0, 1, 0);
@@ -170,5 +277,5 @@ test "Chap7 -Putting it together" {
     var image = try render(gpa.allocator(), &c, &w);
     defer image.deinit(gpa.allocator());
 
-    try createCanvasFile(&image, "chap7puttingtogether.ppm");
+    try createCanvasFile2(gpa.allocator(), &image, "chap7puttingtogether.ppm");
 }

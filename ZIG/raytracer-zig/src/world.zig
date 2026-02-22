@@ -156,7 +156,7 @@ pub fn prepare_computations(i: Intersection, r: Ray) PrepareComputations {
     return comps;
 }
 
-pub fn shade_hit(world: *World, comps: PrepareComputations) Tuple {
+pub fn shade_hit(world: *const World, comps: PrepareComputations) Tuple {
     return lighting(comps.ptrShape.material().*, world.lightsSlice()[0], comps.point, comps.eyev, comps.normalv);
 }
 
@@ -194,17 +194,18 @@ pub fn default_world(parent_alloc: std.mem.Allocator) !World {
     return world;
 }
 
-pub fn intersect_world(world: *World, r: Ray) Intersections {
+pub fn intersect_world(world: *const World, r: Ray, temp_alloc: std.mem.Allocator) Intersections {
     var xs = Intersections.init();
-    const alloc = world.allocator();
+    // const alloc = world.allocator();
 
+    // IMPORTANT: iterate by pointer so ptrShape points into the world's stable storage
     for (world.shapesSlice()) |*shape| {
         const locint = shape.intersect(r);
 
         var i: usize = 0;
 
         while (i < locint.count) : (i += 1) {
-            try xs.add(alloc, .{
+            try xs.add(temp_alloc, .{
                 .t = locint.items[i].t,
                 .ptrShape = shape,
             });
@@ -225,10 +226,10 @@ pub fn intersect_world(world: *World, r: Ray) Intersections {
     return xs;
 }
 
-pub fn color_at(world: *World, r: Ray) Tuple {
+pub fn color_at(world: *const World, r: Ray, temp_alloc: std.mem.Allocator) Tuple {
     // 1. Call intersect_world to find the intersections of the given ray with the given world.
-    var xs = intersect_world(world, r);
-    defer xs.deinit(world.allocator()); // or world.allocator(), whichever you use
+    var xs = intersect_world(world, r, temp_alloc);
+    defer xs.deinit(temp_alloc); // or world.allocator(), whichever you use
 
     // 2. Find the hit from the resulting intersections.
     const hit_opt = xs.hit();
@@ -303,12 +304,16 @@ test "Chap7 -Intersect a world with a ray" {
     var w = try default_world(gpa.allocator());
     defer w.deinit(gpa.allocator());
 
+    var temp_arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
     const origin = point(0, 0, -5);
     const direction = vector(0, 0, 1);
     const r = Ray.init(origin, direction);
 
     // Find all intersections between the ray and objects in the world
-    const xs = intersect_world(&w, r);
+    const xs = intersect_world(&w, r, temp_alloc);
 
     // log(@src(), "\nIntersections xs: {f}\n", .{xs});
     try std.testing.expect(3 == 3);
@@ -433,7 +438,7 @@ test "Chap7 -The color when a ray misses" {
     var w = try default_world(gpa.allocator());
     defer w.deinit(gpa.allocator());
     const r = Ray.init(point(0, 0, -5), vector(0, 1, 0));
-    const c = color_at(&w, r);
+    const c = color_at(&w, r, gpa.allocator());
     try std.testing.expect(c.equals(color(0, 0, 0)) == true);
 }
 
@@ -444,7 +449,7 @@ test "Chap7 -The color when a ray hits" {
     defer w.deinit(gpa.allocator());
 
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
-    const c = color_at(&w, r);
+    const c = color_at(&w, r, gpa.allocator());
     try std.testing.expect(c.equals(color(0.38066, 0.47583, 0.2855)) == true);
 }
 
@@ -462,7 +467,7 @@ test "Chap7 -The color with an intersection behind the ray" {
 
     const r = Ray.init(point(0, 0, 0.75), vector(0, 0, -1));
 
-    const c = color_at(&w, r);
+    const c = color_at(&w, r, gpa.allocator());
     try std.testing.expect(c.equals(inner.material().color()) == true);
 }
 
