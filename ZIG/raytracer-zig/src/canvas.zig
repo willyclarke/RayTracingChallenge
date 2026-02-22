@@ -171,9 +171,9 @@ pub fn createCanvasFile2(
 
         var i: usize = 0;
         for (row_px) |px| {
-            row[i + 0] = types.toByteSaturated(types.S(255) * px.r());
-            row[i + 1] = types.toByteSaturated(types.S(255) * px.g());
-            row[i + 2] = types.toByteSaturated(types.S(255) * px.b());
+            row[i + 0] = types.toByte01(px.r());
+            row[i + 1] = types.toByte01(px.g());
+            row[i + 2] = types.toByte01(px.b());
             i += 3;
         }
 

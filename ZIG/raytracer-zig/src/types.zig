@@ -33,6 +33,15 @@ pub fn toByteSaturated(x: Scalar) u8 {
     return @intFromFloat(clamped); // truncates toward 0
 }
 
+/// ---
+/// Clamp a Scalar to values between 0.0 and 1.0 and convert it to a byte value between 0 and 255.
+/// ---
+pub inline fn toByte01(x: Scalar) u8 {
+    const c = std.math.clamp(x, S(0), S(1));
+    // round-to-nearest
+    return @intFromFloat(c * S(255) + S(0.5));
+}
+
 pub fn toUsizeSaturated(x: Scalar, min: Scalar, max: Scalar) usize {
     const clamped = std.math.clamp(std.math.round(x), min, max);
     return @intFromFloat(clamped); // truncates toward 0
@@ -155,22 +164,22 @@ pub const Tuple = struct {
     }
 
     /// Color - red channel
-    pub inline fn r(self: Tuple) Scalar {
+    pub inline fn r(self: *const Tuple) Scalar {
         return self.x;
     }
 
     /// Color - green channel
-    pub inline fn g(self: Tuple) Scalar {
+    pub inline fn g(self: *const Tuple) Scalar {
         return self.y;
     }
 
     /// Color - blue channel
-    pub inline fn b(self: Tuple) Scalar {
+    pub inline fn b(self: *const Tuple) Scalar {
         return self.z;
     }
 
     /// Color - alpha channel
-    pub inline fn alpha(self: Tuple) Scalar {
+    pub inline fn alpha(self: *const Tuple) Scalar {
         return self.w;
     }
 };
