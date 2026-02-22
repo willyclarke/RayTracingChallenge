@@ -66,7 +66,7 @@ pub const Light = union(enum) {
 /// This lighting() function is what will shade your objects so that they appear
 /// three-dimensional.
 /// ---
-pub fn lighting(matrial: Material, lght: Light, pnt: Tuple, eyev: Tuple, normv: Tuple) Tuple {
+pub fn lighting(matrial: Material, lght: Light, pnt: Tuple, eyev: Tuple, normv: Tuple, in_shadow: bool) Tuple {
     // combine the surface color with the light's color/intensity
     const effective_color = matrial.color().mult(lght.intensity());
 
@@ -83,13 +83,15 @@ pub fn lighting(matrial: Material, lght: Light, pnt: Tuple, eyev: Tuple, normv: 
     var diffuse = black;
     var specular = black;
 
+    const shadow_factor = S(!in_shadow);
+
     // light_dot_normal represents the cosine of the angle between the
     // light vector and the normal vector. A negative number means the
     // light is on the other side of the surface.
     const light_dot_normal = lightv.dot(normv);
     if (light_dot_normal >= S(0)) {
         // compute the diffuse contribution
-        diffuse = effective_color.muls(matrial.diffuse).muls(light_dot_normal);
+        diffuse = effective_color.muls(matrial.diffuse).muls(light_dot_normal).muls(shadow_factor);
 
         // reflect_dot_eye represents the cosine of the angle between the
         // reflection vector and the eye vector. A negative number means the
@@ -99,7 +101,7 @@ pub fn lighting(matrial: Material, lght: Light, pnt: Tuple, eyev: Tuple, normv: 
         if (reflect_dot_eye > S(0)) {
             // compute the specular contribution
             const factor = std.math.pow(Scalar, reflect_dot_eye, matrial.shininess);
-            specular = lght.intensity().muls(matrial.specular).muls(factor);
+            specular = lght.intensity().muls(matrial.specular).muls(factor).muls(shadow_factor);
         }
     }
 
@@ -121,7 +123,7 @@ test "Chap6 -Lighting with the eye between the light and the surface" {
     const eyev = vector(0, 0, -1);
     const normalv = vector(0, 0, -1);
     const light = Light.fromPointLight(PointLight.init_at(point(0, 0, -10), color(1, 1, 1)));
-    const result = lighting(m, light, position, eyev, normalv);
+    const result = lighting(m, light, position, eyev, normalv, false);
     try std.testing.expect(result.equals(color(1.9, 1.9, 1.9)));
 }
 
@@ -131,7 +133,7 @@ test "Chap6 -Lighting with the eye between light and surface, eye offset 45°" {
     const eyev = vector(0, std.math.sqrt2 / S(2), -std.math.sqrt2 / S(2));
     const normalv = vector(0, 0, -1);
     const light = Light.fromPointLight(PointLight.init_at(point(0, 0, -10), color(1, 1, 1)));
-    const result = lighting(m, light, position, eyev, normalv);
+    const result = lighting(m, light, position, eyev, normalv, false);
     try std.testing.expect(result.equals(color(1, 1, 1)));
 }
 
@@ -141,7 +143,7 @@ test "Chap6 -Lighting with eye opposite surface, light offset 45°" {
     const eyev = vector(0, 0, -1);
     const normalv = vector(0, 0, -1);
     const light = Light.fromPointLight(PointLight.init_at(point(0, 10, -10), color(1, 1, 1)));
-    const result = lighting(m, light, position, eyev, normalv);
+    const result = lighting(m, light, position, eyev, normalv, false);
     try std.testing.expect(result.equals(color(0.7364, 0.7364, 0.7364)));
 }
 
@@ -151,7 +153,7 @@ test "Chap6 -Lighting with eye in the path of the reflection vector" {
     const eyev = vector(0, -std.math.sqrt2 / S(2), -std.math.sqrt2 / S(2));
     const normalv = vector(0, 0, -1);
     const light = Light.fromPointLight(PointLight.init_at(point(0, 10, -10), color(1, 1, 1)));
-    const result = lighting(m, light, position, eyev, normalv);
+    const result = lighting(m, light, position, eyev, normalv, false);
     try std.testing.expect(result.equals(color(1.6364, 1.6364, 1.6364)));
 }
 
@@ -161,6 +163,17 @@ test "Chap6 -Lighting with the light behind the surface" {
     const eyev = vector(0, 0, 1);
     const normalv = vector(0, 0, -1);
     const light = Light.fromPointLight(PointLight.init_at(point(0, 0, 10), color(1, 1, 1)));
-    const result = lighting(m, light, position, eyev, normalv);
+    const result = lighting(m, light, position, eyev, normalv, false);
+    try std.testing.expect(result.equals(color(0.1, 0.1, 0.1)));
+}
+
+test "Chap8 -Lighting with the surface in shadow" {
+    const m = material.init();
+    const position = point(0, 0, 0);
+    const eyev = vector(0, 0, 1);
+    const normalv = vector(0, 0, -1);
+    const light = Light.fromPointLight(PointLight.init_at(point(0, 0, -10), color(1, 1, 1)));
+    const in_shadow = true;
+    const result = lighting(m, light, position, eyev, normalv, in_shadow);
     try std.testing.expect(result.equals(color(0.1, 0.1, 0.1)));
 }

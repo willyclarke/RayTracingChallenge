@@ -9,6 +9,8 @@ pub const Scalar = f32; // switch to f64 later if you need it
 /// Convert ints or floats (incl. comptime literals) to Scalar (f32).
 pub inline fn scalar(x: anytype) Scalar {
     return switch (@TypeOf(x)) {
+        bool => if (x) S(1) else S(0),
+
         comptime_int, comptime_float => @as(Scalar, x),
         // handle all builtin float widths
         f16, f32, f64, f128 => @floatCast(x),

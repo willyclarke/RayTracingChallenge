@@ -157,7 +157,7 @@ pub fn prepare_computations(i: Intersection, r: Ray) PrepareComputations {
 }
 
 pub fn shade_hit(world: *const World, comps: PrepareComputations) Tuple {
-    return lighting(comps.ptrShape.material().*, world.lightsSlice()[0], comps.point, comps.eyev, comps.normalv);
+    return lighting(comps.ptrShape.material().*, world.lightsSlice()[0], comps.point, comps.eyev, comps.normalv, false);
 }
 
 pub fn default_world(parent_alloc: std.mem.Allocator) !World {

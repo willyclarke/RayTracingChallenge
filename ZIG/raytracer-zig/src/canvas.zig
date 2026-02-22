@@ -416,7 +416,7 @@ test "Chap6 -Putting it together" {
                 const hitpoint = r.position(xs.tmin());
                 const normal = s.normal_at(hitpoint);
                 const eye = r.direction.muls(S(-1));
-                const color = lighting(s.material().*, pl, hitpoint, eye, normal);
+                const color = lighting(s.material().*, pl, hitpoint, eye, normal, false);
                 canvas.writePixel(x, y, color);
             }
         }
