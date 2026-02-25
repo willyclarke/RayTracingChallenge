@@ -3,7 +3,14 @@ const print = @import("std").debug.print;
 const utils = @import("utils.zig");
 const log = utils.log;
 
-pub const Scalar = f32; // switch to f64 later if you need it
+/// ---
+/// NOTE: Use a large epsilon when using Scalar as f32
+///       and a tad smaller when using f64's.
+/// ---
+pub const EPSILON: Scalar = 1e-7;
+// pub const Scalar = f32; // switch to f64 later if you need it - NOTE: It will break some tests.
+pub const Scalar = f64; // switch to f32 later if you need it
+
 //
 /// Convert ints/floats (incl. comptime literals) to Scalar (f32).
 /// Convert ints or floats (incl. comptime literals) to Scalar (f32).
@@ -49,8 +56,6 @@ pub fn toUsizeSaturated(x: Scalar, min: Scalar, max: Scalar) usize {
     return @intFromFloat(clamped); // truncates toward 0
 }
 
-pub const EPSILON: Scalar = 1e-5;
-
 /// ---
 /// Returns true when |a - b| < EPSILON
 /// Compare by using absolute tolerance for small values
@@ -64,7 +69,9 @@ pub inline fn approxEq(a: Scalar, b: Scalar) bool {
 }
 
 test "Chap1 -almostEqual works for close values" {
-    try std.testing.expect(approxEq(1.000001, 1.000002));
+    const val1 = S(1.000001);
+    const val2 = S(1.000001) + EPSILON / S(2);
+    try std.testing.expect(approxEq(val1, val2));
     try std.testing.expect(!approxEq(1.0, 1.1));
 }
 
@@ -271,13 +278,13 @@ test "Chap1 -point and vector constructors set w correctly" {
 
 test "Chap1 -point equality uses EPSILON" {
     const p1 = Tuple.point(1.0, 2.0, 3.0);
-    const p2 = Tuple.point(1.0 + 1e-6, 2.0 - 5e-6, 3.0 + 2e-6);
+    const p2 = Tuple.point(1.0 + S(0.9991) * EPSILON, 2.0 - S(0.5) * EPSILON, 3.0 + S(0.2) * EPSILON);
     try std.testing.expect(Tuple.equals(p1, p2));
 }
 
 test "Chap1 -vector equality uses EPSILON" {
     const v1 = Tuple.vector(0.0, -1.0, 4.5);
-    const v2 = Tuple.vector(0.0 + 9e-6, -1.0 - 2e-6, 4.5 + 1e-6);
+    const v2 = Tuple.vector(0.0 + S(0.009991) * EPSILON, -1.0 - S(0.2) * EPSILON, 4.5 + S(0.1) * EPSILON);
     try std.testing.expect(Tuple.equals(v1, v2));
 }
 
@@ -489,7 +496,7 @@ test "Chap5 -Creating and querying a ray" {
     const direction = Tuple.vector(4, 5, 6);
     const r = Ray.init(origin, direction);
 
-    // log(@src(), "\norigin:{f}\ndirection:{f}\n", .{ origin, direction });
+    log(@src(), "\norigin:{f}\ndirection:{f}\n", .{ origin, direction });
     // log(@src(), "\nray.origin:{f}\nray.direction:{f}\n", .{ ray.origin, ray.direction });
 
     try std.testing.expect(r.origin.equals(origin));

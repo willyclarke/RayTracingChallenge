@@ -119,8 +119,9 @@ test "Chap7 -Constructing a ray through the center of the canvas" {
 test "Chap7 -Constructing a ray through a corner of the canvas" {
     const c = Camera.init(201, 101, std.math.pi / S(2));
     const r = ray_for_pixel(&c, 0, 0);
+    // log(@src(), "e: {f}\n", .{r.direction});
     try std.testing.expect(r.origin.equals(point(0, 0, 0)));
-    try std.testing.expect(r.direction.equals(vector(0.66519, 0.33259, -0.66851)));
+    try std.testing.expect(r.direction.equals(vector(0.665186426119451, 0.332593213059725, -0.668512358250048)));
 }
 
 test "Chap7 -Constructing a ray when the camera is transformed" {

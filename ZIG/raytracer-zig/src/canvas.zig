@@ -109,12 +109,12 @@ pub fn createCanvasFileP3(canvas: *const Canvas, filename: []const u8) !void {
 }
 
 pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
-    utils.log(@src(), "Starting\n", .{});
+    // utils.log(@src(), "Starting\n", .{});
     var file = try std.fs.cwd().createFile(filename, .{ .truncate = true });
     defer file.close();
 
     // Zig 0.15.x: the buffer is provided to the writer
-    var buf: [64 * 1024]u8 = undefined; // tweak size if you like
+    var buf: [1024 * 1024]u8 = undefined; // tweak size if you like
     var fw = file.writer(&buf);
     const out = &fw.interface;
 
@@ -134,7 +134,7 @@ pub fn createCanvasFile(canvas: *const Canvas, filename: []const u8) !void {
     }
 
     try out.flush(); // important
-    utils.log(@src(), "Ending\n", .{});
+    // utils.log(@src(), "Ending\n", .{});
 }
 
 pub fn createCanvasFile2(
@@ -142,7 +142,7 @@ pub fn createCanvasFile2(
     canvas: *const Canvas,
     filename: []const u8,
 ) !void {
-    utils.log(@src(), "Starting\n", .{});
+    // utils.log(@src(), "Starting\n", .{});
 
     var file = try std.fs.cwd().createFile(filename, .{ .truncate = true });
     defer file.close();
@@ -182,7 +182,7 @@ pub fn createCanvasFile2(
 
     try out.flush();
 
-    utils.log(@src(), "Ending\n", .{});
+    // utils.log(@src(), "Ending\n", .{});
 }
 
 test "Chap2 -Creating a canvas" {

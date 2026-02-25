@@ -23,7 +23,7 @@ const Canvas = canvas_mod.Canvas;
 const createCanvasFile = canvas_mod.createCanvasFile;
 const createCanvasFile2 = canvas_mod.createCanvasFile2;
 
-const sMod = @import("shapes/shapes.zig");
+const shapesMod = @import("shapes/shapes.zig");
 
 const tMod = @import("types.zig");
 const mMod = @import("matrix.zig");
@@ -69,9 +69,7 @@ pub fn render(alloc: std.mem.Allocator, camera: *const Camera, world: *const Wor
     // Decide number of workers.
     const cpu_count = (std.Thread.getCpuCount() catch 1);
     const worker_count = @min(cpu_count, camera.vsize);
-    print("worker_count: {}\n", .{worker_count});
-
-    utils.log(@src(), "Worker count: {}...\n", .{worker_count});
+    // utils.log(@src(), "Worker count: {}...\n", .{worker_count});
 
     if (worker_count <= 1) {
         utils.log(@src(), "Rendering single threaded...\n", .{});
@@ -95,7 +93,7 @@ pub fn render(alloc: std.mem.Allocator, camera: *const Camera, world: *const Wor
         return image;
     }
 
-    utils.log(@src(), "Rendering multi threaded. Starting...\n", .{});
+    // utils.log(@src(), "Rendering multi threaded. Starting...\n", .{});
     const Worker = struct {
         camera: *const Camera,
         world: *const World,
@@ -154,15 +152,15 @@ pub fn render(alloc: std.mem.Allocator, camera: *const Camera, world: *const Wor
     // Join all
     for (threads) |t| t.join();
 
-    utils.log(@src(), "Rendering multi threaded. Ended...\n", .{});
+    // utils.log(@src(), "Rendering multi threaded. Ended...\n", .{});
     return image;
 }
 
-test "Chap7 -Make sure it works" {
+test "Chap7- Make sure it works" {
     try std.testing.expect(7 == 7);
 }
 
-test "Chap7 -Rendering a world with a camera" {
+test "Chap7- Rendering a world with a camera" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     var w = try default_world(gpa.allocator());
@@ -180,10 +178,10 @@ test "Chap7 -Rendering a world with a camera" {
     const px5y5 = image.pixelAt(5, 5);
 
     // print("px5y5: {f}\n", .{px5y5});
-    try std.testing.expect(color(0.38066, 0.47583, 0.2855).equals(px5y5));
+    try std.testing.expect(color(0.380661190703326, 0.475826488379158, 0.285495893027495).equals(px5y5));
 }
 
-test "Chap7 -Putting it together" {
+test "Chap7- Putting it together" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     var w = try default_world(gpa.allocator());
@@ -191,20 +189,20 @@ test "Chap7 -Putting it together" {
 
     try w.setSingleLight(Light.fromPointLight(PointLight.init_at(point(-10, 10, -10), color(1, 1, 1))));
 
-    var floor = try w.allocator().create(sMod.Sphere);
-    floor.* = sMod.Sphere.init();
+    var floor = try w.allocator().create(shapesMod.Sphere);
+    floor.* = shapesMod.Sphere.init();
     floor.h.material.col = tMod.color(1.0, 0.9, 0.9);
     floor.h.material.diffuse = S(1.0);
     floor.h.material.specular = S(0.0);
 
     {
         floor.set_transform(mMod.Mat4.scaling(10, 0.01, 10));
-        try w.setSingleShape(sMod.Shape.fromSphere(floor));
+        try w.setSingleShape(shapesMod.Shape.fromSphere(floor));
     }
 
     {
-        var left_wall = try w.allocator().create(sMod.Sphere);
-        left_wall.* = sMod.Sphere.init();
+        var left_wall = try w.allocator().create(shapesMod.Sphere);
+        left_wall.* = shapesMod.Sphere.init();
         left_wall.h.material = floor.h.material;
 
         const mTr = mMod.Mat4.translation(0, 0, 5);
@@ -213,12 +211,12 @@ test "Chap7 -Putting it together" {
         const mScale = mMod.Mat4.scaling(10, 0.01, 10);
         const mXform = mTr.mulM(&mRoty).mulM(&mRotx).mulM(&mScale);
         left_wall.set_transform(mXform);
-        try w.addShape(sMod.Shape.fromSphere(left_wall));
+        try w.addShape(shapesMod.Shape.fromSphere(left_wall));
     }
 
     {
-        var right_wall = try w.allocator().create(sMod.Sphere);
-        right_wall.* = sMod.Sphere.init();
+        var right_wall = try w.allocator().create(shapesMod.Sphere);
+        right_wall.* = shapesMod.Sphere.init();
         right_wall.h.material = floor.h.material;
 
         const m2a = mMod.Mat4.translation(0, 0, 5);
@@ -227,44 +225,44 @@ test "Chap7 -Putting it together" {
         const m2d = mMod.Mat4.scaling(10, 0.01, 10);
         const m3 = m2a.mulM(&m2b).mulM(&m2c).mulM(&m2d);
         right_wall.set_transform(m3);
-        const sh1 = sMod.Shape.fromSphere(right_wall);
+        const sh1 = shapesMod.Shape.fromSphere(right_wall);
         try w.addShape(sh1);
     }
 
     {
-        var middle = try w.allocator().create(sMod.Sphere);
-        middle.* = sMod.Sphere.init();
+        var middle = try w.allocator().create(shapesMod.Sphere);
+        middle.* = shapesMod.Sphere.init();
         middle.h.material.col = tMod.color(0.1, 1, 0.5);
         middle.h.material.diffuse = S(0.7);
         middle.h.material.specular = S(0.3);
 
         const xform = mMod.Mat4.translation(-0.5, 1, 0.5);
         middle.set_transform(xform);
-        try w.addShape(sMod.Shape.fromSphere(middle));
+        try w.addShape(shapesMod.Shape.fromSphere(middle));
     }
 
     {
-        var right = try w.allocator().create(sMod.Sphere);
-        right.* = sMod.Sphere.init();
+        var right = try w.allocator().create(shapesMod.Sphere);
+        right.* = shapesMod.Sphere.init();
         right.h.material.col = tMod.color(0.5, 1, 0.1);
         right.h.material.diffuse = S(0.7);
         right.h.material.specular = S(0.3);
 
         const xform = mMod.Mat4.translation(1.5, 0.5, -0.5).mulM(&mMod.Mat4.scaling(0.5, 0.5, 0.5));
         right.set_transform(xform);
-        try w.addShape(sMod.Shape.fromSphere(right));
+        try w.addShape(shapesMod.Shape.fromSphere(right));
     }
 
     {
-        var left = try w.allocator().create(sMod.Sphere);
-        left.* = sMod.Sphere.init();
+        var left = try w.allocator().create(shapesMod.Sphere);
+        left.* = shapesMod.Sphere.init();
         left.h.material.col = tMod.color(1.0, 0.8, 0.1);
         left.h.material.diffuse = S(0.7);
         left.h.material.specular = S(0.3);
 
         const xform = mMod.Mat4.translation(-1.5, 0.33, -0.75).mulM(&mMod.Mat4.scaling(0.33, 0.33, 0.33));
         left.set_transform(xform);
-        try w.addShape(sMod.Shape.fromSphere(left));
+        try w.addShape(shapesMod.Shape.fromSphere(left));
     }
 
     var c = Camera.init(600, 400, std.math.pi / S(3));
@@ -274,7 +272,8 @@ test "Chap7 -Putting it together" {
     const up = vector(0, 1, 0);
     c.transform = view_transform(from, to, up);
 
-    var image = try render(gpa.allocator(), &c, &w);
+    // var image = try render(gpa.allocator(), &c, &w);
+    var image = try renderSingleThread(gpa.allocator(), &c, &w);
     defer image.deinit(gpa.allocator());
 
     try createCanvasFile2(gpa.allocator(), &image, "chap7puttingtogether.ppm");

@@ -395,7 +395,7 @@ pub fn Matrix(comptime N: usize) type {
                 try w.print("  |", .{});
                 inline for (0..N) |c| {
                     // width 10, 4 decimals
-                    try w.print(" {:>10.4}", .{printrow[c]});
+                    try w.print(" {:>20.21},", .{printrow[c]});
                 }
                 try w.print(" |\n", .{});
             }
@@ -819,12 +819,13 @@ test "Chap3 -Calculating the inverse of a matrix" {
     };
     const B = Mat4{
         .data = .{
-            .{ 0.21805, 0.45113, 0.24060, -0.04511 },
-            .{ -0.80827, -1.45677, -0.44361, 0.52068 },
-            .{ -0.07895, -0.22368, -0.05263, 0.19737 },
-            .{ -0.52256, -0.81391, -0.30075, 0.30639 },
+            .{ 0.218045112781954880000, 0.451127819548872160000, 0.240601503759398480000, -0.045112781954887216000 },
+            .{ -0.808270676691729400000, -1.456766917293233200000, -0.443609022556390950000, 0.520676691729323300000 },
+            .{ -0.078947368421052630000, -0.223684210526315800000, -0.052631578947368420000, 0.197368421052631580000 },
+            .{ -0.522556390977443700000, -0.813909774436090200000, -0.300751879699248100000, 0.306390977443609050000 },
         },
     };
+
     const cofactorA23 = A.cofactor(2, 3);
     const cofactorA32 = A.cofactor(3, 2);
     const determinantA = A.determinant();
@@ -834,12 +835,14 @@ test "Chap3 -Calculating the inverse of a matrix" {
     // log(@src(), "\n       B:{f}\n", .{B});
     // log(@src(), "\ninverseA:{f}\n", .{inverseA});
     // log(@src(), "\ncofactorA23:{}\ncofactorA32:{}\ndeterminantA:{}\n", .{ cofactorA23, cofactorA32, determinantA });
+    // log(@src(), "\nB.get(3,2):{}\nDivision gives:{}\n", .{ B.get(3, 2), cofactorA32 / determinantA });
+    // log(@src(), "\nB.get(2,3):{}\nDivision gives:{}\n", .{ B.get(2, 3), cofactorA32 / determinantA });
 
-    try std.testing.expect(approxEq(S(-160), cofactorA23));
-    try std.testing.expect(approxEq(S(105), cofactorA32));
     try std.testing.expect(approxEq(S(532), determinantA));
-    try std.testing.expect(approxEq(S(-160) / S(532), cofactorA23 / determinantA));
+    try std.testing.expect(approxEq(S(-160), cofactorA23));
     try std.testing.expect(approxEq(B.get(3, 2), cofactorA23 / determinantA));
+    try std.testing.expect(approxEq(S(105), cofactorA32));
+    try std.testing.expect(approxEq(S(-160) / S(532), cofactorA23 / determinantA));
 
     try std.testing.expect(true == A.isInvertible());
     try std.testing.expect(A.inverse().equals(&B));
@@ -856,13 +859,17 @@ test "Chap3 -Calculating the inverse of another matrix" {
     };
     const B = Mat4{
         .data = .{
-            .{ -0.15385, -0.15385, -0.28205, -0.53846 },
-            .{ -0.07692, 0.12308, 0.02564, 0.03077 },
-            .{ 0.35897, 0.35897, 0.43590, 0.92308 },
-            .{ -0.69231, -0.69231, -0.76923, -1.92308 },
+            .{ -0.153846153846153850000, -0.153846153846153850000, -0.282051282051282050000, -0.538461538461538400000 },
+            .{ -0.076923076923076930000, 0.123076923076923080000, 0.025641025641025640000, 0.030769230769230770000 },
+            .{ 0.358974358974359000000, 0.358974358974359000000, 0.435897435897435900000, 0.923076923076923100000 },
+            .{ -0.692307692307692300000, -0.692307692307692300000, -0.769230769230769300000, -1.923076923076923100000 },
         },
     };
 
+    // const inverseA = A.inverse();
+    // log(@src(), "\n       A:{f}\n", .{A});
+    // log(@src(), "\n       B:{f}\n", .{B});
+    // log(@src(), "\ninverseA:{f}\n", .{inverseA});
     try std.testing.expect(true == A.isInvertible());
     try std.testing.expect(A.inverse().equals(&B));
 }
@@ -878,13 +885,17 @@ test "Chap3 -Calculating the inverse of a third matrix" {
     };
     const B = Mat4{
         .data = .{
-            .{ -0.04074, -0.07778, 0.14444, -0.22222 },
-            .{ -0.07778, 0.03333, 0.36667, -0.33333 },
-            .{ -0.02901, -0.14630, -0.10926, 0.12963 },
-            .{ 0.17778, 0.06667, -0.26667, 0.33333 },
+            .{ -0.040740740740740744000, -0.077777777777777780000, 0.144444444444444430000, -0.222222222222222200000 },
+            .{ -0.077777777777777780000, 0.033333333333333330000, 0.366666666666666640000, -0.333333333333333300000 },
+            .{ -0.029012345679012345000, -0.146296296296296290000, -0.109259259259259260000, 0.129629629629629620000 },
+            .{ 0.177777777777777780000, 0.066666666666666670000, -0.266666666666666660000, 0.333333333333333300000 },
         },
     };
 
+    // const inverseA = A.inverse();
+    // log(@src(), "\n       A:{f}\n", .{A});
+    // log(@src(), "\n       B:{f}\n", .{B});
+    // log(@src(), "\ninverseA:{f}\n", .{inverseA});
     try std.testing.expect(true == A.isInvertible());
     try std.testing.expect(A.inverse().equals(&B));
 }

@@ -323,9 +323,11 @@ test "Chap6 -Computing the normal on a translated sphere" {
     var s = Shape.fromSphere(&sphere);
     s.setTransform(&Mat4.translation(0, 1, 0));
     const x = S(0);
-    const y = S(1.70711);
-    const z = S(-0.70711);
+    const y = S(1.707106781186548);
+    const z = S(-0.707106781186548);
     const n = s.normal_at(point(x, y, z));
+    // log(@src(), "n: {f} z: {}\n", .{ n, z });
+    // log(@src(), "e: {f} z: {}\n", .{ vector(0, -z, z), z });
     try std.testing.expect(n.equals(vector(0, -z, z)));
 }
 
@@ -338,7 +340,8 @@ test "Chap6 -Computing the normal on a transformed sphere" {
     const y = std.math.sqrt2 / S(2);
     const z = -std.math.sqrt2 / S(2);
     const n = s.normal_at(point(x, y, z));
-    try std.testing.expect(n.equals(vector(0, S(0.97014), S(-0.24254))));
+    // log(@src(), "n: {f} z: {}\n", .{ n, z });
+    try std.testing.expect(n.equals(vector(0, 0.970142500145332, -0.242535625036333)));
 }
 
 test "Chap6 -Reflecting a vector approaching at 45°" {

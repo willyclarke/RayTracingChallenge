@@ -144,7 +144,8 @@ test "Chap6 -Lighting with eye opposite surface, light offset 45°" {
     const normalv = vector(0, 0, -1);
     const light = Light.fromPointLight(PointLight.init_at(point(0, 10, -10), color(1, 1, 1)));
     const result = lighting(m, light, position, eyev, normalv, false);
-    try std.testing.expect(result.equals(color(0.7364, 0.7364, 0.7364)));
+    // log(@src(), "result: {f} \n", .{result});
+    try std.testing.expect(result.equals(color(0.736396103067893, 0.736396103067893, 0.736396103067893)));
 }
 
 test "Chap6 -Lighting with eye in the path of the reflection vector" {
@@ -154,7 +155,8 @@ test "Chap6 -Lighting with eye in the path of the reflection vector" {
     const normalv = vector(0, 0, -1);
     const light = Light.fromPointLight(PointLight.init_at(point(0, 10, -10), color(1, 1, 1)));
     const result = lighting(m, light, position, eyev, normalv, false);
-    try std.testing.expect(result.equals(color(1.6364, 1.6364, 1.6364)));
+    // log(@src(), "result: {f} \n", .{result});
+    try std.testing.expect(result.equals(color(1.636396103067893, 1.636396103067893, 1.636396103067893)));
 }
 
 test "Chap6 -Lighting with the light behind the surface" {

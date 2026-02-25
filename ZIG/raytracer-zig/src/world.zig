@@ -4,15 +4,16 @@ const utils = @import("utils.zig");
 const log = utils.log;
 
 const camera_mod = @import("canvas.zig");
-const types_mod = @import("types.zig");
-const matrix_mod = @import("matrix.zig");
+const tMod = @import("types.zig");
+const mMod = @import("matrix.zig");
 const material_mod = @import("material.zig");
 const light_mod = @import("lights.zig");
 const point_light_mod = @import("lights/point_light.zig");
 const canvas_mod = @import("canvas.zig");
 const shapes_mod = @import("shapes/shapes.zig");
 const intersection_mod = @import("shapes/intersections.zig");
-pub const sphere_mod = @import("shapes/sphere.zig");
+const sphereMod = @import("shapes/sphere.zig");
+const shapesMod = @import("shapes/shapes.zig");
 
 const Camera = camera_mod.Camera;
 const Canvas = canvas_mod.Canvas;
@@ -26,19 +27,19 @@ const PointLight = point_light_mod.PointLight;
 const lighting = light_mod.lighting;
 
 const Shape = shapes_mod.Shape;
-pub const Sphere = sphere_mod.Sphere;
+pub const Sphere = sphereMod.Sphere;
 
-const Projectile = types_mod.Projectile;
-const Scalar = types_mod.Scalar;
-const S = types_mod.S;
-const Tuple = types_mod.Tuple;
-const Ray = types_mod.Ray;
-const approxEq = types_mod.approxEq;
-const point = types_mod.Point;
-const vector = types_mod.Vector;
-const color = types_mod.Vector;
-const matrix = matrix_mod.Mat4;
-const Matrix = matrix_mod.Mat4;
+const Projectile = tMod.Projectile;
+const Scalar = tMod.Scalar;
+const S = tMod.S;
+const Tuple = tMod.Tuple;
+const Ray = tMod.Ray;
+const approxEq = tMod.approxEq;
+const point = tMod.Point;
+const vector = tMod.Vector;
+const color = tMod.Vector;
+const matrix = mMod.Mat4;
+const Matrix = mMod.Mat4;
 
 pub const Intersection = intersection_mod.Intersection;
 pub const Intersections = intersection_mod.Intersections;
@@ -120,6 +121,7 @@ pub const PrepareComputations = struct {
     point: Tuple,
     eyev: Tuple,
     normalv: Tuple,
+    over_point: Tuple,
     inside: bool,
 
     pub fn init(t: Scalar, ptrShape: *const Shape) PrepareComputations {
@@ -129,6 +131,7 @@ pub const PrepareComputations = struct {
             .point = Tuple.point(0, 0, -1),
             .eyev = Tuple.vector(0, 0, -1),
             .normalv = Tuple.vector(0, 0, 1),
+            .over_point = Tuple.point(0, 0, -1).add(Tuple.vector(0, 0, 1).muls(tMod.EPSILON)), // point+normalv*EPSILON
             .inside = false,
         };
     }
@@ -153,11 +156,41 @@ pub fn prepare_computations(i: Intersection, r: Ray) PrepareComputations {
         comps.normalv = comps.normalv.neg();
     }
 
+    comps.over_point = comps.point.add(comps.normalv.muls(tMod.EPSILON));
+
     return comps;
 }
 
-pub fn shade_hit(world: *const World, comps: PrepareComputations) Tuple {
-    return lighting(comps.ptrShape.material().*, world.lightsSlice()[0], comps.point, comps.eyev, comps.normalv, false);
+pub fn shade_hit(world: *const World, comps: PrepareComputations, temp_alloc: std.mem.Allocator) Tuple {
+    const shadowed = is_shadowed(world, comps.over_point, temp_alloc);
+    return lighting(comps.ptrShape.material().*, world.lightsSlice()[0], comps.over_point, comps.eyev, comps.normalv, shadowed);
+}
+
+pub fn is_shadowed(world: *const World, p: Tuple, temp_alloc: std.mem.Allocator) bool {
+    // 1. Measure the distance from point to the light source by subtracting point
+    // from the light position, and taking the magnitude of the resulting vector.
+    // Call this distance.
+    const v = world.lightsSlice()[0].point_light.pos.sub(p);
+    const distance = v.mag();
+
+    // 2. Create a ray from point toward the light source by normalizing the vector
+    // from step 1.
+    const direction = v.normalize();
+    const r = Ray.init(p, direction);
+
+    // 3. Intersect the world with that ray.
+    var xs = intersect_world(world, r, temp_alloc);
+    defer xs.deinit(temp_alloc); // or world.allocator(), whichever you use
+
+    // 4. Check to see if there was a hit, and if so, whether t is less than distance. If
+    // so, the hit lies between the point and the light source, and the point is in
+    // shadow.
+    const hit_opt = xs.hit();
+    if (hit_opt == null) return false;
+    const hit = hit_opt.?; // safe now
+    if (hit.t < distance) return true;
+
+    return false;
 }
 
 pub fn default_world(parent_alloc: std.mem.Allocator) !World {
@@ -168,13 +201,13 @@ pub fn default_world(parent_alloc: std.mem.Allocator) !World {
 
     var s1 = try alloc.create(shapes_mod.Sphere); // shapes_mod.Shape.fromSphere(sphere0);
     s1.* = shapes_mod.Sphere.init();
-    s1.h.material.col = types_mod.color(0.8, 1.0, 0.6);
+    s1.h.material.col = tMod.color(0.8, 1.0, 0.6);
     s1.h.material.diffuse = S(0.7);
     s1.h.material.specular = S(0.2);
 
     var s2 = try alloc.create(shapes_mod.Sphere); //  shapes_mod.Shape.fromSphere(sphere1);
     s2.* = shapes_mod.Sphere.init();
-    s2.set_transform(matrix_mod.Mat4.scaling(0.5, 0.5, 0.5));
+    s2.set_transform(mMod.Mat4.scaling(0.5, 0.5, 0.5));
 
     try world.addShape(Shape.fromSphere(s1));
     try world.addShape(Shape.fromSphere(s2));
@@ -189,7 +222,7 @@ pub fn default_world(parent_alloc: std.mem.Allocator) !World {
     // const lights = try alloc.alloc(Light, 1);
     // lights[0] = Light.fromPointLight(PointLight.init_at(point(-10, 10, -10), types_mod.color(1, 1, 1)));
     // world.lights = lights;
-    try world.addLight(Light.fromPointLight(PointLight.init_at(point(-10, 10, -10), types_mod.color(1, 1, 1))));
+    try world.addLight(Light.fromPointLight(PointLight.init_at(point(-10, 10, -10), tMod.color(1, 1, 1))));
 
     return world;
 }
@@ -242,7 +275,7 @@ pub fn color_at(world: *const World, r: Ray, temp_alloc: std.mem.Allocator) Tupl
     const comps = prepare_computations(hit, r);
 
     // 5. Finally, call shade_hit to find the color at the hit.
-    return shade_hit(world, comps);
+    return shade_hit(world, comps, temp_alloc);
 }
 
 pub fn view_transform(from: Tuple, to: Tuple, up: Tuple) Matrix {
@@ -265,7 +298,7 @@ pub fn view_transform(from: Tuple, to: Tuple, up: Tuple) Matrix {
     const upn = up.normalize();
     const left = forward.cross(upn);
     const true_up = left.cross(forward);
-    var orientation = matrix_mod.mat4FromRows(vector(left.x, left.y, left.z), vector(true_up.x, true_up.y, true_up.z), vector(forward_neg.x, forward_neg.y, forward_neg.z), point(0, 0, 0));
+    var orientation = mMod.mat4FromRows(vector(left.x, left.y, left.z), vector(true_up.x, true_up.y, true_up.z), vector(forward_neg.x, forward_neg.y, forward_neg.z), point(0, 0, 0));
     const translation = matrix.translation(-from.x, -from.y, -from.z);
     return orientation.mulM(&translation);
 }
@@ -379,7 +412,7 @@ test "Chap7 -The hit, when an intersection occurs on the inside" {
     var comps = PrepareComputations.init(i.t, &s);
     comps = prepare_computations(i, r);
 
-    // print("comps.point: {f} \n", .{comps.point});
+    // log(@src(), "\ncomps.point : {f}\n", .{comps.point});
     try std.testing.expect(comps.point.equals(point(0, 0, 1)) == true);
     try std.testing.expect(comps.eyev.equals(vector(0, 0, -1)) == true);
     try std.testing.expect(comps.inside == true);
@@ -403,10 +436,10 @@ test "Chap7 -Shading an intersection" {
     var comps = PrepareComputations.init(i.t, &shape);
     comps = prepare_computations(i, r);
 
-    const c = shade_hit(&w, comps);
+    const c = shade_hit(&w, comps, w.allocator());
 
-    // print("c: {f} \n", .{c});
-    try std.testing.expect(c.equals(color(0.38066, 0.47583, 0.2855)) == true);
+    // log(@src(), "\nc : {f}\n", .{c});
+    try std.testing.expect(c.equals(color(0.380661190703326, 0.475826488379158, 0.285495893027495)) == true);
 }
 
 test "Chap7 -Shading an intersection from the inside" {
@@ -426,10 +459,10 @@ test "Chap7 -Shading an intersection from the inside" {
     };
 
     const comps = prepare_computations(i, r);
-    const c = shade_hit(&w, comps);
+    const c = shade_hit(&w, comps, w.allocator());
 
-    // print("c: {f} \n", .{c});
-    try std.testing.expect(c.equals(color(0.90498, 0.90498, 0.90498)) == true);
+    // log(@src(), "\nc : {f}\n", .{c});
+    try std.testing.expect(c.equals(color(0.904984439883870, 0.904984439883870, 0.904984439883870)) == true);
 }
 
 test "Chap7 -The color when a ray misses" {
@@ -450,7 +483,8 @@ test "Chap7 -The color when a ray hits" {
 
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
     const c = color_at(&w, r, gpa.allocator());
-    try std.testing.expect(c.equals(color(0.38066, 0.47583, 0.2855)) == true);
+    // log(@src(), "c: {f}\n", .{c});
+    try std.testing.expect(c.equals(color(0.380661190703326, 0.475826488379158, 0.285495893027495)) == true);
 }
 
 test "Chap7 -The color with an intersection behind the ray" {
@@ -471,7 +505,7 @@ test "Chap7 -The color with an intersection behind the ray" {
     try std.testing.expect(c.equals(inner.material().color()) == true);
 }
 
-test "Chap7- The transformation matrix for the default orientation" {
+test "Chap7 -The transformation matrix for the default orientation" {
     const from = point(0, 0, 0);
     const to = point(0, 0, 1);
     const up = vector(0, 1, 0);
@@ -481,7 +515,7 @@ test "Chap7- The transformation matrix for the default orientation" {
     try std.testing.expect(true == (scaling.equals(vector(-1, 1, -1))));
 }
 
-test "Chap7- The view transformation moves the world" {
+test "Chap7 -The view transformation moves the world" {
     const from = point(0, 0, 8);
     const to = point(0, 0, 0);
     const up = vector(0, 1, 0);
@@ -491,19 +525,154 @@ test "Chap7- The view transformation moves the world" {
     try std.testing.expect(true == (translation.equals(vector(0, 0, -8))));
 }
 
-test "Chap7- An arbitrary view transformation" {
+test "Chap7 -An arbitrary view transformation" {
     const from = point(1, 3, 2);
     const to = point(4, -2, 8);
     const up = vector(1, 1, 0);
     const t = view_transform(from, to, up);
 
-    const Row1 = Tuple.init(-0.50709, 0.50709, 0.67612, -2.36643);
-    const Row2 = Tuple.init(0.76772, 0.60609, 0.12122, -2.82843);
-    const Row3 = Tuple.init(-0.35857, 0.59761, -0.71714, 0.0);
-    const Row4 = Tuple.init(S(0), S(0), S(0), S(1));
-    const e = matrix_mod.mat4FromRows(Row1, Row2, Row3, Row4);
+    const e = mMod.Mat4{
+        .data = .{
+            .{ -0.507092552837109900000, 0.507092552837109900000, 0.676123403782813200000, -2.366431913239846000000 },
+            .{ 0.767715933859680100000, 0.606091526731326300000, 0.121218305346265240000, -2.828427124746189400000 },
+            .{ -0.358568582800318060000, 0.597614304667196800000, -0.717137165600636100000, 0.000000000000000000000 },
+            .{ 0.000000000000000000000, 0.000000000000000000000, 0.000000000000000000000, 1.000000000000000000000 },
+        },
+    };
 
     // print("t={f}\n", .{t});
     // print("expect={f}\n", .{e});
     try std.testing.expect(true == (t.equals(&e)));
+}
+
+test "Chap8 -There is no shadow when nothing is collinear with point and light" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var w = try default_world(gpa.allocator());
+    defer w.deinit(gpa.allocator());
+
+    var temp_arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    const p = point(0, 10, 0);
+    const result = is_shadowed(&w, p, temp_alloc);
+
+    try std.testing.expect(result == false);
+}
+
+test "Chap8 -The shadow when an object is between the point and the light" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var w = try default_world(gpa.allocator());
+    defer w.deinit(gpa.allocator());
+
+    var temp_arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    const p = point(10, -10, 10);
+    const result = is_shadowed(&w, p, temp_alloc);
+
+    try std.testing.expect(result == true);
+}
+
+test "Chap8 -There is no shadow when an object is behind the light" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var w = try default_world(gpa.allocator());
+    defer w.deinit(gpa.allocator());
+
+    var temp_arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    const p = point(-20, 20, -20);
+    const result = is_shadowed(&w, p, temp_alloc);
+
+    try std.testing.expect(result == false);
+}
+
+test "Chap8 -There is no shadow when an object is behind the point" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var w = try default_world(gpa.allocator());
+    defer w.deinit(gpa.allocator());
+
+    var temp_arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer temp_arena.deinit();
+    const temp_alloc = temp_arena.allocator();
+
+    const p = point(-2, 2, -2);
+    const result = is_shadowed(&w, p, temp_alloc);
+
+    try std.testing.expect(result == false);
+}
+
+test "Chap8 -shade_hit() is given an intersection in shadow" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var w = try default_world(gpa.allocator());
+    defer w.deinit(gpa.allocator());
+    try w.setSingleLight(Light.fromPointLight(PointLight.init_at(point(0, 0, -10), color(1, 1, 1))));
+
+    var temp_arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer temp_arena.deinit();
+    // const temp_alloc = temp_arena.allocator();
+
+    const s1 = try w.allocator().create(sphereMod.Sphere);
+    s1.* = sphereMod.Sphere.init();
+    try w.setSingleShape(shapesMod.Shape.fromSphere(s1));
+
+    const s2 = try w.allocator().create(sphereMod.Sphere);
+    s2.* = sphereMod.Sphere.init();
+    s2.set_transform(mMod.Mat4.translation(0, 0, 10));
+    try w.addShape(shapesMod.Shape.fromSphere(s2));
+
+    const r = Ray.init(point(0, 0, 5), vector(0, 0, 1));
+
+    const ptrShape = w.shapePtr(1);
+    const i = Intersection{
+        .t = S(4),
+        .ptrShape = ptrShape,
+    };
+    const comps = prepare_computations(i, r);
+    // const shadowed = is_shadowed(&w, r.origin, temp_alloc);
+    const c = shade_hit(&w, comps, w.allocator());
+
+    // print("shade_hit: {}\n", .{shadowed});
+    // print("s1.transform: {f}\n", .{s1.transform()});
+    // print("s2.transform: {f}\n", .{s2.transform()});
+    // log(@src(), "\nc : {f}\n", .{c});
+    try std.testing.expect(c.equals(color(0.1, 0.1, 0.1)) == true);
+}
+
+test "Chap8 -The hit should offset the point" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var w = try default_world(gpa.allocator());
+    defer w.deinit(gpa.allocator());
+    try w.setSingleLight(Light.fromPointLight(PointLight.init_at(point(0, 0, -10), color(1, 1, 1))));
+
+    const s1 = try w.allocator().create(sphereMod.Sphere);
+    s1.* = sphereMod.Sphere.init();
+    s1.set_transform(mMod.Mat4.translation(0, 0, 1));
+    try w.setSingleShape(shapesMod.Shape.fromSphere(s1));
+    const ptrShape = w.shapePtr(0);
+
+    const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
+
+    const i = Intersection{
+        .t = S(5),
+        .ptrShape = ptrShape,
+    };
+
+    const comps = prepare_computations(i, r);
+
+    // The point has been moved in the negative direction of the normalv.
+    // So the z-value should be slightly bigger the compared to the over_point.z
+    try std.testing.expect(comps.over_point.z < -tMod.EPSILON / S(2));
+    try std.testing.expect(comps.point.z > comps.over_point.z);
+    // utils.log(@src(), "comps.point: {f}\n", .{comps.point});
+    // utils.log(@src(), "comps_over.point: {f}\n", .{comps.over_point});
 }
