@@ -59,39 +59,37 @@ pub const Sphere = struct {
     }
 
     /// ---
+    /// A ray hitting a sphere can at most have two intersections.
+    /// ---
+    pub const LocalHits = struct {
+        count: usize = 0,
+        t: [2]Scalar = .{ S(0), S(0) },
+    };
+
+    /// ---
     /// Compute a local ray by applying the inverse of the sphere
     /// transform. Use the local rays origin and direction to
     /// compute the Intersections.
     /// ---
-    pub fn intersect(self: *Sphere, ray: Ray) LocalIntersections {
+    pub fn intersect(self: *const Sphere, ray: Ray) LocalHits {
+        const localray = Ray{
+            .origin = self.h.transformed_m_inv.mulT(ray.origin),
+            .direction = self.h.transformed_m_inv.mulT(ray.direction),
+        };
 
-        // ---
-        // NOTE: Two options
-        // 1. Compute the inverse of the sphere transform.
-        // 2. Use the already computed invers.
-        // ---
-        // const lr = Ray{ .origin = self.inverse().mulT(ray.origin), .direction = self.inverse().mulT(ray.direction) };
-        const localray = Ray{ .origin = self.h.transformed_m_inv.mulT(ray.origin), .direction = self.h.transformed_m_inv.mulT(ray.direction) };
         const sphere2ray = localray.origin.sub(point(0, 0, 0));
         const a = localray.direction.dot(localray.direction);
         const b = S(2) * localray.direction.dot(sphere2ray);
         const c = sphere2ray.dot(sphere2ray) - S(1);
         const discriminant = b * b - S(4) * a * c;
 
-        if (discriminant < S(0)) {
-            return LocalIntersections.init();
-        }
+        if (discriminant < S(0)) return .{ .count = 0 };
 
-        const t1 = (-b - std.math.sqrt(discriminant)) / (S(2) * a);
-        const t2 = (-b + std.math.sqrt(discriminant)) / (S(2) * a);
+        const sqrt_disc = std.math.sqrt(discriminant);
+        const t1 = (-b - sqrt_disc) / (S(2) * a);
+        const t2 = (-b + sqrt_disc) / (S(2) * a);
 
-        var xs = LocalIntersections.init();
-
-        const shape = Shape.fromSphere(self); // produces a real Shape union
-        xs.add(Shape.intersection(t1, &shape), self.h.object_id);
-        xs.add(Shape.intersection(t2, &shape), self.h.object_id);
-
-        return xs;
+        return .{ .count = 2, .t = .{ t1, t2 } };
     }
 
     /// ---
@@ -139,8 +137,8 @@ test "Chap5 -A ray intersects a sphere at two points" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.items[0]).t == S(4));
-    try std.testing.expect((xs.items[1]).t == S(6));
+    try std.testing.expect((xs.t[0]) == S(4));
+    try std.testing.expect((xs.t[1]) == S(6));
 }
 
 test "Chap5 -A ray intersects a sphere at a tangent" {
@@ -149,8 +147,8 @@ test "Chap5 -A ray intersects a sphere at a tangent" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.items[0]).t == S(5));
-    try std.testing.expect((xs.items[1]).t == S(5));
+    try std.testing.expect((xs.t[0]) == S(5));
+    try std.testing.expect((xs.t[1]) == S(5));
 }
 
 test "Chap5 -A ray misses a sphere" {
@@ -167,8 +165,8 @@ test "Chap5 -A ray originates inside a sphere" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.items[0]).t == S(-1));
-    try std.testing.expect((xs.items[1]).t == S(1));
+    try std.testing.expect((xs.t[0]) == S(-1));
+    try std.testing.expect((xs.t[1]) == S(1));
 }
 
 test "Chap5 -A sphere is behind a ray" {
@@ -177,8 +175,8 @@ test "Chap5 -A sphere is behind a ray" {
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
-    try std.testing.expect((xs.items[0]).t == S(-6));
-    try std.testing.expect((xs.items[1]).t == S(-4));
+    try std.testing.expect((xs.t[0]) == S(-6));
+    try std.testing.expect((xs.t[1]) == S(-4));
 }
 
 test "Chap6 -A sphere has a default material" {
