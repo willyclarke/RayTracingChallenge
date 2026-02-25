@@ -48,10 +48,20 @@ pub const Shape = union(enum) {
     }
 
     pub fn intersect(self: *const Shape, ray: Ray) LocalIntersections {
-        return switch (self.*) {
-            .sphere => |s| s.intersect(ray),
+        var xs = LocalIntersections.init();
+
+        switch (self.*) {
+            .sphere => |sp| {
+                const lh = sp.intersect(ray);
+                var i: usize = 0;
+                while (i < lh.count) : (i += 1) {
+                    xs.add(Shape.intersection(lh.t[i], self), self.id());
+                }
+            },
             // .cube => |c| c.intersect(ray),
-        };
+        }
+
+        return xs;
     }
 
     /// ---
