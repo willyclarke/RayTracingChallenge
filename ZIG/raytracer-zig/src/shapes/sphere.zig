@@ -8,6 +8,7 @@ const shapes = @import("shapes.zig");
 const matrix = @import("../matrix.zig");
 const mat_module = @import("../material.zig");
 const intersection_mod = @import("intersections.zig");
+const local_hits_mod = @import("local_hits.zig");
 
 const ShapeHeader = @import("shape_header.zig").ShapeHeader;
 
@@ -25,6 +26,8 @@ const vector = types.Vector;
 const approxEq = types.approxEq;
 const log = utils.log;
 const Material = mat_module.Material;
+const LocalHits = local_hits_mod.LocalHits;
+const local_hits = local_hits_mod.LocalHits;
 
 var NEXT_SPHERE_ID: std.atomic.Value(usize) = .{ .raw = 1 };
 
@@ -32,18 +35,13 @@ pub const Sphere = struct {
     h: ShapeHeader,
     radius: Scalar,
 
+    pub const SphereHits = local_hits(2);
+
     pub fn init() Sphere {
         const obj_id = NEXT_SPHERE_ID.fetchAdd(1, .seq_cst);
         // log(@src(), "\nNext Sphere Id:{}\n", .{obj_id});
         return .{
-            .h = .{
-                .object_id = obj_id,
-                .transformed_m = matrix.Mat4.identity(),
-                .transformed_m_inv = matrix.Mat4.identity(),
-                .transposed_m = matrix.Mat4.identity(),
-                .transposed_m_inv = matrix.Mat4.identity(),
-                .material = Material.init(),
-            },
+            .h = ShapeHeader.init(obj_id),
             .radius = S(1),
         };
     }
@@ -60,23 +58,10 @@ pub const Sphere = struct {
 
     /// ---
     /// A ray hitting a sphere can at most have two intersections.
+    /// SphereHits is comptime LocalHits with a count/size set
+    /// to a value of 2.
     /// ---
-    pub const LocalHits = struct {
-        count: usize = 0,
-        t: [2]Scalar = .{ S(0), S(0) },
-    };
-
-    /// ---
-    /// Compute a local ray by applying the inverse of the sphere
-    /// transform. Use the local rays origin and direction to
-    /// compute the Intersections.
-    /// ---
-    pub fn intersect(self: *const Sphere, ray: Ray) LocalHits {
-        const localray = Ray{
-            .origin = self.h.transformed_m_inv.mulT(ray.origin),
-            .direction = self.h.transformed_m_inv.mulT(ray.direction),
-        };
-
+    pub fn local_intersect(localray: Ray) SphereHits {
         const sphere2ray = localray.origin.sub(point(0, 0, 0));
         const a = localray.direction.dot(localray.direction);
         const b = S(2) * localray.direction.dot(sphere2ray);
@@ -93,11 +78,30 @@ pub const Sphere = struct {
     }
 
     /// ---
-    /// NOTE: Compute the normal at the given world_point.
-    ///       This function uses cached matrix's for the
-    ///       inverted transform and the inverted transpose.
+    /// Recieve a local ray by that has been processed by applying the
+    /// inverse of the sphere transform. Use the local rays origin and
+    /// direction to compute the Intersections.
     /// ---
-    pub fn normal_at(self: *const Sphere, world_point: Tuple) Tuple {
+    pub fn intersect(self: *const Sphere, ray: Ray) SphereHits {
+        const localray = Ray{
+            .origin = self.h.transformed_m_inv.mulT(ray.origin),
+            .direction = self.h.transformed_m_inv.mulT(ray.direction),
+        };
+
+        var sphere_hits = local_intersect(localray);
+        sphere_hits.sort2();
+        return sphere_hits;
+    }
+
+    /// ---
+    /// NOTE: returns the sphere-specific normal
+    /// ---
+    pub fn local_normal_at(self: *const Sphere, local_point: Tuple) Tuple {
+        _ = self;
+        return local_point.sub(point(0, 0, 0));
+    }
+
+    pub fn normal_at_deprecated(self: *const Sphere, world_point: Tuple) Tuple {
         const object_point = self.h.transformed_m_inv.mulT(world_point);
         const object_normal = (object_point.sub(Tuple.point(0, 0, 0)));
         var world_normal = self.h.transposed_m_inv.mulT(object_normal);
@@ -110,10 +114,7 @@ pub const Sphere = struct {
     /// NOTE: Also computes the inverse as a side effect...
     /// ---
     pub fn set_transform(self: *Sphere, m: matrix.Mat4) void {
-        self.h.transformed_m = m;
-        self.h.transformed_m_inv = m.inverse();
-        self.h.transposed_m = m.transpose();
-        self.h.transposed_m_inv = m.transpose().inverse();
+        return self.h.set_transform(m);
     }
 
     pub fn transform(self: *const Sphere) matrix.Mat4 {

@@ -10,6 +10,8 @@ const material_mod = @import("../material.zig");
 const intersection_mod = @import("intersections.zig");
 pub const sphere_mod = @import("sphere.zig");
 pub const Sphere = sphere_mod.Sphere;
+pub const plane_mod = @import("plane.zig");
+pub const Plane = plane_mod.Plane;
 
 pub const Mat4 = matrix.Mat4;
 
@@ -31,20 +33,38 @@ const Material = material_mod.Material;
 // BEST PATTERN: union(enum) — no manual enum needed!
 pub const Shape = union(enum) {
     sphere: *Sphere,
+    plane: *Plane,
     // cube: Cube,
-    // plane: Plane,
 
     // Real methods — these work because they're inside the struct scope
     pub fn id(self: *const Shape) usize {
         return switch (self.*) {
             .sphere => |s| s.id(),
-            // .plane => |p| p.id(),
+            .plane => |p| p.id(),
         };
     }
 
-    // Helper: wrap a Sphere into a Shape using a mutable pointer
-    pub fn fromSphere(s: *Sphere) Shape {
-        return .{ .sphere = s };
+    pub fn destroy(self: Shape, alloc: std.mem.Allocator) void {
+        switch (self) {
+            .sphere => |p| alloc.destroy(p),
+            .plane => |p| alloc.destroy(p),
+            // .cube   => |p| alloc.destroy(p),
+        }
+    }
+
+    pub fn testShape(alloc: std.mem.Allocator) !Shape {
+        const sp = try alloc.create(Sphere);
+        sp.* = Sphere.init();
+        return Shape.fromSphere(sp);
+    }
+
+    // Helpers: wrap a Sphere into a Shape using a mutable pointer
+    pub fn fromPlane(ptrPlane: *Plane) Shape {
+        return .{ .plane = ptrPlane };
+    }
+
+    pub fn fromSphere(ptrSphere: *Sphere) Shape {
+        return .{ .sphere = ptrSphere };
     }
 
     pub fn intersect(self: *const Shape, ray: Ray) LocalIntersections {
@@ -53,6 +73,13 @@ pub const Shape = union(enum) {
         switch (self.*) {
             .sphere => |sp| {
                 const lh = sp.intersect(ray);
+                var i: usize = 0;
+                while (i < lh.count) : (i += 1) {
+                    xs.add(Shape.intersection(lh.t[i], self), self.id());
+                }
+            },
+            .plane => |pp| {
+                const lh = pp.intersect(ray);
                 var i: usize = 0;
                 while (i < lh.count) : (i += 1) {
                     xs.add(Shape.intersection(lh.t[i], self), self.id());
@@ -75,56 +102,80 @@ pub const Shape = union(enum) {
     /// return a pointer to the cached inverse. Does not calculate.
     /// ---
     pub fn inverse(self: *const Shape) *matrix.Mat4 {
+        switch (self.*) {
+            inline else => |pObj| pObj.h.transformed_m_inv,
+        }
+        // return switch (self.*) {
+        //     .sphere => |s| &s.h.transformed_m_inv,
+        //     // .cube => |c| c.inverse(m),
+        // };
+    }
+
+    /// ---
+    /// NOTE: Compute the normal at the given world_point.
+    ///       This function uses cached matrix's for the
+    ///       inverted transform and the inverted transpose.
+    /// ---
+    pub fn normal_at(self: *const Shape, world_point: Tuple) Tuple {
         return switch (self.*) {
-            .sphere => |s| &s.h.transformed_m_inv,
-            // .cube => |c| c.inverse(m),
+            inline else => |obj| {
+                const local_point = obj.h.transformed_m_inv.mulT(world_point);
+                const local_normal = obj.local_normal_at(local_point);
+
+                var world_normal = obj.h.transposed_m_inv.mulT(local_normal);
+                world_normal.w = S(0);
+                return world_normal.normalize();
+            },
         };
     }
 
-    pub fn normal_at(self: *const Shape, position: Tuple) Tuple {
+    pub fn normal_at_deprecated(self: *const Shape, position: Tuple) Tuple {
         return switch (self.*) {
-            .sphere => |s| s.normal_at(position),
+            .sphere => |s| s.normal_at_deprecated(position),
             // .cube => |c| c.normal_at(position),
         };
     }
 
     pub fn material(self: *const Shape) *Material {
         return switch (self.*) {
-            .sphere => |s| &s.h.material,
+            .sphere => |sp| &sp.h.material,
+            .plane => |pp| &pp.h.material,
             // .cube => |c| c.material,
         };
     }
 
-    pub fn setMaterial(self: *Shape, mat: Material) void {
-        self.material().* = mat;
-        // switch (self) {
-        //     .sphere => |s| s.h.material = mat,
-        //     // .cube => |c| c.material,
-        // }
+    pub fn set_material(self: *Shape, mat: Material) void {
+        switch (self.*) {
+            inline else => |pObj| pObj.h.set_material(mat),
+        }
     }
 
-    pub fn setTransform(self: *Shape, m: *const matrix.Mat4) void {
+    pub fn set_transform(self: *Shape, m: *const matrix.Mat4) void {
         switch (self.*) {
-            .sphere => |s| {
-                s.h.transformed_m = m.*;
-                s.h.transposed_m = m.transpose();
-                s.h.transformed_m_inv = m.inverse();
-                s.h.transposed_m_inv = s.h.transformed_m_inv.transpose();
-            },
-            // .cube => |*c| c.set_transform(m),
+            inline else => |pObj| pObj.h.set_transform(m.*),
         }
     }
 
     pub fn transform(self: *const Shape) *matrix.Mat4 {
         return switch (self.*) {
-            .sphere => |s| &s.h.transformed_m,
+            .sphere => |sp| &sp.h.transformed_m,
+            .plane => |pp| &pp.h.transformed_m,
+            // .cube => |c| c.transform(m),
+        };
+    }
+
+    pub fn inv_transform(self: *const Shape) *matrix.Mat4 {
+        return switch (self.*) {
+            .sphere => |sp| &sp.h.transformed_m_inv,
+            .plane => |pp| &pp.h.transformed_m_inv,
             // .cube => |c| c.transform(m),
         };
     }
 
     pub fn reset_id(self: *const Shape) void {
         return switch (self.*) {
-            .sphere => |s| s.reset_id(),
+            .sphere => |sp| sp.reset_id(),
+            .plane => |pp| pp.reset_id(),
             // .cube => |c| c.transform(m),
         };
     }
@@ -250,7 +301,7 @@ test "Chap5 -Changing a sphere's transformation" {
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
     const t = matrix.Mat4.translation(2, 3, 4);
-    s.setTransform(&t);
+    s.set_transform(&t);
     try std.testing.expect(s.transform().equals(&t));
 }
 
@@ -258,7 +309,7 @@ test "Chap5 -Intersecting a scaled sphere with a ray" {
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
-    s.setTransform(&matrix.Mat4.scaling(2, 2, 2));
+    s.set_transform(&matrix.Mat4.scaling(2, 2, 2));
     const xs = s.intersect(r);
 
     try std.testing.expect(xs.count == 2);
@@ -270,7 +321,7 @@ test "Chap5 -Intersecting a translated sphere with a ray" {
     const r = Ray.init(point(0, 0, -5), vector(0, 0, 1));
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
-    s.setTransform(&matrix.Mat4.translation(5, 0, 0));
+    s.set_transform(&matrix.Mat4.translation(5, 0, 0));
     const xs = s.intersect(r);
     try std.testing.expect(xs.count == 0);
 }
@@ -321,7 +372,7 @@ test "Chap6 -The normal is a normalized vector" {
 test "Chap6 -Computing the normal on a translated sphere" {
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
-    s.setTransform(&Mat4.translation(0, 1, 0));
+    s.set_transform(&Mat4.translation(0, 1, 0));
     const x = S(0);
     const y = S(1.707106781186548);
     const z = S(-0.707106781186548);
@@ -335,7 +386,7 @@ test "Chap6 -Computing the normal on a transformed sphere" {
     var sphere = Sphere.init();
     var s = Shape.fromSphere(&sphere);
     const m = Mat4.scaling(1, 0.5, 1).mulM(&Mat4.rotz(std.math.pi / S(5)));
-    s.setTransform(&m);
+    s.set_transform(&m);
     const x = S(0);
     const y = std.math.sqrt2 / S(2);
     const z = -std.math.sqrt2 / S(2);
@@ -349,4 +400,85 @@ test "Chap6 -Reflecting a vector approaching at 45°" {
     const n = vector(0, 1, 0);
     const r = v.reflect(n);
     try std.testing.expect(r.equals(vector(1, 1, 0)));
+}
+
+test "Chap9 -The default transformation" {
+    // Will run tests using the sphere struct since
+    // the shape is an abstract class/untion. It can not be an object on its own
+    // but need  to be created from a concrete shape object.
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const leaked = gpa.deinit();
+        std.testing.expect(leaked == .ok) catch @panic("leak");
+    }
+    const alloc = gpa.allocator();
+
+    var sp = try alloc.create(Sphere);
+    defer alloc.destroy(sp);
+    sp.* = Sphere.init();
+    sp.set_transform(Mat4.identity());
+
+    const s = Shape.fromSphere(sp);
+
+    // log(@src(), "sp.transform: {f} \n", .{sp.transform()});
+    try std.testing.expect(sp.transform().equals(&Mat4.identity()));
+    try std.testing.expect(s.transform().equals(&Mat4.identity()));
+}
+
+test "Chap9 -Assigning a transformation" {
+    // Will run tests using the sphere struct since
+    // the shape is an abstract class/untion. It can not be an object on its own
+    // but need  to be created from a concrete shape object.
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const leaked = gpa.deinit();
+        std.testing.expect(leaked == .ok) catch @panic("leak");
+    }
+    const alloc = gpa.allocator();
+
+    // Construct the shape from a sphere for arguments sake.
+    // const s = Shape.fromSphere(sp);
+    var s = try Shape.testShape(alloc);
+    defer s.destroy(alloc);
+    Shape.set_transform(&s, &Mat4.translation(2, 3, 4));
+
+    try std.testing.expect(s.transform().equals(&Mat4.translation(2, 3, 4)));
+}
+
+test "Chap9 -The default material" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const leaked = gpa.deinit();
+        std.testing.expect(leaked == .ok) catch @panic("leak");
+    }
+    const alloc = gpa.allocator();
+
+    // Construct the shape from a sphere for arguments sake.
+    var s = try Shape.testShape(alloc);
+    defer s.destroy(alloc);
+
+    Shape.set_material(&s, Material.init());
+
+    try std.testing.expect(s.material().equals(Material.init()));
+}
+
+test "Chap9 -Assigning a material" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const leaked = gpa.deinit();
+        std.testing.expect(leaked == .ok) catch @panic("leak");
+    }
+    const alloc = gpa.allocator();
+
+    // Construct the shape from a sphere for arguments sake.
+    var s = try Shape.testShape(alloc);
+    defer s.destroy(alloc);
+
+    var mat = Material.init();
+    mat.ambient = S(1);
+
+    Shape.set_material(&s, mat);
+
+    try std.testing.expect(approxEq(s.material().ambient, mat.ambient));
 }

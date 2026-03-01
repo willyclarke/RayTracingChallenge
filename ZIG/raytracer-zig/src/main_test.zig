@@ -38,6 +38,9 @@ test {
 
     const point_light = @import("lights/point_light.zig");
     std.testing.refAllDecls(point_light);
+
+    const plane = @import("shapes/plane.zig");
+    std.testing.refAllDecls(plane);
 }
 
 // Optional: keep your simple add test here too

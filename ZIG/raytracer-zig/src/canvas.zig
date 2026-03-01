@@ -359,7 +359,7 @@ test "Chap5 -Putting it together" {
     var s = shapes.Shape.fromSphere(&sph);
 
     const sxform = matrix.Mat4.shearing(1, 0, 0, 0, 0, 0).mulM(&matrix.Mat4.scaling(0.5, 1, 1));
-    s.setTransform(&sxform);
+    s.set_transform(&sxform);
 
     for (0..canvas_pixels) |y| {
         const world_y = half - pixel_size * S(y);

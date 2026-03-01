@@ -5,6 +5,6 @@
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "zig",
   callback = function()
-    vim.bo.makeprg = "zig test src/main_test.zig"
+    vim.bo.makeprg = "time zig test src/main_test.zig --summary all"
   end,
 })

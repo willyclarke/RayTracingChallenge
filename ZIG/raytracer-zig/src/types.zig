@@ -88,11 +88,11 @@ pub const Tuple = struct {
 
     /// Convenience constructors used throughout the book.
     pub fn point(x: Scalar, y: Scalar, z: Scalar) Tuple {
-        return .{ .x = x, .y = y, .z = z, .w = 1.0 };
+        return .{ .x = x, .y = y, .z = z, .w = S(1) };
     }
 
     pub fn vector(x: Scalar, y: Scalar, z: Scalar) Tuple {
-        return .{ .x = x, .y = y, .z = z, .w = 0.0 };
+        return .{ .x = x, .y = y, .z = z, .w = S(0) };
     }
 
     pub fn equals(self: Tuple, other: Tuple) bool {
@@ -496,7 +496,7 @@ test "Chap5 -Creating and querying a ray" {
     const direction = Tuple.vector(4, 5, 6);
     const r = Ray.init(origin, direction);
 
-    log(@src(), "\norigin:{f}\ndirection:{f}\n", .{ origin, direction });
+    // log(@src(), "\norigin:{f}\ndirection:{f}\n", .{ origin, direction });
     // log(@src(), "\nray.origin:{f}\nray.direction:{f}\n", .{ ray.origin, ray.direction });
 
     try std.testing.expect(r.origin.equals(origin));
