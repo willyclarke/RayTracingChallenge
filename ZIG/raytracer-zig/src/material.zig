@@ -2,6 +2,7 @@ const std = @import("std");
 const print = @import("std").debug.print;
 const types = @import("types.zig");
 const utils = @import("utils.zig");
+const Pattern = @import("patterns/pattern.zig").Pattern;
 
 const S = types.S;
 const Ray = types.Ray;
@@ -21,9 +22,19 @@ pub const Material = struct {
     diffuse: Scalar,
     specular: Scalar,
     shininess: Scalar,
+    pattern: ?Pattern = null, // patterns are optional
 
     pub fn color(self: *const Material) Tuple {
         return self.col;
+    }
+
+    pub fn equals(self: *const Material, other: Material) bool {
+        const IsEqual = other.col.equals(self.col) //
+            and approxEq(self.ambient, other.ambient) //
+            and approxEq(self.diffuse, other.diffuse) //
+            and approxEq(self.specular, other.specular) //
+            and approxEq(self.shininess, other.shininess);
+        return IsEqual;
     }
 
     pub fn init() Material {
@@ -36,13 +47,19 @@ pub const Material = struct {
         };
     }
 
-    pub fn equals(self: *const Material, other: Material) bool {
-        const IsEqual = other.col.equals(self.col) //
-            and approxEq(self.ambient, other.ambient) //
-            and approxEq(self.diffuse, other.diffuse) //
-            and approxEq(self.specular, other.specular) //
-            and approxEq(self.shininess, other.shininess);
-        return IsEqual;
+    /// Computes the "surface color" at a point, using pattern if present.
+    // pub fn surfaceColor(self: *const Material, shape: *const Shape, world_point: Tuple) Color {
+    //     if (self.pattern) |pat| {
+    //         return pat.color_at_shape(shape, world_point);
+    //     }
+    //     return self.col;
+    // }
+
+    /// Fluent-ish helper: returns a modified copy
+    pub fn withPattern(self: Material, p: Pattern) Material {
+        var m = self;
+        m.pattern = p;
+        return m;
     }
 };
 

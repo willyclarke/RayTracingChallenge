@@ -4,25 +4,27 @@ const print = @import("std").debug.print;
 const utils = @import("utils.zig");
 const log = utils.log;
 
-const types = @import("types.zig");
+const tMod = @import("types.zig");
 const matrix = @import("matrix.zig");
 const material_mod = @import("material.zig");
+const Pattern = @import("patterns/pattern.zig").Pattern;
 
-const S = types.S;
-const Ray = types.Ray;
-const Scalar = types.Scalar;
-const Tuple = types.Tuple;
+const S = tMod.S;
+const Ray = tMod.Ray;
+const Scalar = tMod.Scalar;
+const Tuple = tMod.Tuple;
 const Matrix = matrix.Mat4;
-const Intersection = types.Intersection;
-const Intersections = types.Intersections;
-const LocalIntersections = types.LocalIntersections;
-const color = types.color;
-const Color = types.Color;
-const point = types.Point;
-const vector = types.Vector;
-const approxEq = types.approxEq;
+const Intersection = tMod.Intersection;
+const Intersections = tMod.Intersections;
+const LocalIntersections = tMod.LocalIntersections;
+const color = tMod.color;
+const Color = tMod.Color;
+const point = tMod.Point;
+const vector = tMod.Vector;
+const approxEq = tMod.approxEq;
 const material = material_mod.Material;
 const Material = material_mod.Material;
+const StripePattern = @import("patterns/stripe_pattern.zig").StripePattern;
 
 pub const point_light_mod = @import("lights/point_light.zig");
 pub const PointLight = point_light_mod.PointLight;
@@ -67,8 +69,12 @@ pub const Light = union(enum) {
 /// three-dimensional.
 /// ---
 pub fn lighting(matrial: Material, lght: Light, pnt: Tuple, eyev: Tuple, normv: Tuple, in_shadow: bool) Tuple {
+
     // combine the surface color with the light's color/intensity
-    const effective_color = matrial.color().mult(lght.intensity());
+    const effective_color = if (matrial.pattern) |pat|
+        pat.pattern_at(pnt).mult(lght.intensity())
+    else
+        matrial.color().mult(lght.intensity());
 
     // find the direction to the light source
     const lightv = lght.position().sub(pnt).normalize();
@@ -178,4 +184,28 @@ test "Chap8 -Lighting with the surface in shadow" {
     const in_shadow = true;
     const result = lighting(m, light, position, eyev, normalv, in_shadow);
     try std.testing.expect(result.equals(color(0.1, 0.1, 0.1)));
+}
+
+test "Chap10 -Lighting with a pattern applied" {
+    var stripe = StripePattern.init(color(1, 1, 1), color(0, 0, 0));
+    var m = Material.init();
+    m.pattern = Pattern.fromStripe(&stripe);
+
+    // Note that the test uses a material with only ambient illumination. This
+    // is a handy trick for making sure the lighting() function returns an
+    // easily predictable color, since the color won’t be affected by angles,
+    // normals, or lights.
+    m.ambient = S(1);
+    m.diffuse = S(0);
+    m.specular = S(0);
+
+    const eyev = vector(0, 0, -1);
+    const normalv = vector(0, 0, -1);
+    const light = Light.fromPointLight(PointLight.init_at(point(0, 0, -10), color(1, 1, 1)));
+    const c1 = lighting(m, light, point(0.9, 0, 0), eyev, normalv, false);
+    const c2 = lighting(m, light, point(1.1, 0, 0), eyev, normalv, false);
+
+    try std.testing.expect(tMod.approxEq(m.ambient, S(1)));
+    try std.testing.expect(c1.equals(color(1, 1, 1)));
+    try std.testing.expect(c2.equals(color(0, 0, 0)));
 }

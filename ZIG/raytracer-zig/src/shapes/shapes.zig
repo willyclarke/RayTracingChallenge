@@ -129,6 +129,21 @@ pub const Shape = union(enum) {
         };
     }
 
+    pub fn pattern_at(self: *const Shape, world_point: Tuple) Tuple {
+        return switch (self.*) {
+            inline else => |obj| {
+                const pattern_opt = obj.h.material.pattern;
+                if (pattern_opt == null) return vector(0, 0, 0);
+                const pattern_safe = pattern_opt.?;
+
+                const shape_local_point = obj.h.transformed_m_inv.mulT(world_point);
+                const pattern_local_point = pattern_safe.header().inv.mulT(shape_local_point);
+                return pattern_safe.local_color_at(pattern_local_point);
+                // return obj.h.material.pattern.local_color_at(pattern_local_point);
+            },
+        };
+    }
+
     pub fn normal_at_deprecated(self: *const Shape, position: Tuple) Tuple {
         return switch (self.*) {
             .sphere => |s| s.normal_at_deprecated(position),

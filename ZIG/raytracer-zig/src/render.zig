@@ -25,6 +25,11 @@ const createCanvasFile2 = canvas_mod.createCanvasFile2;
 
 const shapesMod = @import("shapes/shapes.zig");
 
+const material = @import("material.zig").Material;
+const Material = @import("material.zig").Material;
+const Pattern = @import("patterns/pattern.zig").Pattern;
+const StripePattern = @import("patterns/stripe_pattern.zig").StripePattern;
+
 const tMod = @import("types.zig");
 const mMod = @import("matrix.zig");
 
@@ -156,11 +161,11 @@ pub fn render(alloc: std.mem.Allocator, camera: *const Camera, world: *const Wor
     return image;
 }
 
-test "Chap7- Make sure it works" {
+test "Chap7 -Make sure it works" {
     try std.testing.expect(7 == 7);
 }
 
-test "Chap7- Rendering a world with a camera" {
+test "Chap7 -Rendering a world with a camera" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     var w = try default_world(gpa.allocator());
@@ -181,7 +186,7 @@ test "Chap7- Rendering a world with a camera" {
     try std.testing.expect(color(0.380661190703326, 0.475826488379158, 0.285495893027495).equals(px5y5));
 }
 
-test "Chap7- Putting it together" {
+test "Chap7 -Putting it together" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     var w = try default_world(gpa.allocator());
@@ -279,7 +284,7 @@ test "Chap7- Putting it together" {
     try createCanvasFile2(gpa.allocator(), &image, "chap7puttingtogether.ppm");
 }
 
-test "Chap9- Putting it together" {
+test "Chap9 -Putting it together" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     var w = try default_world(gpa.allocator());
@@ -381,4 +386,110 @@ test "Chap9- Putting it together" {
     defer image.deinit(gpa.allocator());
 
     try createCanvasFile2(gpa.allocator(), &image, "chap9puttingtogether.ppm");
+}
+
+test "Chap10 -Putting it together" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var w = try default_world(gpa.allocator());
+    defer w.deinit(gpa.allocator());
+
+    try w.setSingleLight(Light.fromPointLight(PointLight.init_at(point(-5, 5, -10), color(1, 1, 1))));
+
+    var floor = try w.allocator().create(shapesMod.Plane);
+    floor.* = shapesMod.Plane.init();
+    floor.h.material.col = tMod.color(1.0, 0.9, 0.9);
+    floor.h.material.diffuse = S(1.0);
+    floor.h.material.specular = S(0.0);
+    const stripe = StripePattern.init(color(0.5, 1, 1), color(1, 0, 0));
+    floor.h.material.pattern = Pattern.fromStripe(&stripe);
+
+    const deg = std.math.pi / S(180);
+
+    {
+        try w.setSingleShape(shapesMod.Shape.fromPlane(floor));
+    }
+
+    {
+        var leftWall = try w.allocator().create(shapesMod.Plane);
+        leftWall.* = shapesMod.Plane.init();
+        leftWall.h.material.col = tMod.color(0.5, 0.5, 0.5);
+        leftWall.h.material.ambient = S(0.9);
+        leftWall.h.material.diffuse = S(0.8);
+        leftWall.h.material.specular = S(0.9);
+
+        const rz = mMod.Mat4.rotz(S(90) * deg);
+        const ry = mMod.Mat4.roty(S(45) * deg);
+        const tr = mMod.Mat4.translation(S(-10), S(0), S(10));
+        const m = tr.mulM(&ry).mulM(&rz);
+        leftWall.set_transform(m);
+
+        try w.addShape(shapesMod.Shape.fromPlane(leftWall));
+    }
+
+    {
+        var rightWall = try w.allocator().create(shapesMod.Plane);
+        rightWall.* = shapesMod.Plane.init();
+        rightWall.h.material.col = tMod.color(0, 0.2, 0);
+        rightWall.h.material.ambient = S(0.9);
+        rightWall.h.material.diffuse = S(0.9);
+        rightWall.h.material.specular = S(0.9);
+        rightWall.h.material.shininess = S(900);
+
+        const rz = mMod.Mat4.rotz(S(90) * deg);
+        const ry = mMod.Mat4.roty(S(-45) * deg);
+        const tr = mMod.Mat4.translation(S(10), S(0), S(-2.1));
+        const m = tr.mulM(&ry).mulM(&rz);
+        rightWall.set_transform(m);
+        try w.addShape(shapesMod.Shape.fromPlane(rightWall));
+    }
+
+    {
+        var middle = try w.allocator().create(shapesMod.Sphere);
+        middle.* = shapesMod.Sphere.init();
+        middle.h.material.col = tMod.color(0.1, 1, 0.5);
+        middle.h.material.diffuse = S(0.7);
+        middle.h.material.specular = S(0.3);
+
+        const xform = mMod.Mat4.translation(-0.5, 1, 0.5);
+        middle.set_transform(xform);
+        try w.addShape(shapesMod.Shape.fromSphere(middle));
+    }
+
+    {
+        var right = try w.allocator().create(shapesMod.Sphere);
+        right.* = shapesMod.Sphere.init();
+        right.h.material.col = tMod.color(0.5, 1, 0.1);
+        right.h.material.diffuse = S(0.7);
+        right.h.material.specular = S(0.3);
+
+        const xform = mMod.Mat4.translation(1.5, 0.5, -0.5).mulM(&mMod.Mat4.scaling(0.5, 0.5, 0.5));
+        right.set_transform(xform);
+        try w.addShape(shapesMod.Shape.fromSphere(right));
+    }
+
+    {
+        var left = try w.allocator().create(shapesMod.Sphere);
+        left.* = shapesMod.Sphere.init();
+        left.h.material.col = tMod.color(1.0, 0.8, 0.1);
+        left.h.material.diffuse = S(0.7);
+        left.h.material.specular = S(0.3);
+
+        const xform = mMod.Mat4.translation(-1.5, 0.33, -0.75).mulM(&mMod.Mat4.scaling(0.33, 0.33, 0.33));
+        left.set_transform(xform);
+        try w.addShape(shapesMod.Shape.fromSphere(left));
+    }
+
+    var c = Camera.init(600, 400, std.math.pi / S(3));
+    // var c = Camera.init(3456, 2234, std.math.pi / S(3));
+    const from = point(0, 1.5, -5);
+    const to = point(0, 1, 0);
+    const up = vector(0, 1, 0);
+    c.transform = view_transform(from, to, up);
+
+    // var image = try render(gpa.allocator(), &c, &w);
+    var image = try renderSingleThread(gpa.allocator(), &c, &w);
+    defer image.deinit(gpa.allocator());
+
+    try createCanvasFile2(gpa.allocator(), &image, "chap10puttingtogether.ppm");
 }

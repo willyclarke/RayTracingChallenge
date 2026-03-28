@@ -229,6 +229,14 @@ pub inline fn color(red: Scalar, green: Scalar, blue: Scalar) Color {
     return .{ .x = red, .y = green, .z = blue, .w = S(0) };
 }
 
+pub inline fn black() Color {
+    return .{ .x = S(0), .y = S(0), .z = S(0), .w = S(0) };
+}
+
+pub inline fn white() Color {
+    return .{ .x = S(1), .y = S(1), .z = S(1), .w = S(0) };
+}
+
 pub const Projectile = struct {
     position: Tuple,
     velocity: Tuple,

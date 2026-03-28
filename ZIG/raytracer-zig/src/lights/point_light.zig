@@ -24,7 +24,7 @@ pub const PointLight = struct {
     intsty: Tuple,
 
     pub fn equals(self: *const PointLight, other: PointLight) bool {
-        return self.pos.equals(other.pos) and self.intsty.equals(other.intsty);
+        return self.pos.approxEq(other.pos) and self.intsty.approxEq(other.intsty);
     }
 
     pub fn init() PointLight {

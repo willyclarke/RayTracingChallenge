@@ -15,6 +15,9 @@ const intersection_mod = @import("shapes/intersections.zig");
 const sphereMod = @import("shapes/sphere.zig");
 const shapesMod = @import("shapes/shapes.zig");
 
+const Pattern = @import("patterns/pattern.zig").Pattern;
+const StripePattern = @import("patterns/stripe_pattern.zig").StripePattern;
+
 const Camera = camera_mod.Camera;
 const Canvas = canvas_mod.Canvas;
 
@@ -675,4 +678,29 @@ test "Chap8 -The hit should offset the point" {
     try std.testing.expect(comps.point.z > comps.over_point.z);
     // utils.log(@src(), "comps.point: {f}\n", .{comps.point});
     // utils.log(@src(), "comps_over.point: {f}\n", .{comps.over_point});
+}
+
+test "Chap10 -Stripes with an object transformation" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const leaked = gpa.deinit();
+        std.testing.expect(leaked == .ok) catch @panic("leak");
+    }
+    const alloc = gpa.allocator();
+
+    // Construct the shape from a sphere for arguments sake.
+    var s = try Shape.testShape(alloc);
+    defer s.destroy(alloc);
+    s.set_transform(&mMod.Mat4.scaling(2, 2, 2));
+
+    const pattern = StripePattern.init(tMod.white(), tMod.black());
+    var mat = Material.init();
+    mat.ambient = S(1);
+    mat.pattern = Pattern.fromStripe(&pattern);
+
+    Shape.set_material(&s, mat);
+    const c = s.pattern_at(point(1.5, 0, 0));
+
+    try std.testing.expect(approxEq(s.material().ambient, mat.ambient));
+    try std.testing.expect(c.equals(tMod.white()));
 }

@@ -41,6 +41,9 @@ test {
 
     const plane = @import("shapes/plane.zig");
     std.testing.refAllDecls(plane);
+
+    const pattern = @import("patterns/pattern.zig");
+    std.testing.refAllDecls(pattern);
 }
 
 // Optional: keep your simple add test here too

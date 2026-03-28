@@ -39,7 +39,7 @@ pub const Plane = struct {
 
     pub fn init() Plane {
         const obj_id = NEXT_PLANE_ID.fetchAdd(1, .seq_cst);
-        log(@src(), "\nNext Plane Id:{}\n", .{obj_id});
+        // log(@src(), "\nNext Plane Id:{}\n", .{obj_id});
         return .{
             .h = ShapeHeader.init(obj_id),
         };
