@@ -38,6 +38,44 @@ impl Tuple {
             && approx_eq(self.w, other.w)
     }
 
+    /// Create a color Tuple
+    ///
+    /// Assign red, green and blue to tuple vars x, y, z. w=alpha (default 0.0)
+    ///
+    /// # Examples
+    /// ```
+    /// # use rtc_rust::tuple::Tuple;
+    ///
+    /// let col = Tuple::color(0.1, 0.1, 0.1);
+    ///
+    /// assert!(col.approx_eq(Tuple::color(0.1, 0.1, 0.1)));
+    /// assert!(col.normalize().magnitude() > 0.0);
+    /// ```
+    pub fn color(red: f64, blue: f64, green: f64) -> Self {
+        Self {
+            x: red,
+            y: blue,
+            z: green,
+            w: 0.0,
+        }
+    }
+
+    pub fn red(self) -> f64 {
+        self.x
+    }
+
+    pub fn green(self) -> f64 {
+        self.y
+    }
+
+    pub fn blue(self) -> f64 {
+        self.z
+    }
+
+    pub fn alpha(self) -> f64 {
+        self.w
+    }
+
     /// Cross product between vectors
     ///
     ///
@@ -252,6 +290,23 @@ impl Mul<Tuple> for f64 {
             y: rhs.y * self,
             z: rhs.z * self,
             w: rhs.w * self,
+        }
+    }
+}
+
+impl Mul<Tuple> for Tuple {
+    type Output = Tuple;
+
+    /// Blend two tuples - create a new tuple with Hadamard product.
+    ///
+    /// Each component is multplied by rhs's component.
+    ///
+    fn mul(self, rhs: Tuple) -> Tuple {
+        Tuple {
+            x: rhs.x * self.x,
+            y: rhs.y * self.y,
+            z: rhs.z * self.z,
+            w: rhs.w * self.w,
         }
     }
 }
@@ -686,6 +741,97 @@ mod tests {
             Ok(())
         } else {
             Err("Putting It Together".into())
+        }
+    }
+
+    /// Chap 2 - Adding colors
+    #[test]
+    fn test_chap_2_1() -> Result<(), String> {
+        let c1 = Tuple::color(0.9, 0.6, 0.75);
+        let c2 = Tuple::color(0.7, 0.1, 0.25);
+        let c3 = c1 + c2;
+        let chk = c3.approx_eq(Tuple::color(1.6, 0.7, 1.0));
+        let chk = chk && approx_eq(c3.red(), 1.6);
+        let chk = chk && approx_eq(c3.green(), 0.7);
+        let chk = chk && approx_eq(c3.blue(), 1.0);
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "Adding colors",
+                "Result c3: r:{} g:{} b:{}",
+                c3.x,
+                c3.y,
+                c3.z
+            );
+            Err("Adding colors".into())
+        }
+    }
+
+    /// Chap 2 - Subtracting colors
+    #[test]
+    fn test_chap_2_2() -> Result<(), String> {
+        let c1 = Tuple::color(0.9, 0.6, 0.75);
+        let c2 = Tuple::color(0.7, 0.1, 0.25);
+        let c3 = c1 - c2;
+        let chk = c3.approx_eq(Tuple::color(0.2, 0.5, 0.5));
+        let chk = chk && approx_eq(c3.red(), 0.2);
+        let chk = chk && approx_eq(c3.green(), 0.5);
+        let chk = chk && approx_eq(c3.blue(), 0.5);
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "Subtracting colors",
+                "Result c3: r:{} g:{} b:{}",
+                c3.x,
+                c3.y,
+                c3.z
+            );
+            Err("Subtracting colors".into())
+        }
+    }
+
+    /// Chap 2 - Multiplying a color by a scalar
+    #[test]
+    fn test_chap_2_3() -> Result<(), String> {
+        let c = Tuple::color(0.2, 0.3, 0.4) * 2.0;
+        let chk = c.approx_eq(Tuple::color(0.4, 0.6, 0.8));
+        let chk = chk && approx_eq(c.red(), 0.4);
+        let chk = chk && approx_eq(c.green(), 0.6);
+        let chk = chk && approx_eq(c.blue(), 0.80);
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "Multiplying a color by a scalar",
+                "Result c: r:{} g:{} b:{}",
+                c.x,
+                c.y,
+                c.z
+            );
+            Err("Multiplying a color by a scalar".into())
+        }
+    }
+
+    /// Chap 2 - Multiplying colors
+    #[test]
+    fn test_chap_2_4() -> Result<(), String> {
+        let c1 = Tuple::color(1.0, 0.2, 0.4);
+        let c2 = Tuple::color(0.9, 1.0, 0.1);
+        let c3 = c1.mul(c2);
+        let chk = c3.approx_eq(Tuple::color(0.9, 0.2, 0.04));
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "Multiplying colors",
+                "Result c3: r:{} g:{} b:{}",
+                c3.red(),
+                c3.green(),
+                c3.blue()
+            );
+            Err("Multiplying colors".into())
         }
     }
 }
