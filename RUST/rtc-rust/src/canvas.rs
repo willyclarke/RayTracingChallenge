@@ -167,7 +167,7 @@ impl IndexMut<(usize, usize)> for Canvas {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::log::{logd, loge, logi};
+    use crate::{logd, loge, logi};
 
     /// Chap 2 - Creating a canvas
     #[test]

@@ -340,7 +340,7 @@ impl Sub for Tuple {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::log::{logd, loge, logi};
+    use crate::{logd, loge, logi};
 
     #[test]
     fn test_chap_1_01() {
