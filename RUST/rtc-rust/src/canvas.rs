@@ -293,7 +293,7 @@ mod tests {
         }
     }
 
-    /// Chap x - Putting It Together
+    /// Chap 2 - Putting It Together
     #[test]
     #[ignore]
     fn test_chap_2_10() -> std::io::Result<()> {

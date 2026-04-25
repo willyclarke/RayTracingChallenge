@@ -1,6 +1,7 @@
 //! Matrix defintion an implementation
 //!
 
+use crate::canvas::Canvas;
 use crate::log::*;
 use crate::math::approx_eq;
 use crate::tuple::Tuple;
@@ -294,23 +295,6 @@ impl Matrix4 {
         Some(Matrix4 { data: out })
     }
 
-    pub fn transpose(&self) -> Matrix4 {
-        // ✔ a is copied
-        // ✔ cost is negligible
-        // ✔ often helps optimization
-        // ✔ idiomatic for small fixed-size math types
-        let a = self.data;
-        let mut out = [[0.0; 4]; 4];
-
-        for row in 0..4 {
-            for col in 0..4 {
-                out[row][col] = a[col][row];
-            }
-        }
-
-        Matrix4 { data: out }
-    }
-
     pub fn submatrix(&self, row: usize, col: usize) -> Matrix3 {
         debug_assert!(row < 4);
         debug_assert!(col < 4);
@@ -337,6 +321,97 @@ impl Matrix4 {
         }
 
         Matrix3 { data: out }
+    }
+
+    pub fn rotation_x(r: f64) -> Matrix4 {
+        let mut out = Matrix4::identity().data;
+        out[1][1] = r.cos();
+        out[1][2] = -r.sin();
+        out[2][1] = r.sin();
+        out[2][2] = r.cos();
+        Matrix4 { data: out }
+    }
+
+    pub fn rotation_y(r: f64) -> Matrix4 {
+        let mut out = Matrix4::identity().data;
+        out[0][0] = r.cos();
+        out[2][0] = -r.sin();
+        out[0][2] = r.sin();
+        out[2][2] = r.cos();
+        Matrix4 { data: out }
+    }
+
+    pub fn rotation_z(r: f64) -> Matrix4 {
+        let mut out = Matrix4::identity().data;
+        out[0][0] = r.cos();
+        out[0][1] = -r.sin();
+        out[1][0] = r.sin();
+        out[1][1] = r.cos();
+        Matrix4 { data: out }
+    }
+
+    pub fn shearing(x_y: f64, x_z: f64, y_x: f64, y_z: f64, z_x: f64, z_y: f64) -> Matrix4 {
+        let mut out = Matrix4::identity().data;
+        out[0][1] = x_y;
+        out[0][2] = x_z;
+        out[1][0] = y_x;
+        out[1][2] = y_z;
+        out[2][0] = z_x;
+        out[2][1] = z_y;
+        Matrix4 { data: out }
+    }
+
+    /// CTOR for scaling matrix
+    ///
+    /// # return identity() with translation in third column.
+    ///
+    /// # Examples
+    /// ```
+    /// # use rtc_rust::matrix::Matrix4;
+    ///
+    /// let transform = Matrix4::scaling(5.0, -3.0, 2.0);
+    /// ```
+    pub fn scaling(x: f64, y: f64, z: f64) -> Matrix4 {
+        let mut out = Matrix4::identity().data;
+        out[0][0] = x;
+        out[1][1] = y;
+        out[2][2] = z;
+        Matrix4 { data: out }
+    }
+
+    /// CTOR for translation matrix
+    ///
+    /// # return identity() with translation in third column.
+    ///
+    /// # Examples
+    /// ```
+    /// # use rtc_rust::matrix::Matrix4;
+    ///
+    /// let transform = Matrix4::translation(5.0, -3.0, 2.0);
+    /// ```
+    pub fn translation(x: f64, y: f64, z: f64) -> Matrix4 {
+        let mut out = Matrix4::identity().data;
+        out[0][3] = x;
+        out[1][3] = y;
+        out[2][3] = z;
+        Matrix4 { data: out }
+    }
+
+    pub fn transpose(&self) -> Matrix4 {
+        // ✔ a is copied
+        // ✔ cost is negligible
+        // ✔ often helps optimization
+        // ✔ idiomatic for small fixed-size math types
+        let a = self.data;
+        let mut out = [[0.0; 4]; 4];
+
+        for row in 0..4 {
+            for col in 0..4 {
+                out[row][col] = a[col][row];
+            }
+        }
+
+        Matrix4 { data: out }
     }
 }
 
@@ -471,6 +546,8 @@ impl Mul<Matrix4> for Matrix4 {
 
 #[cfg(test)]
 mod tests {
+    use core::f64;
+
     use super::*;
     use crate::{logd, loge, logi, tuple::Tuple};
 
@@ -1071,5 +1148,300 @@ mod tests {
         } else {
             Err("Multiplying a product by its inverse".into())
         }
+    }
+
+    /// Chap 4 - Multiplying by a translation matrix
+    #[test]
+    fn test_chap_4_1() -> Result<(), String> {
+        let transform = Matrix4::translation(5.0, -3.0, 2.0);
+        let p = Tuple::point(-3.0, 4.0, 5.0);
+        let p_translated = transform * p;
+        let p_expected = Tuple::point(2.0, 1.0, 7.0);
+        let chk = p_translated.approx_eq(p_expected);
+        if chk {
+            Ok(())
+        } else {
+            Err("Multiplying by a translation matrix".into())
+        }
+    }
+
+    /// Chap 4 - Multiplying by the inverse of a translation matrix
+    #[test]
+    fn test_chap_4_2() -> Result<(), String> {
+        let transform = Matrix4::translation(5.0, -3.0, 2.0);
+        let inv = transform.inverse().unwrap_or(Matrix4::identity());
+        let p = Tuple::point(-3.0, 4.0, 5.0);
+        let result = inv * p;
+        let chk = result.approx_eq(Tuple::point(-8.0, 7.0, 3.0));
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Multiplying by the inverse of a translation matrix".into())
+        }
+    }
+
+    /// Chap 4 - Translation does not affect vectors
+    #[test]
+    fn test_chap_4_3() -> Result<(), String> {
+        let transform = Matrix4::translation(5.0, -3.0, 2.0);
+        let v = Tuple::vector(-3.0, 4.0, 5.0);
+        let result = transform * v;
+        let chk = result.approx_eq(v);
+        if chk {
+            Ok(())
+        } else {
+            Err("Translation does not affect vectors".into())
+        }
+    }
+
+    /// Chap 4 - A scaling matrix applied to a point
+    #[test]
+    fn test_chap_4_4() -> Result<(), String> {
+        let transform = Matrix4::scaling(2.0, 3.0, 4.0);
+        let p = Tuple::point(-4.0, 6.0, 8.0);
+        let result = transform * p;
+        let chk = result.approx_eq(Tuple::point(-8.0, 18.0, 32.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("A scaling matrix applied to a point".into())
+        }
+    }
+
+    /// Chap x - A scaling matrix applied to a vector
+    #[test]
+    fn test_chap_4_5() -> Result<(), String> {
+        let transform = Matrix4::scaling(2.0, 3.0, 4.0);
+        let v = Tuple::vector(-4.0, 6.0, 8.0);
+        let result = transform * v;
+        let chk = result.approx_eq(Tuple::vector(-8.0, 18.0, 32.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("A scaling matrix applied to a vector".into())
+        }
+    }
+
+    /// Chap 4 - Multiplying by the inverse of a scaling matrix
+    #[test]
+    fn test_chap_4_6() -> Result<(), String> {
+        let transform = Matrix4::scaling(2.0, 3.0, 4.0);
+        let inv = transform.inverse().unwrap_or(Matrix4::identity());
+        let v = Tuple::vector(-4.0, 6.0, 8.0);
+        let result = inv * v;
+        let chk = result.approx_eq(Tuple::vector(-2.0, 2.0, 2.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("Multiplying by the inverse of a scaling matrix".into())
+        }
+    }
+
+    /// Chap 4 - Reflection is scaling by a negative value
+    #[test]
+    fn test_chap_4_7() -> Result<(), String> {
+        let transform = Matrix4::scaling(-1.0, 1.0, 1.0);
+        let p = Tuple::point(2.0, 3.0, 4.0);
+        let result = transform * p;
+        let chk = result.approx_eq(Tuple::point(-2.0, 3.0, 4.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("Reflection is scaling by a negative value".into())
+        }
+    }
+
+    /// Chap 4 - Rotating a point around the x axis
+    #[test]
+    fn test_chap_4_8() -> Result<(), String> {
+        let p = Tuple::point(0.0, 1.0, 0.0);
+        let half_quarter = Matrix4::rotation_x(std::f64::consts::PI / 4.0);
+        let full_quarter = Matrix4::rotation_x(std::f64::consts::PI / 2.0);
+        let phq = half_quarter * p;
+        let pfq = full_quarter * p;
+
+        let sqrt2 = std::f64::consts::SQRT_2;
+        let chk = true;
+        let chk = chk && phq.approx_eq(Tuple::point(0.0, sqrt2 / 2.0, sqrt2 / 2.0));
+        let chk = chk && pfq.approx_eq(Tuple::point(0.0, 0.0, 1.0));
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Rotating a point around the x axis".into())
+        }
+    }
+
+    /// Chap 4 - The inverse of an x-rotation rotates in the opposite direction
+    #[test]
+    fn test_chap_4_9() -> Result<(), String> {
+        let p = Tuple::point(0.0, 1.0, 0.0);
+        let half_quarter = Matrix4::rotation_x(std::f64::consts::PI / 4.0);
+        let inv = half_quarter.inverse().unwrap_or(Matrix4::identity());
+        let phq = inv * p;
+
+        let sqrt2 = std::f64::consts::SQRT_2;
+        let chk = true;
+        let chk = chk && phq.approx_eq(Tuple::point(0.0, sqrt2 / 2.0, -sqrt2 / 2.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("The inverse of an x-rotation rotates in the opposite direction".into())
+        }
+    }
+
+    /// Chap 4 - Rotating a point around the y axis
+    #[test]
+    fn test_chap_4_10() -> Result<(), String> {
+        let p = Tuple::point(0.0, 0.0, 1.0);
+        let half_quarter = Matrix4::rotation_y(std::f64::consts::PI / 4.0);
+        let full_quarter = Matrix4::rotation_y(std::f64::consts::PI / 2.0);
+        let phq = half_quarter * p;
+        let pfq = full_quarter * p;
+
+        let sqrt2 = std::f64::consts::SQRT_2;
+        let chk = true;
+        let chk = chk && phq.approx_eq(Tuple::point(sqrt2 / 2.0, 0.0, sqrt2 / 2.0));
+        let chk = chk && pfq.approx_eq(Tuple::point(1.0, 0.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("Rotating a point around the z axis".into())
+        }
+    }
+
+    /// Chap 4 - Rotating a point around the z axis
+    #[test]
+    fn test_chap_4_11() -> Result<(), String> {
+        let p = Tuple::point(0.0, 1.0, 0.0);
+        let half_quarter = Matrix4::rotation_z(std::f64::consts::PI / 4.0);
+        let full_quarter = Matrix4::rotation_z(std::f64::consts::PI / 2.0);
+        let phq = half_quarter * p;
+        let pfq = full_quarter * p;
+
+        let sqrt2 = std::f64::consts::SQRT_2;
+        let chk = true;
+        let chk = chk && phq.approx_eq(Tuple::point(-sqrt2 / 2.0, sqrt2 / 2.0, 0.0));
+        let chk = chk && pfq.approx_eq(Tuple::point(-1.0, 0.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("Rotating a point around the z axis".into())
+        }
+    }
+
+    /// Chap x - A shearing transformation moves x in proportion to y
+    #[test]
+    fn test_chap_4_12() -> Result<(), String> {
+        let transform = Matrix4::shearing(1.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+        let p = Tuple::point(2.0, 3.0, 4.0);
+        let result = transform * p;
+        let chk = result.approx_eq(Tuple::point(5.0, 3.0, 4.0));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_4_12", "result:{}", result);
+            loge!("test_chap_4_12", "result:{}", transform);
+            Err("A shearing transformation moves x in proportion to y".into())
+        }
+    }
+
+    /// Chap x - Individual transformations are applied in sequence
+    #[test]
+    fn test_chap_4_13() -> Result<(), String> {
+        let p = Tuple::point(1.0, 0.0, 1.0);
+        let a = Matrix4::rotation_x(std::f64::consts::PI / 2.0);
+        let b = Matrix4::scaling(5.0, 5.0, 5.0);
+        let c = Matrix4::translation(10.0, 5.0, 7.0);
+
+        // apply rotation first
+        let p2 = a * p;
+        let chk = p2.approx_eq(Tuple::point(1.0, -1.0, 0.0));
+
+        // then apply scaling
+        let p3 = b * p2;
+        let chk = chk && p3.approx_eq(Tuple::point(5.0, -5.0, 0.0));
+
+        // then apply translation
+        let p4 = c * p3;
+        let chk = chk && p4.approx_eq(Tuple::point(15.0, 0.0, 7.0));
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Individual transformations are applied in sequence".into())
+        }
+    }
+
+    /// Chap 4 - Chained transformations must be applied in reverse order
+    #[test]
+    fn test_chap_4_14() -> Result<(), String> {
+        let p = Tuple::point(1.0, 0.0, 1.0);
+        let a = Matrix4::rotation_x(std::f64::consts::PI / 2.0);
+        let b = Matrix4::scaling(5.0, 5.0, 5.0);
+        let c = Matrix4::translation(10.0, 5.0, 7.0);
+        let t = c * b * a;
+        let expect = t * p;
+
+        let chk = expect.approx_eq(Tuple::point(15.0, 0.0, 7.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("Chained transformations must be applied in reverse order".into())
+        }
+    }
+
+    /// Chap 4 - Putting it together
+    #[test]
+    fn test_chap_4_15() -> std::io::Result<()> {
+        let mut canvas = Canvas::new(500, 500);
+        let p = Tuple::point(1.0, 0.0, 0.0);
+
+        // canvas.width() as f64 - 10.0,
+        // canvas.height() as f64 - 10.0,
+        let b = Matrix4::scaling(
+            canvas.width() as f64 / 2.5,
+            canvas.width() as f64 / 2.5,
+            4.0,
+        );
+        let c = Matrix4::translation(
+            canvas.width() as f64 / 2.0,
+            canvas.height() as f64 / 2.0,
+            5.0,
+        );
+
+        let alpha_increment = std::f64::consts::PI / 6.0;
+        let alpha_max = std::f64::consts::PI * 2.0;
+
+        let mut alpha = 0.0;
+
+        while alpha < alpha_max {
+            let a = Matrix4::rotation_z(alpha);
+
+            let p_clock = c * b * a * p;
+
+            logi!(
+                "test_chap_4_15",
+                "\nalpha: {}. clock point:\n{}\n",
+                alpha * 180.0 / std::f64::consts::PI,
+                p_clock
+            );
+
+            alpha += alpha_increment;
+
+            let dot_radius = 4;
+            for dy in -dot_radius..=dot_radius {
+                for dx in -dot_radius..=dot_radius {
+                    let px = (p_clock.x.floor() as i32 + dx) as usize;
+                    let py = (p_clock.y.floor() as i32 + dy) as usize;
+                    canvas[(px, py)] = Tuple::color(1.0, 1.0, 0.0);
+                }
+            }
+        }
+
+        canvas.write_ppm("image_4_15.ppm")?;
+
+        Ok(())
     }
 }
