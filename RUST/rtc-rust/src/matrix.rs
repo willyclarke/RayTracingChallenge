@@ -284,6 +284,8 @@ impl Matrix4 {
         }
         let mut out = [[0.0; 4]; 4];
 
+        // Do not let clippy fool you, using a range based loop could invalidate the cache.
+         #[allow(clippy::needless_range_loop)]
         for row in 0..4 {
             for col in 0..4 {
                 // Transposed assignment: [col][row] handles the transpose
