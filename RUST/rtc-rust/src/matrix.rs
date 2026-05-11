@@ -1,7 +1,6 @@
 //! Matrix defintion an implementation
 //!
 
-use crate::canvas::Canvas;
 use crate::log::*;
 use crate::math::approx_eq;
 use crate::tuple::Tuple;
@@ -548,6 +547,7 @@ impl Mul<Matrix4> for Matrix4 {
 mod tests {
     use core::f64;
 
+    use crate::canvas::Canvas;
     use super::*;
     use crate::{logd, loge, logi, tuple::Tuple};
 
@@ -1421,12 +1421,12 @@ mod tests {
 
             let p_clock = c * b * a * p;
 
-            logi!(
-                "test_chap_4_15",
-                "\nalpha: {}. clock point:\n{}\n",
-                alpha * 180.0 / std::f64::consts::PI,
-                p_clock
-            );
+            // logi!(
+            //     "test_chap_4_15",
+            //     "\nalpha: {}. clock point:\n{}\n",
+            //     alpha * 180.0 / std::f64::consts::PI,
+            //     p_clock
+            // );
 
             alpha += alpha_increment;
 

@@ -167,7 +167,7 @@ impl IndexMut<(usize, usize)> for Canvas {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{logd, loge, logi};
+    use crate::{logd, loge, logi, matrix::Matrix4};
 
     /// Chap 2 - Creating a canvas
     #[test]
@@ -327,6 +327,51 @@ mod tests {
         }
 
         c.write_ppm("image_2_10.ppm")?;
+        Ok(())
+    }
+
+    /// Chap 5 - Putting it Together
+    #[test]
+    fn test_chap_5_20() -> std::io::Result<()> {
+        use crate::ray::Ray;
+        use crate::shape::Shape;
+        use crate::shapes::sphere::Sphere;
+        use crate::tuple::Tuple;
+        let ray_origin = Tuple::point(0.0, 0.0, -5.0);
+        let wall_z = 10.0;
+        let wall_size = 7.0;
+        let canvas_pixels = 100;
+        let pixel_size = wall_size / canvas_pixels as f64;
+        let half = wall_size / 2.0;
+        let mut s = Sphere::new();
+        // s.set_transform(Matrix4::scaling(1.0, 0.5, 1.0));
+        // s.set_transform(Matrix4::scaling(0.5, 1.0, 1.0));
+        // s.set_transform(
+        //     Matrix4::rotation_z(std::f64::consts::PI / 4.0) * Matrix4::scaling(0.5, 1.0, 1.0),
+        // );
+        s.set_transform(
+            Matrix4::shearing(1.0, 0.0, 0.0, 0.0, 0.0, 0.0) * Matrix4::scaling(0.5, 1.0, 1.0),
+        );
+
+        let mut c = Canvas::new(canvas_pixels, canvas_pixels);
+
+        let h = c.height();
+        let w = c.width();
+        for y in 0..h {
+            let world_y = half - pixel_size * y as f64;
+            for x in 0..w {
+                let world_x = -half + pixel_size * x as f64;
+                let position = Tuple::point(world_x, world_y, wall_z);
+                let r = Ray::new(ray_origin, (position - ray_origin).normalize());
+                let xs = s.intersect(&r);
+                if !xs.is_empty() {
+                    let color = Tuple::color(1.0, y as f64 / h as f64, x as f64 / w as f64);
+                    c.write_pixel(x, y, color);
+                }
+            }
+        }
+
+        c.write_ppm("image_5_20.ppm")?;
         Ok(())
     }
 }
