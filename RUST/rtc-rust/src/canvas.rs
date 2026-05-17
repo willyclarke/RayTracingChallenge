@@ -167,7 +167,8 @@ impl IndexMut<(usize, usize)> for Canvas {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{logd, loge, logi, matrix::Matrix4};
+    use crate::light::Light;
+    use crate::{logd, loge, logi, material::Material, matrix::Matrix4};
 
     /// Chap 2 - Creating a canvas
     #[test]
@@ -372,6 +373,63 @@ mod tests {
         }
 
         c.write_ppm("image_5_20.ppm")?;
+        Ok(())
+    }
+
+    /// Chap 6 - Putting it Together
+    #[test]
+    fn test_chap_6_18() -> std::io::Result<()> {
+        use crate::ray::Ray;
+        use crate::shape::Shape;
+        use crate::shapes::sphere::Sphere;
+        use crate::tuple::Tuple;
+        let ray_origin = Tuple::point(0.0, 0.0, -5.0);
+        let wall_z = 10.0;
+        let wall_size = 7.0;
+        let canvas_pixels = 100;
+        let pixel_size = wall_size / canvas_pixels as f64;
+        let half = wall_size / 2.0;
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::scaling(1.0, 0.5, 1.0));
+        s.set_transform(Matrix4::scaling(0.5, 1.0, 1.0));
+        s.set_transform(
+            Matrix4::rotation_z(std::f64::consts::PI / 4.0) * Matrix4::scaling(0.5, 1.0, 1.0),
+        );
+        s.set_transform(
+            Matrix4::shearing(1.0, 0.0, 0.0, 0.0, 0.0, 0.0) * Matrix4::scaling(0.5, 1.0, 1.0),
+        );
+
+        let mut m = Material::new();
+        m.color = Tuple::color(1.0, 0.2, 1.0);
+
+        s.set_material(m);
+
+        let light_position = Tuple::point(-10.0, 10.0, -10.0);
+        let light_color = Tuple::color(1.0, 1.0, 1.0);
+        let light = Light::point_light(light_position, light_color);
+        let mut c = Canvas::new(canvas_pixels, canvas_pixels);
+
+        let h = c.height();
+        let w = c.width();
+        for y in 0..h {
+            let world_y = half - pixel_size * y as f64;
+            for x in 0..w {
+                let world_x = -half + pixel_size * x as f64;
+                let position = Tuple::point(world_x, world_y, wall_z);
+                let r = Ray::new(ray_origin, (position - ray_origin).normalize());
+                let xs = s.intersect(&r);
+                if !xs.is_empty() {
+                    let hit = xs[0];
+                    let point = r.position(hit.t);
+                    let normalv = s.normal_at(point);
+                    let eyev = -r.direction;
+                    let color = light.lighting(m, point, eyev, normalv);
+                    c.write_pixel(x, y, color);
+                }
+            }
+        }
+
+        c.write_ppm("image_6_18.ppm")?;
         Ok(())
     }
 }

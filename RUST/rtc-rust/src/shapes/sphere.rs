@@ -79,16 +79,27 @@ impl Shape for Sphere {
         self.local_intersect(&ray2)
     }
 
-    fn local_normal_at(&self, point: Tuple) -> Tuple {
+    fn normal_at(&self, world_point: Tuple) -> Tuple {
+        let object_point = self.transform_inv().mul(world_point);
+        // move to local coordinates by use of inverse matrix
+        let object_normal = self.local_normal_at(object_point);
+        let mut world_normal = self.transform_inv().transpose().mul(object_normal);
+        world_normal.w = 0_f64;
+        world_normal.normalize()
+    }
+
+    fn local_normal_at(&self, object_point: Tuple) -> Tuple {
         // sphere-specific normal logic goes here
-        point
+        object_point - Tuple::point(0.0, 0.0, 0.0)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::light::Light;
     // use crate::canvas::Canvas;
+    use crate::material::Material;
     use crate::math::approx_eq;
     use crate::matrix::Matrix4;
     use crate::{logd, loge, logi, tuple::Tuple};
@@ -366,6 +377,184 @@ mod tests {
             Ok(())
         } else {
             Err("Intersecting a scaled sphere with a ray".into())
+        }
+    }
+
+    /// Chap 6 - The normal on a sphere at a point on the x axis
+    #[test]
+    fn test_chap_6_1() -> Result<(), String> {
+        let s = Sphere::new();
+        let n = s.normal_at(Tuple::point(1.0, 0.0, 0.0));
+        let chk = n.approx_eq(Tuple::vector(1.0, 0.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_6_1", "n:{}", n);
+            Err("The normal on a sphere at a point on the x axis".into())
+        }
+    }
+
+    /// Chap 6 - The normal on a sphere at a point on the y axis
+    #[test]
+    fn test_chap_6_2() -> Result<(), String> {
+        let s = Sphere::new();
+        let n = s.normal_at(Tuple::point(0.0, 1.0, 0.0));
+        let chk = n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_6_2", "n:{}", n);
+            Err("The normal on a sphere at a point on the y axis".into())
+        }
+    }
+
+    /// Chap 6 - The normal on a sphere at a point on the z axis
+    #[test]
+    fn test_chap_6_3() -> Result<(), String> {
+        let s = Sphere::new();
+        let n = s.normal_at(Tuple::point(0.0, 0.0, 1.0));
+        let chk = n.approx_eq(Tuple::vector(0.0, 0.0, 1.0));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_6_3", "n:{}", n);
+            Err("The normal on a sphere at a point on the z axis".into())
+        }
+    }
+
+    /// Chap 6 - The normal on a sphere at a nonaxial point
+    #[test]
+    fn test_chap_6_4() -> Result<(), String> {
+        let s = Sphere::new();
+        let sqrt3o3 = 3_f64.sqrt() / 3_f64;
+        let n = s.normal_at(Tuple::point(sqrt3o3, sqrt3o3, sqrt3o3));
+        let chk = n.approx_eq(Tuple::vector(sqrt3o3, sqrt3o3, sqrt3o3));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_6_4", "n:{}", n);
+            Err("The normal on a sphere at a nonaxial point".into())
+        }
+    }
+
+    /// Chap 6 - The normal is a normalized vector
+    #[test]
+    fn test_chap_6_5() -> Result<(), String> {
+        let s = Sphere::new();
+        let sqrt3o3 = 3_f64.sqrt() / 3_f64;
+        let n = s.normal_at(Tuple::point(sqrt3o3, sqrt3o3, sqrt3o3));
+        let chk = n.normalize().approx_eq(n);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_6_5", "chk:{:?}", n);
+            Err("The normal is a normalized vector".into())
+        }
+    }
+
+    /// Chap 6 - Computing the normal on a translated sphere
+    #[test]
+    fn test_chap_6_6() -> Result<(), String> {
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(0.0, 1.0, 0.0));
+        let n = s.normal_at(Tuple::point(
+            0.0,
+            1.0 + std::f64::consts::FRAC_1_SQRT_2,
+            -std::f64::consts::FRAC_1_SQRT_2,
+        ));
+        let chk = n.approx_eq(Tuple::vector(
+            0.0,
+            std::f64::consts::FRAC_1_SQRT_2,
+            -std::f64::consts::FRAC_1_SQRT_2,
+        ));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_6_6", "chk:{:?}", n);
+            Err("Computing the normal on a translated sphere".into())
+        }
+    }
+
+    /// Chap 6 - Computing the normal on a transformed sphere
+    #[test]
+    fn test_chap_6_7() -> Result<(), String> {
+        let mut s = Sphere::new();
+        let m = Matrix4::scaling(1.0, 0.5, 1.0) * Matrix4::rotation_z(std::f64::consts::PI / 5.0);
+        s.set_transform(m);
+        let n = s.normal_at(Tuple::point(
+            0.0,
+            std::f64::consts::SQRT_2 / 2_f64,
+            -std::f64::consts::SQRT_2 / 2_f64,
+        ));
+        let chk = n.approx_eq(Tuple::vector(0.0, 0.970142500145, -0.242535625036));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_6_7", "chk:{:}", n);
+            Err("Computing the normal on a transformed sphere".into())
+        }
+    }
+
+    /// Chap 6 - Reflecting a vector approaching at 45°
+    #[test]
+    fn test_chap_6_8() -> Result<(), String> {
+        let v = Tuple::vector(1.0, -1.0, 0.0);
+        let n = Tuple::vector(0.0, 1.0, 0.0);
+        let r = v.reflect(n);
+
+        let chk = Tuple::vector(1.0, 1.0, 0.0).approx_eq(r);
+        if chk {
+            Ok(())
+        } else {
+            Err("Reflecting a vector approaching at 45°".into())
+        }
+    }
+
+    /// Chap 6 - Reflecting a vector off a slanted surface
+    #[test]
+    fn test_chap_6_9() -> Result<(), String> {
+        let sqrt2o2 = 2_f64.sqrt() / 2_f64;
+        let v = Tuple::vector(0.0, -1.0, 0.0);
+        let n = Tuple::vector(sqrt2o2, sqrt2o2, 0.0);
+        let r = v.reflect(n);
+
+        let chk = Tuple::vector(1.0, 0.0, 0.0).approx_eq(r);
+        if chk {
+            Ok(())
+        } else {
+            Err("Reflecting a vector off a slanted surface".into())
+        }
+    }
+
+    /// Chap 6 - A point light has a position and intensity
+    #[test]
+    fn test_chap_6_10() -> Result<(), String> {
+        let intensity = Tuple::color(1.0, 1.0, 1.0);
+        let position = Tuple::point(0.0, 0.0, 0.0);
+        let light = Light::point_light(position, intensity);
+        let chk = position.approx_eq(light.position);
+        let chk = chk && intensity.approx_eq(light.intensity);
+        if chk {
+            logi!("", "Light: {}.", light);
+            Ok(())
+        } else {
+            Err("A point light has a position and intensity".into())
+        }
+    }
+
+    /// Chap 6 - A sphere may be assigned a material
+    #[test]
+    fn test_chap_6_12() -> Result<(), String> {
+        let mut s = Sphere::new();
+        let mut m = Material::new();
+        m.ambient = 1.0;
+        s.set_material(m);
+
+        let chk = m.approx_eq(*s.material());
+        if chk {
+            Ok(())
+        } else {
+            Err("A sphere may be assigned a material".into())
         }
     }
 }

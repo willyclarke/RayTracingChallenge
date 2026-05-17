@@ -2,8 +2,8 @@
 //! Abstract data structure for sphere, cubes etc.
 //!
 
-use crate::intersection::Intersections;
 use crate::matrix::Matrix4;
+use crate::{intersection::Intersections, material::Material};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
@@ -13,6 +13,7 @@ pub struct ShapeData {
     pub id: usize,
     pub transform: Matrix4,
     pub transform_inv: Matrix4,
+    pub material: Material,
 }
 
 impl ShapeData {
@@ -21,6 +22,7 @@ impl ShapeData {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             transform: Matrix4::identity(),
             transform_inv: Matrix4::identity(),
+            material: Material::new(),
         }
     }
 }
@@ -39,6 +41,14 @@ pub trait Shape {
         self.data().id
     }
 
+    fn material(&self) -> &Material {
+        &self.data().material
+    }
+
+    fn set_material(&mut self, m: Material) {
+        self.data_mut().material = m;
+    }
+
     fn transform(&self) -> &Matrix4 {
         &self.data().transform
     }
@@ -54,5 +64,6 @@ pub trait Shape {
 
     fn intersect(&self, ray: &crate::ray::Ray) -> Intersections;
     fn local_intersect(&self, ray: &crate::ray::Ray) -> Intersections;
+    fn normal_at(&self, point: crate::tuple::Tuple) -> crate::tuple::Tuple;
     fn local_normal_at(&self, point: crate::tuple::Tuple) -> crate::tuple::Tuple;
 }

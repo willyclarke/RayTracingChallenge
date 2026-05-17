@@ -198,6 +198,22 @@ impl Tuple {
         approx_eq(self.w, 1.0)
     }
 
+    /// Reflection around the normal vector.
+    ///
+    /// # Example
+    /// ```
+    /// # use rtc_rust::tuple::Tuple;
+    ///
+    /// let v = Tuple::vector(1.0, -1.0, 0.0);
+    /// let n = Tuple::vector(0.0, 1.0, 0.0);
+    /// let r = v.reflect(n);
+    ///
+    /// assert!(Tuple::vector(1.0, 1.0, 0.0).approx_eq(r));
+    /// ```
+    pub fn reflect(self, normal: Tuple) -> Tuple {
+        self - normal.mul(2.0).mul(self.dot(normal))
+    }
+
     /// vector CTOR - set w to 0.0
     ///
     /// When ```w``` is exactly 0.0_f64 the tuple is a vector.
@@ -242,13 +258,13 @@ impl Add for Tuple {
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if approx_eq(self.w, 1.0) {
-            write!(f, "Point({:.3}, {:.3}, {:.3})", self.x, self.y, self.z)
+            write!(f, "Point({:.12}, {:.12}, {:.12})", self.x, self.y, self.z)
         } else if approx_eq(self.w, 0.0) {
-            write!(f, "Vector({:.3}, {:.3}, {:.3})", self.x, self.y, self.z)
+            write!(f, "Vector({:.12}, {:.12}, {:.12})", self.x, self.y, self.z)
         } else {
             write!(
                 f,
-                "Tuple({:.3}, {:.3}, {:.3}, {:.3})",
+                "Tuple({:.12}, {:.12}, {:.12}, {:.12})",
                 self.x, self.y, self.z, self.w
             )
         }
