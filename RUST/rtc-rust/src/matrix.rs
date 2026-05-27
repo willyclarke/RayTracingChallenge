@@ -285,7 +285,7 @@ impl Matrix4 {
         let mut out = [[0.0; 4]; 4];
 
         // Do not let clippy fool you, using a range based loop could invalidate the cache.
-         #[allow(clippy::needless_range_loop)]
+        #[allow(clippy::needless_range_loop)]
         for row in 0..4 {
             for col in 0..4 {
                 // Transposed assignment: [col][row] handles the transpose
@@ -418,10 +418,18 @@ impl Matrix4 {
 
 impl fmt::Display for Matrix4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let width = 17;
+        let prec = 15;
+        let coldelta = width + 4; 
+
         writeln!(
             f,
-            "{}        0        1        2        3{}",
+            "\n{}COL: {:3}{:coldelta$}{:coldelta$}{:coldelta$}{}",
             Color::Cyan,
+            0,
+            1,
+            2,
+            3,
             Color::Reset
         )?;
 
@@ -429,10 +437,11 @@ impl fmt::Display for Matrix4 {
 
         for row in 0..4 {
             write!(f, "{}{}{} ", Color::Cyan, row, Color::Reset)?;
-            write!(f, "{}|{} ", Color::Cyan, Color::Reset)?;
+            write!(f, "{}||{} ", Color::Cyan, Color::Reset)?;
 
             for col in 0..4 {
                 let v = self[(row, col)];
+                let space = if v >= 0.0 { "  " } else { " " };
 
                 let color = if v.abs() < eps {
                     Color::Yellow
@@ -444,11 +453,15 @@ impl fmt::Display for Matrix4 {
                     Color::Reset
                 };
 
-                if v >= 0.0 {
-                    write!(f, "{} {:8.13}{} ", color, v, Color::Reset)?;
-                } else {
-                    write!(f, "{}{:8.13}{} ", color, v, Color::Reset)?;
-                }
+                f.write_fmt(core::format_args!(
+                    "{color}{space}{value:>width$.precision$}{reset} |",
+                    color = color,
+                    space = space,
+                    value = v,
+                    width = width,
+                    precision = prec,
+                    reset = Color::Reset,
+                ))?;
             }
 
             writeln!(f, "{}|{}", Color::Cyan, Color::Reset)?;
@@ -549,8 +562,8 @@ impl Mul<Matrix4> for Matrix4 {
 mod tests {
     use core::f64;
 
-    use crate::canvas::Canvas;
     use super::*;
+    use crate::canvas::Canvas;
     use crate::{logd, loge, logi, tuple::Tuple};
 
     /// Chap 3 - Constructing and inspecting a 4x4 matrix

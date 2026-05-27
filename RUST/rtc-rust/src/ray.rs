@@ -34,7 +34,7 @@ impl fmt::Display for Ray {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{}O{}:[{:.3} {:.3} {:.3}]. {}D{}:[{:.3}, {:.3} {:.3}]",
+            "{}Ori{}:[{:.10}, {:.10}, {:.10}]. {}Dir{}:[{:.10}, {:.10}, {:.10}]",
             Color::Green,
             Color::Reset,
             self.origin.x,

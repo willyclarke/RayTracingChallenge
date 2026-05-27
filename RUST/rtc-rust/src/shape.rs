@@ -25,6 +25,13 @@ impl ShapeData {
             material: Material::new(),
         }
     }
+
+    ///
+    /// Reset the NEXT_ID to the value of 1.
+    ///
+    pub fn reset() {
+        NEXT_ID.store(1, Ordering::Relaxed);
+    }
 }
 
 impl Default for ShapeData {
@@ -39,6 +46,10 @@ pub trait Shape {
 
     fn id(&self) -> usize {
         self.data().id
+    }
+
+    fn set_id(&mut self, id: usize) {
+        self.data_mut().id = id;
     }
 
     fn material(&self) -> &Material {

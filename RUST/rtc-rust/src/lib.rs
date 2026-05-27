@@ -1,4 +1,5 @@
 pub mod canvas;
+pub mod camera;
 pub mod color;
 pub mod intersection;
 pub mod light;
@@ -10,3 +11,4 @@ pub mod ray;
 pub mod shape;
 pub mod tuple;
 pub mod shapes;
+pub mod world;

@@ -12,6 +12,10 @@ pub struct Light {
 }
 
 impl Light {
+    pub fn approx_eq(&self, other: Light) -> bool {
+        self.position.approx_eq(other.position) && self.intensity.approx_eq(other.intensity)
+    }
+
     pub fn point_light(position: Tuple, intensity: Tuple) -> Self {
         Self {
             position,

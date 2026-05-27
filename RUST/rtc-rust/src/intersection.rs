@@ -29,6 +29,7 @@ impl Intersections {
         Self { data: vec![] }
     }
 
+    /// Push the Intersection by first finding the partition_point of where to insert
     pub fn push(&mut self, i: Intersection) {
         let pos = self.data.partition_point(|x| x.t < i.t);
         self.data.insert(pos, i);
@@ -40,6 +41,10 @@ impl Intersections {
 
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = Intersection> + '_ {
+        self.data.iter().copied()
     }
 }
 

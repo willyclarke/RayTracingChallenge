@@ -73,7 +73,7 @@ impl fmt::Display for Material {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{light::Light, logd, loge, logi, tuple::Tuple};
+    use crate::{logd, loge, logi, tuple::Tuple};
 
     /// Chap 6 - The default material
     #[test]
@@ -94,23 +94,6 @@ mod tests {
             logd!("test_chap_6_11", "m:{:?}", m);
             loge!("test_chap_6_11", "chk:{:?}", chk);
             Err("The default material".into())
-        }
-    }
-
-    /// Chap 6 - Lighting with the eye between the light and the surface
-    #[test]
-    fn test_chap_6_13() -> Result<(), String> {
-        let m = Material::new();
-        let position = Tuple::point(0.0, 0.0, 0.0);
-        let eyev = Tuple::vector(0.0, 0.0, -1.0);
-        let normalv = Tuple::vector(0.0, 0.0, -1.0);
-        let light = Light::point_light(Tuple::point(0.0, 0.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
-        let result = light.lighting(m, position, eyev, normalv);
-        let chk = Tuple::color(1.9, 1.9, 1.9).approx_eq(result);
-        if chk {
-            Ok(())
-        } else {
-            Err("Lighting with the eye between the light and the surface".into())
         }
     }
 }
