@@ -423,7 +423,8 @@ mod tests {
                     let point = r.position(hit.t);
                     let normalv = s.normal_at(point);
                     let eyev = -r.direction;
-                    let color = light.lighting(m, point, eyev, normalv);
+                    let in_shadow = false;
+                    let color = light.lighting(m, point, eyev, normalv, in_shadow);
                     c.write_pixel(x, y, color);
                 }
             }

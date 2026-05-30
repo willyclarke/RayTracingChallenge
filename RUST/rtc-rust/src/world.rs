@@ -21,6 +21,7 @@ pub struct Computations<'a> {
     pub t: f64,
     pub object: &'a dyn Shape,
     pub point: Tuple,
+    pub over_point: Tuple,
     pub eyev: Tuple,
     pub normalv: Tuple,
     pub inside: bool,
@@ -48,11 +49,13 @@ pub fn prepare_computations<'a>(
     } else {
         false
     };
+    let over_point = point + normalv * crate::math::EPSILON;
 
     Computations {
         t,
         object: shape,
         point,
+        over_point,
         eyev,
         normalv,
         inside,
@@ -66,6 +69,15 @@ pub struct World {
 }
 
 impl World {
+    pub fn add_shape(&mut self, mut shape: Box<dyn Shape>) {
+        shape.set_id(self.next_id.fetch_add(1, Ordering::Relaxed));
+        self.shapes.push(shape);
+    }
+
+    pub fn set_light(&mut self, light: Light) {
+        self.light = Some(light)
+    }
+
     pub fn default_world() -> Self {
         let mut w = Self::new();
 
@@ -91,17 +103,18 @@ impl World {
         w
     }
 
-    pub fn new() -> Self {
-        Self {
-            shapes: Vec::new(),
-            light: None,
-            next_id: AtomicUsize::new(1),
+    pub fn color_at(&self, ray: &Ray) -> Tuple {
+        let xs = self.intersect(ray);
+        match xs.hit() {
+            None => Tuple::color(0.0, 0.0, 0.0),
+            Some(hit) => match self.shapes.iter().find(|s| s.id() == hit.object_id) {
+                None => Tuple::color(0.0, 0.0, 0.0),
+                Some(shape) => {
+                    let comps = prepare_computations(hit, ray, shape.as_ref());
+                    self.shade_hit(&comps)
+                }
+            },
         }
-    }
-
-    pub fn add_shape(&mut self, mut shape: Box<dyn Shape>) {
-        shape.set_id(self.next_id.fetch_add(1, Ordering::Relaxed));
-        self.shapes.push(shape);
     }
 
     pub fn intersect(&self, ray: &Ray) -> Intersections {
@@ -114,29 +127,44 @@ impl World {
         xs
     }
 
-    pub fn shade_hit(&self, comps: &Computations) -> Tuple {
-        match self.light {
-            Some(light) => light.lighting(
-                *comps.object.material(),
-                comps.point,
-                comps.eyev,
-                comps.normalv,
-            ),
-            None => Tuple::color(0.0, 0.0, 0.0),
+    pub fn is_shadowed(&self, point: Tuple) -> bool {
+        let light = match self.light {
+            Some(l) => l,
+            None => return false,
+        };
+        let v = light.position - point;
+        let distance = Tuple::magnitude(v);
+        let direction = Tuple::normalize(v);
+        let r = Ray::new(point, direction);
+        let intersections = self.intersect(&r);
+        let hit = intersections.hit();
+        let h = match hit {
+            Some(x) => x,
+            None => return false,
+        };
+
+        h.t < distance
+    }
+
+    pub fn new() -> Self {
+        Self {
+            shapes: Vec::new(),
+            light: None,
+            next_id: AtomicUsize::new(1),
         }
     }
 
-    pub fn color_at(&self, ray: &Ray) -> Tuple {
-        let xs = self.intersect(ray);
-        match xs.hit() {
+    pub fn shade_hit(&self, comps: &Computations) -> Tuple {
+        let shadowed = self.is_shadowed(comps.over_point);
+        match self.light {
+            Some(light) => light.lighting(
+                *comps.object.material(),
+                comps.over_point,
+                comps.eyev,
+                comps.normalv,
+                shadowed,
+            ),
             None => Tuple::color(0.0, 0.0, 0.0),
-            Some(hit) => match self.shapes.iter().find(|s| s.id() == hit.object_id) {
-                None => Tuple::color(0.0, 0.0, 0.0),
-                Some(shape) => {
-                    let comps = prepare_computations(hit, ray, shape.as_ref());
-                    self.shade_hit(&comps)
-                }
-            },
         }
     }
 
@@ -660,6 +688,108 @@ mod tests {
             Ok(())
         } else {
             Err("Chapter 7 Putting It  Together".into())
+        }
+    }
+
+    /// Chap 8 - There is no shadow when nothing is collinear with point and light
+    #[test]
+    fn test_chap_8_2() -> Result<(), String> {
+        let w = World::default_world();
+        let p = Tuple::point(0.0, 10.0, 0.0);
+        let is_shadowed = w.is_shadowed(p);
+
+        let chk = !is_shadowed;
+        if chk {
+            Ok(())
+        } else {
+            Err("There is no shadow when nothing is collinear with point and light".into())
+        }
+    }
+
+    /// Chap 8 - The shadow when an object is between the point and the light
+    #[test]
+    fn test_chap_8_3() -> Result<(), String> {
+        let w = World::default_world();
+        let p = Tuple::point(10.0, -10.0, 10.0);
+        let is_shadowed = w.is_shadowed(p);
+
+        let chk = is_shadowed;
+        if chk {
+            Ok(())
+        } else {
+            Err("The shadow when an object is between the point and the light".into())
+        }
+    }
+
+    /// Chap 8 - There is no shadow when an object is behind the light
+    #[test]
+    fn test_chap_8_5() -> Result<(), String> {
+        let w = World::default_world();
+        let p = Tuple::point(0.0, 10.0, 0.0);
+        let is_shadowed = w.is_shadowed(p);
+
+        let chk = !is_shadowed;
+        if chk {
+            Ok(())
+        } else {
+            Err("There is no shadow when an object is behind the light".into())
+        }
+    }
+
+    /// Chap 8 - There is no shadow when an object is behind the point
+    #[test]
+    fn test_chap_8_6() -> Result<(), String> {
+        let w = World::default_world();
+        let p = Tuple::point(0.0, 10.0, 0.0);
+        let is_shadowed = w.is_shadowed(p);
+
+        let chk = !is_shadowed;
+        if chk {
+            Ok(())
+        } else {
+            Err("There is no shadow when an object is behind the point".into())
+        }
+    }
+
+    /// Chap 8 - shade_hit() is given an intersection in shadow
+    #[test]
+    fn test_chap_8_7() -> Result<(), String> {
+        let mut w = World::new();
+        let light = Light::point_light(Tuple::point(0.0, 0.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
+        w.set_light(light);
+        let s1 = Sphere::new();
+        w.add_shape(Box::new(s1));
+        let mut s2 = Sphere::new();
+        s2.set_transform(Matrix4::translation(0.0, 0.0, 10.0));
+        w.add_shape(Box::new(s2));
+        let r = Ray::new(Tuple::point(0.0, 0.0, 5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let i = Intersection::new(4.0, s2.id());
+        let comps = prepare_computations(i, &r, &s2 as &dyn Shape);
+        let c = w.shade_hit(&comps);
+
+        let chk = c.approx_eq(Tuple::color(0.1, 0.1, 0.1));
+        if chk {
+            Ok(())
+        } else {
+            Err("shade_hit() is given an intersection in shadow".into())
+        }
+    }
+
+    /// Chap 8 - The hit should offset the point
+    #[test]
+    fn test_chap_8_8() -> Result<(), String> {
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let mut s1 = Sphere::new();
+        s1.set_transform(Matrix4::translation(0.0, 0.0, 1.0));
+        let i = Intersection::new(5.0, s1.id());
+        let comps = prepare_computations(i, &r, &s1 as &dyn Shape);
+        let chk = comps.over_point.z < -crate::math::EPSILON / 2.0;
+        let chk = chk && comps.point.z > comps.over_point.z;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("The hit should offset the point".into())
         }
     }
 }

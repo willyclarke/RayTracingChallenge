@@ -26,7 +26,14 @@ impl Light {
     ///
     /// add together the material’s ambient, diffuse, and specular components, weighted by the angles between the different vec- tors.
     ///
-    pub fn lighting(&self, material: Material, point: Tuple, eyev: Tuple, normalv: Tuple) -> Tuple {
+    pub fn lighting(
+        &self,
+        material: Material,
+        point: Tuple,
+        eyev: Tuple,
+        normalv: Tuple,
+        in_shadow: bool,
+    ) -> Tuple {
         // combine the surface color with the light's color/intensity
         let effective_color = material.color.mul(self.intensity);
 
@@ -35,6 +42,10 @@ impl Light {
 
         // compute the ambient contribution
         let ambient = effective_color.mul(material.ambient);
+
+        if in_shadow {
+            return ambient; 
+        }
 
         // light_dot_normal represents the cosine of the angle between the
         // light vector and the normal vector. A negative number means the
@@ -95,7 +106,8 @@ mod tests {
         let eyev = Tuple::vector(0.0, 0.0, -1.0);
         let normalv = Tuple::vector(0.0, 0.0, -1.0);
         let light = Light::point_light(Tuple::point(0.0, 0.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
-        let result = light.lighting(m, position, eyev, normalv);
+        let in_shadow = false;
+        let result = light.lighting(m, position, eyev, normalv, in_shadow);
         let chk = Tuple::color(1.9, 1.9, 1.9).approx_eq(result);
         if chk {
             Ok(())
@@ -113,7 +125,8 @@ mod tests {
         let eyev = Tuple::vector(0.0, sqrt2_o_2, -sqrt2_o_2);
         let normalv = Tuple::vector(0.0, 0.0, -1.0);
         let light = Light::point_light(Tuple::point(0.0, 0.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
-        let result = light.lighting(m, position, eyev, normalv);
+        let in_shadow = false;
+        let result = light.lighting(m, position, eyev, normalv, in_shadow);
         let chk = Tuple::color(1.0, 1.0, 1.0).approx_eq(result);
         if chk {
             Ok(())
@@ -130,7 +143,8 @@ mod tests {
         let eyev = Tuple::vector(0.0, 0.0, -1.0);
         let normalv = Tuple::vector(0.0, 0.0, -1.0);
         let light = Light::point_light(Tuple::point(0.0, 10.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
-        let result = light.lighting(m, position, eyev, normalv);
+        let in_shadow = false;
+        let result = light.lighting(m, position, eyev, normalv, in_shadow);
         let chk = Tuple::color(0.73639610306, 0.73639610306, 0.73639610306).approx_eq(result);
         if chk {
             Ok(())
@@ -149,7 +163,8 @@ mod tests {
         let eyev = Tuple::vector(0.0, -sqrt2_o_2, -sqrt2_o_2);
         let normalv = Tuple::vector(0.0, 0.0, -1.0);
         let light = Light::point_light(Tuple::point(0.0, 10.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
-        let result = light.lighting(m, position, eyev, normalv);
+        let in_shadow = false;
+        let result = light.lighting(m, position, eyev, normalv, in_shadow);
         let chk = Tuple::color(1.636396103068, 1.636396103068, 1.636396103068).approx_eq(result);
 
         if chk {
@@ -168,7 +183,8 @@ mod tests {
         let eyev = Tuple::vector(0.0, 0.0, -1.0);
         let normalv = Tuple::vector(0.0, 0.0, -1.0);
         let light = Light::point_light(Tuple::point(0.0, 0.0, 10.0), Tuple::color(1.0, 1.0, 1.0));
-        let result = light.lighting(m, position, eyev, normalv);
+        let in_shadow = false;
+        let result = light.lighting(m, position, eyev, normalv, in_shadow);
         let chk = Tuple::color(0.1, 0.1, 0.1).approx_eq(result);
 
         if chk {
@@ -178,4 +194,23 @@ mod tests {
             Err("Lighting with the light behind the surface".into())
         }
     }
+
+    /// Chap 8 - Lighting with the surface in shadow
+    #[test]
+    fn test_chap_8_1() -> Result<(), String> {
+        let eyev = Tuple::vector(0.0, 0.0, -1.0);
+        let normalv = Tuple::vector(0.0, 0.0, -1.0);
+        let position = Tuple::point(0.0, 0.1, 10.0);
+        let intensity = Tuple::color(1.0, 1.0, 1.0);
+        let light = Light::point_light(position, intensity);
+        let in_shadow = true;
+        let result = light.lighting(Material::new(), position, eyev, normalv, in_shadow);
+        let chk = result.approx_eq(Tuple::color(0.1, 0.1, 0.1));
+        if chk {
+            Ok(())
+        } else {
+            Err("Lighting with the surface in shadow".into())
+        }
+    }
+
 }
