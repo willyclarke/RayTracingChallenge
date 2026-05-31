@@ -270,6 +270,7 @@ mod tests {
     use crate::intersection::Intersection;
     use crate::math::approx_eq;
     use crate::shape::Shape;
+    use crate::shapes::plane::Plane;
     use crate::{loge, logi, tuple::Tuple};
 
     /// Chap 7 - Creating a world
@@ -631,7 +632,7 @@ mod tests {
         }
     }
 
-    /// Chap x - Chapter 7 Putting It  Together
+    /// Chap 7 - Chapter 7 Putting It  Together
     #[test]
     fn test_chap_7_23_putting_it_together() -> Result<(), String> {
         let mut world = World::new();
@@ -815,6 +816,91 @@ mod tests {
             Ok(())
         } else {
             Err("The hit should offset the point".into())
+        }
+    }
+
+    /// Chap 9 - Chapter 9 Putting It  Together
+    #[test]
+    fn test_chap_9_6_putting_it_together() -> Result<(), String> {
+        let mut world = World::new();
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        world.light = Some(light);
+
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 0.9, 0.9);
+
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::scaling(10.0, 0.01, 10.0));
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        floor.set_material(material);
+
+        let mut left_wall = Plane::new();
+        left_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(-std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        left_wall.set_material(*floor.material());
+
+        let mut right_wall = Plane::new();
+        right_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        right_wall.set_material(*floor.material());
+
+        let mut middle = Sphere::new();
+        middle.set_transform(Matrix4::translation(-0.5, 1.0, 0.5));
+        material.color = Tuple::color(0.1, 1.0, 0.5);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        middle.set_material(material);
+
+        let mut right = Sphere::new();
+        right.set_transform(Matrix4::translation(1.5, 0.5, -0.5) * Matrix4::scaling(0.5, 0.5, 0.5));
+        material.color = Tuple::color(0.5, 1.0, 0.1);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        right.set_material(material);
+
+        let mut left = Sphere::new();
+        left.set_transform(
+            Matrix4::translation(-1.5, 0.33, -0.75) * Matrix4::scaling(0.33, 0.33, 0.33),
+        );
+        material.color = Tuple::color(1.0, 0.8, 0.1);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        left.set_material(material);
+
+        let from = Tuple::point(0.0, 1.5, -50.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+
+        let camera = Camera::new(100, 50, std::f64::consts::PI / 1.1).with_transform(transform);
+
+        world.add_shape(Box::new(floor));
+        world.add_shape(Box::new(left_wall));
+        world.add_shape(Box::new(right_wall));
+        world.add_shape(Box::new(middle));
+        world.add_shape(Box::new(left));
+        world.add_shape(Box::new(right));
+
+        let image = world.render(camera);
+        let rc = image.write_ppm("test_chap_9_6_putting_it_together.ppm");
+        let chk = rc.is_ok();
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Chapter 7 Putting It  Together".into())
         }
     }
 }
