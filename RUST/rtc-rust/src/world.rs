@@ -3,6 +3,8 @@
 //! This module defines what rays can hit.
 //!
 
+use rayon::prelude::*;
+
 use crate::camera::Camera;
 use crate::canvas::Canvas;
 use crate::intersection::{Intersection, Intersections};
@@ -168,7 +170,7 @@ impl World {
         }
     }
 
-    pub fn render(&self, camera: Camera) -> Canvas {
+    pub fn render_single(&self, camera: Camera) -> Canvas {
         let mut image = Canvas::new(camera.hsize, camera.vsize);
 
         for y in 0..camera.vsize {
@@ -180,6 +182,29 @@ impl World {
         }
 
         image
+    }
+
+    pub fn render_parallel(&self, camera: Camera) -> Canvas {
+        let width = camera.hsize;
+        let height = camera.vsize;
+
+        let mut pixels = vec![Tuple::color(0.0, 0.0, 0.0); width * height];
+        pixels.par_iter_mut().enumerate().for_each(|(i, pixel)| {
+            let x = i % width;
+            let y = i / width;
+            *pixel = self.color_at(&camera.ray_for_pixel(x, y));
+        });
+
+        let mut image = Canvas::new(width, height);
+        for (i, color) in pixels.into_iter().enumerate() {
+            image.write_pixel(i % width, i / width, color);
+        }
+        image
+    }
+
+    pub fn render(&self, camera: Camera) -> Canvas {
+        // self.render_single(camera) // change this one line to switch
+        self.render_parallel(camera) // change this one line to switch
     }
 }
 
@@ -671,7 +696,7 @@ mod tests {
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
 
-        let camera = Camera::new(100, 50, std::f64::consts::PI / 3.0).with_transform(transform);
+        let camera = Camera::new(4096, 3192, std::f64::consts::PI / 3.0).with_transform(transform);
 
         world.add_shape(Box::new(floor));
         world.add_shape(Box::new(left_wall));

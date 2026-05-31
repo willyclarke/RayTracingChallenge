@@ -40,7 +40,7 @@ impl Default for ShapeData {
     }
 }
 
-pub trait Shape {
+pub trait Shape: Send + Sync {
     fn data(&self) -> &ShapeData;
     fn data_mut(&mut self) -> &mut ShapeData;
 
