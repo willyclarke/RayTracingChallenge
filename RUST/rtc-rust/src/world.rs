@@ -696,7 +696,7 @@ mod tests {
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
 
-        let camera = Camera::new(4096, 3192, std::f64::consts::PI / 3.0).with_transform(transform);
+        let camera = Camera::new(100, 50, std::f64::consts::PI / 3.0).with_transform(transform);
 
         world.add_shape(Box::new(floor));
         world.add_shape(Box::new(left_wall));

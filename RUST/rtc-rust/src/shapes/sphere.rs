@@ -7,7 +7,6 @@ use crate::ray::Ray;
 use crate::shape::{Shape, ShapeData};
 use crate::tuple::Tuple;
 use std::fmt;
-use std::ops::Mul;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Sphere {
@@ -69,23 +68,6 @@ impl Shape for Sphere {
         xs.push(Intersection::new(t1, self.id()));
         xs.push(Intersection::new(t2, self.id()));
         xs
-    }
-
-    fn intersect(&self, ray: &Ray) -> Intersections {
-        let ray2 = Ray::new(
-            self.transform_inv().mul(ray.origin),
-            self.transform_inv().mul(ray.direction),
-        );
-        self.local_intersect(&ray2)
-    }
-
-    fn normal_at(&self, world_point: Tuple) -> Tuple {
-        let object_point = self.transform_inv().mul(world_point);
-        // move to local coordinates by use of inverse matrix
-        let object_normal = self.local_normal_at(object_point);
-        let mut world_normal = self.transform_inv().transpose().mul(object_normal);
-        world_normal.w = 0_f64;
-        world_normal.normalize()
     }
 
     fn local_normal_at(&self, object_point: Tuple) -> Tuple {

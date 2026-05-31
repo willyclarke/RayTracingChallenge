@@ -3,6 +3,8 @@
 //!
 
 use crate::matrix::Matrix4;
+use crate::ray::Ray;
+use crate::tuple::Tuple;
 use crate::{intersection::Intersections, material::Material};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -48,12 +50,29 @@ pub trait Shape: Send + Sync {
         self.data().id
     }
 
-    fn set_id(&mut self, id: usize) {
-        self.data_mut().id = id;
+    fn intersect(&self, ray: &Ray) -> Intersections {
+        let ray2 = Ray::new(
+            self.data().transform_inv * ray.origin,
+            self.data().transform_inv * ray.direction,
+        );
+        self.local_intersect(&ray2)
     }
 
     fn material(&self) -> &Material {
         &self.data().material
+    }
+
+    fn normal_at(&self, world_point: Tuple) -> Tuple {
+        let object_point = self.data().transform_inv * world_point;
+        // move to local coordinates by use of inverse matrix
+        let object_normal = self.local_normal_at(object_point);
+        let mut world_normal = self.data().transform_inv.transpose() * object_normal;
+        world_normal.w = 0_f64;
+        world_normal.normalize()
+    }
+
+    fn set_id(&mut self, id: usize) {
+        self.data_mut().id = id;
     }
 
     fn set_material(&mut self, m: Material) {
@@ -73,8 +92,6 @@ pub trait Shape: Send + Sync {
         self.data_mut().transform_inv = m.inverse().unwrap_or(Matrix4::identity());
     }
 
-    fn intersect(&self, ray: &crate::ray::Ray) -> Intersections;
     fn local_intersect(&self, ray: &crate::ray::Ray) -> Intersections;
-    fn normal_at(&self, point: crate::tuple::Tuple) -> crate::tuple::Tuple;
     fn local_normal_at(&self, point: crate::tuple::Tuple) -> crate::tuple::Tuple;
 }
