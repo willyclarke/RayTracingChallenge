@@ -51,11 +51,11 @@ pub trait Shape: Send + Sync {
     }
 
     fn intersect(&self, ray: &Ray) -> Intersections {
-        let ray2 = Ray::new(
+        let local_ray = Ray::new(
             self.data().transform_inv * ray.origin,
             self.data().transform_inv * ray.direction,
         );
-        self.local_intersect(&ray2)
+        self.local_intersect(&local_ray)
     }
 
     fn material(&self) -> &Material {
@@ -63,10 +63,10 @@ pub trait Shape: Send + Sync {
     }
 
     fn normal_at(&self, world_point: Tuple) -> Tuple {
-        let object_point = self.data().transform_inv * world_point;
+        let local_point = self.data().transform_inv * world_point;
         // move to local coordinates by use of inverse matrix
-        let object_normal = self.local_normal_at(object_point);
-        let mut world_normal = self.data().transform_inv.transpose() * object_normal;
+        let local_normal = self.local_normal_at(local_point);
+        let mut world_normal = self.data().transform_inv.transpose() * local_normal;
         world_normal.w = 0_f64;
         world_normal.normalize()
     }
