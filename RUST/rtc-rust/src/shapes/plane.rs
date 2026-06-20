@@ -9,7 +9,8 @@ use crate::ray::Ray;
 use crate::shape::{Shape, ShapeData};
 use crate::tuple::Tuple;
 
-#[derive(Debug, Clone, Copy)]
+// #[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Plane {
     pub data: ShapeData,
 }

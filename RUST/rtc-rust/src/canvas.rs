@@ -402,7 +402,7 @@ mod tests {
         let mut m = Material::new();
         m.color = Tuple::color(1.0, 0.2, 1.0);
 
-        s.set_material(m);
+        s.set_material(m.clone());
 
         let light_position = Tuple::point(-10.0, 10.0, -10.0);
         let light_color = Tuple::color(1.0, 1.0, 1.0);
@@ -424,7 +424,8 @@ mod tests {
                     let normalv = s.normal_at(point);
                     let eyev = -r.direction;
                     let in_shadow = false;
-                    let color = light.lighting(m, point, eyev, normalv, in_shadow);
+                    // let color = light.lighting(&m, point, eyev, normalv, in_shadow);
+                    let color = light.lighting(&s, point, eyev, normalv, in_shadow);
                     c.write_pixel(x, y, color);
                 }
             }

@@ -4,16 +4,18 @@
 
 use crate::log::*;
 use crate::math::approx_eq;
+use crate::pattern::Pattern;
 use crate::tuple::Tuple;
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Material {
     pub color: Tuple,
     pub ambient: f64,
     pub diffuse: f64,
     pub specular: f64,
     pub shininess: f64,
+    pub pattern: Option<Box<dyn Pattern>>,
 }
 
 impl Material {
@@ -24,10 +26,11 @@ impl Material {
             diffuse: 0.9,
             specular: 0.9,
             shininess: 200.0,
+            pattern: None,
         }
     }
 
-    pub fn approx_eq(&self, other: Material) -> bool {
+    pub fn approx_eq(&self, other: &Material) -> bool {
         self.color.approx_eq(other.color)
             && approx_eq(self.ambient, other.ambient)
             && approx_eq(self.diffuse, other.diffuse)
@@ -86,7 +89,7 @@ mod tests {
         let chk = chk && approx_eq(m.diffuse, 0.9);
         let chk = chk && approx_eq(m.specular, 0.9);
         let chk = chk && approx_eq(m.shininess, 200.0);
-        let chk = chk && m.approx_eq(Material::new());
+        let chk = chk && m.approx_eq(&Material::new());
         if chk {
             Ok(())
         } else {

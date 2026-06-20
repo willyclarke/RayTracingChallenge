@@ -113,7 +113,8 @@ impl World {
                 None => Tuple::color(0.0, 0.0, 0.0),
                 Some(shape) => {
                     let comps = prepare_computations(hit, ray, shape.as_ref());
-                    self.shade_hit(&comps)
+                    // self.shade_hit(&comps)
+                    self.shade_hit(shape.as_ref(), &comps)
                 }
             },
         }
@@ -156,16 +157,26 @@ impl World {
         }
     }
 
-    pub fn shade_hit(&self, comps: &Computations) -> Tuple {
+    // pub fn shade_hit_old(&self, comps: &Computations) -> Tuple {
+    //     let shadowed = self.is_shadowed(comps.over_point);
+    //     match self.light {
+    //         Some(light) => light.lighting_old(
+    //             comps.object.material(),
+    //             comps.over_point,
+    //             comps.eyev,
+    //             comps.normalv,
+    //             shadowed,
+    //         ),
+    //         None => Tuple::color(0.0, 0.0, 0.0),
+    //     }
+    // }
+
+    pub fn shade_hit(&self, shape: &dyn Shape, comps: &Computations) -> Tuple {
         let shadowed = self.is_shadowed(comps.over_point);
         match self.light {
-            Some(light) => light.lighting(
-                *comps.object.material(),
-                comps.over_point,
-                comps.eyev,
-                comps.normalv,
-                shadowed,
-            ),
+            Some(light) => {
+                light.lighting(shape, comps.over_point, comps.eyev, comps.normalv, shadowed)
+            }
             None => Tuple::color(0.0, 0.0, 0.0),
         }
     }
@@ -269,8 +280,15 @@ mod tests {
     use super::*;
     use crate::intersection::Intersection;
     use crate::math::approx_eq;
+    use crate::pattern::Pattern;
+    use crate::patterns::checkerspattern::CheckersPattern;
+    use crate::patterns::gradientpattern::GradientPattern;
+    use crate::patterns::ringpattern::RingPattern;
+    use crate::patterns::stripepattern::*;
+    use crate::patterns::testpattern::TestPattern;
     use crate::shape::Shape;
     use crate::shapes::plane::Plane;
+    use crate::tuple::colors::*;
     use crate::{loge, logi, tuple::Tuple};
 
     /// Chap 7 - Creating a world
@@ -420,7 +438,7 @@ mod tests {
         let shape = w.shapes[0].as_ref();
         let i = Intersection::new(4.0, shape.id());
         let comps = prepare_computations(i, &r, shape as &dyn Shape);
-        let c = w.shade_hit(&comps);
+        let c = w.shade_hit(shape, &comps);
 
         let chk = c.approx_eq(Tuple::color(0.380661193081, 0.475826491351, 0.285495894811));
         if chk {
@@ -445,7 +463,7 @@ mod tests {
         let shape = w.shapes[1].as_ref();
         let i = Intersection::new(0.5, shape.id());
         let comps = prepare_computations(i, &r, shape as &dyn Shape);
-        let c = w.shade_hit(&comps);
+        let c = w.shade_hit(shape, &comps);
 
         let chk = c.approx_eq(Tuple::color(0.904984472083, 0.904984472083, 0.904984472083));
         if chk {
@@ -491,14 +509,14 @@ mod tests {
 
         {
             let outer = w.shapes[0].as_mut();
-            let mut mat = *outer.material();
+            let mut mat = outer.material().clone();
             mat.ambient = 1.0;
             outer.set_material(mat);
         }
 
         {
             let inner = w.shapes[1].as_mut();
-            let mut mat = *inner.material();
+            let mut mat = inner.material().clone();
             mat.ambient = 1.0;
             inner.set_material(mat);
         }
@@ -649,7 +667,7 @@ mod tests {
         floor.set_transform(Matrix4::scaling(10.0, 0.01, 10.0));
         material.diffuse = 0.7;
         material.specular = 0.3;
-        floor.set_material(material);
+        floor.set_material(material.clone());
 
         let mut left_wall = Sphere::new();
         left_wall.set_transform(
@@ -658,7 +676,7 @@ mod tests {
                 * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
                 * Matrix4::scaling(10.0, 0.01, 10.0),
         );
-        left_wall.set_material(*floor.material());
+        left_wall.set_material(floor.material().clone());
 
         let mut right_wall = Sphere::new();
         right_wall.set_transform(
@@ -667,21 +685,21 @@ mod tests {
                 * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
                 * Matrix4::scaling(10.0, 0.01, 10.0),
         );
-        right_wall.set_material(*floor.material());
+        right_wall.set_material(floor.material().clone());
 
         let mut middle = Sphere::new();
         middle.set_transform(Matrix4::translation(-0.5, 1.0, 0.5));
         material.color = Tuple::color(0.1, 1.0, 0.5);
         material.diffuse = 0.7;
         material.specular = 0.3;
-        middle.set_material(material);
+        middle.set_material(material.clone());
 
         let mut right = Sphere::new();
         right.set_transform(Matrix4::translation(1.5, 0.5, -0.5) * Matrix4::scaling(0.5, 0.5, 0.5));
         material.color = Tuple::color(0.5, 1.0, 0.1);
         material.diffuse = 0.7;
         material.specular = 0.3;
-        right.set_material(material);
+        right.set_material(material.clone());
 
         let mut left = Sphere::new();
         left.set_transform(
@@ -787,11 +805,11 @@ mod tests {
         w.add_shape(Box::new(s1));
         let mut s2 = Sphere::new();
         s2.set_transform(Matrix4::translation(0.0, 0.0, 10.0));
-        w.add_shape(Box::new(s2));
+        w.add_shape(Box::new(s2.clone()));
         let r = Ray::new(Tuple::point(0.0, 0.0, 5.0), Tuple::vector(0.0, 0.0, 1.0));
         let i = Intersection::new(4.0, s2.id());
         let comps = prepare_computations(i, &r, &s2 as &dyn Shape);
-        let c = w.shade_hit(&comps);
+        let c = w.shade_hit(&s2, &comps);
 
         let chk = c.approx_eq(Tuple::color(0.1, 0.1, 0.1));
         if chk {
@@ -836,7 +854,7 @@ mod tests {
         floor.set_transform(Matrix4::scaling(10.0, 0.01, 10.0));
         material.diffuse = 0.7;
         material.specular = 0.3;
-        floor.set_material(material);
+        floor.set_material(material.clone());
 
         let mut left_wall = Plane::new();
         left_wall.set_transform(
@@ -845,7 +863,7 @@ mod tests {
                 * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
                 * Matrix4::scaling(10.0, 0.01, 10.0),
         );
-        left_wall.set_material(*floor.material());
+        left_wall.set_material(floor.material().clone());
 
         let mut right_wall = Plane::new();
         right_wall.set_transform(
@@ -854,21 +872,21 @@ mod tests {
                 * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
                 * Matrix4::scaling(10.0, 0.01, 10.0),
         );
-        right_wall.set_material(*floor.material());
+        right_wall.set_material(floor.material().clone());
 
         let mut middle = Sphere::new();
         middle.set_transform(Matrix4::translation(-0.5, 1.0, 0.5));
         material.color = Tuple::color(0.1, 1.0, 0.5);
         material.diffuse = 0.7;
         material.specular = 0.3;
-        middle.set_material(material);
+        middle.set_material(material.clone());
 
         let mut right = Sphere::new();
         right.set_transform(Matrix4::translation(1.5, 0.5, -0.5) * Matrix4::scaling(0.5, 0.5, 0.5));
         material.color = Tuple::color(0.5, 1.0, 0.1);
         material.diffuse = 0.7;
         material.specular = 0.3;
-        right.set_material(material);
+        right.set_material(material.clone());
 
         let mut left = Sphere::new();
         left.set_transform(
@@ -901,6 +919,315 @@ mod tests {
             Ok(())
         } else {
             Err("Chapter 7 Putting It  Together".into())
+        }
+    }
+
+    /// Chap 10 - Stripes with an object transformation
+    #[test]
+    fn test_chap_10_6() -> Result<(), String> {
+        let mut s1 = Sphere::new();
+        s1.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+
+        let pattern = StripePattern::new(WHITE, BLACK);
+        let world_point = Tuple::point(1.5, 0.0, 0.0);
+
+        let c = pattern.color_at_shape(&s1, world_point);
+
+        let chk = c.approx_eq(WHITE);
+        if chk {
+            Ok(())
+        } else {
+            Err("Stripes with an object transformation".into())
+        }
+    }
+
+    /// Chap 10 - Stripes with a pattern transformation
+    #[test]
+    fn test_chap_10_7() -> Result<(), String> {
+        let s1 = Sphere::new();
+
+        let mut pattern = StripePattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+
+        let world_point = Tuple::point(1.5, 0.0, 0.0);
+
+        let c = pattern.color_at_shape(&s1, world_point);
+
+        let chk = c.approx_eq(WHITE);
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Stripes with a pattern transformation".into())
+        }
+    }
+
+    /// Chap 10 - Stripes with both an object and a pattern transformation
+    #[test]
+    fn test_chap_10_8() -> Result<(), String> {
+        let mut s1 = Sphere::new();
+        s1.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+
+        let mut pattern = StripePattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::translation(0.5, 0.0, 0.0));
+
+        let world_point = Tuple::point(2.5, 0.0, 0.0);
+
+        let c = pattern.color_at_shape(&s1, world_point);
+
+        let chk = c.approx_eq(WHITE);
+        if chk {
+            Ok(())
+        } else {
+            Err("Stripes with both an object and a pattern transformation".into())
+        }
+    }
+
+    /// Chap 10 - A pattern with an object transformation
+    #[test]
+    fn test_chap_10_11() -> Result<(), String> {
+        let mut shape = Sphere::new();
+        shape.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let pattern = TestPattern::new();
+
+        let world_point = Tuple::point(2.0, 3.0, 4.0);
+
+        let c = pattern.color_at_shape(&shape, world_point);
+
+        let chk = c.approx_eq(Tuple::color(1.0, 1.5, 2.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("A pattern with an object transformation".into())
+        }
+    }
+
+    /// Chap x - A pattern with a pattern transformation
+    #[test]
+    fn test_chap_10_12() -> Result<(), String> {
+        let shape = Sphere::new();
+        let mut pattern = TestPattern::new();
+        pattern.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+
+        let world_point = Tuple::point(2.0, 3.0, 4.0);
+
+        let c = pattern.color_at_shape(&shape, world_point);
+
+        let chk = c.approx_eq(Tuple::color(1.0, 1.5, 2.0));
+
+        if chk {
+            Ok(())
+        } else {
+            Err("A pattern with a pattern transformation".into())
+        }
+    }
+
+    /// Chap 10 - A pattern with both an object and a pattern transformation
+    #[test]
+    fn test_chap_10_13() -> Result<(), String> {
+        let mut shape = Sphere::new();
+        shape.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let mut pattern = TestPattern::new();
+        pattern.set_transform(Matrix4::translation(0.5, 1.0, 1.5));
+
+        let world_point = Tuple::point(2.5, 3.0, 3.5);
+
+        let c = pattern.color_at_shape(&shape, world_point);
+
+        let chk = c.approx_eq(Tuple::color(0.75, 0.5, 0.25));
+        if chk {
+            Ok(())
+        } else {
+            Err("A pattern with both an object and a pattern transformation".into())
+        }
+    }
+
+    /// Chap 10 - A gradient linearly interpolates between colors
+    #[test]
+    fn test_chap_10_14() -> Result<(), String> {
+        let pattern = GradientPattern::new(WHITE, BLACK);
+        let chk_0 = pattern.color_at(Tuple::point(0.0, 0.0, 0.0));
+        let chk_25 = pattern.color_at(Tuple::point(0.25, 0.0, 0.0));
+        let chk_50 = pattern.color_at(Tuple::point(0.50, 0.0, 0.0));
+        let chk_75 = pattern.color_at(Tuple::point(0.75, 0.0, 0.0));
+
+        let chk = chk_0.approx_eq(WHITE);
+        let chk = chk && chk_25.approx_eq(Tuple::color(0.75, 0.75, 0.75));
+        let chk = chk && chk_50.approx_eq(Tuple::color(0.5, 0.5, 0.5));
+        let chk = chk && chk_75.approx_eq(Tuple::color(0.25, 0.25, 0.25));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_10_14", "chk_0: {}", chk_0);
+            loge!("test_chap_10_14", "chk_25: {}", chk_25);
+            loge!("test_chap_10_14", "chk_50: {}", chk_50);
+            loge!("test_chap_10_14", "chk_75: {}", chk_75);
+            Err("A gradient linearly interpolates between colors".into())
+        }
+    }
+
+    /// Chap 10 - A ring should extend in both x and z
+    #[test]
+    fn test_chap_10_15() -> Result<(), String> {
+        let pattern = RingPattern::new(WHITE, BLACK);
+        let chk_0 = pattern.color_at(Tuple::point(0.0, 0.0, 0.0));
+        let chk_1 = pattern.color_at(Tuple::point(1.0, 0.0, 0.0));
+        let chk_2 = pattern.color_at(Tuple::point(0.0, 0.0, 1.0));
+        let chk_3 = pattern.color_at(Tuple::point(0.708, 0.0, 0.708));
+
+        let chk = chk_0.approx_eq(WHITE);
+        let chk = chk && chk_1.approx_eq(BLACK);
+        let chk = chk && chk_2.approx_eq(BLACK);
+        let chk = chk && chk_3.approx_eq(BLACK);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_10_15", "chk_0: {}", chk_0);
+            Err("A ring should extend in both x and z".into())
+        }
+    }
+
+    /// Chap 10 - Checkers should repeat in x
+    #[test]
+    fn test_chap_10_16() -> Result<(), String> {
+        let pattern = CheckersPattern::new(WHITE, BLACK);
+        let chk_0 = pattern.color_at(Tuple::point(0.0, 0.0, 0.0));
+        let chk_1 = pattern.color_at(Tuple::point(0.99, 0.0, 0.0));
+        let chk_2 = pattern.color_at(Tuple::point(1.01, 0.0, 0.0));
+
+        let chk = chk_0.approx_eq(WHITE);
+        let chk = chk && chk_1.approx_eq(WHITE);
+        let chk = chk && chk_2.approx_eq(BLACK);
+        if chk {
+            Ok(())
+        } else {
+            Err("Checkers should repeat in x".into())
+        }
+    }
+
+    /// Chap 10 - Checkers should repeat in y
+    #[test]
+    fn test_chap_10_17() -> Result<(), String> {
+        let pattern = CheckersPattern::new(WHITE, BLACK);
+        let chk_0 = pattern.color_at(Tuple::point(0.0, 0.0, 0.0));
+        let chk_1 = pattern.color_at(Tuple::point(0.0, 0.99, 0.0));
+        let chk_2 = pattern.color_at(Tuple::point(0.0, 1.01, 0.0));
+
+        let chk = chk_0.approx_eq(WHITE);
+        let chk = chk && chk_1.approx_eq(WHITE);
+        let chk = chk && chk_2.approx_eq(BLACK);
+        if chk {
+            Ok(())
+        } else {
+            Err("Checkers should repeat in y".into())
+        }
+    }
+
+    /// Chap 10 - Checkers should repeat in z
+    #[test]
+    fn test_chap_10_18() -> Result<(), String> {
+        let pattern = CheckersPattern::new(WHITE, BLACK);
+        let chk_0 = pattern.color_at(Tuple::point(0.0, 0.0, 0.0));
+        let chk_1 = pattern.color_at(Tuple::point(0.0, 0.0, 0.99));
+        let chk_2 = pattern.color_at(Tuple::point(0.0, 0.0, 1.01));
+
+        let chk = chk_0.approx_eq(WHITE);
+        let chk = chk && chk_1.approx_eq(WHITE);
+        let chk = chk && chk_2.approx_eq(BLACK);
+        if chk {
+            Ok(())
+        } else {
+            Err("Checkers should repeat in z".into())
+        }
+    }
+
+    /// Chap 10 - Chapter 10 Putting It  Together
+    #[test]
+    fn test_chap_10_19() -> Result<(), String> {
+        let mut world = World::new();
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        world.light = Some(light);
+
+        let mut pattern = GradientPattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
+
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 0.9, 0.9);
+        material.pattern = Some(Box::new(pattern));
+
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::scaling(10.0, 0.01, 10.0));
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        floor.set_material(material.clone());
+
+        let mut left_wall = Plane::new();
+        left_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(-std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        left_wall.set_material(floor.material().clone());
+
+        let mut right_wall = Plane::new();
+        right_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        right_wall.set_material(floor.material().clone());
+
+        let mut middle = Sphere::new();
+        middle.set_transform(Matrix4::translation(-0.5, 1.0, 0.5));
+        material.color = Tuple::color(0.1, 1.0, 0.5);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        middle.set_material(material.clone());
+
+        let mut right = Sphere::new();
+        right.set_transform(Matrix4::translation(1.5, 0.5, -0.5) * Matrix4::scaling(0.5, 0.5, 0.5));
+        material.color = Tuple::color(0.5, 1.0, 0.1);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        right.set_material(material.clone());
+
+        let mut left = Sphere::new();
+        left.set_transform(
+            Matrix4::translation(-1.5, 0.33, -0.75) * Matrix4::scaling(0.33, 0.33, 0.33),
+        );
+        material.color = Tuple::color(1.0, 0.8, 0.1);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        left.set_material(material);
+
+        // VIEW TRANSFORM SETTINGS
+        let from = Tuple::point(0.0, 1.5, -12.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+
+        let camera = Camera::new(1000, 500, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        world.add_shape(Box::new(floor));
+        world.add_shape(Box::new(left_wall));
+        world.add_shape(Box::new(right_wall));
+        world.add_shape(Box::new(middle));
+        world.add_shape(Box::new(left));
+        world.add_shape(Box::new(right));
+
+        let image = world.render(camera);
+        let rc = image.write_ppm("test_chap_10_19_putting_it_together.ppm");
+        let chk = rc.is_ok();
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Chapter 10 Putting It  Together".into())
         }
     }
 }

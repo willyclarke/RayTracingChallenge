@@ -51,11 +51,11 @@ impl Tuple {
     /// assert!(col.approx_eq(Tuple::color(0.1, 0.1, 0.1)));
     /// assert!(col.normalize().magnitude() > 0.0);
     /// ```
-    pub fn color(red: f64, blue: f64, green: f64) -> Self {
+    pub const fn color(red: f64, green: f64, blue: f64) -> Self {
         Self {
             x: red,
-            y: blue,
-            z: green,
+            y: green,
+            z: blue,
             w: 0.0,
         }
     }
@@ -351,6 +351,12 @@ impl Sub for Tuple {
             w: self.w - rhs.w,
         }
     }
+}
+
+pub mod colors {
+    use crate::tuple::Tuple;
+    pub const WHITE: Tuple = Tuple::color(1.0, 1.0, 1.0);
+    pub const BLACK: Tuple = Tuple::color(0.0, 0.0, 0.0);
 }
 
 #[cfg(test)]

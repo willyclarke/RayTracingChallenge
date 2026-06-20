@@ -7,6 +7,8 @@ pub mod log;
 pub mod material;
 pub mod math;
 pub mod matrix;
+pub mod pattern;
+pub mod patterns;
 pub mod ray;
 pub mod shape;
 pub mod tuple;

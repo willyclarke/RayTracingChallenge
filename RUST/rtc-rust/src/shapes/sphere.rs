@@ -8,7 +8,8 @@ use crate::shape::{Shape, ShapeData};
 use crate::tuple::Tuple;
 use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
+// #[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Sphere {
     pub data: ShapeData,
 }
@@ -530,9 +531,9 @@ mod tests {
         let mut s = Sphere::new();
         let mut m = Material::new();
         m.ambient = 1.0;
-        s.set_material(m);
+        s.set_material(m.clone());
 
-        let chk = m.approx_eq(*s.material());
+        let chk = m.approx_eq(s.material());
         if chk {
             Ok(())
         } else {
