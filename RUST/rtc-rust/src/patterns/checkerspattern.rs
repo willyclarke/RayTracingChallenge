@@ -5,7 +5,6 @@
 use crate::{
     matrix::Matrix4,
     pattern::{Pattern, PatternData},
-    shape::Shape,
     tuple::{
         Tuple,
         colors::{BLACK, WHITE},
@@ -53,19 +52,6 @@ impl Pattern for CheckersPattern {
             return self.a;
         }
         self.b
-    }
-
-    /// This method resembles the stripe_at_object from the RTC book.
-    ///
-    /// Multiplies world_point by the inverse of the transform to go to object space.
-    /// And then multiplies the point in object space by the patterns inverse
-    /// transform to go to pattern space.
-    /// Then return result followed by getting the color at the pattern_point.
-    ///
-    fn color_at_shape(&self, shape: &dyn Shape, world_point: Tuple) -> crate::tuple::Tuple {
-        let object_point = *shape.transform_inv() * world_point;
-        let pattern_point = *self.data.transform_inv() * object_point;
-        self.color_at(pattern_point)
     }
 
     fn data(&self) -> &PatternData {

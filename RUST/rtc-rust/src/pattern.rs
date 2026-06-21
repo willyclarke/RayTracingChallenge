@@ -53,9 +53,25 @@ pub trait Pattern: std::fmt::Debug + Send + Sync {
     fn data_mut(&mut self) -> &mut PatternData;
 
     fn color_at(&self, point: Tuple) -> Tuple;
-    fn color_at_shape(&self, shape: &dyn Shape, world_point: Tuple) -> Tuple;
     fn clone_box(&self) -> Box<dyn Pattern>;
     fn set_transform(&mut self, m: Matrix4);
+
+    // provided: default body — patterns inherit unless they override
+    fn color_at_local(&self, point: Tuple) -> Tuple {
+        let local = *self.data().transform_inv() * point;
+        self.color_at(local)
+    }
+
+    ///
+    /// Multiplies world_point by the inverse of the transform to go to object space.
+    /// And then multiplies the point in object space by the patterns inverse
+    /// transform to go to pattern space.
+    /// Then return result followed by getting the color at the pattern_point.
+    ///
+    fn color_at_shape(&self, shape: &dyn Shape, world_point: Tuple) -> Tuple {
+        let object_point = *shape.transform_inv() * world_point;
+        self.color_at_local(object_point)
+    }
 }
 
 impl Clone for Box<dyn Pattern> {
