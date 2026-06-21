@@ -281,6 +281,7 @@ mod tests {
     use crate::intersection::Intersection;
     use crate::math::approx_eq;
     use crate::pattern::Pattern;
+    use crate::patterns::blendedpattern::BlendedPattern;
     use crate::patterns::checkerspattern::CheckersPattern;
     use crate::patterns::gradientpattern::GradientPattern;
     use crate::patterns::nestedpattern::NestedPattern;
@@ -1346,7 +1347,7 @@ mod tests {
         b1_stripe.set_transform(Matrix4::scaling(0.2, 0.2, 0.2));
         let mut b1_ring = RingPattern::new(WHITE, blue);
         b1_ring.set_transform(Matrix4::scaling(0.2, 0.2, 0.2));
-        let mut b1_pattern = NestedPattern::new(Box::new(b1_stripe), Box::new(b1_ring));
+        let mut b1_pattern = BlendedPattern::new(Box::new(b1_stripe), Box::new(b1_ring));
         b1_pattern.set_transform(Matrix4::rotation_z(std::f64::consts::PI / 3.0));
         let mut b1_mat = Material::new();
         b1_mat.pattern = Some(Box::new(b1_pattern));

@@ -1,3 +1,4 @@
+pub mod blendedpattern;
 pub mod checkerspattern;
 pub mod gradientpattern;
 pub mod nestedpattern;
