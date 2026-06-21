@@ -69,6 +69,8 @@ mod tests {
     // use crate::math::approx_eq;
     // use crate::tuple::Tuple;
     // use std::fmt;
+    use crate::shape::Shape;
+    use crate::shapes::sphere::Sphere;
     use crate::{
         logd, loge, logi,
         tuple::{
@@ -199,6 +201,52 @@ mod tests {
                 pattern.color_at(Tuple::point(-1.1, 0.0, 0.0))
             );
             Err("Creating a stripe pattern".into())
+        }
+    }
+
+    /// Chap 10 - Stripes with an object transformation
+    #[test]
+    fn test_chap_10_6() -> Result<(), String> {
+        let mut shape = Sphere::new();
+        shape.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let pattern = StripePattern::new(WHITE, BLACK);
+        let c = pattern.color_at_shape(&shape, Tuple::point(1.5, 0.0, 0.0));
+        if c.approx_eq(WHITE) {
+            Ok(())
+        } else {
+            loge!("test_chap_10_6", "expected WHITE, got: {}", c);
+            Err("Stripes with an object transformation".into())
+        }
+    }
+
+    /// Chap 10 - Stripes with a pattern transformation
+    #[test]
+    fn test_chap_10_7() -> Result<(), String> {
+        let shape = Sphere::new();
+        let mut pattern = StripePattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let c = pattern.color_at_shape(&shape, Tuple::point(1.5, 0.0, 0.0));
+        if c.approx_eq(WHITE) {
+            Ok(())
+        } else {
+            loge!("test_chap_10_7", "expected WHITE, got: {}", c);
+            Err("Stripes with a pattern transformation".into())
+        }
+    }
+
+    /// Chap 10 - Stripes with both an object and a pattern transformation
+    #[test]
+    fn test_chap_10_8() -> Result<(), String> {
+        let mut shape = Sphere::new();
+        shape.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let mut pattern = StripePattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::translation(0.5, 0.0, 0.0));
+        let c = pattern.color_at_shape(&shape, Tuple::point(2.5, 0.0, 0.0));
+        if c.approx_eq(WHITE) {
+            Ok(())
+        } else {
+            loge!("test_chap_10_8", "expected WHITE, got: {}", c);
+            Err("Stripes with both an object and a pattern transformation".into())
         }
     }
 
