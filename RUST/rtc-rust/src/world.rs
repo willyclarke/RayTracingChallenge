@@ -283,6 +283,7 @@ mod tests {
     use crate::pattern::Pattern;
     use crate::patterns::checkerspattern::CheckersPattern;
     use crate::patterns::gradientpattern::GradientPattern;
+    use crate::patterns::nestedpattern::NestedPattern;
     use crate::patterns::ringpattern::RingPattern;
     use crate::patterns::stripepattern::*;
     use crate::patterns::testpattern::TestPattern;
@@ -1228,6 +1229,167 @@ mod tests {
             Ok(())
         } else {
             Err("Chapter 10 Putting It  Together".into())
+        }
+    }
+
+    /// Chap 10 - Nested patterns showcase (4K, full rabbit hole)
+    ///
+    /// Renders a scene that exercises every pattern type AND nesting:
+    /// - floor: checkers nested with a gradient (alternating tiles)
+    /// - walls: stripes nested with rings
+    /// - spheres: gradients, rings, stripes, and a doubly-nested pattern
+    /// Rendered at 4K (3840x2160) via the parallel renderer.
+    #[test]
+    fn test_chap_10_20_nested_showcase() -> Result<(), String> {
+        // --- colors -------------------------------------------------------
+        let red = Tuple::color(0.9, 0.1, 0.1);
+        let green = Tuple::color(0.1, 0.9, 0.2);
+        let blue = Tuple::color(0.1, 0.2, 0.9);
+        let cyan = Tuple::color(0.1, 0.9, 0.9);
+        let magenta = Tuple::color(0.9, 0.1, 0.9);
+        let yellow = Tuple::color(0.95, 0.85, 0.1);
+        let orange = Tuple::color(1.0, 0.55, 0.0);
+
+        let mut world = World::new();
+        world.light = Some(Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        ));
+
+        // --- floor: checkers tiles, each tile filled by a gradient --------
+        let mut floor_checkers = CheckersPattern::new(WHITE, BLACK);
+        floor_checkers.set_transform(Matrix4::scaling(0.5, 0.5, 0.5));
+        let mut floor_gradient = GradientPattern::new(blue, cyan);
+        floor_gradient.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let mut floor_pattern =
+            NestedPattern::new(Box::new(floor_checkers), Box::new(floor_gradient));
+        floor_pattern.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+
+        let mut floor_mat = Material::new();
+        floor_mat.pattern = Some(Box::new(floor_pattern));
+        floor_mat.diffuse = 0.7;
+        floor_mat.specular = 0.1;
+
+        let mut floor = Plane::new();
+        floor.set_material(floor_mat);
+
+        // --- back wall: stripes alternating with rings --------------------
+        let mut wall_stripes = StripePattern::new(magenta, WHITE);
+        wall_stripes.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
+        let mut wall_rings = RingPattern::new(yellow, orange);
+        wall_rings.set_transform(Matrix4::scaling(0.5, 0.5, 0.5));
+        let mut wall_pattern = NestedPattern::new(Box::new(wall_stripes), Box::new(wall_rings));
+        wall_pattern.set_transform(Matrix4::rotation_y(std::f64::consts::PI / 6.0));
+
+        let mut wall_mat = Material::new();
+        wall_mat.pattern = Some(Box::new(wall_pattern));
+        wall_mat.specular = 0.0;
+
+        let mut back_wall = Plane::new();
+        back_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 8.0) * Matrix4::rotation_x(std::f64::consts::PI / 2.0),
+        );
+        back_wall.set_material(wall_mat);
+
+        // --- middle sphere: doubly-nested (stripe-of-gradients vs ring) ---
+        let mut inner_stripe = StripePattern::new(red, green);
+        inner_stripe.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
+        let inner_gradient = GradientPattern::new(yellow, magenta);
+        // first nest: stripes alternating with a gradient
+        let mut nest_a = NestedPattern::new(Box::new(inner_stripe), Box::new(inner_gradient));
+        nest_a.set_transform(Matrix4::scaling(0.5, 0.5, 0.5));
+        let mut ring_child = RingPattern::new(cyan, blue);
+        ring_child.set_transform(Matrix4::scaling(0.3, 0.3, 0.3));
+        // second nest: the whole thing above alternating with a ring
+        let mut middle_pattern = NestedPattern::new(Box::new(nest_a), Box::new(ring_child));
+        middle_pattern.set_transform(
+            Matrix4::scaling(0.6, 0.6, 0.6) * Matrix4::rotation_z(std::f64::consts::PI / 4.0),
+        );
+
+        let mut middle_mat = Material::new();
+        middle_mat.pattern = Some(Box::new(middle_pattern));
+        middle_mat.diffuse = 0.7;
+        middle_mat.specular = 0.3;
+
+        let mut middle = Sphere::new();
+        middle.set_transform(Matrix4::translation(-0.5, 1.0, 0.5));
+        middle.set_material(middle_mat);
+
+        // --- right sphere: rotated gradient -------------------------------
+        let mut right_grad = GradientPattern::new(green, magenta);
+        right_grad.set_transform(
+            Matrix4::scaling(0.5, 0.5, 0.5) * Matrix4::rotation_y(std::f64::consts::PI / 4.0),
+        );
+        let mut right_mat = Material::new();
+        right_mat.pattern = Some(Box::new(right_grad));
+        right_mat.diffuse = 0.7;
+        right_mat.specular = 0.3;
+        let mut right = Sphere::new();
+        right.set_transform(Matrix4::translation(1.5, 0.5, -0.5) * Matrix4::scaling(0.5, 0.5, 0.5));
+        right.set_material(right_mat);
+
+        // --- left sphere: fine rings --------------------------------------
+        let mut left_rings = RingPattern::new(red, yellow);
+        left_rings.set_transform(Matrix4::scaling(0.15, 0.15, 0.15));
+        let mut left_mat = Material::new();
+        left_mat.pattern = Some(Box::new(left_rings));
+        left_mat.diffuse = 0.7;
+        left_mat.specular = 0.3;
+        let mut left = Sphere::new();
+        left.set_transform(
+            Matrix4::translation(-1.5, 0.33, -0.75) * Matrix4::scaling(0.33, 0.33, 0.33),
+        );
+        left.set_material(left_mat);
+
+        // --- extra ball #1: nested stripe/ring, blue family ---------------
+        let mut b1_stripe = StripePattern::new(blue, cyan);
+        b1_stripe.set_transform(Matrix4::scaling(0.2, 0.2, 0.2));
+        let mut b1_ring = RingPattern::new(WHITE, blue);
+        b1_ring.set_transform(Matrix4::scaling(0.2, 0.2, 0.2));
+        let mut b1_pattern = NestedPattern::new(Box::new(b1_stripe), Box::new(b1_ring));
+        b1_pattern.set_transform(Matrix4::rotation_z(std::f64::consts::PI / 3.0));
+        let mut b1_mat = Material::new();
+        b1_mat.pattern = Some(Box::new(b1_pattern));
+        b1_mat.diffuse = 0.7;
+        b1_mat.specular = 0.4;
+        let mut ball1 = Sphere::new();
+        ball1.set_transform(Matrix4::translation(2.6, 0.75, 1.2) * Matrix4::scaling(0.75, 0.75, 0.75));
+        ball1.set_material(b1_mat);
+
+        // --- extra ball #2: warm gradient ---------------------------------
+        let mut b2_grad = GradientPattern::new(orange, red);
+        b2_grad.set_transform(Matrix4::scaling(0.5, 0.5, 0.5));
+        let mut b2_mat = Material::new();
+        b2_mat.pattern = Some(Box::new(b2_grad));
+        b2_mat.diffuse = 0.8;
+        b2_mat.specular = 0.5;
+        b2_mat.shininess = 300.0;
+        let mut ball2 = Sphere::new();
+        ball2.set_transform(Matrix4::translation(-2.7, 0.5, 0.3) * Matrix4::scaling(0.5, 0.5, 0.5));
+        ball2.set_material(b2_mat);
+
+        // --- camera (4K) --------------------------------------------------
+        let from = Tuple::point(0.0, 1.5, -12.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        let camera = Camera::new(960, 540, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        world.add_shape(Box::new(floor));
+        world.add_shape(Box::new(back_wall));
+        world.add_shape(Box::new(middle));
+        world.add_shape(Box::new(left));
+        world.add_shape(Box::new(right));
+        world.add_shape(Box::new(ball1));
+        world.add_shape(Box::new(ball2));
+
+        let image = world.render_parallel(camera);
+        let rc = image.write_ppm("test_chap_10_20_nested_showcase.ppm");
+
+        if rc.is_ok() {
+            Ok(())
+        } else {
+            Err("Chapter 10 Nested patterns showcase".into())
         }
     }
 }
