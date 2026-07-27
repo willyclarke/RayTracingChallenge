@@ -20,6 +20,13 @@ impl Sphere {
             data: ShapeData::new(),
         }
     }
+
+    pub fn glass() -> Self {
+        let mut data = ShapeData::new();
+        data.material.transparency = 1.0;
+        data.material.refractive_index = 1.5;
+        Self { data }
+    }
 }
 
 impl Default for Sphere {

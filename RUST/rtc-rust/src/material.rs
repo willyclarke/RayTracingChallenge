@@ -15,6 +15,9 @@ pub struct Material {
     pub diffuse: f64,
     pub specular: f64,
     pub shininess: f64,
+    pub reflective: f64,
+    pub transparency: f64,
+    pub refractive_index: f64,
     pub pattern: Option<Box<dyn Pattern>>,
 }
 
@@ -26,6 +29,9 @@ impl Material {
             diffuse: 0.9,
             specular: 0.9,
             shininess: 200.0,
+            reflective: 0.0,
+            transparency: 0.0,
+            refractive_index: 1.0,
             pattern: None,
         }
     }
@@ -36,6 +42,9 @@ impl Material {
             && approx_eq(self.diffuse, other.diffuse)
             && approx_eq(self.specular, other.specular)
             && approx_eq(self.shininess, other.shininess)
+            && approx_eq(self.reflective, other.reflective)
+            && approx_eq(self.transparency, other.transparency)
+            && approx_eq(self.refractive_index, other.refractive_index)
     }
 }
 
@@ -49,7 +58,7 @@ impl fmt::Display for Material {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} Material:{} Color: {}{:.3}{} {}{:.3}{} {}{:.3}{} {}ambient:{:.3} diffuse:{:.3} specular:{:.3} shininess:{:.3} {}",
+            "{} Material:{} \nColor: {}{:.3}{} {}{:.3}{} {}{:.3}{} {}\n{:16}:{:.3} \n{:16}:{:.3} \n{:16}:{:.3} \n{:16}:{:.3} \n{:16}:{:.3} \n{:16}:{:.3} \n{:16}:{:.3}{}",
             Color::Yellow,
             Color::Reset,
             Color::Red,
@@ -62,10 +71,20 @@ impl fmt::Display for Material {
             self.color.z,
             Color::Reset,
             Color::Yellow,
+            ".ambient         ",
             self.ambient,
+            ".diffuse         ",
             self.diffuse,
+            ".specular        ",
             self.specular,
+            ".shininess       ",
             self.shininess,
+            ".reflective      ",
+            self.reflective,
+            ".transparency    ",
+            self.transparency,
+            ".refractive_index",
+            self.refractive_index,
             Color::Reset,
         )?;
 
@@ -97,6 +116,19 @@ mod tests {
             logd!("test_chap_6_11", "m:{:?}", m);
             loge!("test_chap_6_11", "chk:{:?}", chk);
             Err("The default material".into())
+        }
+    }
+
+    /// Chap 11 - Reflectivity for the default material
+    #[test]
+    fn test_chap_11_1() -> Result<(), String> {
+        let m = Material::new();
+
+        let chk = approx_eq(m.reflective, 0.0);
+        if chk {
+            Ok(())
+        } else {
+            Err("Reflectivity for the default material".into())
         }
     }
 }

@@ -9,13 +9,14 @@ use crate::camera::Camera;
 use crate::canvas::Canvas;
 use crate::intersection::{Intersection, Intersections};
 use crate::light::Light;
-use crate::log::*;
 use crate::material::Material;
+use crate::math::approx_eq;
 use crate::matrix::Matrix4;
 use crate::ray::Ray;
 use crate::shape::Shape;
 use crate::shapes::sphere::Sphere;
 use crate::tuple::Tuple;
+use crate::{log::*, tuple};
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -24,9 +25,13 @@ pub struct Computations<'a> {
     pub object: &'a dyn Shape,
     pub point: Tuple,
     pub over_point: Tuple,
+    pub under_point: Tuple,
     pub eyev: Tuple,
     pub normalv: Tuple,
+    pub reflectv: Tuple,
     pub inside: bool,
+    pub n1: f64,
+    pub n2: f64,
 }
 
 /// Encapsulating some precomputed information relating to the intersection.
@@ -36,7 +41,7 @@ pub struct Computations<'a> {
 /// * the eye vector (pointing back toward the eye or camera)
 /// * the normal vector
 ///
-pub fn prepare_computations<'a>(
+pub fn prepare_computations_upto_chap10<'a>(
     intersection: Intersection,
     ray: &Ray,
     shape: &'a dyn Shape,
@@ -51,16 +56,133 @@ pub fn prepare_computations<'a>(
     } else {
         false
     };
+    let reflectv = ray.direction.reflect(normalv);
     let over_point = point + normalv * crate::math::EPSILON;
+    let under_point = point - normalv * crate::math::EPSILON;
 
     Computations {
         t,
         object: shape,
         point,
         over_point,
+        under_point,
         eyev,
         normalv,
+        reflectv,
         inside,
+        n1: 1.0,
+        n2: 1.0,
+    }
+}
+
+/// Schlick computation to approximate Fresnel's equation.
+///
+/// returns a number between 0 and 1, inclusive. This number is called the
+/// reflectance and represents what fraction of the light is reflected, given the
+/// surface information at the hit
+///
+pub fn schlick(comps: &Computations) -> f64 {
+    // find the cosine of the angle between the eye and normal vectors
+    let mut cos = comps.eyev.dot(comps.normalv);
+
+    // total internal reflection can only occur if n1 > n2
+    if comps.n1 > comps.n2 {
+        let n = comps.n1 / comps.n2;
+        let sin2_t = n * n * (1.0 - cos * cos);
+        if sin2_t > 1.0 {
+            return 1.0;
+        }
+
+        // compute cosine of theta_t using trig identity and
+        // when n1 > n2, use cos(theta_t) instead
+        cos = (1.0 - sin2_t).sqrt();
+    }
+
+    let r0 = ((comps.n1 - comps.n2) / (comps.n1 + comps.n2)).powf(2.0);
+
+    r0 + (1.0 - r0) * (1.0 - cos).powf(5.0)
+}
+
+pub fn prepare_computations<'a>(
+    intersection: Intersection,
+    ray: &Ray,
+    shapes: &'a [Box<dyn Shape>],
+    xs: &Intersections,
+) -> Computations<'a> {
+    let shape_by_id = |id: usize| -> &dyn Shape {
+        shapes
+            .iter()
+            .find(|s| s.id() == id)
+            .expect("shape id must exist in shapes")
+            .as_ref()
+    };
+
+    let shape = shape_by_id(intersection.object_id);
+    let refractive_index_of =
+        |id: usize| -> f64 { shape_by_id(id).data().material.refractive_index };
+
+    let t = intersection.t;
+    let point = ray.position(t);
+    let eyev = -ray.direction;
+    let mut normalv = shape.normal_at(point);
+
+    let inside = if normalv.dot(eyev) < 0.0 {
+        normalv = -normalv;
+        true
+    } else {
+        false
+    };
+
+    let reflectv = ray.direction.reflect(normalv);
+    let over_point = point + normalv * crate::math::EPSILON;
+    let under_point = point - normalv * crate::math::EPSILON;
+
+    let hit = &intersection;
+    let mut n1 = 1.0;
+    let mut n2 = 1.0;
+
+    let mut containers = [0usize; 32]; // stack-allocated, no heap
+    let last = |c: &[usize], len: usize| -> Option<usize> {
+        if len == 0 { None } else { Some(c[len - 1]) }
+    };
+    let mut len = 0;
+
+    for i in xs.iter() {
+        let is_hit = approx_eq(i.t, hit.t) && i.object_id == hit.object_id;
+
+        if is_hit {
+            n1 = last(&containers, len).map_or(1.0, refractive_index_of);
+        };
+
+        // toggle membership: already inside => we're EXITING; otherwise ENTERING
+        if let Some(pos) = containers[..len].iter().position(|&id| id == i.object_id) {
+            containers.copy_within(pos + 1..len, pos); // shift left, preserve order
+            len -= 1;
+        } else {
+            debug_assert!(len < containers.len(), "container overflow");
+            containers[len] = i.object_id;
+            len += 1;
+        }
+
+        // n2 = material the ray is ENTERING (last container, after the toggle)
+        if is_hit {
+            n2 = last(&containers, len).map_or(1.0, refractive_index_of);
+            break; // (4) stop at the hit
+        }
+    }
+
+    Computations {
+        t,
+        object: shape,
+        point,
+        over_point,
+        under_point,
+        eyev,
+        normalv,
+        reflectv,
+        inside,
+        n1,
+        n2,
     }
 }
 
@@ -71,9 +193,23 @@ pub struct World {
 }
 
 impl World {
-    pub fn add_shape(&mut self, mut shape: Box<dyn Shape>) {
-        shape.set_id(self.next_id.fetch_add(1, Ordering::Relaxed));
+    /// Increment the shape id and add the shape to world.
+    /// # Examples
+    /// ```
+    /// use rtc_rust::world::World;
+    /// use rtc_rust::shapes::sphere::Sphere;
+    ///
+    /// let mut w = World::default_world();
+    /// let ball = Sphere::new();
+    /// let ball_id = w.add_shape(Box::new(ball));
+    ///
+    /// assert!(ball_id > 0);
+    /// ```
+    pub fn add_shape(&mut self, mut shape: Box<dyn Shape>) -> usize {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        shape.set_id(id);
         self.shapes.push(shape);
+        id
     }
 
     pub fn set_light(&mut self, light: Light) {
@@ -105,16 +241,15 @@ impl World {
         w
     }
 
-    pub fn color_at(&self, ray: &Ray) -> Tuple {
+    pub fn color_at(&self, ray: &Ray, remaining: i32) -> Tuple {
         let xs = self.intersect(ray);
         match xs.hit() {
             None => Tuple::color(0.0, 0.0, 0.0),
             Some(hit) => match self.shapes.iter().find(|s| s.id() == hit.object_id) {
                 None => Tuple::color(0.0, 0.0, 0.0),
-                Some(shape) => {
-                    let comps = prepare_computations(hit, ray, shape.as_ref());
-                    // self.shade_hit(&comps)
-                    self.shade_hit(shape.as_ref(), &comps)
+                Some(_shape) => {
+                    let comps = prepare_computations(hit, ray, &self.shapes, &xs);
+                    self.shade_hit(&comps, remaining)
                 }
             },
         }
@@ -171,11 +306,26 @@ impl World {
     //     }
     // }
 
-    pub fn shade_hit(&self, shape: &dyn Shape, comps: &Computations) -> Tuple {
+    pub fn shade_hit(&self, comps: &Computations, remaining: i32) -> Tuple {
         let shadowed = self.is_shadowed(comps.over_point);
         match self.light {
             Some(light) => {
-                light.lighting(shape, comps.over_point, comps.eyev, comps.normalv, shadowed)
+                let surface = light.lighting(
+                    comps.object,
+                    comps.over_point,
+                    comps.eyev,
+                    comps.normalv,
+                    shadowed,
+                );
+                let reflected = self.reflected_color(comps, remaining);
+                let refracted = self.refracted_color(comps, remaining);
+                if comps.object.material().reflective > 0.0
+                    && comps.object.material().transparency > 0.0
+                {
+                    let reflectance = schlick(comps);
+                    return surface + reflected * reflectance + refracted * (1.0 - reflectance);
+                }
+                surface + reflected + refracted
             }
             None => Tuple::color(0.0, 0.0, 0.0),
         }
@@ -187,12 +337,65 @@ impl World {
         for y in 0..camera.vsize {
             for x in 0..camera.hsize {
                 let ray = camera.ray_for_pixel(x, y);
-                let color = self.color_at(&ray);
+                let color = self.color_at(&ray, 10);
                 image.write_pixel(x, y, color);
             }
         }
 
         image
+    }
+
+    pub fn reflected_color(&self, comps: &Computations, remaining: i32) -> Tuple {
+        if remaining <= 0 {
+            return tuple::colors::BLACK;
+        }
+
+        if approx_eq(comps.object.material().reflective, 0.0) {
+            return tuple::colors::BLACK;
+        }
+
+        let reflect_ray = Ray::new(comps.over_point, comps.reflectv);
+        let color = self.color_at(&reflect_ray, remaining - 1);
+        color * comps.object.material().reflective
+    }
+
+    pub fn refracted_color(&self, comps: &Computations, remaining: i32) -> Tuple {
+        if remaining <= 0 {
+            return tuple::colors::BLACK;
+        }
+
+        if approx_eq(comps.object.material().transparency, 0.0) {
+            return Tuple::color(0.0, 0.0, 0.0);
+        }
+
+        // Handle total internal reflection.
+        // Find the ratio of first index of refraction to the second.
+        // (Yup, this is inverted from the definition of Snell's Law.)
+        let n_ratio = comps.n1 / comps.n2;
+
+        // cos(theta_i) is the same as the dot product of the two vectors
+        let cos_i = comps.eyev.dot(comps.normalv);
+
+        // Find sin(theta_t)^2 via trigonometric identity
+        let sin2_t = n_ratio * n_ratio * (1.0 - cos_i * cos_i);
+
+        // Return black when there is total internal reflection.
+        if sin2_t > 1.0 {
+            return tuple::colors::BLACK;
+        }
+
+        // Find cos(theta_t) via trigonometric identity
+        let cos_t = (1.0 - sin2_t).sqrt();
+
+        // Compute the direction of the refracted ray
+        let direction = comps.normalv * (n_ratio * cos_i - cos_t) - comps.eyev * n_ratio;
+
+        // Create the refracted ray
+        let refracted_ray = Ray::new(comps.under_point, direction);
+
+        // Find the color of the refracted ray, making sure to multiply
+        // by the transparency value to account for any opacity
+        self.color_at(&refracted_ray, remaining - 1) * comps.object.material().transparency
     }
 
     pub fn render_parallel(&self, camera: Camera) -> Canvas {
@@ -203,7 +406,7 @@ impl World {
         pixels.par_iter_mut().enumerate().for_each(|(i, pixel)| {
             let x = i % width;
             let y = i / width;
-            *pixel = self.color_at(&camera.ray_for_pixel(x, y));
+            *pixel = self.color_at(&camera.ray_for_pixel(x, y), 10);
         });
 
         let mut image = Canvas::new(width, height);
@@ -279,7 +482,7 @@ pub fn view_transform(from: Tuple, to: Tuple, up: Tuple) -> Matrix4 {
 mod tests {
     use super::*;
     use crate::intersection::Intersection;
-    use crate::math::approx_eq;
+    use crate::math::{EPSILON, approx_eq};
     use crate::pattern::Pattern;
     use crate::patterns::blendedpattern::BlendedPattern;
     use crate::patterns::checkerspattern::CheckersPattern;
@@ -381,7 +584,7 @@ mod tests {
         let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
         let shape = Sphere::new();
         let i = Intersection::new(4.0, shape.id());
-        let comps = prepare_computations(i, &r, &shape as &dyn Shape);
+        let comps = prepare_computations_upto_chap10(i, &r, &shape as &dyn Shape);
 
         let chk = approx_eq(comps.t, i.t);
         let chk = chk && comps.object.id() == shape.id();
@@ -402,7 +605,7 @@ mod tests {
         let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
         let shape = Sphere::new();
         let i = Intersection::new(4.0, shape.id());
-        let comps = prepare_computations(i, &r, &shape as &dyn Shape);
+        let comps = prepare_computations_upto_chap10(i, &r, &shape as &dyn Shape);
 
         let chk = !comps.inside;
         if chk {
@@ -418,7 +621,7 @@ mod tests {
         let r = Ray::new(Tuple::point(0.0, 0.0, 0.0), Tuple::vector(0.0, 0.0, 1.0));
         let shape = Sphere::new();
         let i = Intersection::new(1.0, shape.id());
-        let comps = prepare_computations(i, &r, &shape as &dyn Shape);
+        let comps = prepare_computations_upto_chap10(i, &r, &shape as &dyn Shape);
 
         let chk = Tuple::point(0.0, 0.0, 1.0).approx_eq(comps.point);
         let chk = chk && Tuple::vector(0.0, 0.0, -1.0).approx_eq(comps.eyev);
@@ -439,8 +642,8 @@ mod tests {
         let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
         let shape = w.shapes[0].as_ref();
         let i = Intersection::new(4.0, shape.id());
-        let comps = prepare_computations(i, &r, shape as &dyn Shape);
-        let c = w.shade_hit(shape, &comps);
+        let comps = prepare_computations_upto_chap10(i, &r, shape as &dyn Shape);
+        let c = w.shade_hit(&comps, 10);
 
         let chk = c.approx_eq(Tuple::color(0.380661193081, 0.475826491351, 0.285495894811));
         if chk {
@@ -464,8 +667,8 @@ mod tests {
         let r = Ray::new(Tuple::point(0.0, 0.0, 0.0), Tuple::vector(0.0, 0.0, 1.0));
         let shape = w.shapes[1].as_ref();
         let i = Intersection::new(0.5, shape.id());
-        let comps = prepare_computations(i, &r, shape as &dyn Shape);
-        let c = w.shade_hit(shape, &comps);
+        let comps = prepare_computations_upto_chap10(i, &r, shape as &dyn Shape);
+        let c = w.shade_hit(&comps, 10);
 
         let chk = c.approx_eq(Tuple::color(0.904984472083, 0.904984472083, 0.904984472083));
         if chk {
@@ -481,7 +684,7 @@ mod tests {
     fn test_chap_7_9() -> Result<(), String> {
         let w = World::default_world();
         let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 1.0, 0.0));
-        let c = w.color_at(&r);
+        let c = w.color_at(&r, 10);
         let chk = c.approx_eq(Tuple::color(0.0, 0.0, 0.0));
         if chk {
             Ok(())
@@ -494,7 +697,7 @@ mod tests {
     fn test_chap_7_10() -> Result<(), String> {
         let w = World::default_world();
         let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
-        let c = w.color_at(&r);
+        let c = w.color_at(&r, 10);
         let chk = c.approx_eq(Tuple::color(0.380661193081, 0.475826491351, 0.285495894811));
         if chk {
             Ok(())
@@ -524,7 +727,7 @@ mod tests {
         }
 
         let r = Ray::new(Tuple::point(0.0, 0.0, 0.75), Tuple::vector(0.0, 0.0, -1.0));
-        let c = w.color_at(&r);
+        let c = w.color_at(&r, 10);
 
         let inner = w.shapes[1].as_ref();
         let chk = c.approx_eq(inner.material().color);
@@ -810,8 +1013,8 @@ mod tests {
         w.add_shape(Box::new(s2.clone()));
         let r = Ray::new(Tuple::point(0.0, 0.0, 5.0), Tuple::vector(0.0, 0.0, 1.0));
         let i = Intersection::new(4.0, s2.id());
-        let comps = prepare_computations(i, &r, &s2 as &dyn Shape);
-        let c = w.shade_hit(&s2, &comps);
+        let comps = prepare_computations_upto_chap10(i, &r, &s2 as &dyn Shape);
+        let c = w.shade_hit(&comps, 10);
 
         let chk = c.approx_eq(Tuple::color(0.1, 0.1, 0.1));
         if chk {
@@ -828,7 +1031,7 @@ mod tests {
         let mut s1 = Sphere::new();
         s1.set_transform(Matrix4::translation(0.0, 0.0, 1.0));
         let i = Intersection::new(5.0, s1.id());
-        let comps = prepare_computations(i, &r, &s1 as &dyn Shape);
+        let comps = prepare_computations_upto_chap10(i, &r, &s1 as &dyn Shape);
         let chk = comps.over_point.z < -crate::math::EPSILON / 2.0;
         let chk = chk && comps.point.z > comps.over_point.z;
 
@@ -1159,6 +1362,7 @@ mod tests {
         let mut material = Material::new();
         material.color = Tuple::color(1.0, 0.9, 0.9);
         material.pattern = Some(Box::new(pattern));
+        material.reflective = 0.5;
 
         let mut floor = Plane::new();
         floor.set_transform(Matrix4::scaling(10.0, 0.01, 10.0));
@@ -1213,7 +1417,7 @@ mod tests {
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
 
-        let camera = Camera::new(1000, 500, std::f64::consts::PI / 3.0).with_transform(transform);
+        let camera = Camera::new(100, 50, std::f64::consts::PI / 3.0).with_transform(transform);
 
         world.add_shape(Box::new(floor));
         world.add_shape(Box::new(left_wall));
@@ -1239,6 +1443,7 @@ mod tests {
     /// - floor: checkers nested with a gradient (alternating tiles)
     /// - walls: stripes nested with rings
     /// - spheres: gradients, rings, stripes, and a doubly-nested pattern
+    ///
     /// Rendered at 4K (3840x2160) via the parallel renderer.
     #[test]
     fn test_chap_10_20_nested_showcase() -> Result<(), String> {
@@ -1354,7 +1559,9 @@ mod tests {
         b1_mat.diffuse = 0.7;
         b1_mat.specular = 0.4;
         let mut ball1 = Sphere::new();
-        ball1.set_transform(Matrix4::translation(2.6, 0.75, 1.2) * Matrix4::scaling(0.75, 0.75, 0.75));
+        ball1.set_transform(
+            Matrix4::translation(2.6, 0.75, 1.2) * Matrix4::scaling(0.75, 0.75, 0.75),
+        );
         ball1.set_material(b1_mat);
 
         // --- extra ball #2: warm gradient ---------------------------------
@@ -1374,7 +1581,7 @@ mod tests {
         let to = Tuple::point(0.0, 1.0, 0.0);
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
-        let camera = Camera::new(960, 540, std::f64::consts::PI / 3.0).with_transform(transform);
+        let camera = Camera::new(96, 54, std::f64::consts::PI / 3.0).with_transform(transform);
 
         world.add_shape(Box::new(floor));
         world.add_shape(Box::new(back_wall));
@@ -1391,6 +1598,657 @@ mod tests {
             Ok(())
         } else {
             Err("Chapter 10 Nested patterns showcase".into())
+        }
+    }
+
+    /// Chap 11 - Precomputing the reflection vector
+    #[test]
+    fn test_chap_11_2() -> Result<(), String> {
+        let sqrt2_over_2 = (1.0 / std::f64::consts::FRAC_1_SQRT_2) / 2.0;
+
+        let shape = Plane::new();
+        let r = Ray::new(
+            Tuple::point(0.0, 1.0, 1.0),
+            Tuple::vector(0.0, -sqrt2_over_2, sqrt2_over_2),
+        );
+        let i = Intersection::new((2.0_f64).sqrt(), shape.id());
+        let comps = prepare_computations_upto_chap10(i, &r, &shape);
+        let chk = comps
+            .reflectv
+            .approx_eq(Tuple::vector(0.0, sqrt2_over_2, sqrt2_over_2));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_2", "comps.reflectv:{}", comps.reflectv);
+            Err("Precomputing the reflection vector ".into())
+        }
+    }
+
+    /// Chap 11 - The reflected color for a nonreflective material
+    #[test]
+    fn test_chap_11_3() -> Result<(), String> {
+        let mut w = World::default_world();
+
+        let point = Tuple::point(0.0, 0.0, 0.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0);
+        let r = Ray::new(point, direction);
+        w.shapes[1].data_mut().material.ambient = 1.0;
+        let i = Intersection::new(1.0, w.shapes[1].as_ref().id());
+        let comps = prepare_computations_upto_chap10(i, &r, w.shapes[1].as_ref());
+        let color = w.reflected_color(&comps, 10);
+
+        let chk = color.approx_eq(BLACK);
+        if chk {
+            Ok(())
+        } else {
+            Err("The reflected color for a nonreflective material".into())
+        }
+    }
+
+    /// Chap 11 - The reflected color for a reflective material
+    #[test]
+    fn test_chap_11_4() -> Result<(), String> {
+        let mut w = World::default_world();
+
+        let mut material = Material::new();
+        material.reflective = 0.5;
+
+        let mut shape = Plane::new();
+        shape.set_transform(Matrix4::translation(0.0, -1.0, 0.0));
+        shape.set_material(material.clone());
+
+        w.add_shape(Box::new(shape));
+
+        let sqrt2_over_2 = (1.0 / std::f64::consts::FRAC_1_SQRT_2) / 2.0;
+        let point = Tuple::point(0.0, 0.0, -3.0);
+        let direction = Tuple::vector(0.0, -sqrt2_over_2, sqrt2_over_2);
+        let r = Ray::new(point, direction);
+
+        let shape = w.shapes.last().expect("world must have at least one shape");
+        let i = Intersection::new(2.0_f64.sqrt(), shape.id());
+        let comps = prepare_computations_upto_chap10(i, &r, shape.as_ref());
+        let color = w.reflected_color(&comps, 10);
+
+        let chk = color.approx_eq(Tuple::color(0.190330596701, 0.237913245876, 0.142747947526));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_4", "color:{}", color);
+            Err("The reflected color for a reflective material".into())
+        }
+    }
+
+    /// Chap 11 - shade_hit() with a reflective material
+    #[test]
+    fn test_chap_11_5() -> Result<(), String> {
+        let mut w = World::default_world();
+
+        let mut material = Material::new();
+        material.reflective = 0.5;
+
+        let mut shape = Plane::new();
+        shape.set_transform(Matrix4::translation(0.0, -1.0, 0.0));
+        shape.set_material(material.clone());
+
+        w.add_shape(Box::new(shape));
+
+        let sqrt2_over_2 = (1.0 / std::f64::consts::FRAC_1_SQRT_2) / 2.0;
+        let point = Tuple::point(0.0, 0.0, -3.0);
+        let direction = Tuple::vector(0.0, -sqrt2_over_2, sqrt2_over_2);
+        let r = Ray::new(point, direction);
+
+        let shape = w.shapes.last().expect("world must have at least one shape");
+        let i = Intersection::new(2.0_f64.sqrt(), shape.id());
+        let comps = prepare_computations_upto_chap10(i, &r, shape.as_ref());
+        let color = w.shade_hit(&comps, 10);
+
+        let chk = color.approx_eq(Tuple::color(0.876755985652, 0.924338634827, 0.829173336477));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_5", "color:{}", color);
+            Err("shade_hit() with a reflective material".into())
+        }
+    }
+
+    /// Chap 11 - color_at() with mutually reflective surfaces Test #6: Avoid Infinite Recursion
+    /// Show that your code safely handles infinite recursion caused by two objects that mutually
+    /// reflect rays between themselves. Create two parallel mirrors by positioning one plane above
+    /// another and making them both reflective. Orient a ray so that it strikes one plane and
+    /// bounces to the other. What will happen?
+    #[test]
+    fn test_chap_11_6() -> Result<(), String> {
+        let mut w = World::new(); //World::default_world();
+
+        let light = Light::point_light(Tuple::point(0.0, 0.0, 0.0), Tuple::color(1.0, 1.0, 1.0));
+        w.set_light(light);
+
+        let mut material = Material::new();
+        material.reflective = 1.0;
+
+        let mut lower = Plane::new();
+        lower.set_transform(Matrix4::translation(0.0, -1.0, 0.0));
+        lower.set_material(material.clone());
+
+        w.add_shape(Box::new(lower));
+
+        let mut upper = Plane::new();
+        upper.set_transform(Matrix4::translation(0.0, 1.0, 0.0));
+        upper.set_material(material.clone());
+
+        w.add_shape(Box::new(upper));
+
+        let point = Tuple::point(0.0, 0.0, 0.0);
+        let direction = Tuple::vector(0.0, 1.0, 0.0);
+        let r = Ray::new(point, direction);
+
+        let color = w.color_at(&r, 10);
+        let chk = color.x >= 1.0;
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_6", "color:{}", color);
+            Err("shade_hit() with a reflective material".into())
+        }
+    }
+
+    /// Chap 11 - Transparency and Refractive Index for the default material
+    #[test]
+    fn test_chap_11_7() -> Result<(), String> {
+        let material = Material::new();
+        let chk =
+            approx_eq(material.transparency, 0.0) && approx_eq(material.refractive_index, 1.0);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_7", "material:{}", material);
+            Err("Transparency and Refractive Index for the default material".into())
+        }
+    }
+
+    /// Chap 11 - A helper for producing a sphere with a glassy material
+    #[test]
+    fn test_chap_11_8() -> Result<(), String> {
+        let s = Sphere::glass();
+        let chk = s.transform().approx_eq(Matrix4::identity())
+            && approx_eq(s.data.material.transparency, 1.0)
+            && approx_eq(s.data.material.refractive_index, 1.5);
+        if chk {
+            Ok(())
+        } else {
+            Err("A helper for producing a sphere with a glassy material".into())
+        }
+    }
+
+    /// Chap 11 - Finding n1 and n2 at various intersections
+    #[test]
+    fn test_chap_11_9() -> Result<(), String> {
+        let mut a = Sphere::glass();
+        a.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        a.data.material.refractive_index = 1.5;
+
+        let mut b = Sphere::glass();
+        b.set_transform(Matrix4::translation(0.0, 0.0, -0.25));
+        b.data.material.refractive_index = 2.0;
+
+        let mut c = Sphere::glass();
+        c.set_transform(Matrix4::translation(0.0, 0.0, 0.25));
+        c.data.material.refractive_index = 2.5;
+
+        // capture ids BEFORE the moves below
+        let (a_id, b_id, c_id) = (a.id(), b.id(), c.id());
+
+        // now move each Sphere into a boxed trait object
+        let shapes: [Box<dyn Shape>; 3] = [Box::new(a), Box::new(b), Box::new(c)];
+
+        let r = Ray::new(Tuple::point(0.0, 0.0, -4.0), Tuple::vector(0.0, 0.0, 1.0));
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(2.0, a_id));
+        xs.push(Intersection::new(2.75, b_id));
+        xs.push(Intersection::new(3.25, c_id));
+        xs.push(Intersection::new(4.75, b_id));
+        xs.push(Intersection::new(5.25, c_id));
+        xs.push(Intersection::new(6.0, a_id));
+
+        let expected = [
+            (1.0, 1.5),
+            (1.5, 2.0),
+            (2.0, 2.5),
+            (2.5, 2.5),
+            (2.5, 1.5),
+            (1.5, 1.0),
+        ];
+
+        for (idx, (n1, n2)) in expected.iter().enumerate() {
+            let comps = prepare_computations(xs[idx], &r, &shapes, &xs);
+            if !approx_eq(comps.n1, *n1) || !approx_eq(comps.n2, *n2) {
+                return Err(format!(
+                    "idx {idx}: got ({}, {}), expected ({n1}, {n2})",
+                    comps.n1, comps.n2
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Chap x - The under point is offset below the surface
+    #[test]
+    fn test_chap_11_10() -> Result<(), String> {
+        let ray = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let mut shape = Sphere::glass();
+        shape.set_transform(Matrix4::translation(0.0, 0.0, 1.0));
+
+        let i = Intersection::new(5.0, shape.id());
+        let mut xs = Intersections::new();
+        xs.push(i);
+
+        // now move each Sphere into a boxed trait object
+        let shapes: [Box<dyn Shape>; 1] = [Box::new(shape)];
+
+        let comps = prepare_computations(i, &ray, &shapes, &xs);
+
+        let chk = comps.under_point.z > EPSILON / 2_f64 && comps.point.z < comps.under_point.z;
+
+        if chk {
+            Ok(())
+        } else {
+            Err(" The under point is offset below the surface".into())
+        }
+    }
+
+    /// Chap 11 - The refracted color with an opaque surface
+    #[test]
+    fn test_chap_11_11() -> Result<(), String> {
+        let w = World::default_world();
+        let shape = &w.shapes[0];
+        let ray = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(4.0, shape.id()));
+        xs.push(Intersection::new(6.0, shape.id()));
+
+        let comps = prepare_computations(xs[0], &ray, &w.shapes, &xs);
+        let c = w.refracted_color(&comps, 0);
+
+        let chk = c.approx_eq(Tuple::color(0.0, 0.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("The refracted color with an opaque surface".into())
+        }
+    }
+
+    /// Chap 11 - The refracted color at the maximum recursive depth
+    #[test]
+    fn test_chap_11_12() -> Result<(), String> {
+        let mut w = World::default_world();
+        let shape = w.shapes[0].as_mut();
+
+        let mut m = Material::new();
+        m.transparency = 1.0;
+        m.refractive_index = 1.5;
+        shape.set_material(m.clone());
+
+        let ray = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(4.0, shape.id()));
+        xs.push(Intersection::new(6.0, shape.id()));
+
+        let comps = prepare_computations(xs[0], &ray, &w.shapes, &xs);
+        let c = w.refracted_color(&comps, 0);
+
+        let chk = c.approx_eq(Tuple::color(0.0, 0.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("The refracted color at the maximum recursive depth".into())
+        }
+    }
+
+    /// Chap x - The refracted color under total internal reflection
+    #[test]
+    fn test_chap_11_13() -> Result<(), String> {
+        let mut w = World::default_world();
+        let shape = w.shapes[0].as_mut();
+
+        let mut m = Material::new();
+        m.transparency = 1.0;
+        m.refractive_index = 1.5;
+        shape.set_material(m.clone());
+
+        let sqrt2_over_2 = (1.0 / std::f64::consts::FRAC_1_SQRT_2) / 2.0;
+        let ray = Ray::new(
+            Tuple::point(0.0, 0.0, sqrt2_over_2),
+            Tuple::vector(0.0, 1.0, 0.0),
+        );
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(-sqrt2_over_2, shape.id()));
+        xs.push(Intersection::new(sqrt2_over_2, shape.id()));
+
+        // NOTE: this time you're inside the sphere, so you need
+        // to look at the second intersection, xs[1], not xs[0]
+        let comps = prepare_computations(xs[1], &ray, &w.shapes, &xs);
+        let c = w.refracted_color(&comps, 5);
+
+        let chk = c.approx_eq(Tuple::color(0.0, 0.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_13", "c:{}", c);
+            Err("The refracted color under total internal reflection".into())
+        }
+    }
+
+    /// Chap x - The refracted color with a refracted ray
+    #[test]
+    fn test_chap_11_14() -> Result<(), String> {
+        let mut w = World::default_world();
+
+        // Avoid mutating twice on the vector by
+        // split once; `left` holds shapes[0], `right` holds shapes[1..]
+        let (left, right) = w.shapes.split_at_mut(1);
+
+        let a = left[0].as_mut();
+        let b = right[0].as_mut();
+
+        let mut m = Material::new();
+        m.ambient = 1.0;
+        m.pattern = Some(Box::new(TestPattern::new()));
+        a.set_material(m.clone());
+
+        let mut m = Material::new();
+        m.transparency = 1.0;
+        m.refractive_index = 1.5;
+        b.set_material(m.clone());
+
+        let ray = Ray::new(Tuple::point(0.0, 0.0, 0.1), Tuple::vector(0.0, 1.0, 0.0));
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(-0.9899, a.id()));
+        xs.push(Intersection::new(-0.4899, b.id()));
+        xs.push(Intersection::new(0.4899, b.id()));
+        xs.push(Intersection::new(0.9899, a.id()));
+
+        let comps = prepare_computations(xs[2], &ray, &w.shapes, &xs);
+        let c = w.refracted_color(&comps, 5);
+
+        let chk = c.approx_eq(Tuple::color(0.000000000000, 0.998884681786, 0.047216421860));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_14", "refracted_color c: {}", c);
+            Err("The refracted color with a refracted ray".into())
+        }
+    }
+
+    /// Chap 11 - shade_hit() with a transparent material
+    #[test]
+    fn test_chap_11_15() -> Result<(), String> {
+        let mut w = World::default_world();
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::translation(0.0, -1.0, 0.0));
+
+        let mut m = Material::new();
+        m.transparency = 0.5;
+        m.refractive_index = 1.5;
+        floor.set_material(m.clone());
+
+        let mut ball = Sphere::new();
+        let mut m = Material::new();
+        m.color = Tuple::color(1.0, 0.0, 0.0);
+        m.ambient = 0.5;
+        ball.set_transform(Matrix4::translation(0.0, -3.5, -0.5));
+        ball.set_material(m.clone());
+
+        let floor_id = w.add_shape(Box::new(floor));
+        w.add_shape(Box::new(ball));
+
+        let sqrt2_over_2 = (1.0 / std::f64::consts::FRAC_1_SQRT_2) / 2.0;
+        let ray = Ray::new(
+            Tuple::point(0.0, 0.0, -3.0),
+            Tuple::vector(0.0, -sqrt2_over_2, sqrt2_over_2),
+        );
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(2_f64.sqrt(), floor_id));
+
+        let comps = prepare_computations(xs[0], &ray, &w.shapes, &xs);
+        let color = w.shade_hit(&comps, 5);
+
+        let chk = color.approx_eq(Tuple::color(0.936425388951, 0.686425388951, 0.686425388951));
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_15", "shade hit produced color: {}", color);
+            Err("shade_hit() with a transparent material".into())
+        }
+    }
+
+    /// Chap 11 - The Schlick approximation under total internal reflection
+    #[test]
+    fn test_chap_11_16() -> Result<(), String> {
+        let mut w = World::default_world();
+        let shape = Sphere::glass();
+        let shape_id = w.add_shape(Box::new(shape));
+
+        let sqrt2_over_2 = (1.0 / std::f64::consts::FRAC_1_SQRT_2) / 2.0;
+        let ray = Ray::new(
+            Tuple::point(0.0, 0.0, sqrt2_over_2),
+            Tuple::vector(0.0, 1.0, 0.0),
+        );
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(-sqrt2_over_2, shape_id));
+        xs.push(Intersection::new(sqrt2_over_2, shape_id));
+
+        let comps = prepare_computations(xs[1], &ray, &w.shapes, &xs);
+        let reflectance = schlick(&comps);
+
+        let chk = approx_eq(reflectance, 1.0);
+        if chk {
+            Ok(())
+        } else {
+            Err("The Schlick approximation under total internal reflection".into())
+        }
+    }
+
+    /// Chap 11 - The Schlick approximation with a perpendicular viewing angle
+    #[test]
+    fn test_chap_11_17() -> Result<(), String> {
+        let mut w = World::default_world();
+        let shape = Sphere::glass();
+        let shape_id = w.add_shape(Box::new(shape));
+
+        let ray = Ray::new(Tuple::point(0.0, 0.0, 0.0), Tuple::vector(0.0, 1.0, 0.0));
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(-1.0, shape_id));
+        xs.push(Intersection::new(1.0, shape_id));
+
+        let comps = prepare_computations(xs[1], &ray, &w.shapes, &xs);
+        let reflectance = schlick(&comps);
+
+        let chk = approx_eq(reflectance, 0.04);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_17", "reflectance: {}", reflectance);
+            Err("The Schlick approximation with a perpendicular viewing angle".into())
+        }
+    }
+
+    /// Chap 11 - The Schlick approximation with small angle and n2 > n1
+    #[test]
+    fn test_chap_11_18() -> Result<(), String> {
+        let mut w = World::default_world();
+        let shape = Sphere::glass();
+        let shape_id = w.add_shape(Box::new(shape));
+
+        let ray = Ray::new(Tuple::point(0.0, 0.99, -2.0), Tuple::vector(0.0, 0.0, 1.0));
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(1.8589, shape_id));
+
+        let comps = prepare_computations(xs[0], &ray, &w.shapes, &xs);
+        let reflectance = schlick(&comps);
+
+        let chk = approx_eq(reflectance, 0.48873081012212183);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_18", "reflectance: {}", reflectance);
+            Err("The Schlick approximation with small angle and n2 > n1".into())
+        }
+    }
+
+    /// Chap 11 - shade_hit() with a reflective, transparent material
+    #[test]
+    fn test_chap_11_19() -> Result<(), String> {
+        let mut w = World::default_world();
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::translation(0.0, -1.0, 0.0));
+
+        let mut m = Material::new();
+        m.reflective = 0.5;
+        m.transparency = 0.5;
+        m.refractive_index = 1.5;
+        floor.set_material(m.clone());
+
+        let mut ball = Sphere::new();
+        let mut m = Material::new();
+        m.color = Tuple::color(1.0, 0.0, 0.0);
+        m.ambient = 0.5;
+        ball.set_transform(Matrix4::translation(0.0, -3.5, -0.5));
+        ball.set_material(m.clone());
+
+        let floor_id = w.add_shape(Box::new(floor));
+        w.add_shape(Box::new(ball));
+
+        let sqrt2_over_2 = (1.0 / std::f64::consts::FRAC_1_SQRT_2) / 2.0;
+        let ray = Ray::new(
+            Tuple::point(0.0, 0.0, -3.0),
+            Tuple::vector(0.0, -sqrt2_over_2, sqrt2_over_2),
+        );
+
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(2_f64.sqrt(), floor_id));
+
+        let comps = prepare_computations(xs[0], &ray, &w.shapes, &xs);
+        let color = w.shade_hit(&comps, 5);
+
+        let chk = color.approx_eq(Tuple::color(0.933915140526, 0.696434226271, 0.692430691343));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_11_19", "color: {}", color);
+            Err("shade_hit() with a reflective, transparent material".into())
+        }
+    }
+
+    /// Chap 11 - Chapter 11 Putting It  Together
+    #[test]
+    fn test_chap_11_20() -> Result<(), String> {
+        let mut world = World::new();
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        world.light = Some(light);
+
+        let mut pattern = GradientPattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
+
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 0.9, 0.9);
+        // material.pattern = Some(Box::new(pattern));
+        material.reflective = 0.25;
+
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::scaling(10.0, 0.01, 10.0));
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        floor.set_material(material.clone());
+
+        let mut left_wall = Plane::new();
+        left_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(-std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        left_wall.set_material(floor.material().clone());
+
+        let mut right_wall = Plane::new();
+        right_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        right_wall.set_material(floor.material().clone());
+
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 0.9, 0.9);
+        let mut pattern = CheckersPattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::scaling(0.1, 0.1, 0.1));
+        material.pattern = Some(Box::new(pattern));
+
+        let mut middle = Sphere::new();
+        middle.set_transform(Matrix4::translation(-0.5, 1.0, 0.5));
+        material.color = Tuple::color(0.1, 1.0, 0.5);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        middle.set_material(material.clone());
+
+        let mut right = Sphere::glass();
+        right.set_transform(Matrix4::translation(1.5, 0.5, -0.5) * Matrix4::scaling(0.5, 0.5, 0.5));
+        let mut material = Material::new();
+        material.pattern = Some(Box::new(pattern));
+        material.color = Tuple::color(0.82, 0.0, 0.0);
+        material.transparency = 0.95;
+        material.reflective = 1.0;
+        material.shininess = 300.0;
+        material.specular = 1.0;
+        right.set_material(material.clone());
+
+        let mut left = Sphere::new();
+        left.set_transform(
+            Matrix4::translation(-1.5, 0.33, -0.75) * Matrix4::scaling(0.33, 0.33, 0.33),
+        );
+        material.color = Tuple::color(1.0, 0.8, 0.1);
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        left.set_material(material);
+
+        // VIEW TRANSFORM SETTINGS
+        let from = Tuple::point(0.0, 1.5, -12.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+
+        let camera = Camera::new(60, 40, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        world.add_shape(Box::new(floor));
+        world.add_shape(Box::new(left_wall));
+        world.add_shape(Box::new(right_wall));
+        world.add_shape(Box::new(middle));
+        world.add_shape(Box::new(left));
+        world.add_shape(Box::new(right));
+
+        let image = world.render(camera);
+        let rc = image.write_ppm("test_chap_11_20_putting_it_together.ppm");
+        let chk = rc.is_ok();
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Chapter 11_20 Putting It  Together".into())
         }
     }
 }
