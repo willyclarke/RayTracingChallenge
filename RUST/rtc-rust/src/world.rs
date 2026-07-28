@@ -492,6 +492,7 @@ mod tests {
     use crate::patterns::stripepattern::*;
     use crate::patterns::testpattern::TestPattern;
     use crate::shape::Shape;
+    use crate::shapes::cube::Cube;
     use crate::shapes::plane::Plane;
     use crate::tuple::colors::*;
     use crate::{loge, logi, tuple::Tuple};
@@ -2249,6 +2250,291 @@ mod tests {
             Ok(())
         } else {
             Err("Chapter 11_20 Putting It  Together".into())
+        }
+    }
+
+    /// Chap 12 - A ray intersects a cube
+    #[test]
+    fn test_chap_12_1() -> Result<(), String> {
+        let c = Cube::new();
+
+        // +x
+        let r = Ray::new(Tuple::point(5.0, 0.5, 0.0), Tuple::vector(-1.0, 0.0, 0.0));
+        let xs = c.local_intersect(&r);
+        let chk = xs.count() == 2;
+        let chk = chk && approx_eq(xs[0].t, 4.0) && approx_eq(xs[1].t, 6.0);
+
+        // -x
+        let r = Ray::new(Tuple::point(-5.0, 0.5, 0.0), Tuple::vector(1.0, 0.0, 0.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && approx_eq(xs[0].t, 4.0) && approx_eq(xs[1].t, 6.0);
+
+        // +y
+        let r = Ray::new(Tuple::point(0.5, 5.0, 0.0), Tuple::vector(0.0, -1.0, 0.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && approx_eq(xs[0].t, 4.0) && approx_eq(xs[1].t, 6.0);
+
+        // -y
+        let r = Ray::new(Tuple::point(0.5, -5.0, 0.0), Tuple::vector(0.0, 1.0, 0.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && approx_eq(xs[0].t, 4.0) && approx_eq(xs[1].t, 6.0);
+
+        // +z
+        let r = Ray::new(Tuple::point(0.5, 0.0, 5.0), Tuple::vector(0.0, 0.0, -1.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && approx_eq(xs[0].t, 4.0) && approx_eq(xs[1].t, 6.0);
+
+        // -z
+        let r = Ray::new(Tuple::point(0.5, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && approx_eq(xs[0].t, 4.0) && approx_eq(xs[1].t, 6.0);
+
+        // inside
+        let r = Ray::new(Tuple::point(0.0, 0.5, 0.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && approx_eq(xs[0].t, -1.0) && approx_eq(xs[1].t, 1.0);
+
+        if chk {
+            Ok(())
+        } else {
+            Err("A ray intersects a cube".into())
+        }
+    }
+
+    /// Chap 12 - A ray misses a cube
+    #[test]
+    fn test_chap_12_2() -> Result<(), String> {
+        let c = Cube::new();
+
+        let r = Ray::new(
+            Tuple::point(-2.0, 0.0, 0.0),
+            Tuple::vector(0.26730, 0.5345, 0.8018),
+        );
+        let xs = c.local_intersect(&r);
+        let chk = xs.count() == 0;
+
+        let r = Ray::new(
+            Tuple::point(0.0, -2.0, 0.0),
+            Tuple::vector(0.8018, 0.2673, 0.5345),
+        );
+        let xs = c.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let r = Ray::new(
+            Tuple::point(0.0, 0.0, -2.0),
+            Tuple::vector(0.5345, 0.8018, 0.2673),
+        );
+        let xs = c.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let r = Ray::new(Tuple::point(2.0, 0.0, 2.0), Tuple::vector(0.0, 0.0, -1.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let r = Ray::new(Tuple::point(0.0, 2.0, 2.0), Tuple::vector(0.0, -1.0, 0.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let r = Ray::new(Tuple::point(2.0, 2.0, 0.0), Tuple::vector(-1.0, 0.0, 0.0));
+        let xs = c.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("A ray misses a cube".into())
+        }
+    }
+
+    /// Chap 12 - The normal on the surface of a cube
+    #[test]
+    fn test_chap_12_3() -> Result<(), String> {
+        let c = Cube::new();
+
+        let p = Tuple::point(1.0, 0.5, -0.8);
+        let normal = c.local_normal_at(p);
+        let chk = Tuple::vector(1.0, 0.0, 0.0).approx_eq(normal);
+
+        let p = Tuple::point(-1.0, -0.5, 0.9);
+        let normal = c.local_normal_at(p);
+        let chk = chk && Tuple::vector(-1.0, 0.0, 0.0).approx_eq(normal);
+
+        let p = Tuple::point(-0.4, 1.0, -0.1);
+        let normal = c.local_normal_at(p);
+        let chk = chk && Tuple::vector(0.0, 1.0, 0.0).approx_eq(normal);
+
+        let p = Tuple::point(0.3, -1.0, -0.7);
+        let normal = c.local_normal_at(p);
+        let chk = chk && Tuple::vector(0.0, -1.0, 0.0).approx_eq(normal);
+
+        let p = Tuple::point(-0.6, 0.3, 1.0);
+        let normal = c.local_normal_at(p);
+        let chk = chk && Tuple::vector(0.0, 0.0, 1.0).approx_eq(normal);
+
+        let p = Tuple::point(0.4, 0.4, -1.0);
+        let normal = c.local_normal_at(p);
+        let chk = chk && Tuple::vector(0.0, 0.0, -1.0).approx_eq(normal);
+
+        let p = Tuple::point(1.0, 1.0, 1.0);
+        let normal = c.local_normal_at(p);
+        let chk = chk && Tuple::vector(1.0, 0.0, 0.0).approx_eq(normal);
+
+        let p = Tuple::point(-1.0, -1.0, -1.0);
+        let normal = c.local_normal_at(p);
+        let chk = chk && Tuple::vector(-1.0, 0.0, 0.0).approx_eq(normal);
+
+        if chk {
+            Ok(())
+        } else {
+            Err("The normal on the surface of a cube".into())
+        }
+    }
+
+    /// Chap 12 - Chapter 12 Putting It  Together
+    #[test]
+    fn test_chap_12_4() -> Result<(), String> {
+        let mut world = World::new();
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        world.light = Some(light);
+
+        let mut pattern = GradientPattern::new(WHITE, BLACK);
+        pattern.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
+
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 0.9, 0.9);
+        // material.pattern = Some(Box::new(pattern));
+        material.reflective = 0.05;
+
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::scaling(10.0, 0.01, 10.0));
+        material.diffuse = 0.7;
+        material.specular = 0.3;
+        floor.set_material(material.clone());
+
+        let mut left_wall = Plane::new();
+        left_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(-std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        left_wall.set_material(floor.material().clone());
+
+        let mut right_wall = Plane::new();
+        right_wall.set_transform(
+            Matrix4::translation(0.0, 0.0, 5.0)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(10.0, 0.01, 10.0),
+        );
+        right_wall.set_material(floor.material().clone());
+
+        let mut table_top = Cube::new();
+        table_top.set_transform(
+            Matrix4::translation(-1.0, 0.5, -6.0)
+                // * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(1.0, 1.0, 0.05),
+        );
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 0.0, 0.0);
+        table_top.set_material(material.clone());
+
+        let mut leg1 = Cube::new();
+        leg1.set_transform(
+            Matrix4::translation(-1.95, 0.0, -6.95)
+                // * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                // * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(0.05, 0.5, 0.05),
+        );
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 1.0, 0.0);
+        leg1.set_material(material.clone());
+
+        let mut leg2 = leg1.clone();
+        leg2.set_transform(
+            Matrix4::translation(-0.05, 0.0, -6.95)
+                // * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                // * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(0.05, 0.5, 0.05),
+        );
+        let mut material = Material::new();
+        material.color = Tuple::color(0.0, 1.0, 1.0);
+        leg2.set_material(material.clone());
+
+        let mut x_pos: f64 = 1.5;
+        let mut y_pos: f64 = 2.0;
+        let mut z_pos: f64 = -1.95;
+        let pos_incr: f64 = 0.2;
+        let mut b = Cube::new();
+        b.set_transform(
+            Matrix4::translation(x_pos, 1.0, z_pos)
+                // * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                // * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(0.05, 0.05, 0.05),
+        );
+
+        let mut vbb: Vec<Box<dyn Shape>> = vec![Box::new(b.clone())];
+        loop {
+            loop {
+                x_pos += pos_incr;
+                if x_pos > 3.0 {
+                    x_pos = 1.5;
+                    y_pos -= pos_incr / 2.0;
+                    z_pos -= pos_incr;
+
+                    let mut material = Material::new();
+                    material.color = Tuple::color(x_pos/10.0, y_pos/10.0, y_pos/x_pos);
+                    b.set_material(material.clone());
+
+                    break;
+                }
+
+                b.set_transform(
+                    Matrix4::translation(x_pos + pos_incr, y_pos, z_pos - pos_incr)
+                // * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                // * Matrix4::rotation_x(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(0.05, 0.05, 0.05),
+                );
+                vbb.push(Box::new(b.clone()));
+            }
+
+            if z_pos < -4.0 {
+                break;
+            }
+        }
+
+        let from = Tuple::point(0.0, 1.5, -12.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+
+        // let (display_x, display_y) = (60, 40);
+        let (display_x, display_y) = (3456, 2234);
+        let camera =
+            Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        world.add_shape(Box::new(floor));
+        world.add_shape(Box::new(left_wall));
+        world.add_shape(Box::new(right_wall));
+        world.add_shape(Box::new(table_top));
+        world.add_shape(Box::new(leg1));
+        world.add_shape(Box::new(leg2));
+        for b_elem in vbb {
+            world.add_shape(b_elem);
+        }
+
+        let image = world.render(camera);
+        let rc = image.write_ppm("test_chap_12_4_putting_it_together.ppm");
+        let chk = rc.is_ok();
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Chapter 12_4 Putting It  Together".into())
         }
     }
 }
