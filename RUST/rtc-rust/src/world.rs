@@ -2823,7 +2823,7 @@ mod tests {
         }
     }
 
-    /// Chap x - Intersecting a cone with a ray parallel to one of its halves
+    /// Chap 13 - Intersecting a cone with a ray parallel to one of its halves
     #[test]
     fn test_chap_13_10() -> Result<(), String> {
         let shape = Cone::new();
@@ -2844,7 +2844,7 @@ mod tests {
         }
     }
 
-    /// Chap x - Intersecting a cone's end caps
+    /// Chap 13 - Intersecting a cone's end caps
     #[test]
     fn test_chap_13_11() -> Result<(), String> {
         let mut shape = Cone::new();
@@ -2877,7 +2877,7 @@ mod tests {
         }
     }
 
-    /// Chap x - Computing the normal vector on a cone
+    /// Chap 13 - Computing the normal vector on a cone
     #[test]
     fn test_chap_13_12() -> Result<(), String> {
         let shape = Cone::new();
@@ -2901,6 +2901,7 @@ mod tests {
             Err("Computing the normal vector on a cone".into())
         }
     }
+
     /// Chap 13 - Putting It Together
     ///
     /// The book leaves this scene open-ended ("render cylinders and cones"), so
