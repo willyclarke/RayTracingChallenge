@@ -1,7 +1,8 @@
 //! Cube definition
 //!
-//! A generic cube with sides 1x1x1
-//!
+//! An axis-aligned cube centered at the origin, spanning `-1..=1` on each axis
+//! (the "unit cube", analogous to the unit sphere). Ray intersection uses the
+//! slab method — see [`check_axis`].
 
 use crate::intersection::{Intersection, Intersections};
 use crate::math::approx_eq;
@@ -9,13 +10,15 @@ use crate::ray::Ray;
 use crate::shape::{Shape, ShapeData};
 use crate::tuple::Tuple;
 
-// #[derive(Debug, Clone, Copy)]
+/// An axis-aligned unit cube centered at the origin, spanning `-1..=1` on each
+/// axis. Its transform (in `data`) scales, rotates, and positions it in the world.
 #[derive(Debug, Clone)]
 pub struct Cube {
     pub data: ShapeData,
 }
 
 impl Cube {
+    /// Create a unit cube centered at the origin (spanning `-1..=1` per axis).
     pub fn new() -> Self {
         Self {
             data: ShapeData::new(),
@@ -45,14 +48,15 @@ impl Default for Cube {
 /// `(tmin, tmax)`, ordered so that `tmin <= tmax`. When `direction` is `0` the
 /// ray is parallel to this axis and the values are `±infinity`, which the
 /// caller's `min`/`max` combination handles correctly.
-/// /// # Examples
+///
+/// # Examples
 /// ```
 /// use rtc_rust::shapes::cube::check_axis;
 ///
 /// // Ray at x = -5 heading +x: enters the x-slab at t=4, exits at t=6.
 /// let (tmin, tmax) = check_axis(-5.0, 1.0);
 /// assert_eq!((tmin, tmax), (4.0, 6.0));
-///
+/// ```
 pub fn check_axis(origin: f64, direction: f64) -> (f64, f64) {
     let tmin = (-1.0 - origin) / direction;
     let tmax = (1.0 - origin) / direction;
@@ -61,27 +65,6 @@ pub fn check_axis(origin: f64, direction: f64) -> (f64, f64) {
     } else {
         (tmin, tmax)
     }
-}
-
-pub fn check_axis_original(origin: f64, direction: f64) -> (f64, f64) {
-    let tmin_numerator = -1.0 - origin; // cube spans -1..1 on each axis
-    let tmax_numerator = 1.0 - origin;
-
-    let (tmin, tmax) = if direction.abs() >= crate::math::EPSILON {
-        (tmin_numerator / direction, tmax_numerator / direction)
-    } else {
-        // direction ~0: avoid 0/0; keep the sign via ±infinity
-        (
-            tmin_numerator * f64::INFINITY,
-            tmax_numerator * f64::INFINITY,
-        )
-    };
-
-    if tmin > tmax {
-        (tmax, tmin)
-    } else {
-        (tmin, tmax)
-    } // ensure min ≤ max
 }
 
 impl Shape for Cube {

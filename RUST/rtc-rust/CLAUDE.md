@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Context
 
-Rust implementation of "The Ray Tracer Challenge" book. Each chapter builds on the last — currently at Chapter 4 (matrix transformations). No external dependencies; Rust edition 2024.
+Rust implementation of "The Ray Tracer Challenge" book, built up chapter by chapter. Rust edition 2024. The one external dependency is `rayon`, used for parallel rendering.
 
 ## Commands
 
@@ -12,35 +12,43 @@ Rust implementation of "The Ray Tracer Challenge" book. Each chapter builds on t
 cargo build              # debug build
 cargo build --release
 cargo test --lib         # run all unit tests
-cargo test --lib --ignored  # run only ignored tests (projectile demos)
-cargo test --lib test_chap_3_20  # run a single test by name
+cargo test --lib --ignored   # run only ignored tests (projectile demos)
+cargo test --lib test_chap_13 # run one chapter's tests by name prefix
+cargo test --doc         # run documentation examples (doctests)
 cargo clippy --lib       # lint
 cargo fmt                # auto-format
 ```
 
 ## Architecture
 
-The crate is a library (`src/lib.rs`) with six modules. `src/main.rs` is a placeholder.
+The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering flows: a `Camera` casts rays through a `World` of shapes lit by a `Light`, and `World::color_at` returns the shaded color (with reflection/refraction recursion).
 
-**Module dependency order:**
-```
-math    → tuple → matrix
-                → canvas
-log / color     (standalone utilities)
-```
+**Foundation types:**
 
 **`tuple`** — The core type. `Tuple { x, y, z, w: f64 }` is used for everything:
 - Points: `w = 1.0`, Vectors: `w = 0.0`, Colors: RGB stored in x/y/z
 - All arithmetic operators overloaded; float equality via `approx_eq()` (ε = 1e-9)
 
-**`matrix`** — `Matrix2`, `Matrix3`, `Matrix4` as fixed `[[f64; N]; N]` arrays. `Matrix4` is the main type: supports `inverse()`, `transpose()`, `translation()`, identity, and `Mul<Tuple>` for transforming points/vectors. Display renders with ANSI color (0=yellow, 1=green, negatives=red).
+**`matrix`** — `Matrix2`, `Matrix3`, `Matrix4` as fixed `[[f64; N]; N]` arrays. `Matrix4` is the main type: `inverse()`, `transpose()`, `translation()`/`scaling()`/`rotation_{x,y,z}()`, identity, and `Mul<Tuple>` for transforming points/vectors.
 
-**`canvas`** — 2D pixel buffer (`Vec<Tuple>`). Writes to binary PPM via `to_ppm()` / `write_ppm(path)`. Indexed by `canvas[(x, y)]`. PPM test images are written to the working directory.
+**`canvas`** — 2D pixel buffer (`Vec<Tuple>`). Writes binary PPM via `to_ppm()` / `write_ppm(path)`. Indexed by `canvas[(x, y)]`. PPM images are written to the working directory.
 
-**`math`** — Single `approx_eq(a, b)` helper used throughout for float comparison.
+**`math`** — `approx_eq(a, b)` and `EPSILON`, used throughout for float comparison.
 
-**`log` / `color`** — `logi!()`, `logd!()`, `loge!()` macros with timestamps; `Color` enum for ANSI codes. Used in tests and demos for visibility.
+**Rendering pipeline:**
+
+**`shape` / `shapes`** — `Shape` is the object-safe trait every primitive implements; shared state (id, transform, material) lives in `ShapeData`, exposed via `data()`/`data_mut()`. Each primitive implements `local_intersect` and `local_normal_at` in object space; the trait handles the world↔object transform. Primitives: `sphere`, `plane`, `cube`, `cylinder`, `cone`.
+
+**`pattern` / `patterns`** — `Pattern` trait for material surface patterns: `stripe`, `gradient`, `ring`, `checkers`, plus `nested`/`blended` combinators and a `test` pattern for unit tests.
+
+**`world`** — Holds the shapes and light. `intersect`, `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel` and `view_transform`. Shapes get a world-assigned id via `add_shape`.
+
+**`intersection`** — `Intersection { t, object_id }` and `Intersections`, a `t`-sorted collection (`push` inserts in order; `hit()` returns the first non-negative).
+
+**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`); `Light` (point light + Phong `lighting`); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern).
+
+**`log` / `color`** — `logi!()`, `logd!()`, `loge!()` macros with timestamps; `Color` enum for ANSI codes. Used in tests and demos.
 
 ## Tests
 
-All tests live inline at the bottom of each module under `#[cfg(test)]`. Named by chapter: `test_chap_1_05`, `test_chap_3_20`, etc. Return `Result<(), String>` (or `std::io::Result<()>` for I/O tests). `#[ignore]` marks the two projectile trajectory demos that generate PPM output.
+Tests live inline at the bottom of each module under `#[cfg(test)]`, named by book chapter (`test_chap_1_05`, `test_chap_13_9`, etc.) so a chapter's tests share a `test_chap_N` prefix. They return `Result<(), String>` (or `std::io::Result<()>` for I/O). `#[ignore]` marks the projectile trajectory demos. Some `*_putting_it_all_together` tests render a scene to a PPM. Public helpers additionally carry doctests (run with `cargo test --doc`).

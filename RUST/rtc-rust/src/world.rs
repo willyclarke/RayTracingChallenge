@@ -492,7 +492,9 @@ mod tests {
     use crate::patterns::stripepattern::*;
     use crate::patterns::testpattern::TestPattern;
     use crate::shape::Shape;
+    use crate::shapes::cone::Cone;
     use crate::shapes::cube::Cube;
+    use crate::shapes::cylinder::Cylinder;
     use crate::shapes::plane::Plane;
     use crate::tuple::colors::*;
     use crate::{loge, logi, tuple::Tuple};
@@ -2487,7 +2489,7 @@ mod tests {
                     z_pos -= pos_incr;
 
                     let mut material = Material::new();
-                    material.color = Tuple::color(x_pos/10.0, y_pos/10.0, y_pos/x_pos);
+                    material.color = Tuple::color(x_pos / 10.0, y_pos / 10.0, y_pos / x_pos);
                     b.set_material(material.clone());
 
                     break;
@@ -2535,6 +2537,538 @@ mod tests {
             Ok(())
         } else {
             Err("Chapter 12_4 Putting It  Together".into())
+        }
+    }
+
+    /// Chap 13 - A ray misses a cylinder
+    #[test]
+    fn test_chap_13_1() -> Result<(), String> {
+        let cyl = Cylinder::new();
+
+        let direction = Tuple::vector(0.0, 1.0, 0.0).normalize();
+        let r = Ray::new(Tuple::point(1.0, 0.0, 0.0), direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = xs.count() == 0;
+
+        let direction = Tuple::vector(0.0, 1.0, 0.0).normalize();
+        let r = Ray::new(Tuple::point(0.0, 0.0, 0.0), direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let direction = Tuple::vector(1.0, 1.0, 1.0).normalize();
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("A ray misses a cylinder".into())
+        }
+    }
+
+    /// Chap 13 - A ray strikes a cylinder
+    #[test]
+    fn test_chap_13_2() -> Result<(), String> {
+        let cyl = Cylinder::new();
+
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(Tuple::point(1.0, 0.0, -5.0), direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = xs.count() == 2 && approx_eq(xs[0].t, 5.0) && approx_eq(xs[1].t, 5.0);
+
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 2 && approx_eq(xs[0].t, 4.0) && approx_eq(xs[1].t, 6.0);
+
+        let direction = Tuple::vector(0.1, 1.0, 1.0).normalize();
+        let r = Ray::new(Tuple::point(0.5, 0.0, -5.0), direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk
+            && xs.count() == 2
+            && approx_eq(xs[0].t, 6.80798191702732)
+            && approx_eq(xs[1].t, 7.088723439378861);
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_13_2", "hit t's:: t0:{} t1:{}", xs[0].t, xs[1].t);
+            Err("A ray misses a cylinder".into())
+        }
+    }
+
+    /// Chap 13 - Normal vector on a cylinder
+    #[test]
+    fn test_chap_13_3() -> Result<(), String> {
+        let cyl = Cylinder::new();
+
+        let n = cyl.local_normal_at(Tuple::point(1.0, 0.0, 0.0));
+        let chk = n.approx_eq(Tuple::vector(1.0, 0.0, 0.0));
+
+        let n = cyl.local_normal_at(Tuple::point(0.0, 5.0, -1.0));
+        let chk = chk && n.approx_eq(Tuple::vector(0.0, 0.0, -1.0));
+
+        let n = cyl.local_normal_at(Tuple::point(0.0, -2.0, 1.0));
+        let chk = chk && n.approx_eq(Tuple::vector(0.0, 0.0, 1.0));
+
+        let n = cyl.local_normal_at(Tuple::point(-1.0, 1.0, 0.0));
+        let chk = chk && n.approx_eq(Tuple::vector(-1.0, 0.0, 0.0));
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Normal vector on a cylinder".into())
+        }
+    }
+
+    /// Chap 13 - The default minimum and maximum for a cylinder
+    #[test]
+    fn test_chap_13_4() -> Result<(), String> {
+        let cyl = Cylinder::new();
+
+        let chk = cyl.minimum == f64::NEG_INFINITY && cyl.maximum == f64::INFINITY;
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_13_4", "minimum: {}", cyl.minimum);
+            Err("The default minimum and maximum for a cylinder".into())
+        }
+    }
+
+    /// Chap 13 - Intersecting a constrained cylinder
+    #[test]
+    fn test_chap_13_5() -> Result<(), String> {
+        let mut cyl = Cylinder::new();
+        cyl.minimum = 1.0;
+        cyl.maximum = 2.0;
+
+        let origin = Tuple::point(0.0, 1.5, 0.0);
+        let direction = Tuple::vector(0.1, 1.0, 0.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = xs.count() == 0;
+
+        let origin = Tuple::point(0.0, 3.0, -5.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let origin = Tuple::point(0.0, 0.0, -5.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let origin = Tuple::point(0.0, 2.0, 0.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let origin = Tuple::point(0.0, 1.0, 0.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 0;
+
+        let origin = Tuple::point(0.0, 1.5, -2.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 2;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Intersecting a constrained cylinder".into())
+        }
+    }
+
+    /// Chap 13 - The default closed value for a cylinder
+    #[test]
+    fn test_chap_13_6() -> Result<(), String> {
+        let cyl = Cylinder::new();
+
+        let chk = !cyl.closed;
+        if chk {
+            Ok(())
+        } else {
+            Err("The default closed value for a cylinder".into())
+        }
+    }
+
+    /// Chap 13 - Intersecting the caps of a closed cylinder
+    #[test]
+    fn test_chap_13_7() -> Result<(), String> {
+        let mut cyl = Cylinder::new();
+        cyl.minimum = 1.0;
+        cyl.maximum = 2.0;
+        cyl.closed = true;
+
+        // | point        | direction   | count |
+        let origin = Tuple::point(0.0, 3.0, 0.0);
+        let direction = Tuple::vector(0.0, -1.0, 0.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = xs.count() == 2;
+
+        let origin = Tuple::point(0.0, 3.0, -2.0);
+        let direction = Tuple::vector(0.0, -1.0, 2.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 2;
+
+        let origin = Tuple::point(0.0, 4.0, -2.0); // corner case
+        let direction = Tuple::vector(0.0, -1.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 2;
+
+        let origin = Tuple::point(0.0, 0.0, -2.0);
+        let direction = Tuple::vector(0.0, 1.0, 2.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 2;
+
+        let origin = Tuple::point(0.0, -1.0, -2.0); // corner case
+        let direction = Tuple::vector(0.0, 1.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cyl.local_intersect(&r);
+        let chk = chk && xs.count() == 2;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Intersecting the caps of a closed cylinder".into())
+        }
+    }
+
+    /// Chap 13 - The normal vector on a cylinder's end caps
+    #[test]
+    fn test_chap_13_8() -> Result<(), String> {
+        let mut cyl = Cylinder::new();
+        cyl.minimum = 1.0;
+        cyl.maximum = 2.0;
+        cyl.closed = true;
+
+        let point = Tuple::point(0.0, 1.0, 0.0);
+        let n = cyl.local_normal_at(point);
+        let chk = n.approx_eq(Tuple::vector(0.0, -1.0, 0.0));
+
+        let point = Tuple::point(0.5, 1.0, 0.0);
+        let n = cyl.local_normal_at(point);
+        let chk = chk && n.approx_eq(Tuple::vector(0.0, -1.0, 0.0));
+
+        let point = Tuple::point(0.0, 1.0, 0.5);
+        let n = cyl.local_normal_at(point);
+        let chk = chk && n.approx_eq(Tuple::vector(0.0, -1.0, 0.0));
+
+        let point = Tuple::point(0.0, 2.0, 0.0);
+        let n = cyl.local_normal_at(point);
+        let chk = chk && n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
+
+        let point = Tuple::point(0.5, 2.0, 0.0);
+        let n = cyl.local_normal_at(point);
+        let chk = chk && n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
+
+        let point = Tuple::point(0.0, 2.0, 0.5);
+        let n = cyl.local_normal_at(point);
+        let chk = chk && n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
+
+        if chk {
+            Ok(())
+        } else {
+            Err("The normal vector on a cylinder's end caps".into())
+        }
+    }
+
+    /// Chap 13 - Intersecting a cone with a ray
+    #[test]
+    fn test_chap_13_9() -> Result<(), String> {
+        let cone = Cone::new();
+
+        let origin = Tuple::point(0.0, 0.0, -5.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cone.local_intersect(&r);
+        let chk = xs.count() == 2 && approx_eq(xs[0].t, 5.0) && approx_eq(xs[1].t, 5.0);
+
+        let origin = Tuple::point(0.0, 0.0, -5.0);
+        let direction = Tuple::vector(1.0, 1.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cone.local_intersect(&r);
+        let chk = chk
+            && xs.count() == 2
+            && approx_eq(xs[0].t, 8.660254037844386)
+            && approx_eq(xs[1].t, 8.660254037844386);
+
+        let origin = Tuple::point(1.0, 1.0, -5.0);
+        let direction = Tuple::vector(-0.5, -1.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = cone.local_intersect(&r);
+        let chk = chk
+            && xs.count() == 2
+            && approx_eq(xs[0].t, 4.550055679356349)
+            && approx_eq(xs[1].t, 49.449944320643645);
+
+        if chk {
+            Ok(())
+        } else {
+            if xs.count() > 1 {
+                loge!("test_chap_13_9", "xs[0].t:{} xs[1].t:{}", xs[0].t, xs[1].t);
+            }
+            Err("A ray misses a cone".into())
+        }
+    }
+
+    /// Chap x - Intersecting a cone with a ray parallel to one of its halves
+    #[test]
+    fn test_chap_13_10() -> Result<(), String> {
+        let shape = Cone::new();
+
+        let origin = Tuple::point(0.0, 0.0, -1.0);
+        let direction = Tuple::vector(0.0, 1.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = shape.local_intersect(&r);
+
+        let chk = xs.count() == 1 && approx_eq(xs[0].t, 0.3535533905932738);
+        if chk {
+            Ok(())
+        } else {
+            if xs.count() > 0 {
+                loge!("test_chap_13_10", "xs[0].t:{} ", xs[0].t);
+            }
+            Err("Intersecting a cone with a ray parallel to one of its halves".into())
+        }
+    }
+
+    /// Chap x - Intersecting a cone's end caps
+    #[test]
+    fn test_chap_13_11() -> Result<(), String> {
+        let mut shape = Cone::new();
+        shape.minimum = -0.5;
+        shape.maximum = 0.5;
+        shape.closed = true;
+
+        let origin = Tuple::point(0.0, 0.0, -5.0);
+        let direction = Tuple::vector(0.0, 1.0, 0.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = shape.local_intersect(&r);
+        let chk = xs.count() == 0;
+
+        let origin = Tuple::point(0.0, 0.0, -0.25);
+        let direction = Tuple::vector(0.0, 1.0, 1.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = shape.local_intersect(&r);
+        let chk = chk && xs.count() == 2;
+
+        let origin = Tuple::point(0.0, 0.0, -0.25);
+        let direction = Tuple::vector(0.0, 1.0, 0.0).normalize();
+        let r = Ray::new(origin, direction);
+        let xs = shape.local_intersect(&r);
+        let chk = chk && xs.count() == 4;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Intersecting a cone's end caps".into())
+        }
+    }
+
+    /// Chap x - Computing the normal vector on a cone
+    #[test]
+    fn test_chap_13_12() -> Result<(), String> {
+        let shape = Cone::new();
+
+        let point = Tuple::point(0.0, 0.0, 0.0);
+        let n = shape.local_normal_at(point);
+        let chk = n.approx_eq(Tuple::vector(0.0, 0.0, 0.0));
+
+        let point = Tuple::point(1.0, 1.0, 1.0);
+        let n = shape.local_normal_at(point);
+        let chk = chk && n.approx_eq(Tuple::vector(1.0, -2.0_f64.sqrt(), 1.0));
+
+        let point = Tuple::point(-1.0, -1.0, 0.0);
+        let n = shape.local_normal_at(point);
+        let chk = chk && n.approx_eq(Tuple::vector(-1.0, 1.0, 0.0));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_13_12", "n:{}", n);
+            Err("Computing the normal vector on a cone".into())
+        }
+    }
+    /// Chap 13 - Putting It Together
+    ///
+    /// The book leaves this scene open-ended ("render cylinders and cones"), so
+    /// this composes a showcase from the cylinder features built in this
+    /// chapter: capped solids, a truncated open tube, and a transformed
+    /// cylinder, following the same layout as the earlier "putting it together"
+    /// tests. Renders to a PPM in the working directory.
+    #[test]
+    fn test_chap_13_putting_it_all_together() -> Result<(), String> {
+        let mut world = World::new();
+
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        world.light = Some(light);
+
+        let mut floor_checkers = CheckersPattern::new(WHITE, BLACK);
+        floor_checkers.set_transform(Matrix4::scaling(0.5, 0.5, 0.5));
+
+        // Floor - a slightly reflective plane
+        let mut floor = Plane::new();
+        let mut floor_material = Material::new();
+        floor_material.color = Tuple::color(0.8, 0.8, 0.85);
+        floor_material.specular = 0.0;
+        floor_material.reflective = 0.2;
+        floor_material.pattern = Some(Box::new(floor_checkers));
+        floor.set_material(floor_material);
+        world.add_shape(Box::new(floor));
+
+        // Tall capped cylinder (green)
+        let mut tall = Cylinder::new();
+        tall.minimum = 0.0;
+        tall.maximum = 3.0;
+        tall.closed = true;
+        tall.set_transform(Matrix4::translation(-1.5, 0.0, 0.5) * Matrix4::scaling(0.5, 1.0, 0.5));
+        let mut tall_material = Material::new();
+        tall_material.color = Tuple::color(0.1, 0.8, 0.3);
+        tall_material.diffuse = 0.7;
+        tall_material.specular = 0.3;
+        tall.set_material(tall_material);
+        world.add_shape(Box::new(tall));
+
+        // Capped drum (red, slightly reflective)
+        let mut drum = Cylinder::new();
+        drum.minimum = 0.0;
+        drum.maximum = 2.5;
+        drum.closed = true;
+        drum.set_transform(
+            Matrix4::translation(2.3, 0.0, -0.5) * Matrix4::scaling(0.29, 1.0, 0.29),
+        );
+        let mut drum_material = Material::new();
+        drum_material.color = Tuple::color(0.9, 0.2, 0.2);
+        drum_material.diffuse = 0.7;
+        drum_material.specular = 0.3;
+        drum_material.reflective = 0.2;
+        drum.set_material(drum_material);
+        world.add_shape(Box::new(drum));
+
+        let mut cyl_radius = 0.39;
+        let mut cyl_maximum = 2.0;
+        let mut col_factor = 1.0;
+        loop {
+            // Thin open tube () - not closed, so you can see through it
+            let mut tube = Cylinder::new();
+            tube.minimum = 0.0;
+            tube.maximum = cyl_maximum;
+            tube.closed = false;
+            tube.set_transform(
+                Matrix4::translation(2.3, 0.0, -0.5)
+                    * Matrix4::scaling(cyl_radius, 1.0, cyl_radius),
+            );
+
+            let mut mirror = Material::new();
+            mirror.color = Tuple::color(0.0, 0.0, 0.0); // near-black base; reflection provides the look
+            mirror.ambient = 0.0;
+            mirror.diffuse = 0.0;
+            mirror.specular = 1.0; // bright highlight where the light hits
+            mirror.shininess = 300.0; // tight, sharp highlight (mirror-like, not matte)
+            mirror.reflective = 0.94 * col_factor; // perfect mirror; 0.9 for "very polished but not perfect"
+
+            // let mut tube_material = Material::new();
+            // tube_material.color =
+            //     Tuple::color(0.2 / col_factor, 0.4 / col_factor, 0.19 / col_factor);
+            // // tube_material.diffuse = 0.7 * col_factor;
+            // tube_material.transparency = 0.95;
+            // tube_material.reflective = 1.0;
+            // tube_material.shininess = 300.0 * col_factor;
+            // tube_material.specular = 1.0 * col_factor;
+            // tube.set_material(tube_material);
+            tube.set_material(mirror.clone());
+            world.add_shape(Box::new(tube));
+
+            if cyl_radius > 1.5 {
+                break;
+            }
+
+            cyl_radius += 0.4;
+            cyl_maximum -= 0.4;
+            col_factor *= 0.9;
+        }
+
+        // Thin open tube (blue) - not closed, so you can see through it
+        let mut tube = Cylinder::new();
+        tube.minimum = 0.0;
+        tube.maximum = 2.0;
+        tube.closed = false;
+        tube.set_transform(Matrix4::translation(0.4, 0.0, 1.6) * Matrix4::scaling(0.3, 1.0, 0.3));
+        let mut tube_material = Material::new();
+        tube_material.color = Tuple::color(0.2, 0.4, 0.9);
+        tube_material.diffuse = 0.7;
+        tube_material.specular = 0.3;
+        tube.set_material(tube_material);
+        world.add_shape(Box::new(tube));
+
+        // Tilted capped cylinder lying on its side (yellow)
+        let mut tilted = Cylinder::new();
+        tilted.minimum = 0.0;
+        tilted.maximum = 2.0;
+        tilted.closed = true;
+        tilted.set_transform(
+            Matrix4::translation(0.0, 0.25, -1.5)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_z(std::f64::consts::PI / 4.0)
+                * Matrix4::scaling(0.25, 1.5, 0.25),
+        );
+        let mut tilted_material = Material::new();
+        tilted_material.color = Tuple::color(0.9, 0.8, 0.1);
+        tilted_material.diffuse = 0.7;
+        tilted_material.specular = 0.3;
+        tilted.set_material(tilted_material);
+        world.add_shape(Box::new(tilted));
+
+        // Thin cone ()
+        let mut cone = Cone::new();
+        cone.minimum = -1.4;
+        cone.maximum = 1.4;
+        cone.closed = false;
+        cone.set_transform(
+            Matrix4::translation(-2.0, 1.0, -1.6)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_z(std::f64::consts::PI / 4.0)
+                * Matrix4::scaling(0.3, 1.0, 0.3),
+        );
+        let mut cone_material = Material::new();
+        cone_material.color = Tuple::color(0.7, 0.9, 0.3);
+        cone_material.diffuse = 0.7;
+        cone_material.specular = 0.3;
+        cone.set_material(cone_material);
+        world.add_shape(Box::new(cone));
+
+        // View transform / camera
+        let from = Tuple::point(0.0, 2.5, -7.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        // let (display_x, display_y) = (60, 40);
+        let (display_x, display_y) = (3456, 2234);
+        let camera =
+            Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        let image = world.render(camera);
+        let rc = image.write_ppm("test_chap_13_putting_it_all_together.ppm");
+
+        if rc.is_ok() {
+            Ok(())
+        } else {
+            Err("Chapter 13 Putting It Together".into())
         }
     }
 }
