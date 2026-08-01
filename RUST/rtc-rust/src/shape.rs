@@ -16,6 +16,7 @@ pub struct ShapeData {
     pub transform: Matrix4,
     pub transform_inv: Matrix4,
     pub material: Material,
+    pub parent: Option<usize>,   // None = root; Some(id) = enclosing group
 }
 
 impl ShapeData {
@@ -25,6 +26,7 @@ impl ShapeData {
             transform: Matrix4::identity(),
             transform_inv: Matrix4::identity(),
             material: Material::new(),
+            parent: None,
         }
     }
 
