@@ -4,6 +4,7 @@ use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
 use rtc_rust::tuple::Tuple;
 use rtc_rust::world::{World, hexagon, view_transform};
+use rtc_rust::world::{read_stats, reset_stats};
 
 fn main() {
     let mut world = World::new();
@@ -33,6 +34,14 @@ fn main() {
         let _ = world.render_single(camera); // Camera is Copy, so the loop is fine
     }
     eprintln!("render took {:?}", start.elapsed()); // your baseline number
-    // let image = world.render(camera); // the work being profiled
-    // let _ = image.write_ppm("hexagons.ppm");      // optional; comment out to keep I/O off the graph
+
+    reset_stats();
+    let _image = world.render_single(camera); // single-threaded: NO contention
+    let (nodes, prims) = read_stats();
+    let rays = (camera.hsize * camera.vsize) as f64;
+    eprintln!(
+        "nodes visited: {nodes}  prim tests: {prims}  ({:.2} prim-tests/ray)",
+        prims as f64 / rays
+    );
+    // let _ = _image.write_ppm("hexagons.ppm");      // optional; comment out to keep I/O off the graph
 }

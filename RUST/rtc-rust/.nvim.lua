@@ -1,6 +1,14 @@
 -- .nvim.lua — Rust project local config
 -- This file is trusted per-project; load with :set exrc
 
+vim.g.rustaceanvim = {
+  server = {
+    default_settings = {
+      ['rust-analyzer'] = { cargo = { features = 'all' } },
+    },
+  },
+}
+
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "rust",
   callback = function()

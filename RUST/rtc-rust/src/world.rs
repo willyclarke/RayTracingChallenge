@@ -22,6 +22,47 @@ use crate::{log::*, tuple};
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[cfg(feature = "stats")]
+pub static NODE_VISITS: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "stats")]
+pub static PRIM_TESTS: AtomicUsize = AtomicUsize::new(0);
+
+// Zero-cost without `--features stats`: empty body, `#[inline(always)]` elides it.
+#[inline(always)]
+fn record_node_visit() {
+    #[cfg(feature = "stats")]
+    NODE_VISITS.fetch_add(1, Ordering::Relaxed);
+}
+#[inline(always)]
+fn record_prim_test() {
+    #[cfg(feature = "stats")]
+    PRIM_TESTS.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Reset traversal counters (no-op without `--features stats`).
+pub fn reset_stats() {
+    #[cfg(feature = "stats")]
+    {
+        NODE_VISITS.store(0, Ordering::Relaxed);
+        PRIM_TESTS.store(0, Ordering::Relaxed);
+    }
+}
+
+/// (node_visits, prim_tests) since last reset; (0, 0) without `--features stats`.
+pub fn read_stats() -> (usize, usize) {
+    #[cfg(feature = "stats")]
+    {
+        (
+            NODE_VISITS.load(Ordering::Relaxed),
+            PRIM_TESTS.load(Ordering::Relaxed),
+        )
+    }
+    #[cfg(not(feature = "stats"))]
+    {
+        (0, 0)
+    }
+}
+
 pub struct Computations<'a> {
     pub t: f64,
     pub object: &'a dyn Shape,
@@ -308,7 +349,11 @@ impl World {
         shape.set_id(id);
         self.shapes.push(shape);
         // Upholds the id == index + 1 invariant that shape_by_id relies on.
-        debug_assert_eq!(self.shapes.len(), id, "id must equal 1-based insertion index");
+        debug_assert_eq!(
+            self.shapes.len(),
+            id,
+            "id must equal 1-based insertion index"
+        );
         id
     }
 
@@ -366,6 +411,7 @@ impl World {
     }
 
     fn intersect_node(&self, shape: &dyn Shape, ray: &Ray, xs: &mut Intersections) {
+        record_node_visit();
         // transform the ray into THIS shape's object space
         let ti = *shape.transform_inv();
         let local_ray = Ray::new(ti * ray.origin, ti * ray.direction);
@@ -379,6 +425,7 @@ impl World {
                 }
             }
             None => {
+                record_prim_test();
                 for i in shape.local_intersect(&local_ray).iter() {
                     xs.push(i); // leaf hit
                 }

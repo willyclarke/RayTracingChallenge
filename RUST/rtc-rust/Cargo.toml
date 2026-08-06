@@ -17,3 +17,6 @@ codegen-units = 1       # Better optimization (slower compile)
 inherits = "release"
 debug = true            # Full debug info for symbols
 strip = false           # Don't strip symbols
+
+[features]
+stats = []
