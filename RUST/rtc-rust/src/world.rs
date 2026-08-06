@@ -26,6 +26,7 @@ pub struct Computations<'a> {
     pub point: Tuple,
     pub over_point: Tuple,
     pub under_point: Tuple,
+    pub object_point: Tuple,
     pub eyev: Tuple,
     pub normalv: Tuple,
     pub reflectv: Tuple,
@@ -59,6 +60,7 @@ pub fn prepare_computations_upto_chap10<'a>(
     let reflectv = ray.direction.reflect(normalv);
     let over_point = point + normalv * crate::math::EPSILON;
     let under_point = point - normalv * crate::math::EPSILON;
+    let object_point = Tuple::point(0.0, 0.0, 0.0);
 
     Computations {
         t,
@@ -66,6 +68,7 @@ pub fn prepare_computations_upto_chap10<'a>(
         point,
         over_point,
         under_point,
+        object_point,
         eyev,
         normalv,
         reflectv,
@@ -103,6 +106,43 @@ pub fn schlick(comps: &Computations) -> f64 {
     r0 + (1.0 - r0) * (1.0 - cos).powf(5.0)
 }
 
+fn shape_by_id(shapes: &[Box<dyn Shape>], id: usize) -> &dyn Shape {
+    shapes
+        .iter()
+        .find(|s| s.id() == id)
+        .expect("shape id must exist in arena")
+        .as_ref()
+}
+
+pub fn normal_at(shapes: &[Box<dyn Shape>], shape_id: usize, world_point: Tuple) -> Tuple {
+    let object_point = world_to_object(shapes, shape_id, world_point);
+    let object_normal = shape_by_id(shapes, shape_id).local_normal_at(object_point);
+    normal_to_world(shapes, shape_id, object_normal)
+}
+
+pub fn normal_to_world(shapes: &[Box<dyn Shape>], shape_id: usize, normal: Tuple) -> Tuple {
+    let shape = shape_by_id(shapes, shape_id);
+
+    let mut normal = shape.transform_inv().transpose() * normal;
+    normal.w = 0.0;
+    normal = normal.normalize();
+
+    match shape.data().parent {
+        Some(parent_id) => normal_to_world(shapes, parent_id, normal), // recurse LAST
+        None => normal,
+    }
+}
+
+fn world_to_object(shapes: &[Box<dyn Shape>], id: usize, point: Tuple) -> Tuple {
+    let shape = shape_by_id(shapes, id);
+
+    let point = match shape.data().parent {
+        Some(parent_id) => world_to_object(shapes, parent_id, point),
+        None => point,
+    };
+    *shape.transform_inv() * point
+}
+
 pub fn prepare_computations<'a>(
     intersection: Intersection,
     ray: &Ray,
@@ -124,7 +164,10 @@ pub fn prepare_computations<'a>(
     let t = intersection.t;
     let point = ray.position(t);
     let eyev = -ray.direction;
-    let mut normalv = shape.normal_at(point);
+    // group-aware: walks the parent chain (world_to_object -> local_normal_at -> normal_to_world)
+    let object_point = world_to_object(shapes, intersection.object_id, point);
+    let object_normal = shape.local_normal_at(object_point);
+    let mut normalv = normal_to_world(shapes, intersection.object_id, object_normal);
 
     let inside = if normalv.dot(eyev) < 0.0 {
         normalv = -normalv;
@@ -177,6 +220,7 @@ pub fn prepare_computations<'a>(
         point,
         over_point,
         under_point,
+        object_point,
         eyev,
         normalv,
         reflectv,
@@ -193,6 +237,15 @@ pub struct World {
 }
 
 impl World {
+    pub fn add_child(&mut self, group_id: usize, child: Box<dyn Shape>) -> usize {
+        let child_id = self.add_shape(child); // final world id, in arena
+        self.shape_by_id_mut(child_id).unwrap().data_mut().parent = Some(group_id);
+        self.shape_by_id_mut(group_id)
+            .unwrap()
+            .add_child_id(child_id);
+        child_id
+    }
+
     /// Increment the shape id and add the shape to world.
     /// # Examples
     /// ```
@@ -255,11 +308,44 @@ impl World {
         }
     }
 
+    fn shape_by_id(&self, id: usize) -> Option<&dyn Shape> {
+        self.shapes
+            .iter()
+            .find(|s| s.id() == id)
+            .map(|b| b.as_ref())
+    }
+
+    fn shape_by_id_mut(&mut self, id: usize) -> Option<&mut Box<dyn Shape>> {
+        self.shapes.iter_mut().find(|s| s.id() == id)
+    }
+
+    fn intersect_node(&self, shape: &dyn Shape, ray: &Ray, xs: &mut Intersections) {
+        // transform the ray into THIS shape's object space
+        let ti = *shape.transform_inv();
+        let local_ray = Ray::new(ti * ray.origin, ti * ray.direction);
+
+        match shape.children() {
+            Some(children) => {
+                for &cid in children {
+                    if let Some(child) = self.shape_by_id(cid) {
+                        self.intersect_node(child, &local_ray, xs); // recurse in group space
+                    }
+                }
+            }
+            None => {
+                for i in shape.local_intersect(&local_ray).iter() {
+                    xs.push(i); // leaf hit
+                }
+            }
+        }
+    }
+
     pub fn intersect(&self, ray: &Ray) -> Intersections {
         let mut xs = Intersections::new();
         for shape in &self.shapes {
-            for i in shape.intersect(ray).iter() {
-                xs.push(i);
+            // roots only
+            if shape.data().parent.is_none() {
+                self.intersect_node(shape.as_ref(), ray, &mut xs);
             }
         }
         xs
@@ -292,20 +378,6 @@ impl World {
         }
     }
 
-    // pub fn shade_hit_old(&self, comps: &Computations) -> Tuple {
-    //     let shadowed = self.is_shadowed(comps.over_point);
-    //     match self.light {
-    //         Some(light) => light.lighting_old(
-    //             comps.object.material(),
-    //             comps.over_point,
-    //             comps.eyev,
-    //             comps.normalv,
-    //             shadowed,
-    //         ),
-    //         None => Tuple::color(0.0, 0.0, 0.0),
-    //     }
-    // }
-
     pub fn shade_hit(&self, comps: &Computations, remaining: i32) -> Tuple {
         let shadowed = self.is_shadowed(comps.over_point);
         match self.light {
@@ -313,6 +385,7 @@ impl World {
                 let surface = light.lighting(
                     comps.object,
                     comps.over_point,
+                    comps.object_point,
                     comps.eyev,
                     comps.normalv,
                     shadowed,
@@ -495,9 +568,52 @@ mod tests {
     use crate::shapes::cone::Cone;
     use crate::shapes::cube::Cube;
     use crate::shapes::cylinder::Cylinder;
+    use crate::shapes::group::Group;
     use crate::shapes::plane::Plane;
     use crate::tuple::colors::*;
     use crate::{loge, logi, tuple::Tuple};
+
+    fn hexagon_corner(material: Material) -> Box<dyn Shape> {
+        let mut corner = Sphere::new();
+        corner.set_material(material);
+        corner.set_transform(
+            Matrix4::translation(0.0, 0.0, -1.0)
+                * Matrix4::scaling(1.0 / 4.0, 1.0 / 4.0, 1.0 / 4.0),
+        );
+        Box::new(corner)
+    }
+
+    fn hexagon_edge(material: Material) -> Box<dyn Shape> {
+        let mut edge = Cylinder::new();
+        edge.set_material(material);
+        edge.minimum = 0.0;
+        edge.maximum = 1.0;
+        edge.set_transform(
+            Matrix4::translation(0.0, 0.0, -1.0)
+                * Matrix4::rotation_y(-std::f64::consts::PI / 6.0)
+                * Matrix4::rotation_z(-std::f64::consts::PI / 2.0)
+                * Matrix4::scaling(1.0 / 4.0, 1.0, 1.0 / 4.0),
+        );
+        Box::new(edge)
+    }
+
+    fn hexagon(world: &mut World, transform: Matrix4, material: Material) -> usize {
+        let mut g_hexagon = Group::new();
+        g_hexagon.set_transform(transform);
+        let g_id_hexagon = world.add_shape(Box::new(g_hexagon)); // group in arena first → real id
+
+        for side_n in 0..6 {
+            let mut g_side = Group::new();
+            g_side.set_transform(Matrix4::rotation_y(
+                side_n as f64 * std::f64::consts::PI / 3.0,
+            ));
+            let g_id_side = world.add_child(g_id_hexagon, Box::new(g_side));
+            world.add_child(g_id_side, hexagon_corner(material.clone()));
+            world.add_child(g_id_side, hexagon_edge(material.clone()));
+        }
+
+        g_id_hexagon
+    }
 
     /// Chap 7 - Creating a world
     #[test]
@@ -3058,8 +3174,8 @@ mod tests {
         let to = Tuple::point(0.0, 1.0, 0.0);
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
-        // let (display_x, display_y) = (60, 40);
-        let (display_x, display_y) = (3456, 2234);
+        let (display_x, display_y) = (60, 40);
+        // let (display_x, display_y) = (3456, 2234);
         let camera =
             Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
 
@@ -3070,6 +3186,307 @@ mod tests {
             Ok(())
         } else {
             Err("Chapter 13 Putting It Together".into())
+        }
+    }
+
+    /// Chap 14 - A shape has a parent attribute
+    #[test]
+    fn test_chap_14_2() -> Result<(), String> {
+        let s = Sphere::new();
+
+        let chk = s.data().parent.is_none();
+        if chk {
+            Ok(())
+        } else {
+            Err("A shape has a parent attribute".into())
+        }
+    }
+
+    /// Chap 14 - Adding a child to a group
+    #[test]
+    fn test_chap_14_3() -> Result<(), String> {
+        let mut w = World::new();
+        let g_id = w.add_shape(Box::new(Group::new()));
+        let s_id = w.add_child(g_id, Box::new(Sphere::new()));
+
+        // group now lists the child, and the child points back at the group
+        let chk = w.shape_by_id(g_id).unwrap().children().unwrap()[0] == s_id;
+        let chk = chk && w.shape_by_id(s_id).unwrap().data().parent == Some(g_id);
+
+        if chk {
+            Ok(())
+        } else {
+            Err("A shape has a parent attribute".into())
+        }
+    }
+
+    /// Chap 14 - Intersecting a ray with an empty group
+    #[test]
+    fn test_chap_14_4() -> Result<(), String> {
+        let g = Group::new();
+        let r = Ray::new(Tuple::point(0.0, 0.0, 0.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = g.local_intersect(&r);
+
+        let chk = xs.is_empty();
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_4", "xs.count:{}", xs.count());
+            Err("Intersecting a ray with an empty group".into())
+        }
+    }
+
+    /// Chap 14 - Intersecting a ray with a nonempty group
+    #[test]
+    fn test_chap_14_5() -> Result<(), String> {
+        let mut w = World::new();
+        let g_id = w.add_shape(Box::new(Group::new())); // group in arena first → real id
+
+        let s1 = Sphere::new();
+        let mut s2 = Sphere::new();
+        s2.set_transform(Matrix4::translation(0.0, 0.0, -3.0));
+        let mut s3 = Sphere::new();
+        s3.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
+
+        let s1_id = w.add_child(g_id, Box::new(s1));
+        let s2_id = w.add_child(g_id, Box::new(s2)); // capture the FINAL id
+        let _s3_id = w.add_child(g_id, Box::new(s3));
+
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = w.intersect(&r);
+
+        let chk = xs.count() == 4
+            && xs[0].object_id == s2_id
+            && xs[1].object_id == s2_id
+            && xs[2].object_id == s1_id
+            && xs[3].object_id == s1_id;
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_5", "xs.count:{}", xs.count(),);
+            Err("Intersecting a ray with a nonempty group".into())
+        }
+    }
+
+    /// Chap 14 - Intersecting a transformed group
+    #[test]
+    fn test_chap_14_6() -> Result<(), String> {
+        let mut w = World::new();
+        let mut g = Group::new();
+        g.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let g_id = w.add_shape(Box::new(g)); // group in arena first → real id
+
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
+
+        let _s_id = w.add_child(g_id, Box::new(s));
+
+        let r = Ray::new(Tuple::point(10.0, 0.0, -10.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = w.intersect(&r);
+
+        let chk = xs.count() == 2;
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_6", "xs.count:{}", xs.count(),);
+            Err("Intersecting a ray with a nonempty group".into())
+        }
+    }
+
+    /// Chap 14 - Converting a point from world to object space
+    #[test]
+    fn test_chap_14_7() -> Result<(), String> {
+        let mut w = World::new();
+
+        let mut g1 = Group::new();
+        g1.set_transform(Matrix4::rotation_y(std::f64::consts::PI / 2.0));
+        let g1_id = w.add_shape(Box::new(g1)); // group in arena first → real id
+
+        let mut g2 = Group::new();
+        g2.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let g2_id = w.add_child(g1_id, Box::new(g2));
+
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
+        let s_id = w.add_child(g2_id, Box::new(s));
+
+        let p = world_to_object(&w.shapes, s_id, Tuple::point(-2.0, 0.0, -10.0));
+        let chk = p.approx_eq(Tuple::point(0.0, 0.0, -1.0));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_7", "p: {}", p);
+            Err("Converting a point from world to object space".into())
+        }
+    }
+
+    /// Chap x - Converting a normal from object to world space
+    #[test]
+    fn test_chap_14_8() -> Result<(), String> {
+        let mut w = World::new();
+
+        let mut g1 = Group::new();
+        g1.set_transform(Matrix4::rotation_y(std::f64::consts::PI / 2.0));
+        let g1_id = w.add_shape(Box::new(g1)); // group in arena first → real id
+
+        let mut g2 = Group::new();
+        g2.set_transform(Matrix4::scaling(1.0, 2.0, 3.0));
+        let g2_id = w.add_child(g1_id, Box::new(g2));
+
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
+        let s_id = w.add_child(g2_id, Box::new(s));
+
+        let sqrt3_3 = 3_f64.sqrt() / 3.0;
+        let normal = Tuple::vector(sqrt3_3, sqrt3_3, sqrt3_3);
+        let n = normal_to_world(&w.shapes, s_id, normal);
+
+        let chk = n.approx_eq(Tuple::vector(
+            2.0 / 7.0,  // 0.285714285714,
+            3.0 / 7.0,  // 0.428571428571,
+            -6.0 / 7.0, // -0.857142857143,
+        ));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_8", "n:{}", n);
+            Err("Converting a normal from object to world space".into())
+        }
+    }
+
+    /// Chap 14 - Finding the normal on a child object
+    #[test]
+    fn test_chap_14_9() -> Result<(), String> {
+        let mut w = World::new();
+
+        let mut g1 = Group::new();
+        g1.set_transform(Matrix4::rotation_y(std::f64::consts::PI / 2.0));
+        let g1_id = w.add_shape(Box::new(g1)); // group in arena first → real id
+
+        let mut g2 = Group::new();
+        g2.set_transform(Matrix4::scaling(1.0, 2.0, 3.0));
+        let g2_id = w.add_child(g1_id, Box::new(g2));
+
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
+        let s_id = w.add_child(g2_id, Box::new(s));
+
+        let n = normal_at(&w.shapes, s_id, Tuple::point(1.7321, 1.1547, -5.5774));
+
+        let chk = n.approx_eq(Tuple::vector(
+            0.285703681841,
+            0.428543151781,
+            -0.857160529448,
+        ));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_9", "n:{}", n);
+            Err("Finding the normal on a child object".into())
+        }
+    }
+
+    /// Chap 14 - A pattern on a shape inside a transformed group sees the group's transform
+    #[test]
+    fn test_chap_14_10() -> Result<(), String> {
+        let mut w = World::new();
+
+        let mut g = Group::new();
+        g.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let g_id = w.add_shape(Box::new(g));
+
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(2.0, 0.0, 0.0));
+        let mut m = Material::new();
+        m.pattern = Some(Box::new(StripePattern::new(WHITE, BLACK)));
+        s.set_material(m);
+        let s_id = w.add_child(g_id, Box::new(s));
+
+        // Sphere ends up at world (4,0,0) with radius 2; hit its +x pole at (6,0,0).
+        let r = Ray::new(Tuple::point(10.0, 0.0, 0.0), Tuple::vector(-1.0, 0.0, 0.0));
+        let xs = w.intersect(&r);
+        let hit = xs.hit().ok_or("expected a hit")?;
+        let comps = prepare_computations(hit, &r, &w.shapes, &xs);
+
+        // world (6,0,0) → group⁻¹ (scale ½) → (3,0,0) → sphere⁻¹ (translate -2) → (1,0,0)
+        let chk = comps.object_point.approx_eq(Tuple::point(1.0, 0.0, 0.0));
+        let chk = chk && comps.object.id() == s_id; // the hit is the nested sphere
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_10", "object_point: {}", comps.object_point);
+            Err("Pattern on nested shape must see the group transform".into())
+        }
+    }
+
+    /// Chap 14 - Create a hexagon
+    #[test]
+    fn test_chap_14_create_hexagon() -> Result<(), String> {
+        let mut w = World::new();
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        w.light = Some(light);
+
+        let mut material = Material::new();
+        material.color = Tuple::color(1.0, 0.0, 0.0);
+
+        let _g_id = hexagon(
+            &mut w,
+            Matrix4::translation(-1.0, 1.0, -3.0)
+                * Matrix4::scaling(0.5, 0.5, 0.5)
+                * Matrix4::rotation_x(std::f64::consts::PI / 2.0)
+                * Matrix4::rotation_z(std::f64::consts::PI / 4.0),
+            material.clone(),
+        );
+        let _g_id = hexagon(
+            &mut w,
+            Matrix4::translation(1.0, 1.0, 3.0)
+                * Matrix4::scaling(0.75, 0.75, 0.75)
+                * Matrix4::rotation_x(0.0 * std::f64::consts::PI / 2.0)
+                * Matrix4::rotation_z(0.0 * std::f64::consts::PI / 4.0),
+            material.clone(),
+        );
+        let _g_id = hexagon(
+            &mut w,
+            Matrix4::translation(1.0, 1.5, 3.0)
+                * Matrix4::scaling(0.75, 0.75, 0.75)
+                * Matrix4::rotation_x(0.0 * std::f64::consts::PI / 2.0)
+                * Matrix4::rotation_z(0.0 * std::f64::consts::PI / 4.0),
+            material.clone(),
+        );
+        let _g_id = hexagon(
+            &mut w,
+            Matrix4::translation(1.0, 2.0, 3.0)
+                * Matrix4::scaling(0.75, 0.75, 0.75)
+                * Matrix4::rotation_x(0.0 * std::f64::consts::PI / 2.0)
+                * Matrix4::rotation_z(0.0 * std::f64::consts::PI / 4.0),
+            material.clone(),
+        );
+
+        // View transform / camera
+        let from = Tuple::point(0.0, 2.5, -7.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        // let (display_x, display_y) = (60, 40);
+        let (display_x, display_y) = (3456, 2234);
+        let camera =
+            Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        let image = w.render(camera);
+        let rc = image.write_ppm("test_chap_14_putting_it_all_together.ppm");
+        if rc.is_ok() {
+            Ok(())
+        } else {
+            Err("Create a hexagon".into())
         }
     }
 }

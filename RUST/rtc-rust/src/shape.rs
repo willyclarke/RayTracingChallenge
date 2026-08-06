@@ -16,10 +16,17 @@ pub struct ShapeData {
     pub transform: Matrix4,
     pub transform_inv: Matrix4,
     pub material: Material,
-    pub parent: Option<usize>,   // None = root; Some(id) = enclosing group
+    pub parent: Option<usize>, // None = root; Some(id) = enclosing group
 }
 
 impl ShapeData {
+    /// Accessor to children
+    /// default: leaf
+    /// override as needed in group's
+    pub fn children(&self) -> Option<&[usize]> {
+        None
+    }
+
     pub fn new() -> Self {
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
@@ -45,6 +52,11 @@ impl Default for ShapeData {
 }
 
 pub trait Shape: Send + Sync {
+
+    fn add_child_id(&mut self, _id: usize) {}
+
+    fn children(&self) -> Option<&[usize]> { None }
+
     fn data(&self) -> &ShapeData;
     fn data_mut(&mut self) -> &mut ShapeData;
 

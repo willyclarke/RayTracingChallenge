@@ -425,7 +425,7 @@ mod tests {
                     let eyev = -r.direction;
                     let in_shadow = false;
                     // let color = light.lighting(&m, point, eyev, normalv, in_shadow);
-                    let color = light.lighting(&s, point, eyev, normalv, in_shadow);
+                    let color = light.lighting(&s, point, point, eyev, normalv, in_shadow);
                     c.write_pixel(x, y, color);
                 }
             }
