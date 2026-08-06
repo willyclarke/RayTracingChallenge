@@ -14,6 +14,8 @@ use crate::math::approx_eq;
 use crate::matrix::Matrix4;
 use crate::ray::Ray;
 use crate::shape::Shape;
+use crate::shapes::cylinder::Cylinder;
+use crate::shapes::group::Group;
 use crate::shapes::sphere::Sphere;
 use crate::tuple::Tuple;
 use crate::{log::*, tuple};
@@ -106,12 +108,10 @@ pub fn schlick(comps: &Computations) -> f64 {
     r0 + (1.0 - r0) * (1.0 - cos).powf(5.0)
 }
 
+// O(1): every caller passes the World arena (self.shapes), where ids are
+// assigned 1..=N in insertion order, so id == index + 1 (see add_shape).
 fn shape_by_id(shapes: &[Box<dyn Shape>], id: usize) -> &dyn Shape {
-    shapes
-        .iter()
-        .find(|s| s.id() == id)
-        .expect("shape id must exist in arena")
-        .as_ref()
+    shapes[id - 1].as_ref()
 }
 
 pub fn normal_at(shapes: &[Box<dyn Shape>], shape_id: usize, world_point: Tuple) -> Tuple {
@@ -149,17 +149,9 @@ pub fn prepare_computations<'a>(
     shapes: &'a [Box<dyn Shape>],
     xs: &Intersections,
 ) -> Computations<'a> {
-    let shape_by_id = |id: usize| -> &dyn Shape {
-        shapes
-            .iter()
-            .find(|s| s.id() == id)
-            .expect("shape id must exist in shapes")
-            .as_ref()
-    };
-
-    let shape = shape_by_id(intersection.object_id);
+    let shape = shape_by_id(shapes, intersection.object_id);
     let refractive_index_of =
-        |id: usize| -> f64 { shape_by_id(id).data().material.refractive_index };
+        |id: usize| -> f64 { shape_by_id(shapes, id).data().material.refractive_index };
 
     let t = intersection.t;
     let point = ray.position(t);
@@ -230,6 +222,59 @@ pub fn prepare_computations<'a>(
     }
 }
 
+pub fn hexagon_corner(material: Material) -> Box<dyn Shape> {
+    let mut corner = Sphere::new();
+    corner.set_material(material);
+    corner.set_transform(
+        Matrix4::translation(0.0, 0.0, -1.0) * Matrix4::scaling(1.0 / 4.0, 1.0 / 4.0, 1.0 / 4.0),
+    );
+    Box::new(corner)
+}
+
+pub fn hexagon_edge(material: Material) -> Box<dyn Shape> {
+    let mut edge = Cylinder::new();
+    edge.set_material(material);
+    edge.minimum = 0.0;
+    edge.maximum = 1.0;
+    edge.set_transform(
+        Matrix4::translation(0.0, 0.0, -1.0)
+            * Matrix4::rotation_y(-std::f64::consts::PI / 6.0)
+            * Matrix4::rotation_z(-std::f64::consts::PI / 2.0)
+            * Matrix4::scaling(1.0 / 4.0, 1.0, 1.0 / 4.0),
+    );
+    Box::new(edge)
+}
+
+pub fn hexagon(
+    world: &mut World,
+    group_id: usize,
+    transform: Matrix4,
+    material: Material,
+) -> usize {
+    let mut g_hexagon = Group::new();
+    g_hexagon.set_transform(transform);
+
+    let g_id_hexagon = if group_id == 0 {
+        let g = world.add_shape(Box::new(g_hexagon)); // group in arena first → real id
+        g
+    } else {
+        let g = world.add_child(group_id, Box::new(g_hexagon)); // group in arena first → real id
+        g
+    };
+
+    for side_n in 0..6 {
+        let mut g_side = Group::new();
+        g_side.set_transform(Matrix4::rotation_y(
+            side_n as f64 * std::f64::consts::PI / 3.0,
+        ));
+        let g_id_side = world.add_child(g_id_hexagon, Box::new(g_side));
+        world.add_child(g_id_side, hexagon_corner(material.clone()));
+        world.add_child(g_id_side, hexagon_edge(material.clone()));
+    }
+
+    g_id_hexagon
+}
+
 pub struct World {
     pub shapes: Vec<Box<dyn Shape>>,
     pub light: Option<Light>,
@@ -262,6 +307,8 @@ impl World {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         shape.set_id(id);
         self.shapes.push(shape);
+        // Upholds the id == index + 1 invariant that shape_by_id relies on.
+        debug_assert_eq!(self.shapes.len(), id, "id must equal 1-based insertion index");
         id
     }
 
@@ -309,10 +356,9 @@ impl World {
     }
 
     fn shape_by_id(&self, id: usize) -> Option<&dyn Shape> {
-        self.shapes
-            .iter()
-            .find(|s| s.id() == id)
-            .map(|b| b.as_ref())
+        // O(1): id == index + 1 (see add_shape). id 0 is the "none" sentinel:
+        // wrapping_sub(1) -> usize::MAX -> get() -> None.
+        self.shapes.get(id.wrapping_sub(1)).map(|b| b.as_ref())
     }
 
     fn shape_by_id_mut(&mut self, id: usize) -> Option<&mut Box<dyn Shape>> {
@@ -572,60 +618,6 @@ mod tests {
     use crate::shapes::plane::Plane;
     use crate::tuple::colors::*;
     use crate::{loge, logi, tuple::Tuple};
-
-    fn hexagon_corner(material: Material) -> Box<dyn Shape> {
-        let mut corner = Sphere::new();
-        corner.set_material(material);
-        corner.set_transform(
-            Matrix4::translation(0.0, 0.0, -1.0)
-                * Matrix4::scaling(1.0 / 4.0, 1.0 / 4.0, 1.0 / 4.0),
-        );
-        Box::new(corner)
-    }
-
-    fn hexagon_edge(material: Material) -> Box<dyn Shape> {
-        let mut edge = Cylinder::new();
-        edge.set_material(material);
-        edge.minimum = 0.0;
-        edge.maximum = 1.0;
-        edge.set_transform(
-            Matrix4::translation(0.0, 0.0, -1.0)
-                * Matrix4::rotation_y(-std::f64::consts::PI / 6.0)
-                * Matrix4::rotation_z(-std::f64::consts::PI / 2.0)
-                * Matrix4::scaling(1.0 / 4.0, 1.0, 1.0 / 4.0),
-        );
-        Box::new(edge)
-    }
-
-    fn hexagon(
-        world: &mut World,
-        group_id: usize,
-        transform: Matrix4,
-        material: Material,
-    ) -> usize {
-        let mut g_hexagon = Group::new();
-        g_hexagon.set_transform(transform);
-
-        let g_id_hexagon = if group_id == 0 {
-            let g = world.add_shape(Box::new(g_hexagon)); // group in arena first → real id
-            g
-        } else {
-            let g = world.add_child(group_id, Box::new(g_hexagon)); // group in arena first → real id
-            g
-        };
-
-        for side_n in 0..6 {
-            let mut g_side = Group::new();
-            g_side.set_transform(Matrix4::rotation_y(
-                side_n as f64 * std::f64::consts::PI / 3.0,
-            ));
-            let g_id_side = world.add_child(g_id_hexagon, Box::new(g_side));
-            world.add_child(g_id_side, hexagon_corner(material.clone()));
-            world.add_child(g_id_side, hexagon_edge(material.clone()));
-        }
-
-        g_id_hexagon
-    }
 
     /// Chap 7 - Creating a world
     #[test]
@@ -1917,6 +1909,8 @@ mod tests {
     /// Chap 11 - Finding n1 and n2 at various intersections
     #[test]
     fn test_chap_11_9() -> Result<(), String> {
+        let mut w = World::new();
+
         let mut a = Sphere::glass();
         a.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
         a.data.material.refractive_index = 1.5;
@@ -1929,11 +1923,10 @@ mod tests {
         c.set_transform(Matrix4::translation(0.0, 0.0, 0.25));
         c.data.material.refractive_index = 2.5;
 
-        // capture ids BEFORE the moves below
-        let (a_id, b_id, c_id) = (a.id(), b.id(), c.id());
-
-        // now move each Sphere into a boxed trait object
-        let shapes: [Box<dyn Shape>; 3] = [Box::new(a), Box::new(b), Box::new(c)];
+        // add to the arena → world ids 1,2,3 (== index + 1)
+        let a_id = w.add_shape(Box::new(a));
+        let b_id = w.add_shape(Box::new(b));
+        let c_id = w.add_shape(Box::new(c));
 
         let r = Ray::new(Tuple::point(0.0, 0.0, -4.0), Tuple::vector(0.0, 0.0, 1.0));
         let mut xs = Intersections::new();
@@ -1954,7 +1947,7 @@ mod tests {
         ];
 
         for (idx, (n1, n2)) in expected.iter().enumerate() {
-            let comps = prepare_computations(xs[idx], &r, &shapes, &xs);
+            let comps = prepare_computations(xs[idx], &r, &w.shapes, &xs);
             if !approx_eq(comps.n1, *n1) || !approx_eq(comps.n2, *n2) {
                 return Err(format!(
                     "idx {idx}: got ({}, {}), expected ({n1}, {n2})",
@@ -1968,18 +1961,17 @@ mod tests {
     /// Chap x - The under point is offset below the surface
     #[test]
     fn test_chap_11_10() -> Result<(), String> {
+        let mut w = World::new();
         let ray = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
         let mut shape = Sphere::glass();
         shape.set_transform(Matrix4::translation(0.0, 0.0, 1.0));
+        let shape_id = w.add_shape(Box::new(shape));
 
-        let i = Intersection::new(5.0, shape.id());
+        let i = Intersection::new(5.0, shape_id);
         let mut xs = Intersections::new();
         xs.push(i);
 
-        // now move each Sphere into a boxed trait object
-        let shapes: [Box<dyn Shape>; 1] = [Box::new(shape)];
-
-        let comps = prepare_computations(i, &ray, &shapes, &xs);
+        let comps = prepare_computations(i, &ray, &w.shapes, &xs);
 
         let chk = comps.under_point.z > EPSILON / 2_f64 && comps.point.z < comps.under_point.z;
 

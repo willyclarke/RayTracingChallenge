@@ -5,3 +5,15 @@ edition = "2024"
 
 [dependencies]
 rayon = "1"
+
+# Release profile with debug symbols for profiling
+[profile.release]
+debug = true            # Include debug symbols
+lto = "thin"            # Enable link-time optimization
+codegen-units = 1       # Better optimization (slower compile)
+
+# Separate profile for profiling (keeps release fast)
+[profile.profiling]
+inherits = "release"
+debug = true            # Full debug info for symbols
+strip = false           # Don't strip symbols
