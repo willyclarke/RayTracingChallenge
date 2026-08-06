@@ -597,10 +597,22 @@ mod tests {
         Box::new(edge)
     }
 
-    fn hexagon(world: &mut World, transform: Matrix4, material: Material) -> usize {
+    fn hexagon(
+        world: &mut World,
+        group_id: usize,
+        transform: Matrix4,
+        material: Material,
+    ) -> usize {
         let mut g_hexagon = Group::new();
         g_hexagon.set_transform(transform);
-        let g_id_hexagon = world.add_shape(Box::new(g_hexagon)); // group in arena first → real id
+
+        let g_id_hexagon = if group_id == 0 {
+            let g = world.add_shape(Box::new(g_hexagon)); // group in arena first → real id
+            g
+        } else {
+            let g = world.add_child(group_id, Box::new(g_hexagon)); // group in arena first → real id
+            g
+        };
 
         for side_n in 0..6 {
             let mut g_side = Group::new();
@@ -3435,35 +3447,49 @@ mod tests {
         );
         w.light = Some(light);
 
+        let mut g_top = Group::new();
+        g_top.set_transform(
+            Matrix4::scaling(0.8, 0.8, 0.8) * Matrix4::rotation_x(std::f64::consts::PI / 4.0),
+        );
+        let g_id_top = w.add_shape(Box::new(g_top));
+
         let mut material = Material::new();
         material.color = Tuple::color(1.0, 0.0, 0.0);
 
         let _g_id = hexagon(
             &mut w,
+            0,
             Matrix4::translation(-1.0, 1.0, -3.0)
                 * Matrix4::scaling(0.5, 0.5, 0.5)
                 * Matrix4::rotation_x(std::f64::consts::PI / 2.0)
                 * Matrix4::rotation_z(std::f64::consts::PI / 4.0),
             material.clone(),
         );
+
+        material.color = Tuple::color(0.75, 0.5, 0.0);
         let _g_id = hexagon(
             &mut w,
+            g_id_top,
             Matrix4::translation(1.0, 1.0, 3.0)
                 * Matrix4::scaling(0.75, 0.75, 0.75)
                 * Matrix4::rotation_x(0.0 * std::f64::consts::PI / 2.0)
                 * Matrix4::rotation_z(0.0 * std::f64::consts::PI / 4.0),
             material.clone(),
         );
+
         let _g_id = hexagon(
             &mut w,
+            g_id_top,
             Matrix4::translation(1.0, 1.5, 3.0)
                 * Matrix4::scaling(0.75, 0.75, 0.75)
                 * Matrix4::rotation_x(0.0 * std::f64::consts::PI / 2.0)
                 * Matrix4::rotation_z(0.0 * std::f64::consts::PI / 4.0),
             material.clone(),
         );
+
         let _g_id = hexagon(
             &mut w,
+            g_id_top,
             Matrix4::translation(1.0, 2.0, 3.0)
                 * Matrix4::scaling(0.75, 0.75, 0.75)
                 * Matrix4::rotation_x(0.0 * std::f64::consts::PI / 2.0)
