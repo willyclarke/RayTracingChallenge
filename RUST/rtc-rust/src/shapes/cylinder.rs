@@ -5,6 +5,7 @@
 //! `minimum`/`maximum` bounds to truncate it along y, and `closed` to seal the
 //! ends with flat caps.
 
+use crate::bounds::BoundingBox;
 use crate::intersection::{Intersection, Intersections};
 use crate::math::{EPSILON, approx_eq};
 use crate::ray::Ray;
@@ -85,6 +86,13 @@ impl Default for Cylinder {
 }
 
 impl Shape for Cylinder {
+    fn bounds(&self) -> BoundingBox {
+        BoundingBox::new(
+            Tuple::point(-1.0, self.minimum, -1.0),
+            Tuple::point(1.0, self.maximum, 1.0),
+        )
+    }
+
     fn data(&self) -> &ShapeData {
         &self.data
     }

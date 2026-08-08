@@ -1,6 +1,7 @@
 //! Group of shapes
 //!
 
+use crate::bounds::BoundingBox;
 use crate::intersection::Intersections;
 use crate::log::*;
 use crate::ray::Ray;
@@ -13,6 +14,7 @@ use std::fmt;
 pub struct Group {
     pub data: ShapeData,
     pub children: Vec<usize>,
+    pub bounds: BoundingBox,
 }
 
 impl Group {
@@ -20,6 +22,7 @@ impl Group {
         Self {
             data: ShapeData::new(),
             children: [].to_vec(),
+            bounds: BoundingBox::empty(),
         }
     }
 }
@@ -51,6 +54,10 @@ impl Shape for Group {
         self.children.push(id);
     }
 
+    fn bounds(&self) -> BoundingBox {
+        self.bounds
+    }
+
     fn children(&self) -> Option<&[usize]> {
         Some(&self.children)
     }
@@ -68,6 +75,10 @@ impl Shape for Group {
 
     fn local_normal_at(&self, _object_point: Tuple) -> Tuple {
         unreachable!("a group has no local normal; only its leaves do")
+    }
+
+    fn set_bounds(&mut self, bb: BoundingBox) {
+        self.bounds = bb;
     }
 }
 

@@ -2,6 +2,7 @@
 //! Abstract data structure for sphere, cubes etc.
 //!
 
+use crate::bounds::BoundingBox;
 use crate::matrix::Matrix4;
 use crate::ray::Ray;
 use crate::tuple::Tuple;
@@ -52,10 +53,18 @@ impl Default for ShapeData {
 }
 
 pub trait Shape: Send + Sync {
-
     fn add_child_id(&mut self, _id: usize) {}
 
-    fn children(&self) -> Option<&[usize]> { None }
+    fn bounds(&self) -> BoundingBox {
+        BoundingBox::new(
+            Tuple::point(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY),
+            Tuple::point(f64::INFINITY, f64::INFINITY, f64::INFINITY),
+        )
+    }
+
+    fn children(&self) -> Option<&[usize]> {
+        None
+    }
 
     fn data(&self) -> &ShapeData;
     fn data_mut(&mut self) -> &mut ShapeData;
@@ -84,6 +93,8 @@ pub trait Shape: Send + Sync {
         world_normal.w = 0_f64;
         world_normal.normalize()
     }
+
+    fn set_bounds(&mut self, _bb: BoundingBox) {}
 
     fn set_id(&mut self, id: usize) {
         self.data_mut().id = id;

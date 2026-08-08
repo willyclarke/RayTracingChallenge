@@ -4,6 +4,7 @@
 //! (the "unit cube", analogous to the unit sphere). Ray intersection uses the
 //! slab method — see [`check_axis`].
 
+use crate::bounds::BoundingBox;
 use crate::intersection::{Intersection, Intersections};
 use crate::math::approx_eq;
 use crate::ray::Ray;
@@ -68,6 +69,10 @@ pub fn check_axis(origin: f64, direction: f64) -> (f64, f64) {
 }
 
 impl Shape for Cube {
+    fn bounds(&self) -> BoundingBox {
+        BoundingBox::new(Tuple::point(-1.0, -1.0, -1.0), Tuple::point(1.0, 1.0, 1.0))
+    }
+
     fn data(&self) -> &ShapeData {
         &self.data
     }

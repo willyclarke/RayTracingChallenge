@@ -5,6 +5,7 @@
 
 use rayon::prelude::*;
 
+use crate::bounds::BoundingBox;
 use crate::camera::Camera;
 use crate::canvas::Canvas;
 use crate::intersection::{Intersection, Intersections};
@@ -357,6 +358,35 @@ impl World {
         id
     }
 
+    pub fn build_bounds(&mut self) {
+        let n = self.shapes.len();
+        let mut boxes = vec![BoundingBox::empty(); n]; // subtree bounds, own-space, indexed by id-1
+
+        for i in (0..n).rev() {
+            // reverse id = bottom-up
+            let shape = self.shapes[i].as_ref();
+            boxes[i] = match shape.children() {
+                None => shape.bounds(), // leaf: its own object-space box
+                Some(children) => {
+                    let mut bb = BoundingBox::empty();
+                    for &cid in children {
+                        let child = self.shapes[cid - 1].as_ref();
+                        // child already done (higher id, reverse order); lift into THIS group's space
+                        bb.add_box(&boxes[cid - 1].transform(*child.transform()));
+                    }
+                    bb
+                }
+            };
+        }
+
+        (0..n).for_each(|i| {
+            // store into the groups
+            if self.shapes[i].children().is_some() {
+                self.shapes[i].set_bounds(boxes[i]);
+            }
+        });
+    }
+
     pub fn set_light(&mut self, light: Light) {
         self.light = Some(light)
     }
@@ -418,6 +448,9 @@ impl World {
 
         match shape.children() {
             Some(children) => {
+                if !shape.bounds().intersects(&local_ray) {
+                    return; // ray can't hit anything in this group → skip subtree
+                }
                 for &cid in children {
                     if let Some(child) = self.shape_by_id(cid) {
                         self.intersect_node(child, &local_ray, xs); // recurse in group space
@@ -647,6 +680,7 @@ pub fn view_transform(from: Tuple, to: Tuple, up: Tuple) -> Matrix4 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bounds::BoundingBox;
     use crate::intersection::Intersection;
     use crate::math::{EPSILON, approx_eq};
     use crate::pattern::Pattern;
@@ -3541,17 +3575,150 @@ mod tests {
         let to = Tuple::point(0.0, 1.0, 0.0);
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
-        let (display_x, display_y) = (60, 40);
-        // let (display_x, display_y) = (3456, 2234);
+        // let (display_x, display_y) = (60, 40);
+        let (display_x, display_y) = (3456, 2234);
         let camera =
             Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
 
+        w.build_bounds();
         let image = w.render(camera);
         let rc = image.write_ppm("test_chap_14_putting_it_all_together.ppm");
         if rc.is_ok() {
             Ok(())
         } else {
             Err("Create a hexagon".into())
+        }
+    }
+
+    /// Chap 14 - Bounding box test 1 - add_point.
+    #[test]
+    fn test_chap_14_11() -> Result<(), String> {
+        let mut bb = BoundingBox::empty();
+        bb.add_point(Tuple::point(5.0, -2.0, 0.0));
+        bb.add_point(Tuple::point(7.0, 0.0, -3.0));
+
+        let chk = bb.contains_point(Tuple::point(5.0, -2.0, -3.0));
+        let chk = chk && bb.contains_point(Tuple::point(7.0, 0.0, 0.0));
+        let chk =
+            chk && bb.min == Tuple::point(5.0, -2.0, -3.0) && bb.max == Tuple::point(7.0, 0.0, 0.0);
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Bounding box test 1".into())
+        }
+    }
+
+    /// Chap 14 - Bounding box test 2 - check intersects.
+    #[test]
+    fn test_chap_14_12() -> Result<(), String> {
+        let bb = BoundingBox::new(Tuple::point(-1.0, -1.0, -1.0), Tuple::point(1.0, 1.0, 1.0));
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+
+        let xs = bb.intersects(&r);
+        let chk = xs;
+
+        let r = Ray::new(Tuple::point(5.0, 0.5, 0.0), Tuple::vector(-1.0, 0.0, 0.0));
+        let xs = bb.intersects(&r);
+        let chk = chk && xs;
+
+        let r = Ray::new(Tuple::point(2.0, 0.0, 2.0), Tuple::vector(0.0, 0.0, -1.0));
+        let xs = bb.intersects(&r);
+        let chk = chk && !xs;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Bounding box test 2".into())
+        }
+    }
+
+    /// Chap 14 - Bounding box test 3 - check transform.
+    #[test]
+    fn test_chap_14_13() -> Result<(), String> {
+        let bb = BoundingBox::new(Tuple::point(-1.0, -1.0, -1.0), Tuple::point(1.0, 1.0, 1.0));
+        let bb = bb.transform(
+            Matrix4::rotation_x(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0),
+        );
+
+        let one_plus_sqrt2 = 1.0 + std::f64::consts::SQRT_2 / 2.0;
+        let min = Tuple::point(-std::f64::consts::SQRT_2, -one_plus_sqrt2, -one_plus_sqrt2);
+        let max = Tuple::point(std::f64::consts::SQRT_2, one_plus_sqrt2, one_plus_sqrt2);
+        let chk = bb.min.approx_eq(min) && bb.max.approx_eq(max);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_13", "bb.min:{}. bb.max:{}", bb.min, bb.max);
+            Err("Bounding box test 3 - check transform.".into())
+        }
+    }
+
+    /// Chap 14 - Bounding box test 4 - check if box contains another box.
+    #[test]
+    fn test_chap_14_14() -> Result<(), String> {
+        let bb = BoundingBox::new(Tuple::point(-1.0, -1.0, -1.0), Tuple::point(1.0, 1.0, 1.0));
+        let chk = bb.contains_box(&BoundingBox::new(
+            Tuple::point(-1.0, -1.0, -1.0),
+            Tuple::point(1.0, 1.0, 1.0),
+        ));
+
+        let bb_translated = bb.transform(Matrix4::translation(2.0, 0.0, 0.0));
+        let chk = chk && !bb_translated.contains_box(&bb);
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Bounding box test 4 - check if box contains another box.".into())
+        }
+    }
+
+    /// Chap 14 - Bounding box for a bounded cylinder.
+    #[test]
+    fn test_chap_14_15() -> Result<(), String> {
+        let mut cyl = Cylinder::new();
+        cyl.minimum = -5.0;
+        cyl.maximum = 3.0;
+
+        let bb = cyl.bounds();
+        let chk = bb.min.approx_eq(Tuple::point(-1.0, -5.0, -1.0))
+            && bb.max.approx_eq(Tuple::point(1.0, 3.0, 1.0));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_15", "bb.min:{} bb.max:{}", bb.min, bb.max);
+            Err("Bounding box for a bounded cylinder".into())
+        }
+    }
+
+    /// Chap 14 - Bounding box for a bounded cone.
+    #[test]
+    fn test_chap_14_16() -> Result<(), String> {
+        // symmetric truncation: radius grows to 5 at both extremes
+        let mut cone = Cone::new();
+        cone.minimum = -5.0;
+        cone.maximum = 3.0;
+
+        let bb = cone.bounds();
+        let chk = bb.min.approx_eq(Tuple::point(-5.0, -5.0, -5.0))
+            && bb.max.approx_eq(Tuple::point(5.0, 3.0, 5.0));
+
+        // asymmetric case: limit = max(|-1|, |0|) = 1, exercising abs().max()
+        let mut cone2 = Cone::new();
+        cone2.minimum = -1.0;
+        cone2.maximum = 0.0;
+
+        let bb2 = cone2.bounds();
+        let chk = chk
+            && bb2.min.approx_eq(Tuple::point(-1.0, -1.0, -1.0))
+            && bb2.max.approx_eq(Tuple::point(1.0, 0.0, 1.0));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_14_16", "bb.min:{} bb.max:{}", bb.min, bb.max);
+            Err("Bounding box for a bounded cone".into())
         }
     }
 }

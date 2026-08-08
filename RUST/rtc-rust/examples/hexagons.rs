@@ -30,6 +30,7 @@ fn main() {
 
     let start = std::time::Instant::now();
 
+    world.build_bounds();
     for _ in 0..100 {
         let _ = world.render_single(camera); // Camera is Copy, so the loop is fine
     }

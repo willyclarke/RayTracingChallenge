@@ -1,6 +1,7 @@
 //! Sphere defintion
 //!
 
+use crate::bounds::BoundingBox;
 use crate::intersection::{Intersection, Intersections};
 use crate::log::*;
 use crate::ray::Ray;
@@ -52,6 +53,10 @@ impl fmt::Display for Sphere {
 }
 
 impl Shape for Sphere {
+    fn bounds(&self) -> BoundingBox {
+        BoundingBox::new(Tuple::point(-1.0, -1.0, -1.0), Tuple::point(1.0, 1.0, 1.0))
+    }
+
     fn data(&self) -> &ShapeData {
         &self.data
     }

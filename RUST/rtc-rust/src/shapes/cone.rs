@@ -4,6 +4,7 @@
 //! height `y` equals `|y|`. Infinite and open by default; `minimum`/`maximum`
 //! truncate it along y and `closed` adds flat end caps.
 
+use crate::bounds::BoundingBox;
 use crate::intersection::{Intersection, Intersections};
 use crate::math::{EPSILON, approx_eq};
 use crate::ray::Ray;
@@ -78,6 +79,16 @@ impl Default for Cone {
 }
 
 impl Shape for Cone {
+    /// A cone's radius at height y is |y| (that's the x²+z² = y² surface), so the box's x/z extent
+    /// is the largest radius over the y-range = max(|min|, |max|)
+    fn bounds(&self) -> BoundingBox {
+        let limit = self.minimum.abs().max(self.maximum.abs());
+        BoundingBox::new(
+            Tuple::point(-limit, self.minimum, -limit),
+            Tuple::point(limit, self.maximum, limit),
+        )
+    }
+
     fn data(&self) -> &ShapeData {
         &self.data
     }
