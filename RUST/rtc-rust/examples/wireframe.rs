@@ -82,6 +82,20 @@ fn draw_line(c: &mut Canvas, mut x0: i32, mut y0: i32, x1: i32, y1: i32, color: 
     }
 }
 
+/// Distinct color per nesting depth (cycles if the tree is deeper).
+fn depth_color(depth: usize) -> Tuple {
+    const PALETTE: [(f64, f64, f64); 6] = [
+        (1.0, 1.0, 0.0), // 0 yellow
+        (0.0, 1.0, 1.0), // 1 cyan
+        (1.0, 0.3, 0.8), // 2 magenta/pink
+        (0.4, 1.0, 0.3), // 3 green
+        (1.0, 0.5, 0.0), // 4 orange
+        (1.0, 0.2, 0.2), // 5 red
+    ];
+    let (r, g, b) = PALETTE[depth % PALETTE.len()];
+    Tuple::color(r, g, b)
+}
+
 fn main() {
     let (mut world, g_id) = build();
     if SHOW_BVH {
@@ -89,34 +103,36 @@ fn main() {
     }
     world.build_bounds();
 
-    let camera = Camera::new(600, 600, std::f64::consts::PI / 3.0).with_transform(view_transform(
-        Tuple::point(0.0, 0.0, -18.0),
+    // angled camera so the boxes read as 3D, not flat rectangles
+    let camera = Camera::new(1600, 1600, std::f64::consts::PI / 3.0).with_transform(view_transform(
+        Tuple::point(7.0, 5.0, -15.0),
         Tuple::point(0.0, 0.0, 0.0),
         Tuple::vector(0.0, 1.0, 0.0),
     ));
 
     let mut canvas = world.render_single(camera);
 
-    // overlay the group boxes
-    let wire = Tuple::color(1.0, 1.0, 0.0); // yellow
+    // overlay the group boxes, colored by tree depth
     const EDGES: [(usize, usize); 12] = [
         (0, 1), (2, 3), (4, 5), (6, 7), // x edges
         (0, 2), (1, 3), (4, 6), (5, 7), // y edges
         (0, 4), (1, 5), (2, 6), (3, 7), // z edges
     ];
     let boxes = world.group_world_boxes();
-    for corners in &boxes {
+    let max_depth = boxes.iter().map(|(d, _)| *d).max().unwrap_or(0);
+    for (depth, corners) in &boxes {
+        let color = depth_color(*depth);
         let scr: Vec<Option<(i32, i32)>> = corners.iter().map(|&c| project(&camera, c)).collect();
         for &(a, b) in &EDGES {
             if let (Some(pa), Some(pb)) = (scr[a], scr[b]) {
-                draw_line(&mut canvas, pa.0, pa.1, pb.0, pb.1, wire);
+                draw_line(&mut canvas, pa.0, pa.1, pb.0, pb.1, color);
             }
         }
     }
 
     let _ = canvas.write_ppm("wireframe.ppm");
     println!(
-        "wrote wireframe.ppm  ({} group boxes drawn, BVH {})",
+        "wrote wireframe.ppm  ({} group boxes, depths 0..={max_depth}, BVH {})",
         boxes.len(),
         if SHOW_BVH { "on" } else { "off" }
     );

@@ -397,10 +397,12 @@ impl World {
         bb
     }
 
-    /// Every group's bounding box as 8 world-space corner points, for debug
-    /// wireframe rendering. Call after build_bounds() so the boxes are current.
-    /// Infinite boxes (e.g. a group containing a plane) are skipped.
-    pub fn group_world_boxes(&self) -> Vec<[Tuple; 8]> {
+    /// Every group's bounding box as `(depth, 8 world-space corners)`, for debug
+    /// wireframe rendering. `depth` is 0 for a root group and increments per
+    /// nesting level (useful for coloring). Call after build_bounds() so the
+    /// boxes are current. Infinite boxes (e.g. a group holding a plane) are
+    /// skipped.
+    pub fn group_world_boxes(&self) -> Vec<(usize, [Tuple; 8])> {
         let mut out = Vec::new();
         let roots: Vec<usize> = self
             .shapes
@@ -409,12 +411,18 @@ impl World {
             .map(|s| s.id())
             .collect();
         for r in roots {
-            self.collect_boxes(r, Matrix4::identity(), &mut out);
+            self.collect_boxes(r, Matrix4::identity(), 0, &mut out);
         }
         out
     }
 
-    fn collect_boxes(&self, id: usize, parent_tf: Matrix4, out: &mut Vec<[Tuple; 8]>) {
+    fn collect_boxes(
+        &self,
+        id: usize,
+        parent_tf: Matrix4,
+        depth: usize,
+        out: &mut Vec<(usize, [Tuple; 8])>,
+    ) {
         let shape = shape_by_id(&self.shapes, id);
         let world_tf = parent_tf * *shape.transform(); // group-local -> world
         if let Some(children) = shape.children() {
@@ -425,20 +433,23 @@ impl World {
             if finite {
                 let (lo, hi) = (bb.min, bb.max);
                 // corner index bits: 0=x, 1=y, 2=z (0 => lo, 1 => hi)
-                out.push([
-                    world_tf * Tuple::point(lo.x, lo.y, lo.z),
-                    world_tf * Tuple::point(hi.x, lo.y, lo.z),
-                    world_tf * Tuple::point(lo.x, hi.y, lo.z),
-                    world_tf * Tuple::point(hi.x, hi.y, lo.z),
-                    world_tf * Tuple::point(lo.x, lo.y, hi.z),
-                    world_tf * Tuple::point(hi.x, lo.y, hi.z),
-                    world_tf * Tuple::point(lo.x, hi.y, hi.z),
-                    world_tf * Tuple::point(hi.x, hi.y, hi.z),
-                ]);
+                out.push((
+                    depth,
+                    [
+                        world_tf * Tuple::point(lo.x, lo.y, lo.z),
+                        world_tf * Tuple::point(hi.x, lo.y, lo.z),
+                        world_tf * Tuple::point(lo.x, hi.y, lo.z),
+                        world_tf * Tuple::point(hi.x, hi.y, lo.z),
+                        world_tf * Tuple::point(lo.x, lo.y, hi.z),
+                        world_tf * Tuple::point(hi.x, lo.y, hi.z),
+                        world_tf * Tuple::point(lo.x, hi.y, hi.z),
+                        world_tf * Tuple::point(hi.x, hi.y, hi.z),
+                    ],
+                ));
             }
             let kids = children.to_vec();
             for k in kids {
-                self.collect_boxes(k, world_tf, out);
+                self.collect_boxes(k, world_tf, depth + 1, out);
             }
         }
     }
