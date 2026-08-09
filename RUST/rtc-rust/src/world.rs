@@ -167,11 +167,15 @@ pub fn normal_to_world(shapes: &[Box<dyn Shape>], shape_id: usize, normal: Tuple
 
     let mut normal = shape.transform_inv().transpose() * normal;
     normal.w = 0.0;
-    normal = normal.normalize();
 
     match shape.data().parent {
         Some(parent_id) => normal_to_world(shapes, parent_id, normal), // recurse LAST
-        None => normal,
+        // Normalize ONCE, at the root — not per level. Intermediate normalizes
+        // are mathematically redundant (they only rescale, which the final one
+        // undoes) and each adds ~1 ULP of drift, so a BVH's extra identity
+        // levels would otherwise perturb the color. This keeps it drift-free
+        // and cheaper (one sqrt), and still returns a unit vector.
+        None => normal.normalize(),
     }
 }
 
