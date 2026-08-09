@@ -3734,8 +3734,8 @@ mod tests {
         let to = Tuple::point(0.0, 1.0, 0.0);
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
-        // let (display_x, display_y) = (60, 40);
-        let (display_x, display_y) = (3456, 2234);
+        let (display_x, display_y) = (60, 40);
+        // let (display_x, display_y) = (3456, 2234);
         let camera =
             Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
 
