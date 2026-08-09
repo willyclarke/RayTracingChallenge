@@ -85,6 +85,31 @@ impl BoundingBox {
         Self { min, max }
     }
 
+    pub fn split(&self) -> (BoundingBox, BoundingBox) {
+        // widths per axis
+        let dx = self.max.x - self.min.x;
+        let dy = self.max.y - self.min.y;
+        let dz = self.max.z - self.min.z;
+        let greatest = dx.max(dy).max(dz);
+
+        // start both halves as full copies, then cut the longest axis at its midpoint
+        let (mut mid_min, mut mid_max) = (self.min, self.max);
+        if greatest == dx {
+            mid_min.x = self.min.x + dx / 2.0; // left's max.x and right's min.x
+            mid_max.x = mid_min.x;
+        } else if greatest == dy {
+            mid_min.y = self.min.y + dy / 2.0;
+            mid_max.y = mid_min.y;
+        } else {
+            mid_min.z = self.min.z + dz / 2.0;
+            mid_max.z = mid_min.z;
+        }
+
+        let left = BoundingBox::new(self.min, mid_max);
+        let right = BoundingBox::new(mid_min, self.max);
+        (left, right)
+    }
+
     pub fn transform(&self, m: Matrix4) -> BoundingBox {
         // the 8 corners from all min/max combinations
         let corners = [

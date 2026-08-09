@@ -80,6 +80,10 @@ impl Shape for Group {
     fn set_bounds(&mut self, bb: BoundingBox) {
         self.bounds = bb;
     }
+
+    fn set_children(&mut self, ids: Vec<usize>) {
+        self.children = ids;
+    }
 }
 
 #[cfg(test)]

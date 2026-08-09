@@ -96,6 +96,8 @@ pub trait Shape: Send + Sync {
 
     fn set_bounds(&mut self, _bb: BoundingBox) {}
 
+    fn set_children(&mut self, _ids: Vec<usize>) {}
+
     fn set_id(&mut self, id: usize) {
         self.data_mut().id = id;
     }

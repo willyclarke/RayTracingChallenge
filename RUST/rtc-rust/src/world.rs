@@ -358,33 +358,39 @@ impl World {
         id
     }
 
+    /// Compute and cache every group's bounding box, ready for the cull.
+    ///
+    /// Walks the tree post-order from the roots (following parent/child links,
+    /// NOT id order), so it is correct even when a parent's id exceeds its
+    /// children's — as happens once divide() appends sub-groups.
     pub fn build_bounds(&mut self) {
-        let n = self.shapes.len();
-        let mut boxes = vec![BoundingBox::empty(); n]; // subtree bounds, own-space, indexed by id-1
-
-        for i in (0..n).rev() {
-            // reverse id = bottom-up
-            let shape = self.shapes[i].as_ref();
-            boxes[i] = match shape.children() {
-                None => shape.bounds(), // leaf: its own object-space box
-                Some(children) => {
-                    let mut bb = BoundingBox::empty();
-                    for &cid in children {
-                        let child = self.shapes[cid - 1].as_ref();
-                        // child already done (higher id, reverse order); lift into THIS group's space
-                        bb.add_box(&boxes[cid - 1].transform(*child.transform()));
-                    }
-                    bb
-                }
-            };
+        let roots: Vec<usize> = self
+            .shapes
+            .iter()
+            .filter(|s| s.data().parent.is_none())
+            .map(|s| s.id())
+            .collect();
+        for r in roots {
+            self.store_subtree_bounds(r);
         }
+    }
 
-        (0..n).for_each(|i| {
-            // store into the groups
-            if self.shapes[i].children().is_some() {
-                self.shapes[i].set_bounds(boxes[i]);
-            }
-        });
+    /// Post-order: compute this subtree's own-space box, store it on the group,
+    /// and return it so the parent can fold it in. Leaves return their own box
+    /// without storing.
+    fn store_subtree_bounds(&mut self, id: usize) -> BoundingBox {
+        let children = match shape_by_id(&self.shapes, id).children() {
+            None => return shape_by_id(&self.shapes, id).bounds(), // leaf
+            Some(c) => c.to_vec(),
+        };
+        let mut bb = BoundingBox::empty();
+        for cid in children {
+            let child_tf = *shape_by_id(&self.shapes, cid).transform();
+            let child_bb = self.store_subtree_bounds(cid); // recurse FIRST (post-order)
+            bb.add_box(&child_bb.transform(child_tf));
+        }
+        self.shape_by_id_mut(id).unwrap().set_bounds(bb);
+        bb
     }
 
     pub fn set_light(&mut self, light: Light) {
@@ -618,6 +624,98 @@ impl World {
     pub fn render(&self, camera: Camera) -> Canvas {
         // self.render_single(camera) // change this one line to switch
         self.render_parallel(camera) // change this one line to switch
+    }
+
+    fn set_children(&mut self, id: usize, ids: Vec<usize>) {
+        self.shape_by_id_mut(id).unwrap().set_children(ids)
+    }
+
+    fn partition_children(&mut self, group_id: usize) -> (Vec<usize>, Vec<usize>) {
+        let (left_box, right_box) = self.subtree_bounds(group_id).split();
+
+        // read current children (clone ids so we can mutate the group below)
+        let children: Vec<usize> = shape_by_id(&self.shapes, group_id)
+            .children()
+            .unwrap()
+            .to_vec();
+
+        let (mut left, mut right, mut stay) = (Vec::new(), Vec::new(), Vec::new());
+        for cid in children {
+            let child = shape_by_id(&self.shapes, cid);
+            // child's box IN THE GROUP'S space = child.transform * child-subtree bounds
+            let cbox = self.subtree_bounds(cid).transform(*child.transform());
+            if left_box.contains_box(&cbox) {
+                left.push(cid);
+            } else if right_box.contains_box(&cbox) {
+                right.push(cid);
+            } else {
+                stay.push(cid); // straddles the split plane → keep in the group
+            }
+        }
+
+        // group keeps only the straddlers; left/right get pulled out
+        self.set_children(group_id, stay);
+        (left, right)
+    }
+
+    fn subtree_bounds(&self, id: usize) -> BoundingBox {
+        let shape = shape_by_id(&self.shapes, id);
+        match shape.children() {
+            None => shape.bounds(), // leaf: object-space box
+            Some(children) => {
+                let mut bb = BoundingBox::empty();
+                for &cid in children {
+                    let child = shape_by_id(&self.shapes, cid);
+                    bb.add_box(&self.subtree_bounds(cid).transform(*child.transform()));
+                }
+                bb
+            }
+        }
+    }
+
+    fn make_subgroup(&mut self, parent_id: usize, child_ids: Vec<usize>) -> usize {
+        // 1. append a new, identity-transform group to the arena
+        let sub_id = self.add_shape(Box::new(Group::new()));
+
+        // 2. move each orphaned child under the sub-group
+        for &cid in &child_ids {
+            self.shape_by_id_mut(cid).unwrap().data_mut().parent = Some(sub_id);
+            self.shape_by_id_mut(sub_id).unwrap().add_child_id(cid);
+        }
+
+        // 3. the sub-group becomes a child of the parent
+        self.shape_by_id_mut(sub_id).unwrap().data_mut().parent = Some(parent_id);
+        self.shape_by_id_mut(parent_id)
+            .unwrap()
+            .add_child_id(sub_id);
+
+        sub_id
+    }
+
+    pub fn divide(&mut self, group_id: usize, threshold: usize) {
+        // only groups divide; only when they have enough children to be worth splitting
+        if let Some(children) = shape_by_id(&self.shapes, group_id).children() {
+            if children.len() >= threshold {
+                let (left, right) = self.partition_children(group_id);
+                if !left.is_empty() {
+                    self.make_subgroup(group_id, left);
+                }
+                if !right.is_empty() {
+                    self.make_subgroup(group_id, right);
+                }
+            }
+
+            // recurse into ALL current children (snapshot the ids first — the list
+            // just changed, and we're about to mutate deeper)
+            let kids: Vec<usize> = shape_by_id(&self.shapes, group_id)
+                .children()
+                .unwrap()
+                .to_vec();
+            for kid in kids {
+                self.divide(kid, threshold);
+            }
+        }
+        // primitives: no children → the `if let` is None → no-op
     }
 }
 
@@ -3719,6 +3817,198 @@ mod tests {
         } else {
             loge!("test_chap_14_16", "bb.min:{} bb.max:{}", bb.min, bb.max);
             Err("Bounding box for a bounded cone".into())
+        }
+    }
+
+    /// Chap 14 - Bounding box split.
+    #[test]
+    fn test_chap_14_17() -> Result<(), String> {
+        // dx is chosen over dy since x takes priority
+        let bb = BoundingBox::new(Tuple::point(-1.0, -4.0, -5.0), Tuple::point(9.0, 6.0, 5.0));
+        let (left, right) = bb.split();
+
+        let chk = left.min.approx_eq(Tuple::point(-1.0, -4.0, -5.0));
+        let chk = chk && left.max.approx_eq(Tuple::point(4.0, 6.0, 5.0));
+        let chk = chk && right.min.approx_eq(Tuple::point(4.0, -4.0, -5.0));
+        let chk = chk && right.max.approx_eq(Tuple::point(9.0, 6.0, 5.0));
+
+        // dx is biggest - split on x
+        let bb = BoundingBox::new(Tuple::point(-1.0, -2.0, -3.0), Tuple::point(9.0, 5.5, 3.0));
+        let (left, right) = bb.split();
+
+        let chk = chk && left.min.approx_eq(Tuple::point(-1.0, -2.0, -3.0));
+        let chk = chk && left.max.approx_eq(Tuple::point(4.0, 5.5, 3.0));
+        let chk = chk && right.min.approx_eq(Tuple::point(4.0, -2.0, -3.0));
+        let chk = chk && right.max.approx_eq(Tuple::point(9.0, 5.5, 3.0));
+
+        // dy is biggest - split on y
+        let bb = BoundingBox::new(Tuple::point(-1.0, -2.0, -3.0), Tuple::point(5.0, 8.0, 3.0));
+        let (left, right) = bb.split();
+
+        let chk = chk && left.min.approx_eq(Tuple::point(-1.0, -2.0, -3.0));
+        let chk = chk && left.max.approx_eq(Tuple::point(5.0, 3.0, 3.0));
+        let chk = chk && right.min.approx_eq(Tuple::point(-1.0, 3.0, -3.0));
+        let chk = chk && right.max.approx_eq(Tuple::point(5.0, 8.0, 3.0));
+
+        // dz is biggest - split on z
+        let bb = BoundingBox::new(Tuple::point(-1.0, -2.0, -3.0), Tuple::point(5.0, 3.0, 7.0));
+        let (left, right) = bb.split();
+
+        let chk = chk && left.min.approx_eq(Tuple::point(-1.0, -2.0, -3.0));
+        let chk = chk && left.max.approx_eq(Tuple::point(5.0, 3.0, 2.0));
+        let chk = chk && right.min.approx_eq(Tuple::point(-1.0, -2.0, 2.0));
+        let chk = chk && right.max.approx_eq(Tuple::point(5.0, 3.0, 7.0));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "test_chap_14_17",
+                "left min:{} max:{}. right min:{} max:{}.",
+                left.min,
+                left.max,
+                right.min,
+                right.max
+            );
+            Err("Bounding box split.".into())
+        }
+    }
+
+    /// Chap 14 - Split into subtree's.
+    #[test]
+    fn test_chap_14_18() -> Result<(), String> {
+        let mut w = World::new();
+        let g = Group::new();
+        let g_id = w.add_shape(Box::new(g));
+
+        let s0 = Sphere::new();
+        let mut s1 = Sphere::new();
+        let mut s2 = Sphere::new();
+        s1.set_transform(Matrix4::translation(-2.0, 0.0, 0.0));
+        s2.set_transform(Matrix4::translation(2.0, 0.0, 0.0));
+
+        let s0_id = w.add_child(g_id, Box::new(s0));
+        let s1_id = w.add_child(g_id, Box::new(s1));
+        let s2_id = w.add_child(g_id, Box::new(s2));
+
+        w.build_bounds();
+        let (left, right) = w.partition_children(g_id);
+
+        // the two buckets
+        let chk = left == vec![s1_id] && right == vec![s2_id];
+
+        // the group kept ONLY the straddler s0
+        let group_children = w.shapes[g_id - 1].children().unwrap(); // id == index+1
+        let chk = chk && group_children == [s0_id];
+
+        // arena is UNCHANGED — nothing was removed (this is the mental-model fix)
+        let chk = chk && w.shapes.len() == 4;
+
+        if chk {
+            Ok(())
+        } else {
+            Err("Split into subtree's.".into())
+        }
+    }
+
+    /// Chap 14 - Test the subgroups after splitting.
+    #[test]
+    fn test_chap_14_19() -> Result<(), String> {
+        let mut w = World::new();
+        let g = Group::new();
+        let g_id = w.add_shape(Box::new(g));
+
+        let s0 = Sphere::new();
+        let mut s1 = Sphere::new();
+        let mut s2 = Sphere::new();
+        s1.set_transform(Matrix4::translation(-2.0, 0.0, 0.0));
+        s2.set_transform(Matrix4::translation(2.0, 0.0, 0.0));
+
+        let _s0_id = w.add_child(g_id, Box::new(s0));
+        let s1_id = w.add_child(g_id, Box::new(s1));
+        let _s2_id = w.add_child(g_id, Box::new(s2));
+
+        let (left, right) = w.partition_children(g_id);
+        let sub_left = w.make_subgroup(g_id, left); // new sub-group id, holds s1
+        let sub_right = w.make_subgroup(g_id, right); // new sub-group id, holds s2
+
+        w.build_bounds();
+
+        // arena grew by 2 (the two sub-groups appended)
+        let chk = w.shapes.len() == 6;
+
+        // group now has: straddler s0, plus the two sub-groups
+        let gc = w.shapes[g_id - 1].children().unwrap();
+        let chk = chk && gc.len() == 3; // [s0_id, sub_left, sub_right]
+
+        // the LEFT sub-group holds exactly s1 (look up the sub-group by its id-1)
+        let sub_left_children = w.shapes[sub_left - 1].children().unwrap();
+        let chk = chk && sub_left_children == [s1_id];
+
+        // s1's parent was rewired from the group to the sub-group
+        let chk = chk && w.shapes[s1_id - 1].data().parent == Some(sub_left);
+        // ...and s1 itself is still a leaf (it did NOT become a group)
+        let chk = chk && w.shapes[s1_id - 1].children().is_none();
+
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "test_chap_14_19",
+                "gc:{:?} sub_left:{} sub_right:{}",
+                gc,
+                sub_left,
+                sub_right
+            );
+            Err("Test the subgroups after splitting.".into())
+        }
+    }
+
+    /// Chap 14 - divide() reorganizes the tree WITHOUT changing what a ray hits.
+    #[test]
+    fn test_chap_14_20() -> Result<(), String> {
+        let mut w = World::new();
+        let g_id = w.add_shape(Box::new(Group::new()));
+
+        // three spheres in a row on x; a ray along x hits all three (6 hits)
+        let _s0 = w.add_child(g_id, Box::new(Sphere::new()));
+        let mut s1 = Sphere::new();
+        s1.set_transform(Matrix4::translation(-2.0, 0.0, 0.0));
+        let _s1 = w.add_child(g_id, Box::new(s1));
+        let mut s2 = Sphere::new();
+        s2.set_transform(Matrix4::translation(2.0, 0.0, 0.0));
+        let _s2 = w.add_child(g_id, Box::new(s2));
+
+        let ray = Ray::new(Tuple::point(-5.0, 0.0, 0.0), Tuple::vector(1.0, 0.0, 0.0));
+
+        // hits BEFORE dividing
+        w.build_bounds();
+        let before = w.intersect(&ray);
+
+        // reorganize into a BVH, rebuild bounds, hits AFTER
+        w.divide(g_id, 1);
+        w.build_bounds();
+        let after = w.intersect(&ray);
+
+        // meaningful: the ray really does hit all three spheres
+        let mut chk = before.count() == 6;
+        // contract: divide preserves the hit set exactly (same t's and object ids)
+        chk = chk && before.count() == after.count();
+        for i in 0..before.count() {
+            chk = chk && approx_eq(before[i].t, after[i].t);
+            chk = chk && before[i].object_id == after[i].object_id;
+        }
+
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "test_chap_14_20",
+                "before.count:{} after.count:{}",
+                before.count(),
+                after.count()
+            );
+            Err("divide() must not change what a ray hits".into())
         }
     }
 }
