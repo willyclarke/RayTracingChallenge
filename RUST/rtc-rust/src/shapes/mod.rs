@@ -1,4 +1,5 @@
 pub mod cone;
+pub mod csg;
 pub mod cube;
 pub mod cylinder;
 pub mod group;

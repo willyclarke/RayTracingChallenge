@@ -17,6 +17,7 @@ use crate::matrix::Matrix4;
 use crate::obj::Parser;
 use crate::ray::Ray;
 use crate::shape::Shape;
+use crate::shapes::csg::intersection_allowed;
 use crate::shapes::cylinder::Cylinder;
 use crate::shapes::group::Group;
 use crate::shapes::sphere::Sphere;
@@ -572,6 +573,46 @@ impl World {
         }
     }
 
+    /// Is `target_id` the shape `root_id` itself, or anywhere below it?
+    /// Used by CSG to decide which side of the tree an intersection hit.
+    fn subtree_includes(&self, root_id: usize, target_id: usize) -> bool {
+        if root_id == target_id {
+            return true;
+        }
+        match self.shape_by_id(root_id).and_then(|s| s.children()) {
+            Some(kids) => kids
+                .iter()
+                .any(|&cid| self.subtree_includes(cid, target_id)),
+            None => false,
+        }
+    }
+
+    /// Keep only the intersections that lie on the boundary of the CSG
+    /// solid, per its operation. Walks the t-sorted list tracking whether
+    /// the ray is currently inside the left/right child.
+    fn filter_intersections(&self, csg: &dyn Shape, xs: &Intersections) -> Intersections {
+        let op = csg
+            .csg_operation()
+            .expect("filter_intersections needs a CSG shape");
+        let left = csg.children().expect("a CSG node has children")[0];
+
+        let mut inl = false; // inside the left child?
+        let mut inr = false; // inside the right child?
+        let mut result = Intersections::new();
+        for i in xs.iter() {
+            let lhit = self.subtree_includes(left, i.object_id);
+            if intersection_allowed(op, lhit, inl, inr) {
+                result.push(i);
+            }
+            if lhit {
+                inl = !inl;
+            } else {
+                inr = !inr;
+            }
+        }
+        result
+    }
+
     fn intersect_node(&self, shape: &dyn Shape, ray: &Ray, xs: &mut Intersections) {
         record_node_visit();
         // transform the ray into THIS shape's object space
@@ -582,6 +623,20 @@ impl World {
             Some(children) => {
                 if !shape.bounds().intersects(&local_ray) {
                     return; // ray can't hit anything in this group → skip subtree
+                }
+                if shape.csg_operation().is_some() {
+                    // CSG: collect BOTH children's hits, then keep only the
+                    // ones on the boundary of the combined solid
+                    let mut sub = Intersections::new();
+                    for &cid in children {
+                        if let Some(child) = self.shape_by_id(cid) {
+                            self.intersect_node(child, &local_ray, &mut sub);
+                        }
+                    }
+                    for i in self.filter_intersections(shape, &sub).iter() {
+                        xs.push(i);
+                    }
+                    return;
                 }
                 for &cid in children {
                     if let Some(child) = self.shape_by_id(cid) {
@@ -821,7 +876,12 @@ impl World {
     pub fn divide(&mut self, group_id: usize, threshold: usize) {
         // only groups divide; only when they have enough children to be worth splitting
         if let Some(children) = shape_by_id(&self.shapes, group_id).children() {
-            if children.len() >= threshold {
+            // a CSG node's two children ARE its left/right operands — never
+            // repartition them; still recurse below (they may be big groups)
+            let is_csg = shape_by_id(&self.shapes, group_id)
+                .csg_operation()
+                .is_some();
+            if !is_csg && children.len() >= threshold {
                 let (left, right) = self.partition_children(group_id);
                 if !left.is_empty() {
                     self.make_subgroup(group_id, left);
@@ -918,6 +978,7 @@ mod tests {
     use crate::patterns::testpattern::TestPattern;
     use crate::shape::Shape;
     use crate::shapes::cone::Cone;
+    use crate::shapes::csg::{Csg, CsgOperation};
     use crate::shapes::cube::Cube;
     use crate::shapes::cylinder::Cylinder;
     use crate::shapes::group::Group;
@@ -4431,5 +4492,217 @@ mod tests {
             loge!("test_chap_16_11", "comps.normalv: {}", comps.normalv);
             Err("Preparing the normal on a smooth triangle".into())
         }
+    }
+
+    /// Chap 17 - CSG is created with an operation and two shapes
+    #[test]
+    fn test_chap_17_3() -> Result<(), String> {
+        let mut w = World::new();
+
+        let c_id = w.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+        let s1_id = w.add_child(c_id, Box::new(Sphere::new()));
+        let s2_id = w.add_child(c_id, Box::new(Cube::new()));
+
+        let c = w.shapes[c_id - 1].as_ref();
+        let chk = c.csg_operation() == Some(CsgOperation::Union)
+            && c.children() == Some(&[s1_id, s2_id][..])
+            && w.shapes[s1_id - 1].data().parent == Some(c_id)
+            && w.shapes[s2_id - 1].data().parent == Some(c_id);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_17_3", "children:{:?}", c.children());
+            Err("CSG is created with an operation and two shapes".into())
+        }
+    }
+
+    /// Chap 17 - Filtering a list of intersections
+    #[test]
+    fn test_chap_17_4() -> Result<(), String> {
+        // (operation, expected xs indices after filtering)
+        let cases = [
+            (CsgOperation::Union, [0_usize, 3_usize]),
+            (CsgOperation::Intersection, [1, 2]),
+            (CsgOperation::Difference, [0, 1]),
+        ];
+        for (op, expected) in cases {
+            let mut w = World::new();
+            let c_id = w.add_shape(Box::new(Csg::new(op)));
+            let s1_id = w.add_child(c_id, Box::new(Sphere::new()));
+            let s2_id = w.add_child(c_id, Box::new(Cube::new()));
+
+            let mut xs = Intersections::new();
+            xs.push(Intersection::new(1.0, s1_id));
+            xs.push(Intersection::new(2.0, s2_id));
+            xs.push(Intersection::new(3.0, s1_id));
+            xs.push(Intersection::new(4.0, s2_id));
+
+            let result = w.filter_intersections(w.shapes[c_id - 1].as_ref(), &xs);
+
+            let chk = result.count() == 2
+                && approx_eq(result[0].t, xs[expected[0]].t)
+                && result[0].object_id == xs[expected[0]].object_id
+                && approx_eq(result[1].t, xs[expected[1]].t)
+                && result[1].object_id == xs[expected[1]].object_id;
+            if !chk {
+                loge!("test_chap_17_4", "op:{:?} result:{:?}", op, result);
+                return Err("Filtering a list of intersections".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Chap 17 - A ray misses a CSG object
+    #[test]
+    fn test_chap_17_5() -> Result<(), String> {
+        let mut w = World::new();
+        let c_id = w.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+        let _s1_id = w.add_child(c_id, Box::new(Sphere::new()));
+        let _s2_id = w.add_child(c_id, Box::new(Cube::new()));
+        w.build_bounds();
+
+        let r = Ray::new(Tuple::point(0.0, 2.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = w.intersect(&r);
+
+        if xs.is_empty() {
+            Ok(())
+        } else {
+            loge!("test_chap_17_5", "xs.count:{}", xs.count());
+            Err("A ray misses a CSG object".into())
+        }
+    }
+
+    /// Chap 17 - A ray hits a CSG object
+    #[test]
+    fn test_chap_17_6() -> Result<(), String> {
+        let mut w = World::new();
+        let c_id = w.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+        let s1_id = w.add_child(c_id, Box::new(Sphere::new()));
+        let mut s2 = Sphere::new();
+        s2.set_transform(Matrix4::translation(0.0, 0.0, 0.5));
+        let s2_id = w.add_child(c_id, Box::new(s2));
+        w.build_bounds();
+
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = w.intersect(&r);
+
+        let chk = xs.count() == 2
+            && approx_eq(xs[0].t, 4.0)
+            && xs[0].object_id == s1_id
+            && approx_eq(xs[1].t, 6.5)
+            && xs[1].object_id == s2_id;
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_17_6", "xs:{:?}", xs);
+            Err("A ray hits a CSG object".into())
+        }
+    }
+
+    /// Chap 17 - divide() must never repartition a CSG node's children
+    /// (children[0]/children[1] ARE the left/right operands)
+    #[test]
+    fn test_chap_17_divide() -> Result<(), String> {
+        let mut w = World::new();
+        let c_id = w.add_shape(Box::new(Csg::new(CsgOperation::Difference)));
+        let s1_id = w.add_child(c_id, Box::new(Sphere::new()));
+        let s2_id = w.add_child(c_id, Box::new(Cube::new()));
+
+        w.divide(c_id, 1); // threshold 1 would split any plain group
+
+        let c = w.shapes[c_id - 1].as_ref();
+        if c.children() == Some(&[s1_id, s2_id][..]) {
+            Ok(())
+        } else {
+            loge!("test_chap_17_divide", "children:{:?}", c.children());
+            Err("divide() must leave CSG children untouched".into())
+        }
+    }
+
+    /// Chap 17 - Putting it together: the classic CSG widget, a rounded cube
+    /// (cube ∩ sphere) with three cylindrical holes drilled through it
+    /// (− union of three cylinders). Exercises nested CSG nodes.
+    #[test]
+    fn test_chap_17_putting_it_all_together() -> Result<(), String> {
+        let mut w = World::new();
+
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        w.light = Some(light);
+
+        // Floor - a slightly reflective plane
+        let mut floor = Plane::new();
+        let mut floor_material = Material::new();
+        floor_material.color = Tuple::color(0.8, 0.8, 0.85);
+        floor_material.specular = 0.0;
+        floor_material.reflective = 0.2;
+        floor.set_material(floor_material);
+        w.add_shape(Box::new(floor));
+
+        // top = core − holes
+        let mut top = Csg::new(CsgOperation::Difference);
+        top.set_transform(
+            Matrix4::translation(0.0, 1.5, 0.0)
+                * Matrix4::rotation_y(std::f64::consts::PI / 4.0)
+                * Matrix4::rotation_x(-0.4),
+        );
+        let top_id = w.add_shape(Box::new(top));
+
+        // core = cube ∩ sphere (a rounded cube), the LEFT child
+        let core_id = w.add_child(top_id, Box::new(Csg::new(CsgOperation::Intersection)));
+        // holes = cyl_x ∪ (cyl_y ∪ cyl_z), the RIGHT child
+        let holes_id = w.add_child(top_id, Box::new(Csg::new(CsgOperation::Union)));
+
+        let _cube_id = w.add_child(core_id, Box::new(Cube::new()));
+        let mut ball = Sphere::new();
+        ball.set_transform(Matrix4::scaling(1.35, 1.35, 1.35));
+        let _ball_id = w.add_child(core_id, Box::new(ball));
+
+        let drill = |axis_rot: Matrix4| {
+            let mut c = Cylinder::new();
+            c.minimum = -2.0;
+            c.maximum = 2.0;
+            c.closed = true;
+            c.set_transform(axis_rot * Matrix4::scaling(0.72, 1.0, 0.72));
+            c
+        };
+        let cyl_x = drill(Matrix4::rotation_z(std::f64::consts::PI / 2.0));
+        let _ = w.add_child(holes_id, Box::new(cyl_x));
+        let yz_id = w.add_child(holes_id, Box::new(Csg::new(CsgOperation::Union)));
+        let cyl_y = drill(Matrix4::identity());
+        let _ = w.add_child(yz_id, Box::new(cyl_y));
+        let cyl_z = drill(Matrix4::rotation_x(std::f64::consts::PI / 2.0));
+        let _ = w.add_child(yz_id, Box::new(cyl_z));
+
+        // materials: blue body, red hole walls
+        let mut body = Material::new();
+        body.color = Tuple::color(0.2, 0.55, 0.75);
+        body.diffuse = 0.8;
+        body.specular = 0.4;
+        body.shininess = 40.0;
+        w.set_material_recursive(core_id, &body);
+        let mut hole = Material::new();
+        hole.color = Tuple::color(0.85, 0.25, 0.2);
+        hole.diffuse = 0.8;
+        hole.specular = 0.3;
+        w.set_material_recursive(holes_id, &hole);
+
+        // View transform / camera
+        let from = Tuple::point(0.0, 3.0, -5.5);
+        let to = Tuple::point(0.0, 1.3, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        let camera = Camera::new(600, 400, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        let rc = image.write_ppm("test_chap_17_putting_it_all_together.ppm");
+        if rc.is_err() {
+            return Err("failed to write PPM".into());
+        }
+
+        Ok(())
     }
 }

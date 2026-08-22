@@ -67,6 +67,13 @@ pub trait Shape: Send + Sync {
         None
     }
 
+    /// `Some(op)` when this shape is a CSG node; the world's intersection
+    /// walk then filters the children's hits by the operation instead of
+    /// keeping them all.
+    fn csg_operation(&self) -> Option<crate::shapes::csg::CsgOperation> {
+        None
+    }
+
     fn data(&self) -> &ShapeData;
     fn data_mut(&mut self) -> &mut ShapeData;
 
