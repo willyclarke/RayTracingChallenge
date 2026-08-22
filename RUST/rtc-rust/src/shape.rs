@@ -3,10 +3,11 @@
 //!
 
 use crate::bounds::BoundingBox;
+use crate::intersection::{Intersection, Intersections};
+use crate::material::Material;
 use crate::matrix::Matrix4;
 use crate::ray::Ray;
 use crate::tuple::Tuple;
-use crate::{intersection::Intersections, material::Material};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
@@ -85,13 +86,20 @@ pub trait Shape: Send + Sync {
         &self.data().material
     }
 
-    fn normal_at(&self, world_point: Tuple) -> Tuple {
+    fn normal_at(&self, world_point: Tuple, hit: Intersection) -> Tuple {
         let local_point = self.data().transform_inv * world_point;
         // move to local coordinates by use of inverse matrix
-        let local_normal = self.local_normal_at(local_point);
+        let local_normal = self.local_normal_at(local_point, hit);
         let mut world_normal = self.data().transform_inv.transpose() * local_normal;
         world_normal.w = 0_f64;
         world_normal.normalize()
+    }
+
+    /// Convenience for callers that have no intersection at hand (demos,
+    /// tests): delegates with a dummy hit, which every shape except
+    /// TriangleUV ignores.
+    fn normal_at_no_intersect(&self, world_point: Tuple) -> Tuple {
+        self.normal_at(world_point, Intersection::new(0.0, self.id()))
     }
 
     fn set_bounds(&mut self, _bb: BoundingBox) {}
@@ -119,6 +127,13 @@ pub trait Shape: Send + Sync {
         self.data_mut().transform_inv = m.inverse().unwrap_or(Matrix4::identity());
     }
 
-    fn local_intersect(&self, ray: &crate::ray::Ray) -> Intersections;
-    fn local_normal_at(&self, point: crate::tuple::Tuple) -> crate::tuple::Tuple;
+    /// Convenience for callers that have no intersection at hand (demos,
+    /// tests): delegates with a dummy hit, which every shape except
+    /// TriangleUV ignores.
+    fn local_normal_at_no_hit(&self, point: Tuple) -> Tuple {
+        self.local_normal_at(point, Intersection::new(0.0, self.id()))
+    }
+
+    fn local_intersect(&self, ray: &Ray) -> Intersections;
+    fn local_normal_at(&self, point: Tuple, hit: Intersection) -> Tuple;
 }

@@ -83,7 +83,7 @@ impl Shape for Sphere {
         xs
     }
 
-    fn local_normal_at(&self, object_point: Tuple) -> Tuple {
+    fn local_normal_at(&self, object_point: Tuple, _hit: Intersection) -> Tuple {
         // sphere-specific normal logic goes here
         object_point - Tuple::point(0.0, 0.0, 0.0)
     }
@@ -379,7 +379,7 @@ mod tests {
     #[test]
     fn test_chap_6_1() -> Result<(), String> {
         let s = Sphere::new();
-        let n = s.normal_at(Tuple::point(1.0, 0.0, 0.0));
+        let n = s.normal_at_no_intersect(Tuple::point(1.0, 0.0, 0.0));
         let chk = n.approx_eq(Tuple::vector(1.0, 0.0, 0.0));
         if chk {
             Ok(())
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn test_chap_6_2() -> Result<(), String> {
         let s = Sphere::new();
-        let n = s.normal_at(Tuple::point(0.0, 1.0, 0.0));
+        let n = s.normal_at_no_intersect(Tuple::point(0.0, 1.0, 0.0));
         let chk = n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
         if chk {
             Ok(())
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn test_chap_6_3() -> Result<(), String> {
         let s = Sphere::new();
-        let n = s.normal_at(Tuple::point(0.0, 0.0, 1.0));
+        let n = s.normal_at_no_intersect(Tuple::point(0.0, 0.0, 1.0));
         let chk = n.approx_eq(Tuple::vector(0.0, 0.0, 1.0));
         if chk {
             Ok(())
@@ -422,7 +422,7 @@ mod tests {
     fn test_chap_6_4() -> Result<(), String> {
         let s = Sphere::new();
         let sqrt3o3 = 3_f64.sqrt() / 3_f64;
-        let n = s.normal_at(Tuple::point(sqrt3o3, sqrt3o3, sqrt3o3));
+        let n = s.normal_at_no_intersect(Tuple::point(sqrt3o3, sqrt3o3, sqrt3o3));
         let chk = n.approx_eq(Tuple::vector(sqrt3o3, sqrt3o3, sqrt3o3));
         if chk {
             Ok(())
@@ -437,7 +437,7 @@ mod tests {
     fn test_chap_6_5() -> Result<(), String> {
         let s = Sphere::new();
         let sqrt3o3 = 3_f64.sqrt() / 3_f64;
-        let n = s.normal_at(Tuple::point(sqrt3o3, sqrt3o3, sqrt3o3));
+        let n = s.normal_at_no_intersect(Tuple::point(sqrt3o3, sqrt3o3, sqrt3o3));
         let chk = n.normalize().approx_eq(n);
         if chk {
             Ok(())
@@ -452,7 +452,7 @@ mod tests {
     fn test_chap_6_6() -> Result<(), String> {
         let mut s = Sphere::new();
         s.set_transform(Matrix4::translation(0.0, 1.0, 0.0));
-        let n = s.normal_at(Tuple::point(
+        let n = s.normal_at_no_intersect(Tuple::point(
             0.0,
             1.0 + std::f64::consts::FRAC_1_SQRT_2,
             -std::f64::consts::FRAC_1_SQRT_2,
@@ -476,7 +476,7 @@ mod tests {
         let mut s = Sphere::new();
         let m = Matrix4::scaling(1.0, 0.5, 1.0) * Matrix4::rotation_z(std::f64::consts::PI / 5.0);
         s.set_transform(m);
-        let n = s.normal_at(Tuple::point(
+        let n = s.normal_at_no_intersect(Tuple::point(
             0.0,
             std::f64::consts::SQRT_2 / 2_f64,
             -std::f64::consts::SQRT_2 / 2_f64,

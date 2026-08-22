@@ -107,7 +107,7 @@ impl Shape for Cylinder {
     /// top cap, so the normal is `+y`; at `minimum` it is the bottom cap, `-y`.
     /// Everywhere else the point is on the wall, where the normal points
     /// radially outward with no y component.
-    fn local_normal_at(&self, point: Tuple) -> Tuple {
+    fn local_normal_at(&self, point: Tuple, _hit: Intersection) -> Tuple {
         // squared distance from the y axis
         let dist = point.x * point.x + point.z * point.z;
 

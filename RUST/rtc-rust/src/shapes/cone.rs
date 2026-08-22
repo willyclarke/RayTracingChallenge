@@ -101,7 +101,7 @@ impl Shape for Cone {
     ///
     /// On an end cap the normal is `+y` (top) or `-y` (bottom); on the wall it
     /// points radially outward with a y component set by the cone's slope.
-    fn local_normal_at(&self, point: Tuple) -> Tuple {
+    fn local_normal_at(&self, point: Tuple, _hit: Intersection) -> Tuple {
         // squared distance from the y axis
         let dist = point.x * point.x + point.z * point.z;
 

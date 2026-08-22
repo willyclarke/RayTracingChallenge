@@ -7,11 +7,24 @@ use std::ops::Index;
 pub struct Intersection {
     pub t: f64,
     pub object_id: usize,
+    /// Barycentric coordinates of the hit. Only triangles set these (for
+    /// smooth-normal interpolation); every other shape leaves them at 0.0.
+    pub u: f64,
+    pub v: f64,
 }
 
 impl Intersection {
     pub fn new(t: f64, object_id: usize) -> Self {
-        Self { t, object_id }
+        Self {
+            t,
+            object_id,
+            u: 0.0,
+            v: 0.0,
+        }
+    }
+
+    pub fn new_with_uv(t: f64, object_id: usize, u: f64, v: f64) -> Self {
+        Self { t, object_id, u, v }
     }
 }
 

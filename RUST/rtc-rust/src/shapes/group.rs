@@ -2,7 +2,7 @@
 //!
 
 use crate::bounds::BoundingBox;
-use crate::intersection::Intersections;
+use crate::intersection::{Intersection, Intersections};
 use crate::log::*;
 use crate::ray::Ray;
 use crate::shape::{Shape, ShapeData};
@@ -73,7 +73,7 @@ impl Shape for Group {
         Intersections::new()
     }
 
-    fn local_normal_at(&self, _object_point: Tuple) -> Tuple {
+    fn local_normal_at(&self, _object_point: Tuple, _hit: Intersection) -> Tuple {
         unreachable!("a group has no local normal; only its leaves do")
     }
 

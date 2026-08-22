@@ -90,7 +90,7 @@ impl Shape for Cube {
     ///
     /// `point` is assumed to already be in object space; the [`Shape`] machinery
     /// transforms world-space points before calling this.
-    fn local_normal_at(&self, point: Tuple) -> Tuple {
+    fn local_normal_at(&self, point: Tuple, _hit: Intersection) -> Tuple {
         let maxc = point.x.abs().max(point.y.abs().max(point.z.abs()));
         if approx_eq(maxc, point.x.abs()) {
             return Tuple::vector(point.x, 0.0, 0.0);

@@ -41,12 +41,11 @@ impl Shape for Plane {
     ///
     /// The normal of a plane is constant everywhere
     ///
-    fn local_normal_at(&self, _point: Tuple) -> Tuple {
+    fn local_normal_at(&self, _point: Tuple, _hit: Intersection) -> Tuple {
         Tuple::vector(0.0, 1.0, 0.0)
     }
 
     fn local_intersect(&self, ray: &Ray) -> Intersections {
-
         if ray.direction.y.abs() < crate::math::EPSILON {
             return Intersections::new();
         }
@@ -70,9 +69,9 @@ mod tests {
     #[test]
     fn test_chap_9_1() -> Result<(), String> {
         let p = Plane::new();
-        let n1 = p.local_normal_at(Tuple::point(0.0, 0.0, 0.0));
-        let n2 = p.local_normal_at(Tuple::point(10.0, 0.0, -10.0));
-        let n3 = p.local_normal_at(Tuple::point(-5.0, 0.0, 150.0));
+        let n1 = p.local_normal_at_no_hit(Tuple::point(0.0, 0.0, 0.0));
+        let n2 = p.local_normal_at_no_hit(Tuple::point(10.0, 0.0, -10.0));
+        let n3 = p.local_normal_at_no_hit(Tuple::point(-5.0, 0.0, 150.0));
         let expected = Tuple::vector(0.0, 1.0, 0.0);
         let chk = n1.approx_eq(expected) && n2.approx_eq(expected) && n3.approx_eq(expected);
         if chk {

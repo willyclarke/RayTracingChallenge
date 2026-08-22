@@ -18,3 +18,5 @@ ZIG/raytracer-zig/src/scrapbook.zig
 /RUST/rtc-rust/profile.json
 /RUST/rtc-rust/profile.json.gz
 /RUST/rtc-rust/log.txt
+# model files are downloaded from the internet; don't commit them
+/RUST/rtc-rust/models/

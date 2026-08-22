@@ -4,6 +4,7 @@
 //!
 
 use rayon::prelude::*;
+use std::path::Path;
 
 use crate::bounds::BoundingBox;
 use crate::camera::Camera;
@@ -13,6 +14,7 @@ use crate::light::Light;
 use crate::material::Material;
 use crate::math::approx_eq;
 use crate::matrix::Matrix4;
+use crate::obj::Parser;
 use crate::ray::Ray;
 use crate::shape::Shape;
 use crate::shapes::cylinder::Cylinder;
@@ -94,7 +96,7 @@ pub fn prepare_computations_upto_chap10<'a>(
     let t = intersection.t;
     let point = ray.position(t);
     let eyev = -ray.direction;
-    let mut normalv = shape.normal_at(point);
+    let mut normalv = shape.normal_at_no_intersect(point);
     let inside = if normalv.dot(eyev) < 0.0 {
         normalv = -normalv;
         true
@@ -158,7 +160,7 @@ fn shape_by_id(shapes: &[Box<dyn Shape>], id: usize) -> &dyn Shape {
 
 pub fn normal_at(shapes: &[Box<dyn Shape>], shape_id: usize, world_point: Tuple) -> Tuple {
     let object_point = world_to_object(shapes, shape_id, world_point);
-    let object_normal = shape_by_id(shapes, shape_id).local_normal_at(object_point);
+    let object_normal = shape_by_id(shapes, shape_id).local_normal_at_no_hit(object_point);
     normal_to_world(shapes, shape_id, object_normal)
 }
 
@@ -204,7 +206,7 @@ pub fn prepare_computations<'a>(
     let eyev = -ray.direction;
     // group-aware: walks the parent chain (world_to_object -> local_normal_at -> normal_to_world)
     let object_point = world_to_object(shapes, intersection.object_id, point);
-    let object_normal = shape.local_normal_at(object_point);
+    let object_normal = shape.local_normal_at(object_point, intersection);
     let mut normalv = normal_to_world(shapes, intersection.object_id, object_normal);
 
     let inside = if normalv.dot(eyev) < 0.0 {
@@ -505,6 +507,35 @@ impl World {
 
     fn shape_by_id_mut(&mut self, id: usize) -> Option<&mut Box<dyn Shape>> {
         self.shapes.iter_mut().find(|s| s.id() == id)
+    }
+
+    pub fn load_obj_file<P: AsRef<Path>>(
+        &mut self,
+        path: P,
+        transform: Matrix4,
+    ) -> std::io::Result<usize> {
+        let path: &Path = path.as_ref(); // one conversion, type pinned to Path
+        println!("loading {}", path.display()); // .display() → printable
+        let p = Parser::parse_obj_file(path)?; // reuse: Path is AsRef<Path>
+
+        println!("REPORT: Input file {}. {}", path.display(), p.report());
+
+        let mut top = Group::new();
+        top.set_transform(transform);
+        let top_id = self.add_shape(Box::new(top));
+
+        // default group (ungrouped faces) → children of the top group
+        for t in &p.default_group {
+            self.add_child(top_id, Box::new(t.clone()));
+        }
+        // named groups → a sub-group each
+        for tris in p.named_groups.values() {
+            let sub = self.add_child(top_id, Box::new(Group::new()));
+            for t in tris {
+                self.add_child(sub, Box::new(t.clone()));
+            }
+        }
+        Ok(top_id)
     }
 
     fn intersect_node(&self, shape: &dyn Shape, ray: &Ray, xs: &mut Intersections) {
@@ -840,8 +871,9 @@ pub fn view_transform(from: Tuple, to: Tuple, up: Tuple) -> Matrix4 {
 mod tests {
     use super::*;
     use crate::bounds::BoundingBox;
-    use crate::intersection::Intersection;
+    use crate::intersection::{Intersection, Intersections};
     use crate::math::{EPSILON, approx_eq};
+    // use crate::obj::Parser;
     use crate::pattern::Pattern;
     use crate::patterns::blendedpattern::BlendedPattern;
     use crate::patterns::checkerspattern::CheckersPattern;
@@ -856,6 +888,8 @@ mod tests {
     use crate::shapes::cylinder::Cylinder;
     use crate::shapes::group::Group;
     use crate::shapes::plane::Plane;
+    use crate::shapes::triangle::Triangle;
+    use crate::shapes::triangleuv::TriangleUV;
     use crate::tuple::colors::*;
     use crate::{loge, logi, tuple::Tuple};
 
@@ -2714,35 +2748,35 @@ mod tests {
         let c = Cube::new();
 
         let p = Tuple::point(1.0, 0.5, -0.8);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = Tuple::vector(1.0, 0.0, 0.0).approx_eq(normal);
 
         let p = Tuple::point(-1.0, -0.5, 0.9);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = chk && Tuple::vector(-1.0, 0.0, 0.0).approx_eq(normal);
 
         let p = Tuple::point(-0.4, 1.0, -0.1);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = chk && Tuple::vector(0.0, 1.0, 0.0).approx_eq(normal);
 
         let p = Tuple::point(0.3, -1.0, -0.7);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = chk && Tuple::vector(0.0, -1.0, 0.0).approx_eq(normal);
 
         let p = Tuple::point(-0.6, 0.3, 1.0);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = chk && Tuple::vector(0.0, 0.0, 1.0).approx_eq(normal);
 
         let p = Tuple::point(0.4, 0.4, -1.0);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = chk && Tuple::vector(0.0, 0.0, -1.0).approx_eq(normal);
 
         let p = Tuple::point(1.0, 1.0, 1.0);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = chk && Tuple::vector(1.0, 0.0, 0.0).approx_eq(normal);
 
         let p = Tuple::point(-1.0, -1.0, -1.0);
-        let normal = c.local_normal_at(p);
+        let normal = c.local_normal_at_no_hit(p);
         let chk = chk && Tuple::vector(-1.0, 0.0, 0.0).approx_eq(normal);
 
         if chk {
@@ -2963,16 +2997,16 @@ mod tests {
     fn test_chap_13_3() -> Result<(), String> {
         let cyl = Cylinder::new();
 
-        let n = cyl.local_normal_at(Tuple::point(1.0, 0.0, 0.0));
+        let n = cyl.local_normal_at_no_hit(Tuple::point(1.0, 0.0, 0.0));
         let chk = n.approx_eq(Tuple::vector(1.0, 0.0, 0.0));
 
-        let n = cyl.local_normal_at(Tuple::point(0.0, 5.0, -1.0));
+        let n = cyl.local_normal_at_no_hit(Tuple::point(0.0, 5.0, -1.0));
         let chk = chk && n.approx_eq(Tuple::vector(0.0, 0.0, -1.0));
 
-        let n = cyl.local_normal_at(Tuple::point(0.0, -2.0, 1.0));
+        let n = cyl.local_normal_at_no_hit(Tuple::point(0.0, -2.0, 1.0));
         let chk = chk && n.approx_eq(Tuple::vector(0.0, 0.0, 1.0));
 
-        let n = cyl.local_normal_at(Tuple::point(-1.0, 1.0, 0.0));
+        let n = cyl.local_normal_at_no_hit(Tuple::point(-1.0, 1.0, 0.0));
         let chk = chk && n.approx_eq(Tuple::vector(-1.0, 0.0, 0.0));
 
         if chk {
@@ -3114,27 +3148,27 @@ mod tests {
         cyl.closed = true;
 
         let point = Tuple::point(0.0, 1.0, 0.0);
-        let n = cyl.local_normal_at(point);
+        let n = cyl.local_normal_at_no_hit(point);
         let chk = n.approx_eq(Tuple::vector(0.0, -1.0, 0.0));
 
         let point = Tuple::point(0.5, 1.0, 0.0);
-        let n = cyl.local_normal_at(point);
+        let n = cyl.local_normal_at_no_hit(point);
         let chk = chk && n.approx_eq(Tuple::vector(0.0, -1.0, 0.0));
 
         let point = Tuple::point(0.0, 1.0, 0.5);
-        let n = cyl.local_normal_at(point);
+        let n = cyl.local_normal_at_no_hit(point);
         let chk = chk && n.approx_eq(Tuple::vector(0.0, -1.0, 0.0));
 
         let point = Tuple::point(0.0, 2.0, 0.0);
-        let n = cyl.local_normal_at(point);
+        let n = cyl.local_normal_at_no_hit(point);
         let chk = chk && n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
 
         let point = Tuple::point(0.5, 2.0, 0.0);
-        let n = cyl.local_normal_at(point);
+        let n = cyl.local_normal_at_no_hit(point);
         let chk = chk && n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
 
         let point = Tuple::point(0.0, 2.0, 0.5);
-        let n = cyl.local_normal_at(point);
+        let n = cyl.local_normal_at_no_hit(point);
         let chk = chk && n.approx_eq(Tuple::vector(0.0, 1.0, 0.0));
 
         if chk {
@@ -3243,15 +3277,15 @@ mod tests {
         let shape = Cone::new();
 
         let point = Tuple::point(0.0, 0.0, 0.0);
-        let n = shape.local_normal_at(point);
+        let n = shape.local_normal_at_no_hit(point);
         let chk = n.approx_eq(Tuple::vector(0.0, 0.0, 0.0));
 
         let point = Tuple::point(1.0, 1.0, 1.0);
-        let n = shape.local_normal_at(point);
+        let n = shape.local_normal_at_no_hit(point);
         let chk = chk && n.approx_eq(Tuple::vector(1.0, -2.0_f64.sqrt(), 1.0));
 
         let point = Tuple::point(-1.0, -1.0, 0.0);
-        let n = shape.local_normal_at(point);
+        let n = shape.local_normal_at_no_hit(point);
         let chk = chk && n.approx_eq(Tuple::vector(-1.0, 1.0, 0.0));
 
         if chk {
@@ -3681,7 +3715,7 @@ mod tests {
 
         let mut g_top = Group::new();
         g_top.set_transform(
-            Matrix4::scaling(0.8, 0.8, 0.8) * Matrix4::rotation_x(std::f64::consts::PI / 4.0),
+            Matrix4::scaling(0.8, 0.8, 0.8) * Matrix4::rotation_x(-std::f64::consts::PI / 4.0),
         );
         let g_id_top = w.add_shape(Box::new(g_top));
 
@@ -3729,16 +3763,42 @@ mod tests {
             material.clone(),
         );
 
+        let n = 5;
+        for ix in 0..n {
+            material.color = Tuple::color(ix as f64 / n as f64, 0.5, 0.7);
+            let mut g_loop = Group::new();
+            g_loop.set_transform(
+                Matrix4::translation(-5.0 + 2.0 * ix as f64, 0.0, 0.0)
+                    * Matrix4::scaling(0.4, 0.4, 0.4)
+                    * Matrix4::rotation_x(-(ix as f64 / n as f64) * std::f64::consts::PI / 4.0),
+            );
+            let g_id_loop = w.add_shape(Box::new(g_loop));
+
+            for iy in 0..n {
+                let scale = 0.5 + iy as f64 / n as f64;
+                let _g_id = hexagon(
+                    &mut w,
+                    g_id_loop,
+                    Matrix4::translation(1.0, 1.0 + 0.5 * iy as f64, 3.0)
+                        * Matrix4::scaling(scale, scale, scale)
+                        * Matrix4::rotation_x(0.0 * std::f64::consts::PI / 2.0)
+                        * Matrix4::rotation_z(0.0 * std::f64::consts::PI / 4.0),
+                    material.clone(),
+                );
+            }
+        }
+
         // View transform / camera
         let from = Tuple::point(0.0, 2.5, -7.0);
         let to = Tuple::point(0.0, 1.0, 0.0);
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let transform = view_transform(from, to, up);
-        let (display_x, display_y) = (60, 40);
-        // let (display_x, display_y) = (3456, 2234);
+        // let (display_x, display_y) = (60, 40);
+        let (display_x, display_y) = (3456, 2234);
         let camera =
             Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
 
+        w.divide(g_id_top, 4);
         w.build_bounds();
         let image = w.render(camera);
         let rc = image.write_ppm("test_chap_14_putting_it_all_together.ppm");
@@ -4070,6 +4130,214 @@ mod tests {
                 after.count()
             );
             Err("divide() must not change what a ray hits".into())
+        }
+    }
+
+    /// Chap 16 - Converting an OBJ file to a group
+    #[test]
+    fn test_chap_16_6() -> std::io::Result<()> {
+        let mut w = World::new();
+
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        w.light = Some(light);
+
+        // let contents = "v -1 1 0\nv -1 0 0\nv 1 0 0\nv 1 1 0\n \ng FirstGroup\nf 1 2 3\ng SecondGroup\nf 1 3 4";
+        // Tetrahedron
+        let _contents = "v 0 2 0\n\
+                v -1 0 -1\n\
+                v 1 0 -1\n\
+                v 0 0 1\n\
+                g Tetrahedron\n\
+                f 1 2 3\n\
+                f 1 3 4\n\
+                f 1 4 2\n\
+                f 2 4 3";
+
+        // let path = std::env::temp_dir().join("test_chap_16_6.obj");
+        // std::fs::write(&path, contents)?; // ? → I/O errors become the Err
+        // let top_id = w.load_obj_file(&path, Matrix4::identity())?;
+        // assert!(top_id > 0);
+        // std::fs::remove_file(&path)?; // cleaned up BEFORE the asserts
+
+        // let path = concat!(env!("CARGO_MANIFEST_DIR"), "/models/pumpkin.obj");
+        // let s = 0.05; // 79-unit span × 0.05 ≈ 4 units tall
+        // let transform = Matrix4::scaling(s, s, s) * Matrix4::translation(2.62, -0.87, 110.02); // move center → origin
+
+        // let path = concat!(env!("CARGO_MANIFEST_DIR"), "/models/cow.obj");
+        // let path = concat!(env!("CARGO_MANIFEST_DIR"), "/models/teapot.obj");
+        // let s = 0.55; // 79-unit span × 0.05 ≈ 4 units tall
+
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/models/teddy.obj");
+        let s = 0.10; // 79-unit span × 0.05 ≈ 4 units tall
+        let transform = Matrix4::scaling(s, s, s); // no move center → origin
+        let top_id = w.load_obj_file(path, transform)?;
+        assert!(top_id > 0);
+
+        // View transform / camera
+        let from = Tuple::point(4.0, 2.5, -7.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        let (display_x, display_y) = (600, 400);
+        // let (display_x, display_y) = (3456, 2234);
+        let camera =
+            Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        w.divide(top_id, 4);
+        w.build_bounds();
+        let image = w.render(camera);
+        let _rc = image.write_ppm("test_chap_16_putting_it_all_together.ppm");
+
+        Ok(())
+    }
+
+    /// Chap 16 - Constructing a smooth triangle
+    #[test]
+    fn test_chap_16_7() -> Result<(), String> {
+        let p1 = Tuple::point(0.0, 1.0, 0.0);
+        let p2 = Tuple::point(-1.0, 0.0, 0.0);
+        let p3 = Tuple::point(1.0, 0.0, 0.0);
+        let n1 = Tuple::vector(0.0, 1.0, 0.0);
+        let n2 = Tuple::vector(-1.0, 0.0, 0.0);
+        let n3 = Tuple::vector(1.0, 0.0, 0.0);
+        let tri = TriangleUV::new(p1, p2, p3, n1, n2, n3);
+
+        let chk = tri.p1.approx_eq(p1);
+        let chk = chk && tri.p2.approx_eq(p2);
+        let chk = chk && tri.p3.approx_eq(p3);
+        let chk = chk && tri.n1.approx_eq(n1);
+        let chk = chk && tri.n2.approx_eq(n2);
+        let chk = chk && tri.n3.approx_eq(n3);
+        if chk {
+            Ok(())
+        } else {
+            Err("Constructing a smooth triangle".into())
+        }
+    }
+
+    /// Chap 16 - An intersection can encapsulate `u` and `v`
+    #[test]
+    fn test_chap_16_8() -> Result<(), String> {
+        let p1 = Tuple::point(0.0, 1.0, 0.0);
+        let p2 = Tuple::point(-1.0, 0.0, 0.0);
+        let p3 = Tuple::point(1.0, 0.0, 0.0);
+        let s = Triangle::new(p1, p2, p3);
+
+        let i = Intersection::new_with_uv(3.5, s.id(), 0.2, 0.4);
+
+        let chk = approx_eq(i.u, 0.2);
+        let chk = chk && approx_eq(i.v, 0.4);
+        if chk {
+            Ok(())
+        } else {
+            Err("An intersection can encapsulate `u` and `v`".into())
+        }
+    }
+
+    /// Chap 16 - An intersection with a smooth triangle stores u/v
+    #[test]
+    fn test_chap_16_9() -> Result<(), String> {
+        let origin = Tuple::point(-0.2, 0.3, -2.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0);
+        let r = Ray::new(origin, direction);
+
+        let p1 = Tuple::point(0.0, 1.0, 0.0);
+        let p2 = Tuple::point(-1.0, 0.0, 0.0);
+        let p3 = Tuple::point(1.0, 0.0, 0.0);
+        let n1 = Tuple::vector(0.0, 1.0, 0.0);
+        let n2 = Tuple::vector(-1.0, 0.0, 0.0);
+        let n3 = Tuple::vector(1.0, 0.0, 0.0);
+
+        let tri = TriangleUV::new(p1, p2, p3, n1, n2, n3);
+        let xs = tri.local_intersect(&r);
+
+        let chk = tri.n1.approx_eq(n1);
+        let chk = chk && xs.count() > 0;
+        let chk = if chk && xs.count() > 0 {
+            xs[0].t > 0.0
+        } else {
+            false
+        };
+
+        let chk = if chk && xs.count() > 0 {
+            xs[0].u > 0.0 && approx_eq(xs[0].u, 0.45) && approx_eq(xs[0].v, 0.25)
+        } else {
+            false
+        };
+
+        if chk {
+            Ok(())
+        } else {
+            Err("An intersection with a smooth triangle stores u/v".into())
+        }
+    }
+
+    /// Chap 16 - A smooth triangle uses u/v to interpolate the normal
+    #[test]
+    fn test_chap_16_10() -> Result<(), String> {
+        let i = Intersection::new_with_uv(1.0, 1, 0.45, 0.25);
+
+        let p1 = Tuple::point(0.0, 1.0, 0.0);
+        let p2 = Tuple::point(-1.0, 0.0, 0.0);
+        let p3 = Tuple::point(1.0, 0.0, 0.0);
+        let n1 = Tuple::vector(0.0, 1.0, 0.0);
+        let n2 = Tuple::vector(-1.0, 0.0, 0.0);
+        let n3 = Tuple::vector(1.0, 0.0, 0.0);
+
+        let tri = TriangleUV::new(p1, p2, p3, n1, n2, n3);
+        let n = tri.normal_at(Tuple::point(0.0, 0.0, 0.0), i);
+
+        let expect = Tuple::vector(-0.554700196225, 0.832050294338, 0.000000000000);
+        let chk = n.approx_eq(expect);
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_16_10", "n: {}, i: {:?}", n, i);
+            Err("A smooth triangle uses u/v to interpolate the normal".into())
+        }
+    }
+
+    /// Chap 16 - Preparing the normal on a smooth triangle
+    #[test]
+    fn test_chap_16_11() -> Result<(), String> {
+        let mut w = World::new();
+
+        let p1 = Tuple::point(0.0, 1.0, 0.0);
+        let p2 = Tuple::point(-1.0, 0.0, 0.0);
+        let p3 = Tuple::point(1.0, 0.0, 0.0);
+        let n1 = Tuple::vector(0.0, 1.0, 0.0);
+        let n2 = Tuple::vector(-1.0, 0.0, 0.0);
+        let n3 = Tuple::vector(1.0, 0.0, 0.0);
+
+        let tri = TriangleUV::new(p1, p2, p3, n1, n2, n3);
+
+        let tri_id = w.add_shape(Box::new(tri));
+
+        let i = Intersection::new_with_uv(1.0, tri_id, 0.45, 0.25);
+
+        let origin = Tuple::point(-0.2, 0.3, -2.0);
+        let direction = Tuple::vector(0.0, 0.0, 1.0);
+        let r = Ray::new(origin, direction);
+
+        let mut xs = Intersections::new();
+        xs.push(i);
+        let comps = prepare_computations(i, &r, &w.shapes, &xs);
+
+        let chk = comps.normalv.approx_eq(Tuple::vector(
+            -0.554700196225,
+            0.832050294338,
+            0.000000000000,
+        ));
+
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_16_11", "comps.normalv: {}", comps.normalv);
+            Err("Preparing the normal on a smooth triangle".into())
         }
     }
 }
