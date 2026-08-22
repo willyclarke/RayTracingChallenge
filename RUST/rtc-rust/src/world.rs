@@ -538,6 +538,40 @@ impl World {
         Ok(top_id)
     }
 
+    /// Set `material` on the shape `id` and, when it is a group, on every
+    /// shape below it. Typical use: give a whole OBJ model its material after
+    /// `load_obj_file`.
+    /// # Examples
+    /// ```
+    /// use rtc_rust::material::Material;
+    /// use rtc_rust::shapes::group::Group;
+    /// use rtc_rust::shapes::sphere::Sphere;
+    /// use rtc_rust::world::World;
+    ///
+    /// let mut w = World::new();
+    /// let g_id = w.add_shape(Box::new(Group::new()));
+    /// let ball_id = w.add_child(g_id, Box::new(Sphere::new()));
+    ///
+    /// let mut m = Material::new();
+    /// m.color = rtc_rust::tuple::Tuple::color(1.0, 0.0, 0.0);
+    /// w.set_material_recursive(g_id, &m);
+    ///
+    /// assert!(w.shapes[ball_id - 1].material().color.approx_eq(m.color));
+    /// ```
+    pub fn set_material_recursive(&mut self, id: usize, material: &Material) {
+        let kids = self
+            .shape_by_id(id)
+            .and_then(|s| s.children().map(|c| c.to_vec()));
+        if let Some(shape) = self.shape_by_id_mut(id) {
+            shape.set_material(material.clone());
+        }
+        if let Some(kids) = kids {
+            for cid in kids {
+                self.set_material_recursive(cid, material);
+            }
+        }
+    }
+
     fn intersect_node(&self, shape: &dyn Shape, ray: &Ray, xs: &mut Intersections) {
         record_node_visit();
         // transform the ray into THIS shape's object space
@@ -4228,15 +4262,12 @@ mod tests {
         let top_id = w.load_obj_file(path, transform)?;
         assert!(top_id > 0);
 
-        // the model's shapes all come after the top group in the arena
         let mut torus_material = Material::new();
         torus_material.color = Tuple::color(0.2, 0.55, 0.75);
         torus_material.diffuse = 0.8;
         torus_material.specular = 0.4;
         torus_material.shininess = 40.0;
-        for shape in w.shapes.iter_mut().skip(top_id - 1) {
-            shape.set_material(torus_material.clone());
-        }
+        w.set_material_recursive(top_id, &torus_material);
 
         // View transform / camera
         let from = Tuple::point(0.0, 2.2, -4.5);
