@@ -4194,6 +4194,63 @@ mod tests {
         Ok(())
     }
 
+    /// Chap 16 - Smooth shading: the teapot with vertex normals. The mesh in
+    /// models/teapot_smooth.obj carries `vn` records (averaged face normals),
+    /// so the parser emits smooth triangles and the silhouette of each facet
+    /// disappears from the shading.
+    #[test]
+    fn test_chap_16_smooth_teapot() -> std::io::Result<()> {
+        let mut w = World::new();
+
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        w.light = Some(light);
+
+        // Floor - a slightly reflective plane
+        let mut floor = Plane::new();
+        let mut floor_material = Material::new();
+        floor_material.color = Tuple::color(0.8, 0.8, 0.85);
+        floor_material.specular = 0.0;
+        floor_material.reflective = 0.2;
+        floor.set_material(floor_material);
+        w.add_shape(Box::new(floor));
+
+        // Teapot: y-up, base on y=0, ~6.4 units wide → scale to ~3.2
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/models/teapot_smooth.obj");
+        let s = 0.5;
+        let transform = Matrix4::rotation_y(std::f64::consts::PI / 8.0) * Matrix4::scaling(s, s, s);
+        let top_id = w.load_obj_file(path, transform)?;
+        assert!(top_id > 0);
+
+        // the model's shapes all come after the top group in the arena
+        let mut teapot_material = Material::new();
+        teapot_material.color = Tuple::color(0.2, 0.55, 0.75);
+        teapot_material.diffuse = 0.8;
+        teapot_material.specular = 0.4;
+        teapot_material.shininess = 40.0;
+        for shape in w.shapes.iter_mut().skip(top_id - 1) {
+            shape.set_material(teapot_material.clone());
+        }
+
+        // View transform / camera
+        let from = Tuple::point(0.0, 2.2, -4.5);
+        let to = Tuple::point(0.0, 0.8, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        let (display_x, display_y) = (600, 400);
+        let camera =
+            Camera::new(display_x, display_y, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        w.divide(top_id, 4);
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        let _rc = image.write_ppm("test_chap_16_smooth_teapot.ppm");
+
+        Ok(())
+    }
+
     /// Chap 16 - Constructing a smooth triangle
     #[test]
     fn test_chap_16_7() -> Result<(), String> {

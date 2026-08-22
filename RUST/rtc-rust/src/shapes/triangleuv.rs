@@ -39,6 +39,27 @@ impl TriangleUV {
             n3,
         }
     }
+
+    /// A flat-shaded triangle: all three vertex normals are the face normal,
+    /// so interpolation yields the face normal everywhere.
+    ///
+    /// ```
+    /// use rtc_rust::shapes::triangleuv::TriangleUV;
+    /// use rtc_rust::tuple::Tuple;
+    ///
+    /// let t = TriangleUV::flat(
+    ///     Tuple::point(0.0, 1.0, 0.0),
+    ///     Tuple::point(-1.0, 0.0, 0.0),
+    ///     Tuple::point(1.0, 0.0, 0.0),
+    /// );
+    /// assert!(t.n1.approx_eq(t.normal));
+    /// assert!(t.n2.approx_eq(t.normal));
+    /// assert!(t.n3.approx_eq(t.normal));
+    /// ```
+    pub fn flat(p1: Tuple, p2: Tuple, p3: Tuple) -> Self {
+        let n = ((p3 - p1).cross(p2 - p1)).normalize();
+        Self::new(p1, p2, p3, n, n, n)
+    }
 }
 
 impl Default for TriangleUV {

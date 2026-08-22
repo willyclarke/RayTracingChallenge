@@ -1,6 +1,6 @@
 //! Read data from OBJ files.
 
-use crate::{shapes::triangle::Triangle, tuple::Tuple};
+use crate::{shapes::triangleuv::TriangleUV, tuple::Tuple};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -9,8 +9,9 @@ use std::path::Path;
 
 pub struct Parser {
     pub vertices: Vec<Tuple>,
-    pub default_group: Vec<Triangle>,
-    pub named_groups: HashMap<String, Vec<Triangle>>,
+    pub normals: Vec<Tuple>,
+    pub default_group: Vec<TriangleUV>,
+    pub named_groups: HashMap<String, Vec<TriangleUV>>,
     pub ignored: Vec<(usize, String)>, // (1-based line number, the line text)
     current_group: Option<String>,
 }
@@ -41,7 +42,7 @@ impl fmt::Display for Parser {
 
 impl Parser {
     /// The Vec the current group's triangles go into.
-    fn current_group_faces(&mut self) -> &mut Vec<Triangle> {
+    fn current_group_faces(&mut self) -> &mut Vec<TriangleUV> {
         match self.current_group.clone() {
             Some(name) => self.named_groups.entry(name).or_default(),
             None => &mut self.default_group,
@@ -51,6 +52,7 @@ impl Parser {
     pub fn new() -> Self {
         Self {
             vertices: vec![Tuple::point(0.0, 0.0, 0.0)], // dummy at index 0
+            normals: vec![Tuple::vector(0.0, 0.0, 0.0)], // dummy at index 0
             default_group: Vec::new(),
             ignored: Vec::new(),
             named_groups: HashMap::new(),
@@ -74,21 +76,48 @@ impl Parser {
                         _ => p.ignored.push((line_no, line.to_string())), // malformed vertex
                     }
                 }
+                Some("vn") => {
+                    let coords: Option<Vec<f64>> = tok.map(|s| s.parse::<f64>().ok()).collect();
+                    match coords {
+                        Some(c) if c.len() >= 3 => {
+                            p.normals.push(Tuple::vector(c[0], c[1], c[2]));
+                        }
+                        _ => p.ignored.push((line_no, line.to_string())), // malformed normal
+                    }
+                }
                 Some("f") => {
-                    // Handle face elements
-                    // parse SIGNED so negative (relative) indices are allowed
-                    let raw: Option<Vec<isize>> = tok.map(|s| s.parse::<isize>().ok()).collect();
+                    // Handle face elements. Each token is `v`, `v/vt`, `v//vn`, or
+                    // `v/vt/vn`; the texture index (vt) is ignored.
+                    // Indices parse SIGNED so negative (relative) indices are allowed.
+                    let raw: Option<Vec<(isize, Option<isize>)>> = tok
+                        .map(|s| {
+                            let mut parts = s.split('/');
+                            let v = parts.next()?.parse::<isize>().ok()?;
+                            let _vt = parts.next(); // texture index, unused
+                            let vn = match parts.next() {
+                                None | Some("") => None,
+                                Some(n) => Some(n.parse::<isize>().ok()?),
+                            };
+                            Some((v, vn))
+                        })
+                        .collect();
                     match raw {
                         Some(raw) if raw.len() >= 3 => {
                             // resolve EACH index independently to an absolute vec index
-                            let resolved: Vec<usize> = raw
+                            let resolve = |r: isize, len: usize| {
+                                if r < 0 {
+                                    (len as isize + r) as usize // relative: from the end
+                                } else {
+                                    r as usize // absolute (1-based; dummy at 0 handles it)
+                                }
+                            };
+                            let resolved: Vec<(usize, Option<usize>)> = raw
                                 .iter()
-                                .map(|&r| {
-                                    if r < 0 {
-                                        (p.vertices.len() as isize + r) as usize // relative: from the end
-                                    } else {
-                                        r as usize // absolute (1-based; dummy at 0 handles it)
-                                    }
+                                .map(|&(v, vn)| {
+                                    (
+                                        resolve(v, p.vertices.len()),
+                                        vn.map(|n| resolve(n, p.normals.len())),
+                                    )
                                 })
                                 .collect();
 
@@ -98,15 +127,30 @@ impl Parser {
                             // them into triangles using a fan triangulation.
                             // This means that the triangle starting index is always found in
                             // resolved[0].
-                            if resolved.iter().all(|&v| v >= 1 && v < p.vertices.len()) {
-                                // 1. build (this READS p.vertices)
+                            let verts_ok = resolved
+                                .iter()
+                                .all(|&(v, _)| v >= 1 && v < p.vertices.len());
+                            let norms_ok = resolved
+                                .iter()
+                                .all(|&(_, vn)| vn.is_none_or(|n| n >= 1 && n < p.normals.len()));
+                            // smooth shading only when EVERY vertex brings a normal
+                            let smooth = resolved.iter().all(|&(_, vn)| vn.is_some());
+                            if verts_ok && norms_ok {
+                                // 1. build (this READS p.vertices / p.normals)
                                 let mut tris = Vec::new();
 
                                 for k in 1..resolved.len() - 1 {
-                                    let p1 = p.vertices[resolved[0]];
-                                    let p2 = p.vertices[resolved[k]];
-                                    let p3 = p.vertices[resolved[k + 1]];
-                                    tris.push(Triangle::new(p1, p2, p3));
+                                    let p1 = p.vertices[resolved[0].0];
+                                    let p2 = p.vertices[resolved[k].0];
+                                    let p3 = p.vertices[resolved[k + 1].0];
+                                    if smooth {
+                                        let n1 = p.normals[resolved[0].1.unwrap()];
+                                        let n2 = p.normals[resolved[k].1.unwrap()];
+                                        let n3 = p.normals[resolved[k + 1].1.unwrap()];
+                                        tris.push(TriangleUV::new(p1, p2, p3, n1, n2, n3));
+                                    } else {
+                                        tris.push(TriangleUV::flat(p1, p2, p3));
+                                    }
                                 }
 
                                 // 2. route (this WRITES to a group)
@@ -278,6 +322,59 @@ mod tests {
         assert!(t2.p1.approx_eq(p.vertices[1]));
         assert!(t2.p2.approx_eq(p.vertices[3]));
         assert!(t2.p3.approx_eq(p.vertices[4]));
+
+        Ok(())
+    }
+
+    /// Chap 16 - Vertex normal records
+    #[test]
+    fn test_chap_16_6() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_16_6.obj");
+        let contents = "vn 0 0 1\nvn 0.707 0 -0.707\nvn 1 2 3";
+
+        std::fs::write(&path, contents)?; // ? → I/O errors become the Err
+        let p = Parser::parse_obj_file(&path)?;
+        std::fs::remove_file(&path)?; // cleaned up BEFORE the asserts
+
+        println!("{} {}", path.display(), p.report());
+
+        assert!(p.normals[1].approx_eq(Tuple::vector(0.0, 0.0, 1.0)));
+        assert!(p.normals[2].approx_eq(Tuple::vector(0.707, 0.0, -0.707)));
+        assert!(p.normals[3].approx_eq(Tuple::vector(1.0, 2.0, 3.0)));
+        Ok(())
+    }
+
+    /// Chap 16 - Faces with normals
+    #[test]
+    fn test_chap_16_7() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_16_7.obj");
+        let contents = "v 0 1 0\nv -1 0 0\nv 1 0 0\n \nvn -1 0 0\nvn 1 0 0\nvn 0 1 0\n \nf 1//3 2//1 3//2\nf 1/0/3 2/102/1 3/14/2";
+
+        std::fs::write(&path, contents)?; // ? → I/O errors become the Err
+        let p = Parser::parse_obj_file(&path)?;
+        std::fs::remove_file(&path)?; // cleaned up BEFORE the asserts
+
+        println!("{} {}", path.display(), p.report());
+
+        let g = &p.default_group;
+        assert!(g.len() == 2);
+
+        let t1 = &g[0];
+        let t2 = &g[1];
+        assert!(t1.p1.approx_eq(p.vertices[1]));
+        assert!(t1.p2.approx_eq(p.vertices[2]));
+        assert!(t1.p3.approx_eq(p.vertices[3]));
+        assert!(t1.n1.approx_eq(p.normals[3]));
+        assert!(t1.n2.approx_eq(p.normals[1]));
+        assert!(t1.n3.approx_eq(p.normals[2]));
+
+        // the `v/vt/vn` form parses to the same triangle as `v//vn`
+        assert!(t2.p1.approx_eq(t1.p1));
+        assert!(t2.p2.approx_eq(t1.p2));
+        assert!(t2.p3.approx_eq(t1.p3));
+        assert!(t2.n1.approx_eq(t1.n1));
+        assert!(t2.n2.approx_eq(t1.n2));
+        assert!(t2.n3.approx_eq(t1.n3));
 
         Ok(())
     }
