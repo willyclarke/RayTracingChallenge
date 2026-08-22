@@ -104,19 +104,29 @@ fn main() {
     world.build_bounds();
 
     // angled camera so the boxes read as 3D, not flat rectangles
-    let camera = Camera::new(1600, 1600, std::f64::consts::PI / 3.0).with_transform(view_transform(
-        Tuple::point(7.0, 5.0, -15.0),
-        Tuple::point(0.0, 0.0, 0.0),
-        Tuple::vector(0.0, 1.0, 0.0),
-    ));
+    let camera =
+        Camera::new(1600, 1600, std::f64::consts::PI / 3.0).with_transform(view_transform(
+            Tuple::point(7.0, 5.0, -15.0),
+            Tuple::point(0.0, 0.0, 0.0),
+            Tuple::vector(0.0, 1.0, 0.0),
+        ));
 
     let mut canvas = world.render_single(camera);
 
     // overlay the group boxes, colored by tree depth
     const EDGES: [(usize, usize); 12] = [
-        (0, 1), (2, 3), (4, 5), (6, 7), // x edges
-        (0, 2), (1, 3), (4, 6), (5, 7), // y edges
-        (0, 4), (1, 5), (2, 6), (3, 7), // z edges
+        (0, 1),
+        (2, 3),
+        (4, 5),
+        (6, 7), // x edges
+        (0, 2),
+        (1, 3),
+        (4, 6),
+        (5, 7), // y edges
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7), // z edges
     ];
     let boxes = world.group_world_boxes();
     let max_depth = boxes.iter().map(|(d, _)| *d).max().unwrap_or(0);

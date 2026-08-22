@@ -420,7 +420,7 @@ impl fmt::Display for Matrix4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let width = 17;
         let prec = 15;
-        let coldelta = width + 4; 
+        let coldelta = width + 4;
 
         writeln!(
             f,

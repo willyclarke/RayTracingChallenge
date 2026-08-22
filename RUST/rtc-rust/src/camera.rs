@@ -87,11 +87,11 @@ impl Camera {
         self.transform_inv = self.transform.inverse().unwrap()
     }
 
-     pub fn with_transform(mut self, transform: Matrix4) -> Self {
-      self.transform = transform;
-      self.transform_inv = transform.inverse().unwrap();
-      self
-  }
+    pub fn with_transform(mut self, transform: Matrix4) -> Self {
+        self.transform = transform;
+        self.transform_inv = transform.inverse().unwrap();
+        self
+    }
 }
 
 impl Default for Camera {

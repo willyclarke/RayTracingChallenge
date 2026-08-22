@@ -107,7 +107,9 @@ mod tests {
         if c.approx_eq(BLACK) {
             Ok(())
         } else {
-            Err(format!("child transform not applied: expected BLACK, got {c}"))
+            Err(format!(
+                "child transform not applied: expected BLACK, got {c}"
+            ))
         }
     }
 

@@ -34,8 +34,8 @@ fn main() {
     let from = Tuple::point(0.0, 2.5, -5.0);
     let to = Tuple::point(0.0, 0.0, 0.0);
     let up = Tuple::vector(0.0, 1.0, 0.0);
-    let camera =
-        Camera::new(400, 400, std::f64::consts::PI / 3.0).with_transform(view_transform(from, to, up));
+    let camera = Camera::new(400, 400, std::f64::consts::PI / 3.0)
+        .with_transform(view_transform(from, to, up));
 
     // reference: no build_bounds -> infinite group boxes -> cull is a no-op
     let reference = build_scene().render_single(camera);
@@ -51,7 +51,10 @@ fn main() {
         for x in 0..camera.hsize {
             let a = reference.pixel_at(x, y);
             let b = culled.pixel_at(x, y);
-            let d = (a.x - b.x).abs().max((a.y - b.y).abs()).max((a.z - b.z).abs());
+            let d = (a.x - b.x)
+                .abs()
+                .max((a.y - b.y).abs())
+                .max((a.z - b.z).abs());
             if d > 0.0 {
                 n_diff += 1;
                 max_diff = max_diff.max(d);

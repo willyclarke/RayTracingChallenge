@@ -87,7 +87,7 @@ macro_rules! logi {
         $crate::__log_internal!(
             " INFO",
             $crate::log::Color::Green,
-            $what, 
+            $what,
             $($arg)*
         );
     };
