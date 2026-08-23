@@ -56,6 +56,14 @@ impl Shape for Plane {
         i.push(xs);
         i
     }
+
+    fn local_occludes(&self, ray: &Ray, distance: f64) -> bool {
+        if ray.direction.y.abs() < crate::math::EPSILON {
+            return false;
+        }
+        let t = -ray.origin.y / ray.direction.y;
+        t >= 0.0 && t < distance
+    }
 }
 
 #[cfg(test)]

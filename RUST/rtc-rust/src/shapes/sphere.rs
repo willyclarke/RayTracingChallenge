@@ -16,6 +16,23 @@ pub struct Sphere {
 }
 
 impl Sphere {
+    /// Solve the ray/unit-sphere quadratic: `(t1, t2)` with `t1 <= t2`, or
+    /// `None` when the ray misses.
+    fn roots(ray: &Ray) -> Option<(f64, f64)> {
+        let sphere_to_ray = ray.origin - Tuple::point(0.0, 0.0, 0.0);
+        let a = ray.direction.dot(ray.direction);
+        let b = 2.0 * ray.direction.dot(sphere_to_ray);
+        let c = sphere_to_ray.dot(sphere_to_ray) - 1.0;
+
+        let discriminant = b * b - 4.0 * a * c;
+        if discriminant < 0.0 {
+            return None;
+        }
+        let t1 = (-b - discriminant.sqrt()) / (2.0 * a);
+        let t2 = (-b + discriminant.sqrt()) / (2.0 * a);
+        Some((t1, t2))
+    }
+
     pub fn new() -> Self {
         Self {
             data: ShapeData::new(),
@@ -65,22 +82,19 @@ impl Shape for Sphere {
     }
 
     fn local_intersect(&self, ray: &Ray) -> Intersections {
-        let sphere_to_ray = ray.origin - Tuple::point(0.0, 0.0, 0.0);
-        let a = ray.direction.dot(ray.direction);
-        let b = 2.0 * ray.direction.dot(sphere_to_ray);
-        let c = sphere_to_ray.dot(sphere_to_ray) - 1.0;
-
-        let discriminant = b * b - 4.0 * a * c;
         let mut xs = Intersections::new();
-        if discriminant < 0.0 {
-            return xs;
+        if let Some((t1, t2)) = Self::roots(ray) {
+            xs.push(Intersection::new(t1, self.id()));
+            xs.push(Intersection::new(t2, self.id()));
         }
-
-        let t1 = (-b - discriminant.sqrt()) / (2.0 * a);
-        let t2 = (-b + discriminant.sqrt()) / (2.0 * a);
-        xs.push(Intersection::new(t1, self.id()));
-        xs.push(Intersection::new(t2, self.id()));
         xs
+    }
+
+    fn local_occludes(&self, ray: &Ray, distance: f64) -> bool {
+        match Self::roots(ray) {
+            Some((t1, t2)) => (t1 >= 0.0 && t1 < distance) || (t2 >= 0.0 && t2 < distance),
+            None => false,
+        }
     }
 
     fn local_normal_at(&self, object_point: Tuple, _hit: Intersection) -> Tuple {

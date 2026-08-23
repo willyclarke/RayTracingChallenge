@@ -671,19 +671,53 @@ impl World {
 
     /// Is anything between `point` and `light_position`? Takes the position
     /// explicitly so an area light can test each of its sample points.
+    ///
+    /// Any-hit query: stops at the first occluder instead of collecting and
+    /// sorting every intersection like `intersect` does.
     pub fn is_shadowed(&self, light_position: Tuple, point: Tuple) -> bool {
         let v = light_position - point;
         let distance = Tuple::magnitude(v);
         let direction = Tuple::normalize(v);
         let r = Ray::new(point, direction);
-        let intersections = self.intersect(&r);
-        let hit = intersections.hit();
-        let h = match hit {
-            Some(x) => x,
-            None => return false,
-        };
+        self.shapes
+            .iter()
+            .filter(|shape| shape.data().parent.is_none())
+            .any(|shape| self.occluded_node(shape.as_ref(), &r, distance))
+    }
 
-        h.t < distance
+    /// True if `shape` (or anything under it) blocks `ray` before `distance`.
+    /// `t` is preserved by the object-space transform because the ray
+    /// direction is not re-normalised, so the comparison is valid in any space.
+    fn occluded_node(&self, shape: &dyn Shape, ray: &Ray, distance: f64) -> bool {
+        let blocks = |i: &Intersection| i.t >= 0.0 && i.t < distance;
+        match shape.children() {
+            Some(_) if shape.csg_operation().is_some() => {
+                // CSG needs the full, ordered intersection list to decide
+                // which hits lie on the boundary of the combined solid.
+                let mut xs = Intersections::new();
+                self.intersect_node(shape, ray, &mut xs);
+                xs.iter().any(|i| blocks(&i))
+            }
+            Some(children) => {
+                record_node_visit();
+                let ti = *shape.transform_inv();
+                let local_ray = Ray::new(ti * ray.origin, ti * ray.direction);
+                if !shape.bounds().intersects(&local_ray) {
+                    return false;
+                }
+                children.iter().any(|&cid| {
+                    self.shape_by_id(cid)
+                        .is_some_and(|child| self.occluded_node(child, &local_ray, distance))
+                })
+            }
+            None => {
+                record_node_visit();
+                record_prim_test();
+                let ti = *shape.transform_inv();
+                let local_ray = Ray::new(ti * ray.origin, ti * ray.direction);
+                shape.local_occludes(&local_ray, distance)
+            }
+        }
     }
 
     pub fn new() -> Self {

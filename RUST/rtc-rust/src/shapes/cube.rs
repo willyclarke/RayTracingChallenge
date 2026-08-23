@@ -25,6 +25,31 @@ impl Cube {
             data: ShapeData::new(),
         }
     }
+
+    /// Slab method with early termination: the cube is `-1..=1` on all three
+    /// axes, so a hit requires the ray's entry/exit `t` intervals for x, y and
+    /// z to all overlap. Returns `(tmin, tmax)`, or `None` on a miss as soon
+    /// as the running interval becomes empty.
+    fn slab(ray: &Ray) -> Option<(f64, f64)> {
+        let mut tmin = f64::NEG_INFINITY;
+        let mut tmax = f64::INFINITY;
+
+        let axes = [
+            (ray.origin.x, ray.direction.x),
+            (ray.origin.y, ray.direction.y),
+            (ray.origin.z, ray.direction.z),
+        ];
+
+        for (origin, direction) in axes {
+            let (axis_min, axis_max) = check_axis(origin, direction);
+            tmin = tmin.max(axis_min);
+            tmax = tmax.min(axis_max);
+            if tmin > tmax {
+                return None; // ray misses — skip remaining axes
+            }
+        }
+        Some((tmin, tmax))
+    }
 }
 
 impl Default for Cube {
@@ -114,27 +139,21 @@ impl Shape for Cube {
     /// misses the cube. Called by the [`Shape`] machinery after the ray has
     /// already been transformed into object space.
     fn local_intersect(&self, ray: &Ray) -> Intersections {
-        let mut tmin = f64::NEG_INFINITY;
-        let mut tmax = f64::INFINITY;
-
-        let axes = [
-            (ray.origin.x, ray.direction.x),
-            (ray.origin.y, ray.direction.y),
-            (ray.origin.z, ray.direction.z),
-        ];
-
-        for (origin, direction) in axes {
-            let (axis_min, axis_max) = check_axis(origin, direction);
-            tmin = tmin.max(axis_min);
-            tmax = tmax.min(axis_max);
-            if tmin > tmax {
-                return Intersections::new(); // ray misses — skip remaining axes
-            }
-        }
-
         let mut xs = Intersections::new();
-        xs.push(Intersection::new(tmin, self.id()));
-        xs.push(Intersection::new(tmax, self.id()));
+        if let Some((tmin, tmax)) = Self::slab(ray) {
+            xs.push(Intersection::new(tmin, self.id()));
+            xs.push(Intersection::new(tmax, self.id()));
+        }
         xs
+    }
+
+    fn local_occludes(&self, ray: &Ray, distance: f64) -> bool {
+        match Self::slab(ray) {
+            // tmin is the first hit when the ray starts outside, tmax when inside.
+            Some((tmin, tmax)) => {
+                (tmin >= 0.0 && tmin < distance) || (tmax >= 0.0 && tmax < distance)
+            }
+            None => false,
+        }
     }
 }

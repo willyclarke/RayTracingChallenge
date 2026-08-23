@@ -143,4 +143,14 @@ pub trait Shape: Send + Sync {
 
     fn local_intersect(&self, ray: &Ray) -> Intersections;
     fn local_normal_at(&self, point: Tuple, hit: Intersection) -> Tuple;
+
+    /// Shadow-ray any-hit test in object space: does the ray hit this shape
+    /// at some `0 <= t < distance`? The default goes through
+    /// `local_intersect`; primitives override it to skip the allocation,
+    /// which dominates soft-shadow renders (64+ shadow rays per pixel).
+    fn local_occludes(&self, ray: &Ray, distance: f64) -> bool {
+        self.local_intersect(ray)
+            .iter()
+            .any(|i| i.t >= 0.0 && i.t < distance)
+    }
 }
