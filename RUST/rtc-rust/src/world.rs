@@ -4976,6 +4976,33 @@ mod tests {
             .map_err(|e| format!("failed to write PPM: {e}"))
     }
 
+    /// Chap 17 - Putting it together, spotlight: the Cornell box lit by a
+    /// single spotlight aimed at the tall block, with a soft-edged pool of
+    /// light and darkness outside the cone.
+    #[test]
+    fn test_chap_17_spotlight_putting_it_together() -> Result<(), String> {
+        use std::f64::consts::PI;
+
+        let light = Light::spotlight(
+            Tuple::point(0.6, 1.9, -0.9),
+            Tuple::point(-0.35, 0.9, 0.35),
+            Tuple::color(1.3, 1.3, 1.3),
+            PI / 10.0,
+            PI / 6.0,
+        );
+        let w = cornell_box(light);
+        let from = Tuple::point(0.0, 1.0, -3.5);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let camera = Camera::new(400, 400, PI * 39.0 / 180.0)
+            .with_transform(view_transform(from, to, up))
+            .with_antialias(3);
+        let image = w.render_parallel(camera);
+        image
+            .write_ppm("test_chap_17_spotlight_putting_it_together.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
     /// Chap 17 - Putting it together: Perlin noise two ways. Left, stripes
     /// perturbed into marble; right, a plain sphere with a bumpy normal.
     #[test]

@@ -79,6 +79,34 @@ pub struct Light {
     pub samples: usize,
     /// Offset within a cell for each sample, in `[0, 1)`. `0.5` = cell centre.
     pub jitter_by: Sequence,
+    /// Restrict the light to a cone (spotlight); `None` shines everywhere.
+    pub spot: Option<Spot>,
+}
+
+/// The cone of a spotlight (book chapter 17): full intensity within
+/// `inner_angle` of `direction`, fading smoothly to zero at `outer_angle`.
+#[derive(Debug, Clone, Copy)]
+pub struct Spot {
+    /// Unit vector the light points along.
+    pub direction: Tuple,
+    pub cos_inner: f64,
+    pub cos_outer: f64,
+}
+
+impl Spot {
+    /// 1.0 inside the inner cone, 0.0 outside the outer cone, smoothstep in
+    /// between. `to_point` is the (unnormalised) vector from the light.
+    pub fn factor(&self, to_point: Tuple) -> f64 {
+        let cos_angle = to_point.normalize().dot(self.direction);
+        if cos_angle >= self.cos_inner {
+            1.0
+        } else if cos_angle <= self.cos_outer {
+            0.0
+        } else {
+            let t = (cos_angle - self.cos_outer) / (self.cos_inner - self.cos_outer);
+            t * t * (3.0 - 2.0 * t)
+        }
+    }
 }
 
 impl Light {
@@ -97,7 +125,27 @@ impl Light {
             vsteps: 1,
             samples: 1,
             jitter_by: Sequence::new(vec![0.5]),
+            spot: None,
         }
+    }
+
+    /// A point light that shines only within a cone pointed at `target`:
+    /// full intensity within `inner_angle` (radians, from the axis), fading
+    /// to nothing at `outer_angle`.
+    pub fn spotlight(
+        position: Tuple,
+        target: Tuple,
+        intensity: Tuple,
+        inner_angle: f64,
+        outer_angle: f64,
+    ) -> Self {
+        let mut light = Self::point_light(position, intensity);
+        light.spot = Some(Spot {
+            direction: (target - position).normalize(),
+            cos_inner: inner_angle.cos(),
+            cos_outer: outer_angle.cos(),
+        });
+        light
     }
 
     /// `corner` is one corner of the rectangle; `full_uvec` and `full_vvec`
@@ -120,6 +168,7 @@ impl Light {
             vsteps,
             samples: usteps * vsteps,
             jitter_by: Sequence::new(vec![0.5]),
+            spot: None,
         }
     }
 
@@ -164,8 +213,9 @@ impl Light {
         (0..self.vsteps).flat_map(move |v| (0..self.usteps).map(move |u| grid(u, v)))
     }
 
-    /// Fraction of the light's sample points visible from `point`: 0.0 fully
-    /// shadowed, 1.0 fully lit, in between for the penumbra.
+    /// How much of this light reaches `point`: the fraction of its sample
+    /// points not shadowed (0.0 fully shadowed, 1.0 fully lit, in between
+    /// for the penumbra), scaled by the spotlight cone factor if any.
     ///
     /// Adaptive: the four corner cells are tested first, and the rest of the
     /// grid only when they disagree. Most pixels are entirely lit or entirely
@@ -173,6 +223,18 @@ impl Light {
     /// The sample positions are the same as a full pass, so a 2x2 light is
     /// unaffected.
     pub fn intensity_at(&self, point: Tuple, world: &World) -> f64 {
+        let spot = match &self.spot {
+            Some(spot) => spot.factor(point - self.position),
+            None => 1.0,
+        };
+        if spot <= 0.0 {
+            return 0.0; // outside the cone: no shadow rays needed
+        }
+        spot * self.shadow_fraction(point, world)
+    }
+
+    /// Fraction of the light's sample points visible from `point`.
+    fn shadow_fraction(&self, point: Tuple, world: &World) -> f64 {
         let grid = self.sample_grid();
         let lit = |u: usize, v: usize| !world.is_shadowed(grid(u, v), point);
 
@@ -695,5 +757,77 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    /// Chap 17 - A spotlight is full strength inside its inner cone, off
+    /// outside its outer cone, and fades smoothly in between
+    #[test]
+    fn test_chap_17_15() -> Result<(), String> {
+        use std::f64::consts::PI;
+        let light = Light::spotlight(
+            Tuple::point(0.0, 5.0, 0.0),
+            Tuple::point(0.0, 0.0, 0.0),
+            WHITE,
+            PI / 8.0, // 22.5° inner
+            PI / 4.0, // 45° outer
+        );
+        let w = World::new(); // nothing to cast shadows
+        // On the axis, and at 20° off it: full.
+        let on_axis = light.intensity_at(Tuple::point(0.0, 0.0, 0.0), &w);
+        let inside =
+            light.intensity_at(Tuple::point(5.0 * (20f64).to_radians().tan(), 0.0, 0.0), &w);
+        // At 60° off the axis: nothing.
+        let outside =
+            light.intensity_at(Tuple::point(5.0 * (60f64).to_radians().tan(), 0.0, 0.0), &w);
+        // At 33.75° (halfway between the angles): strictly between 0 and 1.
+        let edge = light.intensity_at(
+            Tuple::point(5.0 * (33.75f64).to_radians().tan(), 0.0, 0.0),
+            &w,
+        );
+        // Behind the light: nothing.
+        let behind = light.intensity_at(Tuple::point(0.0, 10.0, 0.0), &w);
+
+        let chk = on_axis == 1.0
+            && inside == 1.0
+            && outside == 0.0
+            && edge > 0.0
+            && edge < 1.0
+            && behind == 0.0;
+        if chk {
+            Ok(())
+        } else {
+            loge!(
+                "test_chap_17_15",
+                "on_axis:{on_axis} inside:{inside} outside:{outside} edge:{edge} behind:{behind}"
+            );
+            Err("Spotlight cone factor".into())
+        }
+    }
+
+    /// Chap 17 - A spotlight still casts shadows inside its cone
+    #[test]
+    fn test_chap_17_16() -> Result<(), String> {
+        use std::f64::consts::PI;
+        // Default world: unit sphere at the origin. Light above, pointing down.
+        let mut w = World::default_world();
+        w.set_light(Light::spotlight(
+            Tuple::point(0.0, 5.0, 0.0),
+            Tuple::point(0.0, 0.0, 0.0),
+            WHITE,
+            PI / 6.0,
+            PI / 4.0,
+        ));
+        let light = w.light.as_ref().unwrap();
+        let below_sphere = light.intensity_at(Tuple::point(0.0, -2.0, 0.0), &w);
+        let above_sphere = light.intensity_at(Tuple::point(0.0, 1.5, 0.0), &w);
+        if below_sphere == 0.0 && above_sphere == 1.0 {
+            Ok(())
+        } else {
+            loge!(
+                "test_chap_17_16",
+                "below:{below_sphere} above:{above_sphere}"
+            );
+            Err("Spotlight must be shadowed by the sphere".into())
+        }
     }
 }

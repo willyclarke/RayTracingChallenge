@@ -48,7 +48,7 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`intersection`** — `Intersection { t, object_id }` and `Intersections`, a `t`-sorted collection (`push` inserts in order; `hit()` returns the first non-negative).
 
-**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`/`ray_for_subpixel`; `with_antialias(n)` enables edge-detected n×n supersampling and `with_focal_blur(aperture, focal_distance, samples)` depth of field via `ray_for_lens`, both in `render_parallel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern, optional `Bump`).
+**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`/`ray_for_subpixel`; `with_antialias(n)` enables edge-detected n×n supersampling and `with_focal_blur(aperture, focal_distance, samples)` depth of field via `ray_for_lens`, both in `render_parallel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case, `spotlight` adds a `Spot` cone — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern, optional `Bump`).
 
 **`log` / `color`** — `logi!()`, `logd!()`, `loge!()` macros with timestamps; `Color` enum for ANSI codes. Used in tests and demos.
 
