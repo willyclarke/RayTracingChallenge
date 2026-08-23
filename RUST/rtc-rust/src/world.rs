@@ -829,10 +829,16 @@ impl World {
         pixels.par_iter_mut().enumerate().for_each(|(i, pixel)| {
             let x = i % width;
             let y = i / width;
-            *pixel = self.color_at(&camera.ray_for_pixel(x, y), 10);
+            *pixel = if camera.aperture > 0.0 {
+                self.focal_blur(&camera, x, y)
+            } else {
+                self.color_at(&camera.ray_for_pixel(x, y), 10)
+            };
         });
 
-        if camera.aa_samples > 1 {
+        // Focal blur already jitters every pixel; edge-detected AA on top
+        // would only re-sample noise.
+        if camera.aa_samples > 1 && camera.aperture == 0.0 {
             // Edge-detected supersampling: only pixels that differ from a
             // neighbour get the full sub-pixel grid, so flat areas cost one
             // ray and edges cost n*n.
@@ -868,6 +874,17 @@ impl World {
             || (x + 1 < width && differs(i + 1))
             || (y > 0 && differs(i - width))
             || (y + 1 < height && differs(i + width))
+    }
+
+    /// Average over the camera's lens samples for pixel `(x, y)`.
+    pub fn focal_blur(&self, camera: &Camera, x: usize, y: usize) -> Tuple {
+        let n = camera.dof_samples;
+        let mut sum = Tuple::color(0.0, 0.0, 0.0);
+        for i in 0..n {
+            let (lx, ly, dx, dy) = Camera::lens_sample(x, y, i, n);
+            sum = sum + self.color_at(&camera.ray_for_lens(x, y, dx, dy, lx, ly), 10);
+        }
+        sum / n as f64
     }
 
     /// Average of an `n` x `n` grid of sub-pixel samples for pixel `(x, y)`.
@@ -4840,6 +4857,125 @@ mod tests {
         Ok(())
     }
 
+    /// Chap 17 - Focal blur keeps the in-focus object sharp and blurs the
+    /// out-of-focus one: two flat-shaded spheres, camera focused on the near
+    /// one. The near sphere's centre pixel is unchanged and its edge stays
+    /// crisp-ish; the far sphere's edge pixel becomes a blend.
+    #[test]
+    fn test_chap_17_14() -> Result<(), String> {
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-10.0, 10.0, -10.0), WHITE));
+        let flat = |r: f64, g: f64, b: f64| {
+            let mut m = Material::new();
+            m.color = Tuple::color(r, g, b);
+            m.ambient = 1.0;
+            m.diffuse = 0.0;
+            m.specular = 0.0;
+            m
+        };
+        let mut near = Sphere::new();
+        near.set_transform(Matrix4::translation(-1.2, 0.0, 0.0));
+        near.set_material(flat(0.8, 0.2, 0.2));
+        w.add_shape(Box::new(near));
+        let mut far = Sphere::new();
+        far.set_transform(Matrix4::translation(1.2, 0.0, 12.0));
+        far.set_material(flat(0.2, 0.8, 0.2));
+        w.add_shape(Box::new(far));
+
+        let from = Tuple::point(0.0, 0.0, -5.0);
+        let to = Tuple::point(0.0, 0.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let pinhole = Camera::new(81, 41, std::f64::consts::PI / 3.0)
+            .with_transform(view_transform(from, to, up));
+        let lens = pinhole.with_focal_blur(0.3, 5.0, 16);
+
+        let sharp = w.render_parallel(pinhole);
+        let blurred = w.render_parallel(lens);
+
+        // Near sphere: find its left edge on the middle row.
+        let red = Tuple::color(0.8, 0.2, 0.2);
+        let near_edge = (0..81)
+            .find(|&x| sharp[(x, 20)].approx_eq(red))
+            .ok_or("near sphere not found")?;
+        // Far sphere: find its right edge (scan from the right).
+        let green = Tuple::color(0.2, 0.8, 0.2);
+        let far_edge = (0..81)
+            .rev()
+            .find(|&x| sharp[(x, 20)].approx_eq(green))
+            .ok_or("far sphere not found")?;
+
+        // In focus: the pixel two in from the edge is still pure red.
+        if !blurred[(near_edge + 2, 20)].approx_eq(red) {
+            loge!(
+                "test_chap_17_14",
+                "near interior {}",
+                blurred[(near_edge + 2, 20)]
+            );
+            return Err("In-focus sphere interior must stay sharp".into());
+        }
+        // Out of focus: the pixel two in from the far edge is a blend.
+        let px = blurred[(far_edge - 2, 20)];
+        if px.approx_eq(green) || px.approx_eq(Tuple::color(0.0, 0.0, 0.0)) {
+            loge!("test_chap_17_14", "far interior {}", px);
+            return Err("Out-of-focus sphere edge must be blurred".into());
+        }
+        Ok(())
+    }
+
+    /// Chap 17 - Putting it together, focal blur: a row of spheres receding
+    /// into the distance, focus on the second one.
+    #[test]
+    fn test_chap_17_focal_blur_putting_it_together() -> Result<(), String> {
+        use std::f64::consts::PI;
+
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-8.0, 10.0, -10.0), WHITE));
+
+        let mut floor = Plane::new();
+        let mut m = Material::new();
+        m.pattern = Some(Box::new(CheckersPattern::new(
+            Tuple::color(0.35, 0.35, 0.35),
+            Tuple::color(0.7, 0.7, 0.7),
+        )));
+        m.specular = 0.0;
+        floor.set_material(m);
+        w.add_shape(Box::new(floor));
+
+        let colors = [
+            Tuple::color(0.9, 0.2, 0.2),
+            Tuple::color(0.2, 0.7, 0.2),
+            Tuple::color(0.2, 0.3, 0.9),
+            Tuple::color(0.9, 0.8, 0.2),
+            Tuple::color(0.8, 0.3, 0.8),
+        ];
+        for (i, color) in colors.iter().enumerate() {
+            let mut s = Sphere::new();
+            let z = i as f64 * 2.5;
+            s.set_transform(Matrix4::translation(-1.5 + i as f64 * 0.75, 1.0, z));
+            let mut m = Material::new();
+            m.color = *color;
+            m.specular = 0.6;
+            m.shininess = 40.0;
+            s.set_material(m);
+            w.add_shape(Box::new(s));
+        }
+
+        let from = Tuple::point(0.0, 2.2, -6.0);
+        let to = Tuple::point(-0.5, 1.0, 2.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        // focus on the second sphere, at z = 2.5
+        let focal_distance = (Tuple::point(-0.75, 1.0, 2.5) - from).magnitude();
+        let camera = Camera::new(400, 250, PI / 3.5)
+            .with_transform(view_transform(from, to, up))
+            .with_focal_blur(0.25, focal_distance, 32);
+
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        image
+            .write_ppm("test_chap_17_focal_blur_putting_it_together.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
     /// Chap 17 - Putting it together: Perlin noise two ways. Left, stripes
     /// perturbed into marble; right, a plain sphere with a bumpy normal.
     #[test]
@@ -5294,5 +5430,39 @@ mod tests {
         );
         light.jitter_by = Sequence::new(vec![0.7, 0.3, 0.9, 0.1, 0.5, 0.2, 0.8, 0.4, 0.6]);
         render_cornell_box_with("test_cornell_box_antialias", &cornell_box(light), 4)
+    }
+
+    /// Chap 17 - Cornell box, point light, focal blur with 32 lens samples
+    /// focused on the tall block, to measure what depth of field costs.
+    #[test]
+    #[ignore]
+    fn test_cornell_box_focal_blur() -> Result<(), String> {
+        use std::f64::consts::PI;
+        use std::time::Instant;
+
+        let light = Light::point_light(Tuple::point(0.0, 1.8, -0.6), Tuple::color(1.0, 1.0, 1.0));
+        let w = cornell_box(light);
+        let from = Tuple::point(0.0, 1.0, -3.5);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let (hsize, vsize) = (1000, 1000);
+        let camera = Camera::new(hsize, vsize, PI * 39.0 / 180.0)
+            .with_transform(view_transform(from, to, up))
+            .with_focal_blur(0.08, 3.5, 32);
+
+        let start = Instant::now();
+        let image = w.render_parallel(camera);
+        let elapsed = start.elapsed();
+        logi!(
+            "test_cornell_box_focal_blur",
+            "{}x{} rendered in {:.3} s = {:.0} pixels/s",
+            hsize,
+            vsize,
+            elapsed.as_secs_f64(),
+            (hsize * vsize) as f64 / elapsed.as_secs_f64()
+        );
+        image
+            .write_ppm("test_cornell_box_focal_blur.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
     }
 }

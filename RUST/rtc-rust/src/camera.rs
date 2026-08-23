@@ -36,6 +36,12 @@ pub struct Camera {
     /// Max per-channel difference to a neighbour before a pixel counts as an
     /// edge for anti-aliasing.
     pub aa_threshold: f64,
+    /// Focal blur: lens radius in world units. `0` = pinhole (the default).
+    pub aperture: f64,
+    /// Distance from the camera at which objects are in sharp focus.
+    pub focal_distance: f64,
+    /// Lens samples per pixel when `aperture > 0`.
+    pub dof_samples: usize,
 }
 
 impl Camera {
@@ -64,7 +70,19 @@ impl Camera {
             transform_inv: Matrix4::identity(),
             aa_samples: 1,
             aa_threshold: 0.05,
+            aperture: 0.0,
+            focal_distance: 1.0,
+            dof_samples: 1,
         }
+    }
+
+    /// Enable focal blur: a lens of radius `aperture`, sharp at
+    /// `focal_distance`, averaged over `samples` lens positions per pixel.
+    pub fn with_focal_blur(mut self, aperture: f64, focal_distance: f64, samples: usize) -> Self {
+        self.aperture = aperture;
+        self.focal_distance = focal_distance;
+        self.dof_samples = samples.max(1);
+        self
     }
 
     /// Enable edge-detected supersampling with an `n` x `n` sub-pixel grid.
@@ -98,6 +116,44 @@ impl Camera {
         let origin = self.transform_inv * Tuple::point(0.0, 0.0, 0.0);
         let direction = (pixel - origin).normalize();
         Ray::new(origin, direction)
+    }
+
+    /// Ray from a point on the lens through the sub-pixel's point on the
+    /// focal plane. `(lx, ly)` is the lens offset in units of the aperture
+    /// radius (inside the unit disk); `(0, 0)` is the pinhole ray.
+    pub fn ray_for_lens(&self, px: usize, py: usize, dx: f64, dy: f64, lx: f64, ly: f64) -> Ray {
+        let pinhole = self.ray_for_subpixel(px, py, dx, dy);
+        if self.aperture == 0.0 {
+            return pinhole;
+        }
+        // Where this pixel's pinhole ray is in focus.
+        let focal_point = pinhole.position(self.focal_distance);
+        // The lens lies in the camera's z = 0 plane.
+        let origin = self.transform_inv * Tuple::point(lx * self.aperture, ly * self.aperture, 0.0);
+        Ray::new(origin, (focal_point - origin).normalize())
+    }
+
+    /// Deterministic per-pixel sample `i` of `n`: a stratified point in the
+    /// unit disk (lens) plus a jittered sub-pixel offset. Hashing the pixel
+    /// coordinates decorrelates neighbours so the blur is noise, not ghosts.
+    pub fn lens_sample(px: usize, py: usize, i: usize, n: usize) -> (f64, f64, f64, f64) {
+        let h = |k: u64| -> f64 {
+            // small integer hash -> [0, 1)
+            let mut x = (px as u64).wrapping_mul(0x9E37_79B9)
+                ^ (py as u64).wrapping_mul(0x85EB_CA6B)
+                ^ (i as u64).wrapping_mul(0xC2B2_AE35)
+                ^ k.wrapping_mul(0x27D4_EB2F);
+            x ^= x >> 15;
+            x = x.wrapping_mul(0x2C1B_3C6D);
+            x ^= x >> 12;
+            x = x.wrapping_mul(0x297A_2D39);
+            x ^= x >> 15;
+            (x & 0xFF_FFFF) as f64 / 16_777_216.0
+        };
+        // stratify the radius over the samples; random angle
+        let r = ((i as f64 + h(1)) / n as f64).sqrt();
+        let theta = 2.0 * std::f64::consts::PI * h(2);
+        (r * theta.cos(), r * theta.sin(), h(3), h(4))
     }
 
     pub fn transform(&self) -> Matrix4 {
@@ -276,6 +332,85 @@ mod tests {
             Ok(())
         } else {
             Err("Anti-aliasing is off by default and enabled with a grid size".into())
+        }
+    }
+
+    /// Chap 17 - With a pinhole camera the lens ray is the sub-pixel ray,
+    /// whatever the lens offset
+    #[test]
+    fn test_chap_17_11() -> Result<(), String> {
+        let c = Camera::new(201, 101, std::f64::consts::PI / 2.0);
+        let a = c.ray_for_subpixel(50, 25, 0.3, 0.6);
+        let b = c.ray_for_lens(50, 25, 0.3, 0.6, 0.7, -0.2);
+        if a.origin.approx_eq(b.origin) && a.direction.approx_eq(b.direction) {
+            Ok(())
+        } else {
+            Err("Pinhole lens ray must equal the sub-pixel ray".into())
+        }
+    }
+
+    /// Chap 17 - Every lens ray for a pixel passes through the same point on
+    /// the focal plane, and starts on the lens
+    #[test]
+    fn test_chap_17_12() -> Result<(), String> {
+        // A level camera: the book's view_transform only yields an
+        // orthonormal basis when `up` is perpendicular to the view direction.
+        let from = Tuple::point(1.0, 2.0, -5.0);
+        let to = Tuple::point(0.0, 2.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let c = Camera::new(201, 101, std::f64::consts::PI / 3.0)
+            .with_transform(crate::world::view_transform(from, to, up))
+            .with_focal_blur(0.5, 4.0, 8);
+        let pinhole = c.ray_for_pixel(60, 40);
+        let focal_point = pinhole.position(4.0);
+        for (lx, ly) in [(0.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.6, 0.6), (-0.3, 0.9)] {
+            let r = c.ray_for_lens(60, 40, 0.5, 0.5, lx, ly);
+            // origin is on the lens disk, centred on the camera
+            let lens_offset = (r.origin - from).magnitude();
+            let expected_offset = 0.5 * (lx * lx + ly * ly).sqrt();
+            if !approx_eq(lens_offset, expected_offset) {
+                loge!(
+                    "test_chap_17_12",
+                    "lens offset {lens_offset} != {expected_offset}"
+                );
+                return Err("Lens ray must start on the lens".into());
+            }
+            // and the ray passes through the focal point
+            let t = (focal_point - r.origin).magnitude();
+            if !r.position(t).approx_eq(focal_point) {
+                loge!(
+                    "test_chap_17_12",
+                    "ray {} misses focal point {}",
+                    r,
+                    focal_point
+                );
+                return Err("Lens rays must converge on the focal point".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Chap 17 - Lens samples lie in the unit disk and differ between pixels
+    #[test]
+    fn test_chap_17_13() -> Result<(), String> {
+        let mut distinct = false;
+        for i in 0..16 {
+            let (lx, ly, dx, dy) = Camera::lens_sample(3, 7, i, 16);
+            let (mx, my, _, _) = Camera::lens_sample(4, 7, i, 16);
+            if lx * lx + ly * ly > 1.0 + 1e-12
+                || !(0.0..1.0).contains(&dx)
+                || !(0.0..1.0).contains(&dy)
+            {
+                return Err("Lens sample outside the unit disk / pixel".into());
+            }
+            if (lx, ly) != (mx, my) {
+                distinct = true;
+            }
+        }
+        if distinct {
+            Ok(())
+        } else {
+            Err("Neighbouring pixels must get different lens samples".into())
         }
     }
 }
