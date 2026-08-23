@@ -4791,4 +4791,112 @@ mod tests {
 
         Ok(())
     }
+
+    /// Cornell box (Goral et al. 1984) — the classic ray tracing test scene, used
+    /// here as a fixed benchmark: a 2x2x2 room (red left wall, green right wall,
+    /// white floor/ceiling/back), a tall and a short block, one light near the
+    /// ceiling. Logs wall-clock time and pixels/sec so chapter-17 extensions
+    /// (soft shadows, anti-aliasing, ...) can be measured against a baseline.
+    ///
+    /// Run deliberately, in release:
+    /// `cargo test --release --lib cornell_box -- --ignored --nocapture`
+    /// Add `--features stats` to also get BVH node visits / primitive tests.
+    #[test]
+    #[ignore]
+    fn test_cornell_box_benchmark() -> Result<(), String> {
+        use std::f64::consts::PI;
+        use std::time::Instant;
+
+        let matte = |r: f64, g: f64, b: f64| {
+            let mut m = Material::new();
+            m.color = Tuple::color(r, g, b);
+            m.specular = 0.0;
+            m
+        };
+        let white = matte(0.73, 0.73, 0.73);
+        let red = matte(0.65, 0.05, 0.05);
+        let green = matte(0.12, 0.45, 0.15);
+
+        let mut w = World::new();
+        w.set_light(Light::point_light(
+            // Below and in front of the ceiling so it and the block fronts get
+            // some direct light; a point light flush with the ceiling leaves
+            // them at a grazing angle (the original uses an area light).
+            Tuple::point(0.0, 1.8, -0.6),
+            Tuple::color(1.0, 1.0, 1.0),
+        ));
+
+        // Room: walls at x = ±1, floor y = 0, ceiling y = 2, back wall z = 1.
+        // The front (z = -1) is open; the camera looks in from outside.
+        let wall = |material: &Material, transform: Matrix4| -> Box<dyn Shape> {
+            let mut p = Plane::new();
+            p.set_material(material.clone());
+            p.set_transform(transform);
+            Box::new(p)
+        };
+        w.add_shape(wall(&white, Matrix4::identity()));
+        w.add_shape(wall(&white, Matrix4::translation(0.0, 2.0, 0.0)));
+        w.add_shape(wall(
+            &white,
+            Matrix4::translation(0.0, 0.0, 1.0) * Matrix4::rotation_x(PI / 2.0),
+        ));
+        w.add_shape(wall(
+            &red,
+            Matrix4::translation(-1.0, 0.0, 0.0) * Matrix4::rotation_z(PI / 2.0),
+        ));
+        w.add_shape(wall(
+            &green,
+            Matrix4::translation(1.0, 0.0, 0.0) * Matrix4::rotation_z(PI / 2.0),
+        ));
+
+        // Blocks (unit cube spans -1..1, so scale is half the block size).
+        let block = |material: &Material, transform: Matrix4| -> Box<dyn Shape> {
+            let mut c = Cube::new();
+            c.set_material(material.clone());
+            c.set_transform(transform);
+            Box::new(c)
+        };
+        w.add_shape(block(
+            &white,
+            Matrix4::translation(-0.35, 0.6, 0.35)
+                * Matrix4::rotation_y(PI * 17.0 / 180.0)
+                * Matrix4::scaling(0.3, 0.6, 0.3),
+        ));
+        w.add_shape(block(
+            &white,
+            Matrix4::translation(0.35, 0.3, -0.3)
+                * Matrix4::rotation_y(-PI * 17.0 / 180.0)
+                * Matrix4::scaling(0.3, 0.3, 0.3),
+        ));
+
+        let from = Tuple::point(0.0, 1.0, -3.5);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let (hsize, vsize) = (1000, 1000);
+        let camera = Camera::new(hsize, vsize, PI * 39.0 / 180.0)
+            .with_transform(view_transform(from, to, up));
+
+        w.build_bounds();
+        reset_stats();
+        let start = Instant::now();
+        let image = w.render_parallel(camera);
+        let elapsed = start.elapsed();
+        let (node_visits, prim_tests) = read_stats();
+
+        let pixels = (hsize * vsize) as f64;
+        logi!(
+            "cornell_box",
+            "{}x{} rendered in {:.3} s = {:.0} pixels/s (node visits: {}, prim tests: {})",
+            hsize,
+            vsize,
+            elapsed.as_secs_f64(),
+            pixels / elapsed.as_secs_f64(),
+            node_visits,
+            prim_tests
+        );
+
+        image
+            .write_ppm("test_cornell_box_benchmark.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
+    }
 }
