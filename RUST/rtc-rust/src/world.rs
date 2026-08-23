@@ -4705,4 +4705,85 @@ mod tests {
 
         Ok(())
     }
+
+    /// Chap 16 - The chapter-opener figure: the same cube/sphere pair
+    /// combined three ways — union, intersection, difference — side by side.
+    #[test]
+    fn test_chap_16_union_intersect_difference() -> Result<(), String> {
+        let mut w = World::new();
+
+        let light = Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        w.light = Some(light);
+
+        // Checkered, slightly reflective floor
+        // large squares: the tracer has no anti-aliasing, so small squares
+        // moiré badly toward the horizon
+        let floor_checkers = CheckersPattern::new(WHITE, BLACK);
+        let mut floor = Plane::new();
+        let mut floor_material = Material::new();
+        floor_material.color = Tuple::color(0.8, 0.8, 0.85);
+        floor_material.specular = 0.0;
+        floor_material.reflective = 0.2;
+        floor_material.pattern = Some(Box::new(floor_checkers));
+        floor.set_material(floor_material);
+        w.add_shape(Box::new(floor));
+
+        let mut cube_material = Material::new();
+        cube_material.color = Tuple::color(0.2, 0.55, 0.75);
+        cube_material.diffuse = 0.8;
+        cube_material.specular = 0.4;
+        cube_material.shininess = 40.0;
+        let mut ball_material = Material::new();
+        ball_material.color = Tuple::color(0.85, 0.3, 0.25);
+        ball_material.diffuse = 0.8;
+        ball_material.specular = 0.4;
+        ball_material.shininess = 40.0;
+
+        // the same cube/sphere pair, one operation per column
+        let ops = [
+            (CsgOperation::Union, -3.2),
+            (CsgOperation::Intersection, 0.0),
+            (CsgOperation::Difference, 3.2),
+        ];
+        for (op, x) in ops {
+            let mut top = Csg::new(op);
+            top.set_transform(
+                Matrix4::translation(x, 1.0, 0.0)
+                    * Matrix4::rotation_y(-std::f64::consts::PI / 6.0),
+            );
+            let top_id = w.add_shape(Box::new(top));
+
+            let mut cube = Cube::new();
+            cube.set_material(cube_material.clone());
+            let _ = w.add_child(top_id, Box::new(cube)); // left
+
+            let mut ball = Sphere::new();
+            ball.set_material(ball_material.clone());
+            // overlap the cube's upper front corner
+            ball.set_transform(
+                Matrix4::translation(0.5, 0.5, -0.5) * Matrix4::scaling(0.9, 0.9, 0.9),
+            );
+            let _ = w.add_child(top_id, Box::new(ball)); // right
+        }
+
+        // View transform / camera. Tilted down far enough that the horizon
+        // (and its checkerboard moiré) stays out of frame.
+        let from = Tuple::point(0.0, 4.2, -7.5);
+        let to = Tuple::point(0.0, 0.7, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        let camera = Camera::new(900, 450, std::f64::consts::PI / 3.0).with_transform(transform);
+
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        let rc = image.write_ppm("test_chap_16_union_intersect_difference.ppm");
+        if rc.is_err() {
+            return Err("failed to write PPM".into());
+        }
+
+        Ok(())
+    }
 }
