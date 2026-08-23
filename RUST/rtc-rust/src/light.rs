@@ -139,34 +139,67 @@ impl Light {
             + self.vvec * (v as f64 + self.jitter_by.value(start + 1))
     }
 
-    /// All sample points, row by row. Reserves the whole run of jitter values
-    /// with a single atomic op: the per-value cursor was the contention
-    /// hotspot across render threads. A point light yields its position.
-    fn sample_points(&self) -> impl Iterator<Item = Tuple> + '_ {
+    /// Reserve jitter values for one full pass over the grid with a single
+    /// atomic op (the per-value cursor was a contention hotspot across render
+    /// threads) and return the sample point for cell `(u, v)` of that pass.
+    /// A point light always yields its position.
+    fn sample_grid(&self) -> impl Fn(usize, usize) -> Tuple + Copy + '_ {
         let start = if self.samples == 1 {
             0
         } else {
             self.jitter_by.reserve(2 * self.samples)
         };
-        (0..self.vsteps).flat_map(move |v| {
-            (0..self.usteps).map(move |u| {
-                if self.samples == 1 {
-                    self.position
-                } else {
-                    self.cell_point(u, v, start + 2 * (v * self.usteps + u))
-                }
-            })
-        })
+        move |u, v| {
+            if self.samples == 1 {
+                self.position
+            } else {
+                self.cell_point(u, v, start + 2 * (v * self.usteps + u))
+            }
+        }
+    }
+
+    /// All sample points, row by row.
+    fn sample_points(&self) -> impl Iterator<Item = Tuple> + '_ {
+        let grid = self.sample_grid();
+        (0..self.vsteps).flat_map(move |v| (0..self.usteps).map(move |u| grid(u, v)))
     }
 
     /// Fraction of the light's sample points visible from `point`: 0.0 fully
     /// shadowed, 1.0 fully lit, in between for the penumbra.
+    ///
+    /// Adaptive: the four corner cells are tested first, and the rest of the
+    /// grid only when they disagree. Most pixels are entirely lit or entirely
+    /// shadowed, so this skips nearly all shadow rays outside the penumbra.
+    /// The sample positions are the same as a full pass, so a 2x2 light is
+    /// unaffected.
     pub fn intensity_at(&self, point: Tuple, world: &World) -> f64 {
-        let visible = self
-            .sample_points()
-            .filter(|&light_position| !world.is_shadowed(light_position, point))
+        let grid = self.sample_grid();
+        let lit = |u: usize, v: usize| !world.is_shadowed(grid(u, v), point);
+
+        if self.usteps < 2 || self.vsteps < 2 {
+            let visible = (0..self.vsteps)
+                .flat_map(|v| (0..self.usteps).map(move |u| (u, v)))
+                .filter(|&(u, v)| lit(u, v))
+                .count();
+            return visible as f64 / self.samples as f64;
+        }
+
+        let (umax, vmax) = (self.usteps - 1, self.vsteps - 1);
+        let corners = [(0, 0), (umax, 0), (0, vmax), (umax, vmax)];
+        let corners_lit = corners.iter().filter(|&&(u, v)| lit(u, v)).count();
+        if corners_lit == 0 {
+            return 0.0;
+        }
+        if corners_lit == 4 {
+            return 1.0;
+        }
+
+        let is_corner = |u: usize, v: usize| (u == 0 || u == umax) && (v == 0 || v == vmax);
+        let rest_lit = (0..self.vsteps)
+            .flat_map(|v| (0..self.usteps).map(move |u| (u, v)))
+            .filter(|&(u, v)| !is_corner(u, v) && lit(u, v))
             .count();
-        visible as f64 / self.samples as f64
+        (corners_lit + rest_lit) as f64 / self.samples as f64
     }
 
     ///
