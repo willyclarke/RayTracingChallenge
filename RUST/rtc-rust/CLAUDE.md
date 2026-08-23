@@ -12,7 +12,8 @@ Rust implementation of "The Ray Tracer Challenge" book, built up chapter by chap
 cargo build              # debug build
 cargo build --release
 cargo test --lib         # run all unit tests
-cargo test --lib --ignored   # run only ignored tests (projectile demos)
+cargo test --lib --ignored   # run only ignored tests (projectile demos, benchmarks)
+cargo test --release --lib cornell_box -- --ignored --nocapture   # Cornell box benchmarks (point + area light), logs render time
 cargo test --lib test_chap_13 # run one chapter's tests by name prefix
 cargo test --doc         # run documentation examples (doctests)
 cargo clippy --lib       # lint
@@ -41,14 +42,14 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`pattern` / `patterns`** — `Pattern` trait for material surface patterns: `stripe`, `gradient`, `ring`, `checkers`, plus `nested`/`blended` combinators and a `test` pattern for unit tests.
 
-**`world`** — Holds the shapes and light. `intersect`, `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel` and `view_transform`. Shapes get a world-assigned id via `add_shape`.
+**`world`** — Holds the shapes and light. `intersect`, `is_shadowed` (allocation-free any-hit walk via `Shape::local_occludes`), `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel` and `view_transform`. Shapes get a world-assigned id via `add_shape`.
 
 **`intersection`** — `Intersection { t, object_id }` and `Intersections`, a `t`-sorted collection (`push` inserts in order; `hit()` returns the first non-negative).
 
-**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`); `Light` (point light + Phong `lighting`); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern).
+**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern).
 
 **`log` / `color`** — `logi!()`, `logd!()`, `loge!()` macros with timestamps; `Color` enum for ANSI codes. Used in tests and demos.
 
 ## Tests
 
-Tests live inline at the bottom of each module under `#[cfg(test)]`, named by book chapter (`test_chap_1_05`, `test_chap_13_9`, etc.) so a chapter's tests share a `test_chap_N` prefix. They return `Result<(), String>` (or `std::io::Result<()>` for I/O). `#[ignore]` marks the projectile trajectory demos. Some `*_putting_it_all_together` tests render a scene to a PPM. Public helpers additionally carry doctests (run with `cargo test --doc`).
+Tests live inline at the bottom of each module under `#[cfg(test)]`, named by book chapter (`test_chap_1_05`, `test_chap_13_9`, etc.) so a chapter's tests share a `test_chap_N` prefix. They return `Result<(), String>` (or `std::io::Result<()>` for I/O). `#[ignore]` marks the projectile trajectory demos and the Cornell box benchmarks. Bonus-chapter tests (soft shadows) use a `test_bonus_*` prefix. Some `*_putting_it_all_together` tests render a scene to a PPM. Public helpers additionally carry doctests (run with `cargo test --doc`).

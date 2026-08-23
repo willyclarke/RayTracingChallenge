@@ -245,17 +245,19 @@ impl Light {
 
         for light_position in self.sample_points() {
             // find the direction to this sample point on the light
-            let lightv = (light_position - point).normalize();
+            let to_light = light_position - point;
 
             // light_dot_normal represents the cosine of the angle between the
             // light vector and the normal vector. A negative number means the
-            // light is on the other side of the surface.
-            let light_dot_normal = lightv.dot(normalv);
+            // light is on the other side of the surface. (Cosine straight
+            // from the unnormalised vector: one divide instead of four.)
+            let light_dot_normal = to_light.dot(normalv) / to_light.magnitude();
 
             if light_dot_normal >= 0.0 {
                 diffuse_sum += light_dot_normal;
 
                 if has_specular {
+                    let lightv = to_light.normalize();
                     // reflect_dot_eye represents the cosine of the angle between the
                     // reflection vector and the eye vector. A negative number means the
                     // light reflects away from the eye.
