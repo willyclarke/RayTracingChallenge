@@ -13,7 +13,7 @@ cargo build              # debug build
 cargo build --release
 cargo test --lib         # run all unit tests
 cargo test --lib --ignored   # run only ignored tests (projectile demos, benchmarks)
-cargo test --release --lib cornell_box -- --ignored --nocapture   # Cornell box benchmarks (point light, area light, area light + AA, focal blur, path tracing), log render time
+cargo test --release --lib cornell_box -- --ignored --nocapture --test-threads=1   # Cornell box benchmarks (point light, area light, area light + AA, focal blur, path tracing), log render time; single-threaded test runner so the parallel renders don't contend and timings stay comparable
 cargo test --lib test_chap_13 # run one chapter's tests by name prefix
 cargo test --doc         # run documentation examples (doctests)
 cargo clippy --lib       # lint
