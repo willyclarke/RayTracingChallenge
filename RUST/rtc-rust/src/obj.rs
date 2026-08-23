@@ -200,9 +200,9 @@ mod tests {
 
     use super::*;
 
-    /// Chap 16 - Ignoring unrecognized lines
+    /// Chap 15 - Ignoring unrecognized lines
     #[test]
-    fn test_chap_16_1() -> Result<(), String> {
+    fn test_chap_15_8() -> Result<(), String> {
         let gibberish = "\"There was a young lady named Bright\n who traveled much faster than light.\nShe set out one day\n in a relative way,\nand came back the previous night.\"";
 
         let p = Parser::parse(gibberish);
@@ -211,15 +211,15 @@ mod tests {
         if chk {
             Ok(())
         } else {
-            loge!("test_chap_16_1", "str:{}", gibberish);
+            loge!("test_chap_15_8", "str:{}", gibberish);
             Err("Ignoring unrecognized lines".into())
         }
     }
 
-    /// Chap 16 - Vertex records
+    /// Chap 15 - Vertex records
     #[test]
-    fn test_chap_16_2() -> std::io::Result<()> {
-        let path = std::env::temp_dir().join("test_chap_16_2.obj");
+    fn test_chap_15_9() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_15_9.obj");
         let contents = "v -1 1 0\nv -1.0000 0.5000 0.0000\nv 1 0 0\nv 1 1 0";
 
         std::fs::write(&path, contents)?; // ? → I/O errors become the Err
@@ -235,10 +235,10 @@ mod tests {
         Ok(())
     }
 
-    /// Chap 16 - Parsing triangle faces
+    /// Chap 15 - Parsing triangle faces
     #[test]
-    fn test_chap_16_3() -> std::io::Result<()> {
-        let path = std::env::temp_dir().join("test_chap_16_3.obj");
+    fn test_chap_15_10() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_15_10.obj");
         let contents = "v -1 1 0\nv -1 0 0\nv 1 0 0\nv 1 1 0\n \nf 1 2 3\nf 1 3 4\nv 2 3 4\nv 5 6 7\nv 8 9 0\nf -1 -2 -3";
 
         std::fs::write(&path, contents)?; // ? → I/O errors become the Err
@@ -268,10 +268,10 @@ mod tests {
         Ok(())
     }
 
-    /// Chap 16 - Triangulating polygons
+    /// Chap 15 - Triangulating polygons
     #[test]
-    fn test_chap_16_4() -> std::io::Result<()> {
-        let path = std::env::temp_dir().join("test_chap_16_4.obj");
+    fn test_chap_15_11() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_15_11.obj");
         let contents = "v -1 1 0\nv -1 0 0\nv 1 0 0\nv 1 1 0\n \nv 0 2 0\nf 1 2 3 4 5";
 
         std::fs::write(&path, contents)?; // ? → I/O errors become the Err
@@ -301,10 +301,10 @@ mod tests {
         Ok(())
     }
 
-    /// Chap 16 - Triangles in groups
+    /// Chap 15 - Triangles in groups
     #[test]
-    fn test_chap_16_5() -> std::io::Result<()> {
-        let path = std::env::temp_dir().join("test_chap_16_5.obj");
+    fn test_chap_15_12() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_15_12.obj");
         let contents = "v -1 1 0\nv -1 0 0\nv 1 0 0\nv 1 1 0\n \ng FirstGroup\nf 1 2 3\ng SecondGroup\nf 1 3 4";
 
         std::fs::write(&path, contents)?; // ? → I/O errors become the Err
@@ -326,10 +326,10 @@ mod tests {
         Ok(())
     }
 
-    /// Chap 16 - Vertex normal records
+    /// Chap 15 - Vertex normal records
     #[test]
-    fn test_chap_16_6() -> std::io::Result<()> {
-        let path = std::env::temp_dir().join("test_chap_16_6.obj");
+    fn test_chap_15_13() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_15_13.obj");
         let contents = "vn 0 0 1\nvn 0.707 0 -0.707\nvn 1 2 3";
 
         std::fs::write(&path, contents)?; // ? → I/O errors become the Err
@@ -344,10 +344,10 @@ mod tests {
         Ok(())
     }
 
-    /// Chap 16 - Faces with normals
+    /// Chap 15 - Faces with normals
     #[test]
-    fn test_chap_16_7() -> std::io::Result<()> {
-        let path = std::env::temp_dir().join("test_chap_16_7.obj");
+    fn test_chap_15_14() -> std::io::Result<()> {
+        let path = std::env::temp_dir().join("test_chap_15_14.obj");
         let contents = "v 0 1 0\nv -1 0 0\nv 1 0 0\n \nvn -1 0 0\nvn 1 0 0\nvn 0 1 0\n \nf 1//3 2//1 3//2\nf 1/0/3 2/102/1 3/14/2";
 
         std::fs::write(&path, contents)?; // ? → I/O errors become the Err

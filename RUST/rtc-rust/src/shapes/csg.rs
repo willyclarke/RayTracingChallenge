@@ -118,9 +118,9 @@ mod tests {
     use crate::loge;
     use crate::matrix::Matrix4;
 
-    /// Chap 17 - CSG is created with an operation and two shapes
+    /// Chap 16 - CSG is created with an operation and two shapes
     #[test]
-    fn test_chap_17_1() -> Result<(), String> {
+    fn test_chap_16_1() -> Result<(), String> {
         let c = Csg::new(CsgOperation::Union);
         let chk = c.operation == CsgOperation::Union
             && c.children.is_empty()
@@ -128,14 +128,14 @@ mod tests {
         if chk {
             Ok(())
         } else {
-            loge!("test_chap_17_1", "operation:{:?}", c.operation);
+            loge!("test_chap_16_1", "operation:{:?}", c.operation);
             Err("CSG is created with an operation and two shapes".into())
         }
     }
 
-    /// Chap 17 - Evaluating the rule for a CSG operation
+    /// Chap 16 - Evaluating the rule for a CSG operation
     #[test]
-    fn test_chap_17_2() -> Result<(), String> {
+    fn test_chap_16_2() -> Result<(), String> {
         use CsgOperation::*;
         // (op, lhit, inl, inr, expected) — the book's scenario outline
         let table = [
@@ -168,7 +168,7 @@ mod tests {
             let got = intersection_allowed(op, lhit, inl, inr);
             if got != expected {
                 loge!(
-                    "test_chap_17_2",
+                    "test_chap_16_2",
                     "op:{:?} lhit:{} inl:{} inr:{} -> {} (expected {})",
                     op,
                     lhit,
