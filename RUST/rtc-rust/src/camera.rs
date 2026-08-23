@@ -29,6 +29,13 @@ pub struct Camera {
     pub half_height: f64,
     transform: Matrix4,
     transform_inv: Matrix4,
+    /// Anti-aliasing: pixels that differ from a neighbour by more than
+    /// `aa_threshold` are re-rendered with an `aa_samples` x `aa_samples`
+    /// sub-pixel grid. `1` = off (the default).
+    pub aa_samples: usize,
+    /// Max per-channel difference to a neighbour before a pixel counts as an
+    /// edge for anti-aliasing.
+    pub aa_threshold: f64,
 }
 
 impl Camera {
@@ -55,14 +62,29 @@ impl Camera {
             half_height,
             transform: Matrix4::identity(),
             transform_inv: Matrix4::identity(),
+            aa_samples: 1,
+            aa_threshold: 0.05,
         }
     }
 
+    /// Enable edge-detected supersampling with an `n` x `n` sub-pixel grid.
+    pub fn with_antialias(mut self, n: usize) -> Self {
+        self.aa_samples = n.max(1);
+        self
+    }
+
+    /// Ray through the centre of pixel `(px, py)`.
     pub fn ray_for_pixel(&self, px: usize, py: usize) -> Ray {
+        self.ray_for_subpixel(px, py, 0.5, 0.5)
+    }
+
+    /// Ray through pixel `(px, py)` at fractional offset `(dx, dy)` in
+    /// `[0, 1)` from its top-left corner; `(0.5, 0.5)` is the centre.
+    pub fn ray_for_subpixel(&self, px: usize, py: usize, dx: f64, dy: f64) -> Ray {
         //
-        // the offset from the edge of the canvas to the pixel's center
-        let xoffset = (px as f64 + 0.5) * self.pixel_size;
-        let yoffset = (py as f64 + 0.5) * self.pixel_size;
+        // the offset from the edge of the canvas to the sample point
+        let xoffset = (px as f64 + dx) * self.pixel_size;
+        let yoffset = (py as f64 + dy) * self.pixel_size;
 
         // the untransformed coordinates of the pixel in world space.
         // (remember that the camera looks toward -z, so +x is to the *left*.)
@@ -211,6 +233,49 @@ mod tests {
             loge!("test_chap_7_20", "Ray r_expect:{}", r_expect);
             loge!("test_chap_7_20", "Ray r       :{}", r);
             Err("Constructing a ray when the camera is transformed".into())
+        }
+    }
+
+    /// Chap 17 - A sub-pixel ray at (0.5, 0.5) is the pixel-centre ray
+    #[test]
+    fn test_chap_17_1() -> Result<(), String> {
+        let c = Camera::new(201, 101, std::f64::consts::PI / 2.0);
+        let centre = c.ray_for_pixel(100, 50);
+        let sub = c.ray_for_subpixel(100, 50, 0.5, 0.5);
+        let chk = centre.origin.approx_eq(sub.origin) && centre.direction.approx_eq(sub.direction);
+        if chk {
+            Ok(())
+        } else {
+            Err("A sub-pixel ray at (0.5, 0.5) is the pixel-centre ray".into())
+        }
+    }
+
+    /// Chap 17 - Sub-pixel rays tile the pixel: the far corner of one pixel
+    /// is the near corner of the next
+    #[test]
+    fn test_chap_17_2() -> Result<(), String> {
+        let c = Camera::new(201, 101, std::f64::consts::PI / 2.0);
+        let a = c.ray_for_subpixel(10, 20, 1.0, 1.0);
+        let b = c.ray_for_subpixel(11, 21, 0.0, 0.0);
+        let chk = a.direction.approx_eq(b.direction);
+        if chk {
+            Ok(())
+        } else {
+            loge!("test_chap_17_2", "a:{} b:{}", a, b);
+            Err("Sub-pixel rays tile the pixel".into())
+        }
+    }
+
+    /// Chap 17 - Anti-aliasing is off by default and enabled with a grid size
+    #[test]
+    fn test_chap_17_3() -> Result<(), String> {
+        let c = Camera::new(10, 10, std::f64::consts::PI / 2.0);
+        let aa = Camera::new(10, 10, std::f64::consts::PI / 2.0).with_antialias(4);
+        let chk = c.aa_samples == 1 && aa.aa_samples == 4;
+        if chk {
+            Ok(())
+        } else {
+            Err("Anti-aliasing is off by default and enabled with a grid size".into())
         }
     }
 }

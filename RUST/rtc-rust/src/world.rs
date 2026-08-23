@@ -829,11 +829,56 @@ impl World {
             *pixel = self.color_at(&camera.ray_for_pixel(x, y), 10);
         });
 
+        if camera.aa_samples > 1 {
+            // Edge-detected supersampling: only pixels that differ from a
+            // neighbour get the full sub-pixel grid, so flat areas cost one
+            // ray and edges cost n*n.
+            let edges: Vec<usize> = (0..pixels.len())
+                .into_par_iter()
+                .filter(|&i| Self::is_edge(&pixels, width, height, i, camera.aa_threshold))
+                .collect();
+            let resampled: Vec<(usize, Tuple)> = edges
+                .into_par_iter()
+                .map(|i| (i, self.supersample(&camera, i % width, i / width)))
+                .collect();
+            for (i, color) in resampled {
+                pixels[i] = color;
+            }
+        }
+
         let mut image = Canvas::new(width, height);
         for (i, color) in pixels.into_iter().enumerate() {
             image.write_pixel(i % width, i / width, color);
         }
         image
+    }
+
+    /// Does pixel `i` differ from any 4-neighbour by more than `threshold`
+    /// in some channel?
+    fn is_edge(pixels: &[Tuple], width: usize, height: usize, i: usize, threshold: f64) -> bool {
+        let (x, y) = (i % width, i / width);
+        let differs = |j: usize| {
+            let d = pixels[i] - pixels[j];
+            d.x.abs() > threshold || d.y.abs() > threshold || d.z.abs() > threshold
+        };
+        (x > 0 && differs(i - 1))
+            || (x + 1 < width && differs(i + 1))
+            || (y > 0 && differs(i - width))
+            || (y + 1 < height && differs(i + width))
+    }
+
+    /// Average of an `n` x `n` grid of sub-pixel samples for pixel `(x, y)`.
+    pub fn supersample(&self, camera: &Camera, x: usize, y: usize) -> Tuple {
+        let n = camera.aa_samples;
+        let mut sum = Tuple::color(0.0, 0.0, 0.0);
+        for sy in 0..n {
+            for sx in 0..n {
+                let dx = (sx as f64 + 0.5) / n as f64;
+                let dy = (sy as f64 + 0.5) / n as f64;
+                sum = sum + self.color_at(&camera.ray_for_subpixel(x, y, dx, dy), 10);
+            }
+        }
+        sum / (n * n) as f64
     }
 
     pub fn render(&self, camera: Camera) -> Canvas {
@@ -1358,7 +1403,18 @@ mod tests {
     /// Chap 7 - Rendering a world with a camera
     #[test]
     fn test_chap_7_22() -> Result<(), String> {
-        let w = World::default_world();
+        // A flat-shaded sphere: every interior pixel is exactly the same
+        // colour, so only its silhouette can be an edge.
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-10.0, 10.0, -10.0), WHITE));
+        let mut s = Sphere::new();
+        let mut m = Material::new();
+        m.color = Tuple::color(0.8, 0.2, 0.2);
+        m.ambient = 1.0;
+        m.diffuse = 0.0;
+        m.specular = 0.0;
+        s.set_material(m);
+        w.add_shape(Box::new(s));
         let from = Tuple::point(0.0, 0.0, -5.0);
         let to = Tuple::point(0.0, 0.0, 0.0);
         let up = Tuple::vector(0.0, 1.0, 0.0);
@@ -4890,6 +4946,11 @@ mod tests {
     /// Render a Cornell box at 1000x1000, log wall-clock time, pixels/sec and
     /// (with `--features stats`) BVH counters, and write `<name>.ppm`.
     fn render_cornell_box(name: &str, w: &World) -> Result<(), String> {
+        render_cornell_box_with(name, w, 1)
+    }
+
+    /// As `render_cornell_box`, with an `aa` x `aa` anti-aliasing grid.
+    fn render_cornell_box_with(name: &str, w: &World, aa: usize) -> Result<(), String> {
         use std::f64::consts::PI;
         use std::time::Instant;
 
@@ -4898,7 +4959,8 @@ mod tests {
         let up = Tuple::vector(0.0, 1.0, 0.0);
         let (hsize, vsize) = (1000, 1000);
         let camera = Camera::new(hsize, vsize, PI * 39.0 / 180.0)
-            .with_transform(view_transform(from, to, up));
+            .with_transform(view_transform(from, to, up))
+            .with_antialias(aa);
 
         reset_stats();
         let start = Instant::now();
@@ -4921,6 +4983,64 @@ mod tests {
         image
             .write_ppm(format!("{name}.ppm"))
             .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
+    /// Chap 17 - Anti-aliasing only touches edge pixels: flat interior and
+    /// background pixels are identical with and without it, and the edge of
+    /// the sphere is a blend of sphere and background
+    #[test]
+    fn test_chap_17_4() -> Result<(), String> {
+        // A flat-shaded sphere: every interior pixel is exactly the same
+        // colour, so only its silhouette can be an edge.
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-10.0, 10.0, -10.0), WHITE));
+        let mut s = Sphere::new();
+        let mut m = Material::new();
+        m.color = Tuple::color(0.8, 0.2, 0.2);
+        m.ambient = 1.0;
+        m.diffuse = 0.0;
+        m.specular = 0.0;
+        s.set_material(m);
+        w.add_shape(Box::new(s));
+        let from = Tuple::point(0.0, 0.0, -5.0);
+        let to = Tuple::point(0.0, 0.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let transform = view_transform(from, to, up);
+        let plain = Camera::new(41, 41, std::f64::consts::PI / 3.0).with_transform(transform);
+        let aa = plain.with_antialias(4);
+
+        let img = w.render_parallel(plain);
+        let img_aa = w.render_parallel(aa);
+
+        // Centre of the sphere and a background corner are flat: unchanged.
+        let flat = [(20, 20), (0, 0)];
+        for (x, y) in flat {
+            if !img[(x, y)].approx_eq(img_aa[(x, y)]) {
+                loge!(
+                    "test_chap_17_4",
+                    "({x},{y}) {} vs {}",
+                    img[(x, y)],
+                    img_aa[(x, y)]
+                );
+                return Err("Anti-aliasing changed a flat pixel".into());
+            }
+        }
+
+        // Walk from the centre to the right until the background; the last
+        // sphere pixel is an edge and must differ after anti-aliasing.
+        let black = Tuple::color(0.0, 0.0, 0.0);
+        let edge_x = (20..41)
+            .find(|&x| img[(x, 20)].approx_eq(black))
+            .ok_or("no background found on row 20")?
+            - 1;
+        let (before, after) = (img[(edge_x, 20)], img_aa[(edge_x, 20)]);
+        let blended = !before.approx_eq(after) && after.x < before.x && after.x > 0.0;
+        if blended {
+            Ok(())
+        } else {
+            loge!("test_chap_17_4", "edge x={edge_x}: {} vs {}", before, after);
+            Err("Anti-aliasing did not blend the sphere edge".into())
+        }
     }
 
     /// Cornell box with a point light: the fixed benchmark baseline that
@@ -4955,5 +5075,22 @@ mod tests {
         );
         light.jitter_by = Sequence::new(vec![0.7, 0.3, 0.9, 0.1, 0.5, 0.2, 0.8, 0.4, 0.6]);
         render_cornell_box("test_cornell_box_area_light", &cornell_box(light))
+    }
+
+    /// Chap 17 - Cornell box with the area light and 4x4 edge-detected
+    /// anti-aliasing, to measure what anti-aliasing costs on top.
+    #[test]
+    #[ignore]
+    fn test_cornell_box_antialias() -> Result<(), String> {
+        let mut light = Light::area_light(
+            Tuple::point(-0.25, 1.95, -0.25),
+            Tuple::vector(0.5, 0.0, 0.0),
+            8,
+            Tuple::vector(0.0, 0.0, 0.5),
+            8,
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        light.jitter_by = Sequence::new(vec![0.7, 0.3, 0.9, 0.1, 0.5, 0.2, 0.8, 0.4, 0.6]);
+        render_cornell_box_with("test_cornell_box_antialias", &cornell_box(light), 4)
     }
 }

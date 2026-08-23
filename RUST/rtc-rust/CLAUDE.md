@@ -13,7 +13,7 @@ cargo build              # debug build
 cargo build --release
 cargo test --lib         # run all unit tests
 cargo test --lib --ignored   # run only ignored tests (projectile demos, benchmarks)
-cargo test --release --lib cornell_box -- --ignored --nocapture   # Cornell box benchmarks (point + area light), logs render time
+cargo test --release --lib cornell_box -- --ignored --nocapture   # Cornell box benchmarks (point light, area light, area light + AA), log render time
 cargo test --lib test_chap_13 # run one chapter's tests by name prefix
 cargo test --doc         # run documentation examples (doctests)
 cargo clippy --lib       # lint
@@ -46,7 +46,7 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`intersection`** — `Intersection { t, object_id }` and `Intersections`, a `t`-sorted collection (`push` inserts in order; `hit()` returns the first non-negative).
 
-**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern).
+**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`/`ray_for_subpixel`; `with_antialias(n)` enables edge-detected n×n supersampling in `render_parallel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern).
 
 **`log` / `color`** — `logi!()`, `logd!()`, `loge!()` macros with timestamps; `Color` enum for ANSI codes. Used in tests and demos.
 
