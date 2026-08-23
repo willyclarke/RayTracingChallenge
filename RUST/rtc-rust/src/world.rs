@@ -220,6 +220,11 @@ pub fn prepare_computations<'a>(
     let reflectv = ray.direction.reflect(normalv);
     let over_point = point + normalv * crate::math::EPSILON;
     let under_point = point - normalv * crate::math::EPSILON;
+    // The pattern samples object_point. Derive it from over_point rather than
+    // the raw hit: on a plane the raw y is ±1e-16, so floor()-based patterns
+    // (checkers) flip between 0 and -1 and speckle. over_point sits a
+    // consistent EPSILON above the surface.
+    let object_point = world_to_object(shapes, intersection.object_id, over_point);
 
     let hit = &intersection;
     let mut n1 = 1.0;
