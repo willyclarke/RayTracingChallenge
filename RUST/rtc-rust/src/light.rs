@@ -235,8 +235,13 @@ impl Light {
             return ambient;
         }
 
-        let black = Tuple::color(0.0, 0.0, 0.0);
-        let mut sum = black;
+        // Average the per-sample cosine factors as scalars and apply the
+        // colours once at the end; it is the same sum, minus 64 tuple
+        // multiplies per pixel.
+        let mut diffuse_sum = 0.0;
+        let mut specular_sum = 0.0;
+        // powf dominates the loop, so skip it when specular can't contribute.
+        let has_specular = material.specular > 0.0;
 
         for light_position in self.sample_points() {
             // find the direction to this sample point on the light
@@ -248,24 +253,26 @@ impl Light {
             let light_dot_normal = lightv.dot(normalv);
 
             if light_dot_normal >= 0.0 {
-                // compute the diffuse contribution
-                sum = sum + effective_color.mul(material.diffuse.mul(light_dot_normal));
+                diffuse_sum += light_dot_normal;
 
-                // reflect_dot_eye represents the cosine of the angle between the
-                // reflection vector and the eye vector. A negative number means the
-                // light reflects away from the eye.
-                let reflectv = -lightv.reflect(normalv);
-                let reflect_dot_eye = reflectv.dot(eyev);
+                if has_specular {
+                    // reflect_dot_eye represents the cosine of the angle between the
+                    // reflection vector and the eye vector. A negative number means the
+                    // light reflects away from the eye.
+                    let reflectv = -lightv.reflect(normalv);
+                    let reflect_dot_eye = reflectv.dot(eyev);
 
-                if reflect_dot_eye > 0.0 {
-                    // compute the specular contribution
-                    let factor = reflect_dot_eye.powf(material.shininess);
-                    sum = sum + self.intensity.mul(material.specular).mul(factor);
+                    if reflect_dot_eye > 0.0 {
+                        specular_sum += reflect_dot_eye.powf(material.shininess);
+                    }
                 }
             }
         }
 
-        ambient + sum / self.samples as f64 * intensity
+        let n = self.samples as f64;
+        let diffuse = effective_color.mul(material.diffuse * diffuse_sum / n);
+        let specular = self.intensity.mul(material.specular * specular_sum / n);
+        ambient + (diffuse + specular) * intensity
     }
 }
 
