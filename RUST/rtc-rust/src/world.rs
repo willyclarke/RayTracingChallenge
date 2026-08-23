@@ -669,12 +669,10 @@ impl World {
         xs
     }
 
-    pub fn is_shadowed(&self, point: Tuple) -> bool {
-        let light = match self.light {
-            Some(l) => l,
-            None => return false,
-        };
-        let v = light.position - point;
+    /// Is anything between `point` and `light_position`? Takes the position
+    /// explicitly so an area light can test each of its sample points.
+    pub fn is_shadowed(&self, light_position: Tuple, point: Tuple) -> bool {
+        let v = light_position - point;
         let distance = Tuple::magnitude(v);
         let direction = Tuple::normalize(v);
         let r = Ray::new(point, direction);
@@ -697,16 +695,16 @@ impl World {
     }
 
     pub fn shade_hit(&self, comps: &Computations, remaining: i32) -> Tuple {
-        let shadowed = self.is_shadowed(comps.over_point);
-        match self.light {
+        match &self.light {
             Some(light) => {
+                let intensity = light.intensity_at(comps.over_point, self);
                 let surface = light.lighting(
                     comps.object,
                     comps.over_point,
                     comps.object_point,
                     comps.eyev,
                     comps.normalv,
-                    shadowed,
+                    intensity,
                 );
                 let reflected = self.reflected_color(comps, remaining);
                 let refracted = self.refracted_color(comps, remaining);
@@ -971,6 +969,7 @@ mod tests {
     use super::*;
     use crate::bounds::BoundingBox;
     use crate::intersection::{Intersection, Intersections};
+    use crate::light::Sequence;
     use crate::math::{EPSILON, approx_eq};
     // use crate::obj::Parser;
     use crate::pattern::Pattern;
@@ -1012,7 +1011,7 @@ mod tests {
 
         let chk = !w.shapes.is_empty();
         let chk = chk
-            && w.light.unwrap().approx_eq(Light::point_light(
+            && w.light.as_ref().unwrap().approx_eq(&Light::point_light(
                 Tuple::point(-10.0, 10.0, -10.0),
                 Tuple::color(1.0, 1.0, 1.0),
             ));
@@ -1442,7 +1441,7 @@ mod tests {
     fn test_chap_8_2() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(0.0, 10.0, 0.0);
-        let is_shadowed = w.is_shadowed(p);
+        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
 
         let chk = !is_shadowed;
         if chk {
@@ -1457,7 +1456,7 @@ mod tests {
     fn test_chap_8_3() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(10.0, -10.0, 10.0);
-        let is_shadowed = w.is_shadowed(p);
+        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
 
         let chk = is_shadowed;
         if chk {
@@ -1472,7 +1471,7 @@ mod tests {
     fn test_chap_8_5() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(0.0, 10.0, 0.0);
-        let is_shadowed = w.is_shadowed(p);
+        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
 
         let chk = !is_shadowed;
         if chk {
@@ -1487,7 +1486,7 @@ mod tests {
     fn test_chap_8_6() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(0.0, 10.0, 0.0);
-        let is_shadowed = w.is_shadowed(p);
+        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
 
         let chk = !is_shadowed;
         if chk {
@@ -4792,20 +4791,13 @@ mod tests {
         Ok(())
     }
 
-    /// Cornell box (Goral et al. 1984) — the classic ray tracing test scene, used
-    /// here as a fixed benchmark: a 2x2x2 room (red left wall, green right wall,
-    /// white floor/ceiling/back), a tall and a short block, one light near the
-    /// ceiling. Logs wall-clock time and pixels/sec so chapter-17 extensions
-    /// (soft shadows, anti-aliasing, ...) can be measured against a baseline.
-    ///
-    /// Run deliberately, in release:
-    /// `cargo test --release --lib cornell_box -- --ignored --nocapture`
-    /// Add `--features stats` to also get BVH node visits / primitive tests.
-    #[test]
-    #[ignore]
-    fn test_cornell_box_benchmark() -> Result<(), String> {
+    /// Cornell box (Goral et al. 1984) — the classic ray tracing test scene:
+    /// a 2x2x2 room (red left wall, green right wall, white floor/ceiling/back)
+    /// with a tall and a short block. Walls at x = ±1, floor y = 0, ceiling
+    /// y = 2, back wall z = 1; the front (z = -1) is open and the camera looks
+    /// in from outside.
+    fn cornell_box(light: Light) -> World {
         use std::f64::consts::PI;
-        use std::time::Instant;
 
         let matte = |r: f64, g: f64, b: f64| {
             let mut m = Material::new();
@@ -4818,16 +4810,8 @@ mod tests {
         let green = matte(0.12, 0.45, 0.15);
 
         let mut w = World::new();
-        w.set_light(Light::point_light(
-            // Below and in front of the ceiling so it and the block fronts get
-            // some direct light; a point light flush with the ceiling leaves
-            // them at a grazing angle (the original uses an area light).
-            Tuple::point(0.0, 1.8, -0.6),
-            Tuple::color(1.0, 1.0, 1.0),
-        ));
+        w.set_light(light);
 
-        // Room: walls at x = ±1, floor y = 0, ceiling y = 2, back wall z = 1.
-        // The front (z = -1) is open; the camera looks in from outside.
         let wall = |material: &Material, transform: Matrix4| -> Box<dyn Shape> {
             let mut p = Plane::new();
             p.set_material(material.clone());
@@ -4868,6 +4852,15 @@ mod tests {
                 * Matrix4::rotation_y(-PI * 17.0 / 180.0)
                 * Matrix4::scaling(0.3, 0.3, 0.3),
         ));
+        w.build_bounds();
+        w
+    }
+
+    /// Render a Cornell box at 1000x1000, log wall-clock time, pixels/sec and
+    /// (with `--features stats`) BVH counters, and write `<name>.ppm`.
+    fn render_cornell_box(name: &str, w: &World) -> Result<(), String> {
+        use std::f64::consts::PI;
+        use std::time::Instant;
 
         let from = Tuple::point(0.0, 1.0, -3.5);
         let to = Tuple::point(0.0, 1.0, 0.0);
@@ -4876,7 +4869,6 @@ mod tests {
         let camera = Camera::new(hsize, vsize, PI * 39.0 / 180.0)
             .with_transform(view_transform(from, to, up));
 
-        w.build_bounds();
         reset_stats();
         let start = Instant::now();
         let image = w.render_parallel(camera);
@@ -4885,7 +4877,7 @@ mod tests {
 
         let pixels = (hsize * vsize) as f64;
         logi!(
-            "cornell_box",
+            name,
             "{}x{} rendered in {:.3} s = {:.0} pixels/s (node visits: {}, prim tests: {})",
             hsize,
             vsize,
@@ -4896,7 +4888,41 @@ mod tests {
         );
 
         image
-            .write_ppm("test_cornell_box_benchmark.ppm")
+            .write_ppm(format!("{name}.ppm"))
             .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
+    /// Cornell box with a point light: the fixed benchmark baseline that
+    /// chapter-17 extensions (soft shadows, anti-aliasing, ...) are measured
+    /// against. Run deliberately, in release:
+    /// `cargo test --release --lib cornell_box -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn test_cornell_box_benchmark() -> Result<(), String> {
+        let light = Light::point_light(
+            // Below and in front of the ceiling so it and the block fronts get
+            // some direct light; a point light flush with the ceiling leaves
+            // them at a grazing angle.
+            Tuple::point(0.0, 1.8, -0.6),
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        render_cornell_box("test_cornell_box_benchmark", &cornell_box(light))
+    }
+
+    /// Bonus (soft shadows) - Cornell box lit the way the original was: a
+    /// square area light in the ceiling, giving penumbrae around the blocks.
+    #[test]
+    #[ignore]
+    fn test_cornell_box_area_light() -> Result<(), String> {
+        let mut light = Light::area_light(
+            Tuple::point(-0.25, 1.95, -0.25),
+            Tuple::vector(0.5, 0.0, 0.0),
+            8,
+            Tuple::vector(0.0, 0.0, 0.5),
+            8,
+            Tuple::color(1.0, 1.0, 1.0),
+        );
+        light.jitter_by = Sequence::new(vec![0.7, 0.3, 0.9, 0.1, 0.5, 0.2, 0.8, 0.4, 0.6]);
+        render_cornell_box("test_cornell_box_area_light", &cornell_box(light))
     }
 }

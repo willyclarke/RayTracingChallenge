@@ -423,9 +423,9 @@ mod tests {
                     let point = r.position(hit.t);
                     let normalv = s.normal_at_no_intersect(point);
                     let eyev = -r.direction;
-                    let in_shadow = false;
+                    let intensity = 1.0;
                     // let color = light.lighting(&m, point, eyev, normalv, in_shadow);
-                    let color = light.lighting(&s, point, point, eyev, normalv, in_shadow);
+                    let color = light.lighting(&s, point, point, eyev, normalv, intensity);
                     c.write_pixel(x, y, color);
                 }
             }
