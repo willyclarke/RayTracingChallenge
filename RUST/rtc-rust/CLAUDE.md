@@ -36,6 +36,8 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`math`** — `approx_eq(a, b)` and `EPSILON`, used throughout for float comparison.
 
+**`noise`** — `Perlin` improved noise (`noise`, `vector`, `octaves`), seeded and deterministic. Used by `patterns::perturbedpattern` (jitters any pattern's lookup point — marble) and `Material.bump` (tilts the object-space normal in `prepare_computations` — bumpy surfaces).
+
 **Rendering pipeline:**
 
 **`shape` / `shapes`** — `Shape` is the object-safe trait every primitive implements; shared state (id, transform, material) lives in `ShapeData`, exposed via `data()`/`data_mut()`. Each primitive implements `local_intersect` and `local_normal_at` in object space; the trait handles the world↔object transform. Primitives: `sphere`, `plane`, `cube`, `cylinder`, `cone`.
@@ -46,7 +48,7 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`intersection`** — `Intersection { t, object_id }` and `Intersections`, a `t`-sorted collection (`push` inserts in order; `hit()` returns the first non-negative).
 
-**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`/`ray_for_subpixel`; `with_antialias(n)` enables edge-detected n×n supersampling in `render_parallel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern).
+**`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction); `Camera` (view rays via `ray_for_pixel`/`ray_for_subpixel`; `with_antialias(n)` enables edge-detected n×n supersampling in `render_parallel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern, optional `Bump`).
 
 **`log` / `color`** — `logi!()`, `logd!()`, `loge!()` macros with timestamps; `Color` enum for ANSI codes. Used in tests and demos.
 

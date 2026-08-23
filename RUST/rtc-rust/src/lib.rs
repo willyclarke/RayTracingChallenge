@@ -8,6 +8,7 @@ pub mod log;
 pub mod material;
 pub mod math;
 pub mod matrix;
+pub mod noise;
 pub mod obj;
 pub mod pattern;
 pub mod patterns;

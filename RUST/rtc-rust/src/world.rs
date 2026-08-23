@@ -207,7 +207,10 @@ pub fn prepare_computations<'a>(
     let eyev = -ray.direction;
     // group-aware: walks the parent chain (world_to_object -> local_normal_at -> normal_to_world)
     let object_point = world_to_object(shapes, intersection.object_id, point);
-    let object_normal = shape.local_normal_at(object_point, intersection);
+    let mut object_normal = shape.local_normal_at(object_point, intersection);
+    if let Some(bump) = &shape.material().bump {
+        object_normal = bump.perturb(object_point, object_normal);
+    }
     let mut normalv = normal_to_world(shapes, intersection.object_id, object_normal);
 
     let inside = if normalv.dot(eyev) < 0.0 {
@@ -4795,6 +4798,105 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    /// Chap 17 - A bump tilts the shading normal but keeps it unit length,
+    /// and a zero-amplitude bump leaves it unchanged
+    #[test]
+    fn test_chap_17_10() -> Result<(), String> {
+        use crate::material::Bump;
+
+        let r = Ray::new(Tuple::point(0.3, 0.2, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let normal_with = |bump: Option<Bump>| -> Result<Tuple, String> {
+            let mut w = World::new();
+            let mut s = Sphere::new();
+            let mut m = Material::new();
+            m.bump = bump;
+            s.set_material(m);
+            w.add_shape(Box::new(s));
+            let xs = w.intersect(&r);
+            let hit = xs.hit().ok_or("ray missed the sphere")?;
+            Ok(prepare_computations(hit, &r, &w.shapes, &xs).normalv)
+        };
+        let plain = normal_with(None)?;
+        let zero = normal_with(Some(Bump::new(0.0, 3.0)))?;
+        let bumped = normal_with(Some(Bump::new(0.5, 3.0)))?;
+
+        if !zero.approx_eq(plain) {
+            loge!(
+                "test_chap_17_10",
+                "zero-amplitude bump changed {} to {}",
+                plain,
+                zero
+            );
+            return Err("Zero-amplitude bump must not change the normal".into());
+        }
+        if !approx_eq(bumped.magnitude(), 1.0) {
+            return Err("Bumped normal must be unit length".into());
+        }
+        if bumped.approx_eq(plain) {
+            return Err("Bump did not tilt the normal".into());
+        }
+        Ok(())
+    }
+
+    /// Chap 17 - Putting it together: Perlin noise two ways. Left, stripes
+    /// perturbed into marble; right, a plain sphere with a bumpy normal.
+    #[test]
+    fn test_chap_17_putting_it_together() -> Result<(), String> {
+        use crate::material::Bump;
+        use crate::patterns::perturbedpattern::PerturbedPattern;
+        use std::f64::consts::PI;
+
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-10.0, 10.0, -10.0), WHITE));
+
+        let mut floor = Plane::new();
+        let mut m = Material::new();
+        m.pattern = Some(Box::new(CheckersPattern::new(
+            Tuple::color(0.35, 0.35, 0.35),
+            Tuple::color(0.65, 0.65, 0.65),
+        )));
+        m.specular = 0.0;
+        floor.set_material(m);
+        w.add_shape(Box::new(floor));
+
+        let mut marble = Sphere::new();
+        marble.set_transform(Matrix4::translation(-1.2, 1.0, 0.0));
+        let mut stripes =
+            StripePattern::new(Tuple::color(0.95, 0.95, 0.95), Tuple::color(0.2, 0.25, 0.3));
+        stripes.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
+        let mut m = Material::new();
+        m.pattern = Some(Box::new(
+            PerturbedPattern::new(Box::new(stripes), 0.6, 1.5).with_seed(3),
+        ));
+        m.specular = 0.6;
+        m.shininess = 50.0;
+        marble.set_material(m);
+        w.add_shape(Box::new(marble));
+
+        let mut bumpy = Sphere::new();
+        bumpy.set_transform(Matrix4::translation(1.2, 1.0, 0.0));
+        let mut m = Material::new();
+        m.color = Tuple::color(0.9, 0.6, 0.2);
+        m.bump = Some(Bump::new(0.35, 6.0).with_seed(5));
+        m.specular = 0.5;
+        m.shininess = 30.0;
+        bumpy.set_material(m);
+        w.add_shape(Box::new(bumpy));
+
+        let from = Tuple::point(0.0, 2.0, -6.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let camera = Camera::new(400, 250, PI / 3.5)
+            .with_transform(view_transform(from, to, up))
+            .with_antialias(3);
+
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        image
+            .write_ppm("test_chap_17_putting_it_together.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
     }
 
     /// Bonus (texture mapping) - Putting it together: every projection on

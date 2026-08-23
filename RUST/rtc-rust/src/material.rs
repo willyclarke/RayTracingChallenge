@@ -4,9 +4,42 @@
 
 use crate::log::*;
 use crate::math::approx_eq;
+use crate::noise::Perlin;
 use crate::pattern::Pattern;
 use crate::tuple::Tuple;
 use std::fmt;
+
+/// Normal perturbation (book chapter 17): the object-space normal is tilted
+/// by Perlin noise sampled at the object-space point, giving a bumpy or
+/// rippled surface without changing the geometry.
+#[derive(Debug, Clone)]
+pub struct Bump {
+    pub noise: Perlin,
+    /// How far the normal is tilted, relative to its unit length.
+    pub amplitude: f64,
+    /// Spatial frequency of the bumps.
+    pub frequency: f64,
+}
+
+impl Bump {
+    pub fn new(amplitude: f64, frequency: f64) -> Self {
+        Self {
+            noise: Perlin::default(),
+            amplitude,
+            frequency,
+        }
+    }
+
+    pub fn with_seed(mut self, seed: u64) -> Self {
+        self.noise = Perlin::new(seed);
+        self
+    }
+
+    /// Tilt `normal` by the noise at `point`; the result is unit length.
+    pub fn perturb(&self, point: Tuple, normal: Tuple) -> Tuple {
+        (normal + self.noise.vector(point * self.frequency) * self.amplitude).normalize()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Material {
@@ -19,6 +52,7 @@ pub struct Material {
     pub transparency: f64,
     pub refractive_index: f64,
     pub pattern: Option<Box<dyn Pattern>>,
+    pub bump: Option<Bump>,
 }
 
 impl Material {
@@ -33,6 +67,7 @@ impl Material {
             transparency: 0.0,
             refractive_index: 1.0,
             pattern: None,
+            bump: None,
         }
     }
 
