@@ -621,8 +621,7 @@ impl World {
     fn intersect_node(&self, shape: &dyn Shape, ray: &Ray, xs: &mut Intersections) {
         record_node_visit();
         // transform the ray into THIS shape's object space
-        let ti = *shape.transform_inv();
-        let local_ray = Ray::new(ti * ray.origin, ti * ray.direction);
+        let local_ray = shape.transform_inv().transform_ray(ray);
 
         match shape.children() {
             Some(children) => {
@@ -700,8 +699,7 @@ impl World {
             }
             Some(children) => {
                 record_node_visit();
-                let ti = *shape.transform_inv();
-                let local_ray = Ray::new(ti * ray.origin, ti * ray.direction);
+                let local_ray = shape.transform_inv().transform_ray(ray);
                 if !shape.bounds().intersects(&local_ray) {
                     return false;
                 }
@@ -713,8 +711,7 @@ impl World {
             None => {
                 record_node_visit();
                 record_prim_test();
-                let ti = *shape.transform_inv();
-                let local_ray = Ray::new(ti * ray.origin, ti * ray.direction);
+                let local_ray = shape.transform_inv().transform_ray(ray);
                 shape.local_occludes(&local_ray, distance)
             }
         }

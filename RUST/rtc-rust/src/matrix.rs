@@ -3,6 +3,7 @@
 
 use crate::log::*;
 use crate::math::approx_eq;
+use crate::ray::Ray;
 use crate::tuple::Tuple;
 use std::fmt;
 
@@ -524,12 +525,45 @@ impl Mul<Tuple> for Matrix4 {
     type Output = Tuple;
 
     fn mul(self, rhs: Tuple) -> Tuple {
-        let a = self.data;
+        &self * rhs
+    }
+}
+
+/// By-reference variant so hot paths (ray transforms in the BVH walk) don't
+/// copy the 128-byte matrix for every multiply.
+impl Mul<Tuple> for &Matrix4 {
+    type Output = Tuple;
+
+    fn mul(self, rhs: Tuple) -> Tuple {
+        let a = &self.data;
         Tuple::new(
             a[0][0] * rhs.x + a[0][1] * rhs.y + a[0][2] * rhs.z + a[0][3] * rhs.w,
             a[1][0] * rhs.x + a[1][1] * rhs.y + a[1][2] * rhs.z + a[1][3] * rhs.w,
             a[2][0] * rhs.x + a[2][1] * rhs.y + a[2][2] * rhs.z + a[2][3] * rhs.w,
             a[3][0] * rhs.x + a[3][1] * rhs.y + a[3][2] * rhs.z + a[3][3] * rhs.w,
+        )
+    }
+}
+
+impl Matrix4 {
+    /// Transform a ray without the `w` work: an affine transform leaves the
+    /// bottom row as `0 0 0 1`, so a point picks up the translation column and
+    /// a vector ignores it.
+    pub fn transform_ray(&self, ray: &Ray) -> Ray {
+        let a = &self.data;
+        let o = ray.origin;
+        let d = ray.direction;
+        Ray::new(
+            Tuple::point(
+                a[0][0] * o.x + a[0][1] * o.y + a[0][2] * o.z + a[0][3],
+                a[1][0] * o.x + a[1][1] * o.y + a[1][2] * o.z + a[1][3],
+                a[2][0] * o.x + a[2][1] * o.y + a[2][2] * o.z + a[2][3],
+            ),
+            Tuple::vector(
+                a[0][0] * d.x + a[0][1] * d.y + a[0][2] * d.z,
+                a[1][0] * d.x + a[1][1] * d.y + a[1][2] * d.z,
+                a[2][0] * d.x + a[2][1] * d.y + a[2][2] * d.z,
+            ),
         )
     }
 }
