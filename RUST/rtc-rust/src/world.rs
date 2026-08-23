@@ -4797,6 +4797,106 @@ mod tests {
         Ok(())
     }
 
+    /// Bonus (texture mapping) - Putting it together: every projection on
+    /// its natural shape. A checkered sphere (spherical map), cylinder
+    /// (cylindrical map) and floor (planar map), plus an align-check cube
+    /// map on a cube so each face's orientation can be read off the render.
+    #[test]
+    fn test_bonus_texture_putting_it_together() -> Result<(), String> {
+        use crate::patterns::texturemap::{CubeMap, TextureMap, UvMap};
+        use crate::patterns::uvpattern::{UvAlignCheck, UvCheckers, UvPattern};
+        use std::f64::consts::PI;
+
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-10.0, 10.0, -10.0), WHITE));
+
+        let textured = |pattern: Box<dyn Pattern>| {
+            let mut m = Material::new();
+            m.pattern = Some(pattern);
+            m.ambient = 0.1;
+            m.specular = 0.4;
+            m.shininess = 10.0;
+            m
+        };
+
+        let mut floor = Plane::new();
+        floor.set_material(textured(Box::new(TextureMap::new(
+            Box::new(UvCheckers::new(2, 2, Tuple::color(0.3, 0.3, 0.3), WHITE)),
+            UvMap::Planar,
+        ))));
+        w.add_shape(Box::new(floor));
+
+        let mut sphere = Sphere::new();
+        sphere.set_transform(Matrix4::translation(-1.5, 1.0, 0.5));
+        sphere.set_material(textured(Box::new(TextureMap::new(
+            Box::new(UvCheckers::new(
+                16,
+                8,
+                Tuple::color(0.0, 0.5, 0.0),
+                Tuple::color(1.0, 1.0, 0.9),
+            )),
+            UvMap::Spherical,
+        ))));
+        w.add_shape(Box::new(sphere));
+
+        let mut cylinder = Cylinder::new();
+        cylinder.minimum = 0.0;
+        cylinder.maximum = 1.0;
+        cylinder.closed = true;
+        cylinder
+            .set_transform(Matrix4::translation(1.5, 0.0, 1.5) * Matrix4::scaling(0.7, 2.0, 0.7));
+        cylinder.set_material(textured(Box::new(TextureMap::new(
+            Box::new(UvCheckers::new(
+                16,
+                4,
+                Tuple::color(0.0, 0.3, 0.7),
+                Tuple::color(0.9, 0.9, 1.0),
+            )),
+            UvMap::Cylindrical,
+        ))));
+        w.add_shape(Box::new(cylinder));
+
+        let red = Tuple::color(1.0, 0.0, 0.0);
+        let yellow = Tuple::color(1.0, 1.0, 0.0);
+        let brown = Tuple::color(1.0, 0.5, 0.0);
+        let green = Tuple::color(0.0, 1.0, 0.0);
+        let cyan = Tuple::color(0.0, 1.0, 1.0);
+        let blue = Tuple::color(0.0, 0.0, 1.0);
+        let purple = Tuple::color(1.0, 0.0, 1.0);
+        let align = |main, ul, ur, bl, br| -> Box<dyn UvPattern> {
+            Box::new(UvAlignCheck::new(main, ul, ur, bl, br))
+        };
+        let mut cube = Cube::new();
+        cube.set_transform(
+            Matrix4::translation(0.3, 0.6, -1.2)
+                * Matrix4::rotation_y(PI / 5.0)
+                * Matrix4::rotation_x(-PI / 8.0)
+                * Matrix4::scaling(0.6, 0.6, 0.6),
+        );
+        cube.set_material(textured(Box::new(CubeMap::new(
+            align(yellow, cyan, red, blue, brown),
+            align(cyan, red, yellow, brown, green),
+            align(red, yellow, purple, green, WHITE),
+            align(green, purple, cyan, WHITE, blue),
+            align(brown, cyan, purple, red, yellow),
+            align(purple, brown, green, blue, WHITE),
+        ))));
+        w.add_shape(Box::new(cube));
+
+        let from = Tuple::point(0.0, 2.5, -6.0);
+        let to = Tuple::point(0.0, 0.8, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let camera = Camera::new(400, 300, PI / 3.0)
+            .with_transform(view_transform(from, to, up))
+            .with_antialias(3);
+
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        image
+            .write_ppm("test_bonus_texture_putting_it_together.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
     /// Chap 16 - The chapter-opener figure: the same cube/sphere pair
     /// combined three ways — union, intersection, difference — side by side.
     #[test]

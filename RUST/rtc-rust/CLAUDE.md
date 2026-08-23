@@ -32,7 +32,7 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`matrix`** — `Matrix2`, `Matrix3`, `Matrix4` as fixed `[[f64; N]; N]` arrays. `Matrix4` is the main type: `inverse()`, `transpose()`, `translation()`/`scaling()`/`rotation_{x,y,z}()`, identity, and `Mul<Tuple>` for transforming points/vectors.
 
-**`canvas`** — 2D pixel buffer (`Vec<Tuple>`). Writes binary PPM via `to_ppm()` / `write_ppm(path)`. Indexed by `canvas[(x, y)]`. PPM images are written to the working directory.
+**`canvas`** — 2D pixel buffer (`Vec<Tuple>`). Writes binary PPM via `to_ppm()` / `write_ppm(path)`; reads PPM via `from_ppm` (P3), `from_ppm_binary` (P6) and `read_ppm(path)`. Indexed by `canvas[(x, y)]`. PPM images are written to the working directory.
 
 **`math`** — `approx_eq(a, b)` and `EPSILON`, used throughout for float comparison.
 
@@ -40,7 +40,7 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`shape` / `shapes`** — `Shape` is the object-safe trait every primitive implements; shared state (id, transform, material) lives in `ShapeData`, exposed via `data()`/`data_mut()`. Each primitive implements `local_intersect` and `local_normal_at` in object space; the trait handles the world↔object transform. Primitives: `sphere`, `plane`, `cube`, `cylinder`, `cone`.
 
-**`pattern` / `patterns`** — `Pattern` trait for material surface patterns: `stripe`, `gradient`, `ring`, `checkers`, plus `nested`/`blended` combinators and a `test` pattern for unit tests.
+**`pattern` / `patterns`** — `Pattern` trait for material surface patterns: `stripe`, `gradient`, `ring`, `checkers`, plus `nested`/`blended` combinators and a `test` pattern for unit tests. Texture mapping (bonus chapter): `uvpattern` (`UvPattern` trait — `UvCheckers`, `UvAlignCheck`, `UvImage`) and `texturemap` (`TextureMap` with spherical/planar/cylindrical `UvMap`, `CubeMap` with one UV pattern per face).
 
 **`world`** — Holds the shapes and light. `intersect`, `is_shadowed` (allocation-free any-hit walk via `Shape::local_occludes`), `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel` and `view_transform`. Shapes get a world-assigned id via `add_shape`.
 
@@ -52,4 +52,4 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 ## Tests
 
-Tests live inline at the bottom of each module under `#[cfg(test)]`, named by book chapter (`test_chap_1_05`, `test_chap_13_9`, etc.) so a chapter's tests share a `test_chap_N` prefix. They return `Result<(), String>` (or `std::io::Result<()>` for I/O). `#[ignore]` marks the projectile trajectory demos and the Cornell box benchmarks. Bonus-chapter tests (soft shadows) use a `test_bonus_*` prefix. Some `*_putting_it_all_together` tests render a scene to a PPM. Public helpers additionally carry doctests (run with `cargo test --doc`).
+Tests live inline at the bottom of each module under `#[cfg(test)]`, named by book chapter (`test_chap_1_05`, `test_chap_13_9`, etc.) so a chapter's tests share a `test_chap_N` prefix. They return `Result<(), String>` (or `std::io::Result<()>` for I/O). `#[ignore]` marks the projectile trajectory demos and the Cornell box benchmarks. Bonus-chapter tests use a `test_bonus_*` prefix (`test_bonus_soft_shadows_N`, `test_bonus_texture_N`). Some `*_putting_it_all_together` tests render a scene to a PPM. Public helpers additionally carry doctests (run with `cargo test --doc`).

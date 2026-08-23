@@ -127,6 +127,121 @@ impl Canvas {
     pub fn write_ppm<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
         std::fs::write(path, self.to_ppm())
     }
+
+    /// Parse an ASCII PPM (`P3`). Comments (`#` to end of line) are
+    /// ignored anywhere; RGB triples may span lines; samples are scaled by
+    /// the header's maximum value.
+    ///
+    /// # Examples
+    /// ```
+    /// use rtc_rust::canvas::Canvas;
+    /// use rtc_rust::tuple::Tuple;
+    /// let c = Canvas::from_ppm("P3\n1 1\n255\n51 153 204\n").unwrap();
+    /// assert!(c.pixel_at(0, 0).approx_eq(Tuple::color(0.2, 0.6, 0.8)));
+    /// ```
+    pub fn from_ppm(ppm: &str) -> Result<Self, String> {
+        let mut tokens = ppm
+            .lines()
+            .map(|line| line.split('#').next().unwrap_or(""))
+            .flat_map(|line| line.split_whitespace())
+            .map(str::to_string);
+
+        let mut next = |what: &str| {
+            tokens
+                .next()
+                .ok_or_else(|| format!("PPM: unexpected end of data reading {what}"))
+        };
+        let magic = next("magic number")?;
+        if magic != "P3" {
+            return Err(format!("PPM: expected magic number P3, got {magic}"));
+        }
+        let parse = |s: String, what: &str| {
+            s.parse::<f64>()
+                .map_err(|e| format!("PPM: bad {what} '{s}': {e}"))
+        };
+        let width = parse(next("width")?, "width")? as usize;
+        let height = parse(next("height")?, "height")? as usize;
+        let scale = parse(next("scale")?, "scale")?;
+
+        let mut canvas = Canvas::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let r = parse(next("red sample")?, "sample")? / scale;
+                let g = parse(next("green sample")?, "sample")? / scale;
+                let b = parse(next("blue sample")?, "sample")? / scale;
+                canvas.write_pixel(x, y, Tuple::color(r, g, b));
+            }
+        }
+        Ok(canvas)
+    }
+
+    /// Parse a binary PPM (`P6`, 8-bit samples) — the format `to_ppm`
+    /// writes, so a render can be used as a texture.
+    pub fn from_ppm_binary(data: &[u8]) -> Result<Self, String> {
+        // Header: magic, width, height, maxval as whitespace-separated
+        // tokens (comments allowed), then a single whitespace byte, then
+        // width*height*3 raw samples.
+        let mut pos = 0;
+        let mut header: Vec<String> = Vec::new();
+        while header.len() < 4 {
+            while pos < data.len() && data[pos].is_ascii_whitespace() {
+                pos += 1;
+            }
+            if pos < data.len() && data[pos] == b'#' {
+                while pos < data.len() && data[pos] != b'\n' {
+                    pos += 1;
+                }
+                continue;
+            }
+            let start = pos;
+            while pos < data.len() && !data[pos].is_ascii_whitespace() {
+                pos += 1;
+            }
+            if start == pos {
+                return Err("PPM: unexpected end of header".into());
+            }
+            header.push(String::from_utf8_lossy(&data[start..pos]).into_owned());
+        }
+        pos += 1; // the single whitespace byte after maxval
+
+        if header[0] != "P6" {
+            return Err(format!("PPM: expected magic number P6, got {}", header[0]));
+        }
+        let dim = |s: &str| {
+            s.parse::<usize>()
+                .map_err(|e| format!("PPM: bad '{s}': {e}"))
+        };
+        let (width, height, maxval) = (dim(&header[1])?, dim(&header[2])?, dim(&header[3])?);
+        if maxval > 255 {
+            return Err("PPM: only 8-bit P6 is supported".into());
+        }
+        let samples = &data[pos..];
+        if samples.len() < width * height * 3 {
+            return Err("PPM: not enough pixel data".into());
+        }
+
+        let scale = maxval as f64;
+        let mut canvas = Canvas::new(width, height);
+        for (i, px) in samples.chunks_exact(3).take(width * height).enumerate() {
+            let color = Tuple::color(
+                px[0] as f64 / scale,
+                px[1] as f64 / scale,
+                px[2] as f64 / scale,
+            );
+            canvas.write_pixel(i % width, i / width, color);
+        }
+        Ok(canvas)
+    }
+
+    /// Read a PPM file, dispatching on its magic number (`P3` or `P6`).
+    pub fn read_ppm<P: AsRef<Path>>(path: P) -> Result<Self, String> {
+        let data = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.as_ref().display()))?;
+        if data.starts_with(b"P6") {
+            Self::from_ppm_binary(&data)
+        } else {
+            Self::from_ppm(&String::from_utf8_lossy(&data))
+        }
+    }
 }
 
 use std::ops::{Index, IndexMut};
@@ -433,5 +548,129 @@ mod tests {
 
         c.write_ppm("image_6_18.ppm")?;
         Ok(())
+    }
+
+    /// Bonus (texture mapping) - Reading a file with the wrong magic number
+    #[test]
+    fn test_bonus_texture_18() -> Result<(), String> {
+        let ppm = "P32\n1 1\n255\n0 0 0\n";
+        match Canvas::from_ppm(ppm) {
+            Err(_) => Ok(()),
+            Ok(_) => Err("Reading a file with the wrong magic number should fail".into()),
+        }
+    }
+
+    /// Bonus (texture mapping) - Reading a PPM returns a canvas of the right size
+    #[test]
+    fn test_bonus_texture_19() -> Result<(), String> {
+        let ppm = "P3\n10 2\n255\n\
+            0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0\n\
+            0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0  0 0 0\n";
+        let c = Canvas::from_ppm(ppm)?;
+        if c.width() == 10 && c.height() == 2 {
+            Ok(())
+        } else {
+            Err("Reading a PPM returns a canvas of the right size".into())
+        }
+    }
+
+    /// Bonus (texture mapping) - Reading pixel data from a PPM file
+    #[test]
+    fn test_bonus_texture_21() -> Result<(), String> {
+        let ppm = "P3\n4 3\n255\n\
+            255 127 0  0 127 255  127 255 0  255 255 255\n\
+            0 0 0  255 0 0  0 255 0  0 0 255\n\
+            255 255 0  0 255 255  255 0 255  127 127 127\n";
+        let c = Canvas::from_ppm(ppm)?;
+        let g = 127.0 / 255.0;
+        let cases = [
+            (0, 0, Tuple::color(1.0, g, 0.0)),
+            (1, 0, Tuple::color(0.0, g, 1.0)),
+            (2, 0, Tuple::color(g, 1.0, 0.0)),
+            (3, 0, Tuple::color(1.0, 1.0, 1.0)),
+            (0, 1, Tuple::color(0.0, 0.0, 0.0)),
+            (1, 1, Tuple::color(1.0, 0.0, 0.0)),
+            (2, 1, Tuple::color(0.0, 1.0, 0.0)),
+            (3, 1, Tuple::color(0.0, 0.0, 1.0)),
+            (0, 2, Tuple::color(1.0, 1.0, 0.0)),
+            (1, 2, Tuple::color(0.0, 1.0, 1.0)),
+            (2, 2, Tuple::color(1.0, 0.0, 1.0)),
+            (3, 2, Tuple::color(g, g, g)),
+        ];
+        for (x, y, expected) in cases {
+            if !c.pixel_at(x, y).approx_eq(expected) {
+                loge!(
+                    "test_bonus_texture_21",
+                    "({x},{y}) got:{}",
+                    c.pixel_at(x, y)
+                );
+                return Err("Reading pixel data from a PPM file".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Bonus (texture mapping) - PPM parsing ignores comment lines
+    #[test]
+    fn test_bonus_texture_22() -> Result<(), String> {
+        let ppm = "P3\n# this is a comment\n2 1\n# this, too\n255\n# another comment\n\
+            255 255 255\n# oh, no, comments in the pixel data!\n255 0 255\n";
+        let c = Canvas::from_ppm(ppm)?;
+        let chk = c.pixel_at(0, 0).approx_eq(Tuple::color(1.0, 1.0, 1.0))
+            && c.pixel_at(1, 0).approx_eq(Tuple::color(1.0, 0.0, 1.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("PPM parsing ignores comment lines".into())
+        }
+    }
+
+    /// Bonus (texture mapping) - PPM parsing allows an RGB triple to span lines
+    #[test]
+    fn test_bonus_texture_23() -> Result<(), String> {
+        let ppm = "P3\n1 1\n255\n51\n153\n\n204\n";
+        let c = Canvas::from_ppm(ppm)?;
+        if c.pixel_at(0, 0).approx_eq(Tuple::color(0.2, 0.6, 0.8)) {
+            Ok(())
+        } else {
+            Err("PPM parsing allows an RGB triple to span lines".into())
+        }
+    }
+
+    /// Bonus (texture mapping) - PPM parsing respects the scale setting
+    #[test]
+    fn test_bonus_texture_24() -> Result<(), String> {
+        let ppm = "P3\n2 2\n100\n100 100 100  50 50 50\n75 50 25  0 0 0\n";
+        let c = Canvas::from_ppm(ppm)?;
+        if c.pixel_at(0, 1).approx_eq(Tuple::color(0.75, 0.5, 0.25)) {
+            Ok(())
+        } else {
+            Err("PPM parsing respects the scale setting".into())
+        }
+    }
+
+    /// Binary PPM (P6) round trip: what `to_ppm` writes, `from_ppm_binary`
+    /// reads back (to 8-bit precision)
+    #[test]
+    fn test_bonus_texture_25() -> Result<(), String> {
+        let mut c = Canvas::new(3, 2);
+        c.write_pixel(0, 0, Tuple::color(1.0, 0.5, 0.0));
+        c.write_pixel(2, 1, Tuple::color(0.2, 0.6, 0.8));
+        let back = Canvas::from_ppm_binary(&c.to_ppm())?;
+        let close = |a: Tuple, b: Tuple| {
+            (a.x - b.x).abs() < 1.0 / 255.0
+                && (a.y - b.y).abs() < 1.0 / 255.0
+                && (a.z - b.z).abs() < 1.0 / 255.0
+        };
+        let chk = back.width() == 3
+            && back.height() == 2
+            && close(back.pixel_at(0, 0), c.pixel_at(0, 0))
+            && close(back.pixel_at(2, 1), c.pixel_at(2, 1))
+            && close(back.pixel_at(1, 0), Tuple::color(0.0, 0.0, 0.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("Binary PPM round trip".into())
+        }
     }
 }
