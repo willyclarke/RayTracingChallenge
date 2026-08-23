@@ -12,17 +12,40 @@ use std::fmt;
 pub struct Ray {
     pub origin: Tuple,
     pub direction: Tuple,
+    /// Moment within the shutter interval `[0, 1]` this ray samples (motion
+    /// blur, book chapter 17). `0` unless set with `with_time`.
+    pub time: f64,
 }
 
 impl Ray {
     pub fn new(origin: Tuple, direction: Tuple) -> Self {
-        Self { origin, direction }
+        Self {
+            origin,
+            direction,
+            time: 0.0,
+        }
+    }
+
+    pub fn with_time(mut self, time: f64) -> Self {
+        self.time = time;
+        self
     }
 
     pub fn transform(&self, m: Matrix4) -> Self {
         Self {
             origin: m * self.origin,
             direction: m * self.direction,
+            time: self.time,
+        }
+    }
+
+    /// The same ray shifted by `-offset`: how a ray looks to a shape that has
+    /// moved by `offset`.
+    pub fn shifted(&self, offset: Tuple) -> Self {
+        Self {
+            origin: self.origin - offset,
+            direction: self.direction,
+            time: self.time,
         }
     }
 
@@ -127,6 +150,25 @@ mod tests {
             Ok(())
         } else {
             Err("Scaling a ray".into())
+        }
+    }
+
+    /// Chap 17 - A ray's time defaults to 0 and is kept by transforms
+    #[test]
+    fn test_chap_17_18() -> Result<(), String> {
+        let r = Ray::new(Tuple::point(1.0, 2.0, 3.0), Tuple::vector(0.0, 1.0, 0.0));
+        let moved = r
+            .with_time(0.75)
+            .transform(Matrix4::translation(3.0, 4.0, 5.0));
+        let shifted = moved.shifted(Tuple::vector(1.0, 0.0, 0.0));
+        let chk = r.time == 0.0
+            && moved.time == 0.75
+            && shifted.time == 0.75
+            && shifted.origin.approx_eq(Tuple::point(3.0, 6.0, 8.0));
+        if chk {
+            Ok(())
+        } else {
+            Err("A ray's time defaults to 0 and is kept by transforms".into())
         }
     }
 }

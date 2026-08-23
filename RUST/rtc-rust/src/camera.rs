@@ -42,6 +42,9 @@ pub struct Camera {
     pub focal_distance: f64,
     /// Lens samples per pixel when `aperture > 0`.
     pub dof_samples: usize,
+    /// Motion blur: rays per pixel spread over the shutter interval.
+    /// `1` = shutter closed instantly at time 0 (the default).
+    pub motion_samples: usize,
 }
 
 impl Camera {
@@ -73,7 +76,20 @@ impl Camera {
             aperture: 0.0,
             focal_distance: 1.0,
             dof_samples: 1,
+            motion_samples: 1,
         }
+    }
+
+    /// Enable motion blur: average `samples` rays per pixel at jittered
+    /// times across the shutter interval `[0, 1]`.
+    pub fn with_motion_blur(mut self, samples: usize) -> Self {
+        self.motion_samples = samples.max(1);
+        self
+    }
+
+    /// Does this camera need several rays per pixel (focal or motion blur)?
+    pub fn is_distributed(&self) -> bool {
+        self.aperture > 0.0 || self.motion_samples > 1
     }
 
     /// Enable focal blur: a lens of radius `aperture`, sharp at
@@ -134,10 +150,11 @@ impl Camera {
     }
 
     /// Deterministic per-pixel sample `i` of `n`: a stratified point in the
-    /// unit disk (lens) plus a jittered sub-pixel offset. Hashing the pixel
-    /// coordinates decorrelates neighbours so the blur is noise, not ghosts.
-    pub fn lens_sample(px: usize, py: usize, i: usize, n: usize) -> (f64, f64, f64, f64) {
-        let h = |k: u64| -> f64 {
+    /// unit disk (lens), a jittered sub-pixel offset, and a stratified
+    /// shutter time. Hashing the pixel coordinates decorrelates neighbours
+    /// so the blur is noise, not ghosts.
+    pub fn lens_sample(px: usize, py: usize, i: usize, n: usize) -> (f64, f64, f64, f64, f64) {
+        let hash = |i: usize, k: u64| -> f64 {
             // small integer hash -> [0, 1)
             let mut x = (px as u64).wrapping_mul(0x9E37_79B9)
                 ^ (py as u64).wrapping_mul(0x85EB_CA6B)
@@ -150,10 +167,28 @@ impl Camera {
             x ^= x >> 15;
             (x & 0xFF_FFFF) as f64 / 16_777_216.0
         };
+        // per-sample jitter, and per-pixel (sample-independent) permutation
+        let h = |k: u64| hash(i, k);
+        let hp = |k: u64| hash(usize::MAX, k);
         // stratify the radius over the samples; random angle
         let r = ((i as f64 + h(1)) / n as f64).sqrt();
         let theta = 2.0 * std::f64::consts::PI * h(2);
-        (r * theta.cos(), r * theta.sin(), h(3), h(4))
+        // stratify time too, visiting the strata in a per-pixel permuted
+        // order (stride coprime to n) so time isn't correlated with radius
+        let stride = {
+            let gcd = |mut a: usize, mut b: usize| {
+                while b != 0 {
+                    (a, b) = (b, a % b);
+                }
+                a
+            };
+            let want = 1 + (hp(5) * n as f64) as usize;
+            (want..want + n).find(|&k| gcd(k, n) == 1).unwrap_or(1)
+        };
+        let offset = (hp(7) * n as f64) as usize;
+        let slot = (i * stride + offset) % n;
+        let time = (slot as f64 + h(6)) / n as f64;
+        (r * theta.cos(), r * theta.sin(), h(3), h(4), time)
     }
 
     pub fn transform(&self) -> Matrix4 {
@@ -395,11 +430,12 @@ mod tests {
     fn test_chap_17_13() -> Result<(), String> {
         let mut distinct = false;
         for i in 0..16 {
-            let (lx, ly, dx, dy) = Camera::lens_sample(3, 7, i, 16);
-            let (mx, my, _, _) = Camera::lens_sample(4, 7, i, 16);
+            let (lx, ly, dx, dy, time) = Camera::lens_sample(3, 7, i, 16);
+            let (mx, my, _, _, _) = Camera::lens_sample(4, 7, i, 16);
             if lx * lx + ly * ly > 1.0 + 1e-12
                 || !(0.0..1.0).contains(&dx)
                 || !(0.0..1.0).contains(&dy)
+                || !(0.0..1.0).contains(&time)
             {
                 return Err("Lens sample outside the unit disk / pixel".into());
             }
@@ -411,6 +447,24 @@ mod tests {
             Ok(())
         } else {
             Err("Neighbouring pixels must get different lens samples".into())
+        }
+    }
+
+    /// Chap 17 - Shutter times are stratified: with n samples, every 1/n
+    /// slice of the shutter interval gets exactly one sample
+    #[test]
+    fn test_chap_17_17() -> Result<(), String> {
+        let n = 8;
+        let mut slots = [0usize; 8];
+        for i in 0..n {
+            let (_, _, _, _, time) = Camera::lens_sample(11, 5, i, n);
+            slots[(time * n as f64) as usize] += 1;
+        }
+        if slots.iter().all(|&c| c == 1) {
+            Ok(())
+        } else {
+            loge!("test_chap_17_17", "slots:{:?}", slots);
+            Err("Shutter times must be stratified".into())
         }
     }
 }

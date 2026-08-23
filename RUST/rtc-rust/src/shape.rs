@@ -19,6 +19,9 @@ pub struct ShapeData {
     pub transform_inv: Matrix4,
     pub material: Material,
     pub parent: Option<usize>, // None = root; Some(id) = enclosing group
+    /// Displacement over the shutter interval, in the parent's space
+    /// (motion blur). `None` = stationary.
+    pub motion: Option<Tuple>,
 }
 
 impl ShapeData {
@@ -36,6 +39,7 @@ impl ShapeData {
             transform_inv: Matrix4::identity(),
             material: Material::new(),
             parent: None,
+            motion: None,
         }
     }
 
@@ -127,6 +131,19 @@ pub trait Shape: Send + Sync {
 
     fn transform_inv(&self) -> &Matrix4 {
         &self.data().transform_inv
+    }
+
+    /// Where this shape has moved to at `time` in `[0, 1]`.
+    fn motion_offset(&self, time: f64) -> Tuple {
+        match self.data().motion {
+            Some(v) => v * time,
+            None => Tuple::vector(0.0, 0.0, 0.0),
+        }
+    }
+
+    /// Make the shape move by `velocity` over the shutter interval.
+    fn set_motion(&mut self, velocity: Tuple) {
+        self.data_mut().motion = Some(velocity);
     }
 
     fn set_transform(&mut self, m: Matrix4) {

@@ -80,6 +80,8 @@ pub struct Computations<'a> {
     pub inside: bool,
     pub n1: f64,
     pub n2: f64,
+    /// Shutter time of the ray that produced this hit; secondary rays inherit it.
+    pub time: f64,
 }
 
 /// Encapsulating some precomputed information relating to the intersection.
@@ -122,6 +124,7 @@ pub fn prepare_computations_upto_chap10<'a>(
         inside,
         n1: 1.0,
         n2: 1.0,
+        time: ray.time,
     }
 }
 
@@ -160,7 +163,7 @@ fn shape_by_id(shapes: &[Box<dyn Shape>], id: usize) -> &dyn Shape {
 }
 
 pub fn normal_at(shapes: &[Box<dyn Shape>], shape_id: usize, world_point: Tuple) -> Tuple {
-    let object_point = world_to_object(shapes, shape_id, world_point);
+    let object_point = world_to_object(shapes, shape_id, world_point, 0.0);
     let object_normal = shape_by_id(shapes, shape_id).local_normal_at_no_hit(object_point);
     normal_to_world(shapes, shape_id, object_normal)
 }
@@ -182,14 +185,14 @@ pub fn normal_to_world(shapes: &[Box<dyn Shape>], shape_id: usize, normal: Tuple
     }
 }
 
-fn world_to_object(shapes: &[Box<dyn Shape>], id: usize, point: Tuple) -> Tuple {
+fn world_to_object(shapes: &[Box<dyn Shape>], id: usize, point: Tuple, time: f64) -> Tuple {
     let shape = shape_by_id(shapes, id);
 
     let point = match shape.data().parent {
-        Some(parent_id) => world_to_object(shapes, parent_id, point),
+        Some(parent_id) => world_to_object(shapes, parent_id, point, time),
         None => point,
     };
-    *shape.transform_inv() * point
+    *shape.transform_inv() * (point - shape.motion_offset(time))
 }
 
 pub fn prepare_computations<'a>(
@@ -206,7 +209,7 @@ pub fn prepare_computations<'a>(
     let point = ray.position(t);
     let eyev = -ray.direction;
     // group-aware: walks the parent chain (world_to_object -> local_normal_at -> normal_to_world)
-    let object_point = world_to_object(shapes, intersection.object_id, point);
+    let object_point = world_to_object(shapes, intersection.object_id, point, ray.time);
     let mut object_normal = shape.local_normal_at(object_point, intersection);
     if let Some(bump) = &shape.material().bump {
         object_normal = bump.perturb(object_point, object_normal);
@@ -227,7 +230,7 @@ pub fn prepare_computations<'a>(
     // the raw hit: on a plane the raw y is ±1e-16, so floor()-based patterns
     // (checkers) flip between 0 and -1 and speckle. over_point sits a
     // consistent EPSILON above the surface.
-    let object_point = world_to_object(shapes, intersection.object_id, over_point);
+    let object_point = world_to_object(shapes, intersection.object_id, over_point, ray.time);
 
     let hit = &intersection;
     let mut n1 = 1.0;
@@ -276,6 +279,7 @@ pub fn prepare_computations<'a>(
         inside,
         n1,
         n2,
+        time: ray.time,
     }
 }
 
@@ -624,7 +628,9 @@ impl World {
     fn intersect_node(&self, shape: &dyn Shape, ray: &Ray, xs: &mut Intersections) {
         record_node_visit();
         // transform the ray into THIS shape's object space
-        let local_ray = shape.transform_inv().transform_ray(ray);
+        let local_ray = shape
+            .transform_inv()
+            .transform_ray(&ray.shifted(shape.motion_offset(ray.time)));
 
         match shape.children() {
             Some(children) => {
@@ -677,10 +683,16 @@ impl World {
     /// Any-hit query: stops at the first occluder instead of collecting and
     /// sorting every intersection like `intersect` does.
     pub fn is_shadowed(&self, light_position: Tuple, point: Tuple) -> bool {
+        self.is_shadowed_at(light_position, point, 0.0)
+    }
+
+    /// `is_shadowed` at shutter time `time`, so moving occluders cast
+    /// moving shadows.
+    pub fn is_shadowed_at(&self, light_position: Tuple, point: Tuple, time: f64) -> bool {
         let v = light_position - point;
         let distance = Tuple::magnitude(v);
         let direction = Tuple::normalize(v);
-        let r = Ray::new(point, direction);
+        let r = Ray::new(point, direction).with_time(time);
         self.shapes
             .iter()
             .filter(|shape| shape.data().parent.is_none())
@@ -702,7 +714,9 @@ impl World {
             }
             Some(children) => {
                 record_node_visit();
-                let local_ray = shape.transform_inv().transform_ray(ray);
+                let local_ray = shape
+                    .transform_inv()
+                    .transform_ray(&ray.shifted(shape.motion_offset(ray.time)));
                 if !shape.bounds().intersects(&local_ray) {
                     return false;
                 }
@@ -714,7 +728,9 @@ impl World {
             None => {
                 record_node_visit();
                 record_prim_test();
-                let local_ray = shape.transform_inv().transform_ray(ray);
+                let local_ray = shape
+                    .transform_inv()
+                    .transform_ray(&ray.shifted(shape.motion_offset(ray.time)));
                 shape.local_occludes(&local_ray, distance)
             }
         }
@@ -731,7 +747,7 @@ impl World {
     pub fn shade_hit(&self, comps: &Computations, remaining: i32) -> Tuple {
         match &self.light {
             Some(light) => {
-                let intensity = light.intensity_at(comps.over_point, self);
+                let intensity = light.intensity_at_time(comps.over_point, self, comps.time);
                 let surface = light.lighting(
                     comps.object,
                     comps.over_point,
@@ -777,7 +793,7 @@ impl World {
             return tuple::colors::BLACK;
         }
 
-        let reflect_ray = Ray::new(comps.over_point, comps.reflectv);
+        let reflect_ray = Ray::new(comps.over_point, comps.reflectv).with_time(comps.time);
         let color = self.color_at(&reflect_ray, remaining - 1);
         color * comps.object.material().reflective
     }
@@ -814,7 +830,7 @@ impl World {
         let direction = comps.normalv * (n_ratio * cos_i - cos_t) - comps.eyev * n_ratio;
 
         // Create the refracted ray
-        let refracted_ray = Ray::new(comps.under_point, direction);
+        let refracted_ray = Ray::new(comps.under_point, direction).with_time(comps.time);
 
         // Find the color of the refracted ray, making sure to multiply
         // by the transparency value to account for any opacity
@@ -829,16 +845,16 @@ impl World {
         pixels.par_iter_mut().enumerate().for_each(|(i, pixel)| {
             let x = i % width;
             let y = i / width;
-            *pixel = if camera.aperture > 0.0 {
-                self.focal_blur(&camera, x, y)
+            *pixel = if camera.is_distributed() {
+                self.distributed(&camera, x, y)
             } else {
                 self.color_at(&camera.ray_for_pixel(x, y), 10)
             };
         });
 
-        // Focal blur already jitters every pixel; edge-detected AA on top
-        // would only re-sample noise.
-        if camera.aa_samples > 1 && camera.aperture == 0.0 {
+        // Focal/motion blur already jitter every pixel; edge-detected AA on
+        // top would only re-sample noise.
+        if camera.aa_samples > 1 && !camera.is_distributed() {
             // Edge-detected supersampling: only pixels that differ from a
             // neighbour get the full sub-pixel grid, so flat areas cost one
             // ray and edges cost n*n.
@@ -876,13 +892,21 @@ impl World {
             || (y + 1 < height && differs(i + width))
     }
 
-    /// Average over the camera's lens samples for pixel `(x, y)`.
-    pub fn focal_blur(&self, camera: &Camera, x: usize, y: usize) -> Tuple {
-        let n = camera.dof_samples;
+    /// Distributed ray tracing for pixel `(x, y)`: average over the camera's
+    /// lens positions (focal blur) and shutter times (motion blur).
+    pub fn distributed(&self, camera: &Camera, x: usize, y: usize) -> Tuple {
+        let n = camera.dof_samples.max(camera.motion_samples);
         let mut sum = Tuple::color(0.0, 0.0, 0.0);
         for i in 0..n {
-            let (lx, ly, dx, dy) = Camera::lens_sample(x, y, i, n);
-            sum = sum + self.color_at(&camera.ray_for_lens(x, y, dx, dy, lx, ly), 10);
+            let (lx, ly, dx, dy, time) = Camera::lens_sample(x, y, i, n);
+            let (lx, ly) = if camera.aperture > 0.0 {
+                (lx, ly)
+            } else {
+                (0.0, 0.0)
+            };
+            let time = if camera.motion_samples > 1 { time } else { 0.0 };
+            let ray = camera.ray_for_lens(x, y, dx, dy, lx, ly).with_time(time);
+            sum = sum + self.color_at(&ray, 10);
         }
         sum / n as f64
     }
@@ -3796,7 +3820,7 @@ mod tests {
         s.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
         let s_id = w.add_child(g2_id, Box::new(s));
 
-        let p = world_to_object(&w.shapes, s_id, Tuple::point(-2.0, 0.0, -10.0));
+        let p = world_to_object(&w.shapes, s_id, Tuple::point(-2.0, 0.0, -10.0), 0.0);
         let chk = p.approx_eq(Tuple::point(0.0, 0.0, -1.0));
 
         if chk {
@@ -5000,6 +5024,160 @@ mod tests {
         let image = w.render_parallel(camera);
         image
             .write_ppm("test_chap_17_spotlight_putting_it_together.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
+    /// Chap 17 - A moving shape is intersected where it is at the ray's time,
+    /// and its shadow moves with it
+    #[test]
+    fn test_chap_17_19() -> Result<(), String> {
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(0.0, 10.0, 0.0), WHITE));
+        let mut s = Sphere::new();
+        s.set_motion(Tuple::vector(4.0, 0.0, 0.0)); // at time 1 it's centred on x = 4
+        w.add_shape(Box::new(s));
+
+        let down_at = |x: f64, time: f64| {
+            Ray::new(Tuple::point(x, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0)).with_time(time)
+        };
+        let hit_origin_t0 = w.intersect(&down_at(0.0, 0.0)).hit().is_some();
+        let hit_origin_t1 = w.intersect(&down_at(0.0, 1.0)).hit().is_some();
+        let hit_moved_t1 = w.intersect(&down_at(4.0, 1.0)).hit().is_some();
+        let hit_half_t05 = w.intersect(&down_at(2.0, 0.5)).hit().is_some();
+        if !(hit_origin_t0 && !hit_origin_t1 && hit_moved_t1 && hit_half_t05) {
+            loge!(
+                "test_chap_17_19",
+                "t0@0:{hit_origin_t0} t1@0:{hit_origin_t1} t1@4:{hit_moved_t1} t0.5@2:{hit_half_t05}"
+            );
+            return Err("Moving shape must be where the ray's time says".into());
+        }
+
+        // Shadows follow: the point under the sphere's start is shadowed at
+        // time 0 and lit at time 1, and vice versa for its end position.
+        let light = Tuple::point(0.0, 10.0, 0.0);
+        let under_start = Tuple::point(0.0, -2.0, 0.0);
+        let under_end = Tuple::point(4.0, -2.0, 0.0);
+        let chk = w.is_shadowed_at(light, under_start, 0.0)
+            && !w.is_shadowed_at(light, under_start, 1.0)
+            && !w.is_shadowed_at(light, under_end, 0.0);
+        if chk {
+            Ok(())
+        } else {
+            Err("A moving shape's shadow must move with it".into())
+        }
+    }
+
+    /// Chap 17 - With motion blur on, a moving flat-shaded sphere smears:
+    /// pixels it only covers part of the time become a blend, while a
+    /// stationary sphere in the same scene is unchanged
+    #[test]
+    fn test_chap_17_20() -> Result<(), String> {
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-10.0, 10.0, -10.0), WHITE));
+        let flat = |r: f64, g: f64, b: f64| {
+            let mut m = Material::new();
+            m.color = Tuple::color(r, g, b);
+            m.ambient = 1.0;
+            m.diffuse = 0.0;
+            m.specular = 0.0;
+            m
+        };
+        let mut moving = Sphere::new();
+        moving.set_transform(Matrix4::translation(-2.0, 1.2, 0.0));
+        moving.set_motion(Tuple::vector(1.5, 0.0, 0.0));
+        moving.set_material(flat(0.8, 0.2, 0.2));
+        w.add_shape(Box::new(moving));
+        let mut still = Sphere::new();
+        still.set_transform(Matrix4::translation(0.0, -1.2, 0.0));
+        still.set_material(flat(0.2, 0.8, 0.2));
+        w.add_shape(Box::new(still));
+
+        let from = Tuple::point(0.0, 0.0, -7.0);
+        let to = Tuple::point(0.0, 0.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let cam = Camera::new(81, 61, std::f64::consts::PI / 3.0)
+            .with_transform(view_transform(from, to, up));
+        let sharp = w.render_parallel(cam);
+        let blurred = w.render_parallel(cam.with_motion_blur(16));
+
+        // The still sphere: every interior pixel identical (flat shading,
+        // no motion; its silhouette pixels are anti-aliased by the jitter).
+        let green = Tuple::color(0.2, 0.8, 0.2);
+        for y in 1..60 {
+            for x in 1..80 {
+                let interior = [(x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                    .iter()
+                    .all(|&p| sharp[p].approx_eq(green));
+                if interior && !blurred[(x, y)].approx_eq(green) {
+                    loge!("test_chap_17_20", "still sphere changed at ({x},{y})");
+                    return Err("Stationary shape must be unaffected by motion blur".into());
+                }
+            }
+        }
+        // The moving sphere: on its row, the pixel just right of its time-0
+        // silhouette is background when sharp and a red blend when blurred.
+        let red = Tuple::color(0.8, 0.2, 0.2);
+        let row = 61 / 2 - 8;
+        let right_edge = (0..81)
+            .rev()
+            .find(|&x| sharp[(x, row)].approx_eq(red))
+            .ok_or("moving sphere not found")?;
+        let px = blurred[(right_edge + 3, row)];
+        if px.x > 0.0 && px.x < 0.8 {
+            Ok(())
+        } else {
+            loge!("test_chap_17_20", "trail pixel {}", px);
+            Err("Moving shape must smear into a blend".into())
+        }
+    }
+
+    /// Chap 17 - Putting it together, motion blur: a ball bouncing across
+    /// the frame, the shutter open while it moves.
+    #[test]
+    fn test_chap_17_motion_blur_putting_it_together() -> Result<(), String> {
+        use std::f64::consts::PI;
+
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-8.0, 10.0, -10.0), WHITE));
+
+        let mut floor = Plane::new();
+        let mut m = Material::new();
+        m.pattern = Some(Box::new(CheckersPattern::new(
+            Tuple::color(0.35, 0.35, 0.35),
+            Tuple::color(0.7, 0.7, 0.7),
+        )));
+        m.specular = 0.0;
+        floor.set_material(m);
+        w.add_shape(Box::new(floor));
+
+        let mut still = Sphere::new();
+        still.set_transform(Matrix4::translation(-2.2, 1.0, 1.5));
+        let mut m = Material::new();
+        m.color = Tuple::color(0.2, 0.4, 0.9);
+        m.specular = 0.6;
+        still.set_material(m);
+        w.add_shape(Box::new(still));
+
+        let mut ball = Sphere::new();
+        ball.set_transform(Matrix4::translation(-0.5, 1.0, 0.0) * Matrix4::scaling(0.7, 0.7, 0.7));
+        ball.set_motion(Tuple::vector(1.2, 0.25, 0.0));
+        let mut m = Material::new();
+        m.color = Tuple::color(0.9, 0.3, 0.2);
+        m.specular = 0.6;
+        ball.set_material(m);
+        w.add_shape(Box::new(ball));
+
+        let from = Tuple::point(0.0, 2.0, -6.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let camera = Camera::new(400, 250, PI / 3.5)
+            .with_transform(view_transform(from, to, up))
+            .with_motion_blur(32);
+
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        image
+            .write_ppm("test_chap_17_motion_blur_putting_it_together.ppm")
             .map_err(|e| format!("failed to write PPM: {e}"))
     }
 

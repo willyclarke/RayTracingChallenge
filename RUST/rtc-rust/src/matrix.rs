@@ -565,6 +565,7 @@ impl Matrix4 {
                 a[2][0] * d.x + a[2][1] * d.y + a[2][2] * d.z,
             ),
         )
+        .with_time(ray.time)
     }
 }
 

@@ -223,6 +223,11 @@ impl Light {
     /// The sample positions are the same as a full pass, so a 2x2 light is
     /// unaffected.
     pub fn intensity_at(&self, point: Tuple, world: &World) -> f64 {
+        self.intensity_at_time(point, world, 0.0)
+    }
+
+    /// `intensity_at` at shutter time `time` (motion blur).
+    pub fn intensity_at_time(&self, point: Tuple, world: &World, time: f64) -> f64 {
         let spot = match &self.spot {
             Some(spot) => spot.factor(point - self.position),
             None => 1.0,
@@ -230,13 +235,13 @@ impl Light {
         if spot <= 0.0 {
             return 0.0; // outside the cone: no shadow rays needed
         }
-        spot * self.shadow_fraction(point, world)
+        spot * self.shadow_fraction(point, world, time)
     }
 
     /// Fraction of the light's sample points visible from `point`.
-    fn shadow_fraction(&self, point: Tuple, world: &World) -> f64 {
+    fn shadow_fraction(&self, point: Tuple, world: &World, time: f64) -> f64 {
         let grid = self.sample_grid();
-        let lit = |u: usize, v: usize| !world.is_shadowed(grid(u, v), point);
+        let lit = |u: usize, v: usize| !world.is_shadowed_at(grid(u, v), point, time);
 
         if self.usteps < 2 || self.vsteps < 2 {
             let visible = (0..self.vsteps)
