@@ -284,6 +284,23 @@ impl Light {
         normalv: Tuple,
         intensity: f64,
     ) -> Tuple {
+        self.lighting_with_ambient(shape, point, object_point, eyev, normalv, intensity, 1.0)
+    }
+
+    /// As `lighting`, with the ambient term scaled by `ambient_scale`.
+    /// Path tracing (chapter 17) passes 0.0: the gathered indirect light
+    /// replaces the constant ambient approximation of it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn lighting_with_ambient(
+        &self,
+        shape: &dyn Shape,
+        point: Tuple,
+        object_point: Tuple,
+        eyev: Tuple,
+        normalv: Tuple,
+        intensity: f64,
+        ambient_scale: f64,
+    ) -> Tuple {
         let material = shape.material();
 
         // Check if pattern is borrowed and use that color as input, othewise use the material color.
@@ -296,7 +313,7 @@ impl Light {
         let effective_color = color.mul(self.intensity);
 
         // compute the ambient contribution
-        let ambient = effective_color.mul(material.ambient);
+        let ambient = effective_color.mul(material.ambient * ambient_scale);
 
         if intensity <= 0.0 {
             return ambient;

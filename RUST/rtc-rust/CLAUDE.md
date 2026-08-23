@@ -13,7 +13,7 @@ cargo build              # debug build
 cargo build --release
 cargo test --lib         # run all unit tests
 cargo test --lib --ignored   # run only ignored tests (projectile demos, benchmarks)
-cargo test --release --lib cornell_box -- --ignored --nocapture   # Cornell box benchmarks (point light, area light, area light + AA, focal blur), log render time
+cargo test --release --lib cornell_box -- --ignored --nocapture   # Cornell box benchmarks (point light, area light, area light + AA, focal blur, path tracing), log render time
 cargo test --lib test_chap_13 # run one chapter's tests by name prefix
 cargo test --doc         # run documentation examples (doctests)
 cargo clippy --lib       # lint
@@ -44,7 +44,7 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **`pattern` / `patterns`** — `Pattern` trait for material surface patterns: `stripe`, `gradient`, `ring`, `checkers`, plus `nested`/`blended` combinators and a `test` pattern for unit tests. Texture mapping (bonus chapter): `uvpattern` (`UvPattern` trait — `UvCheckers`, `UvAlignCheck`, `UvImage`) and `texturemap` (`TextureMap` with spherical/planar/cylindrical `UvMap`, `CubeMap` with one UV pattern per face).
 
-**`world`** — Holds the shapes and light. `intersect`, `is_shadowed` (allocation-free any-hit walk via `Shape::local_occludes`), `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel` and `view_transform`. Shapes get a world-assigned id via `add_shape`.
+**`world`** — Holds the shapes and light. `intersect`, `is_shadowed` (allocation-free any-hit walk via `Shape::local_occludes`), `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel` and `view_transform`. Shapes get a world-assigned id via `add_shape`. Path tracing (`set_path_tracing(samples, depth)`): `indirect_color` gathers indirect diffuse light with cosine-weighted hemisphere rays (`cosine_direction`, deterministic hash RNG) and replaces the ambient term; paths never branch after the first hit (1 ray per deeper bounce).
 
 **`intersection`** — `Intersection { t, object_id }` and `Intersections`, a `t`-sorted collection (`push` inserts in order; `hit()` returns the first non-negative).
 

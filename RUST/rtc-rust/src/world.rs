@@ -156,6 +156,63 @@ pub fn schlick(comps: &Computations) -> f64 {
     r0 + (1.0 - r0) * (1.0 - cos).powf(5.0)
 }
 
+/// Cosine-weighted direction in the hemisphere around `normal` (which must
+/// be a unit vector), from two uniform numbers in `[0, 1)`. Directions near
+/// the normal are more likely, in proportion to the cosine — the density
+/// that makes the path-tracing estimate `albedo * mean(incoming color)`
+/// (see `World::indirect_color`).
+///
+/// ```
+/// use rtc_rust::world::cosine_direction;
+/// use rtc_rust::tuple::Tuple;
+///
+/// let normal = Tuple::vector(0.0, 1.0, 0.0);
+/// let d = cosine_direction(normal, 0.3, 0.7);
+/// assert!(d.dot(normal) >= 0.0); // in the hemisphere
+/// // r2 = 0 yields the normal itself
+/// assert!(cosine_direction(normal, 0.3, 0.0).approx_eq(normal));
+/// ```
+pub fn cosine_direction(normal: Tuple, r1: f64, r2: f64) -> Tuple {
+    // Orthonormal basis around the normal.
+    let axis = if normal.x.abs() > 0.9 {
+        Tuple::vector(0.0, 1.0, 0.0)
+    } else {
+        Tuple::vector(1.0, 0.0, 0.0)
+    };
+    let tangent = normal.cross(axis).normalize();
+    let bitangent = normal.cross(tangent);
+
+    let phi = 2.0 * std::f64::consts::PI * r1;
+    let r = r2.sqrt();
+    (tangent * (r * phi.cos()) + bitangent * (r * phi.sin()) + normal * (1.0 - r2).sqrt())
+        .normalize()
+}
+
+/// Two deterministic uniforms in `[0, 1)` for hemisphere sample `i` at
+/// `point`, in the spirit of `Camera::lens_sample`: hashing (splitmix64)
+/// instead of shared RNG state keeps the render reproducible and free of
+/// cross-thread contention under `render_parallel`.
+fn gi_uniforms(point: Tuple, i: usize, depth: i32) -> (f64, f64) {
+    let mix = |mut x: u64| -> u64 {
+        x ^= x >> 30;
+        x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        x ^= x >> 27;
+        x = x.wrapping_mul(0x94D0_49BB_1331_11EB);
+        x ^= x >> 31;
+        x
+    };
+    let seed = point.x.to_bits().wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ point.y.to_bits().wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ point.z.to_bits().wrapping_mul(0x1656_67B1_9E37_79F9)
+        ^ (i as u64).wrapping_mul(0xD6E8_FEB8_6659_FD93)
+        ^ (depth as u64).wrapping_mul(0xA24B_AED4_963E_E407);
+    let to_unit = |x: u64| (x >> 11) as f64 / 9_007_199_254_740_992.0; // 2^53
+    (
+        to_unit(mix(seed)),
+        to_unit(mix(seed ^ 0x94D0_49BB_1331_11EB)),
+    )
+}
+
 // O(1): every caller passes the World arena (self.shapes), where ids are
 // assigned 1..=N in insertion order, so id == index + 1 (see add_shape).
 fn shape_by_id(shapes: &[Box<dyn Shape>], id: usize) -> &dyn Shape {
@@ -340,6 +397,11 @@ pub struct World {
     pub shapes: Vec<Box<dyn Shape>>,
     pub light: Option<Light>,
     next_id: AtomicUsize,
+    /// Path tracing (book chapter 17): hemisphere rays gathered at the first
+    /// hit for indirect lighting. 0 = off (the ambient term is used instead).
+    pub gi_samples: usize,
+    /// Maximum diffuse bounces per path when path tracing is on.
+    pub gi_depth: i32,
 }
 
 impl World {
@@ -499,6 +561,14 @@ impl World {
     }
 
     pub fn color_at(&self, ray: &Ray, remaining: i32) -> Tuple {
+        self.color_at_gi(ray, remaining, self.gi_samples, self.gi_depth)
+    }
+
+    /// `color_at` with the path-tracing state threaded through: how many
+    /// hemisphere rays the hit may spawn, and how many diffuse bounces are
+    /// left. Secondary bounces pass `gi_samples = 1` so paths never branch
+    /// after the first hit.
+    fn color_at_gi(&self, ray: &Ray, remaining: i32, gi_samples: usize, gi_depth: i32) -> Tuple {
         let xs = self.intersect(ray);
         match xs.hit() {
             None => Tuple::color(0.0, 0.0, 0.0),
@@ -506,7 +576,7 @@ impl World {
                 None => Tuple::color(0.0, 0.0, 0.0),
                 Some(_shape) => {
                     let comps = prepare_computations(hit, ray, &self.shapes, &xs);
-                    self.shade_hit(&comps, remaining)
+                    self.shade_hit_gi(&comps, remaining, gi_samples, gi_depth)
                 }
             },
         }
@@ -741,30 +811,60 @@ impl World {
             shapes: Vec::new(),
             light: None,
             next_id: AtomicUsize::new(1),
+            gi_samples: 0,
+            gi_depth: 0,
         }
     }
 
+    /// Enable path-traced indirect lighting: `samples` cosine-weighted
+    /// hemisphere rays at the first hit (0 disables), each path continuing
+    /// for up to `depth` diffuse bounces with a single ray per bounce.
+    /// While enabled, the material ambient term is replaced by the gathered
+    /// indirect light.
+    pub fn set_path_tracing(&mut self, samples: usize, depth: i32) {
+        self.gi_samples = samples;
+        self.gi_depth = depth;
+    }
+
     pub fn shade_hit(&self, comps: &Computations, remaining: i32) -> Tuple {
+        self.shade_hit_gi(comps, remaining, self.gi_samples, self.gi_depth)
+    }
+
+    fn shade_hit_gi(
+        &self,
+        comps: &Computations,
+        remaining: i32,
+        gi_samples: usize,
+        gi_depth: i32,
+    ) -> Tuple {
         match &self.light {
             Some(light) => {
+                // With path tracing on, the ambient term (a constant stand-in
+                // for indirect light) is replaced by the measured gather.
+                let ambient_scale = if self.gi_samples > 0 { 0.0 } else { 1.0 };
                 let intensity = light.intensity_at_time(comps.over_point, self, comps.time);
-                let surface = light.lighting(
+                let surface = light.lighting_with_ambient(
                     comps.object,
                     comps.over_point,
                     comps.object_point,
                     comps.eyev,
                     comps.normalv,
                     intensity,
+                    ambient_scale,
                 );
-                let reflected = self.reflected_color(comps, remaining);
-                let refracted = self.refracted_color(comps, remaining);
+                let indirect = self.indirect_color_gi(comps, remaining, gi_samples, gi_depth);
+                let reflected = self.reflected_color_gi(comps, remaining, gi_samples, gi_depth);
+                let refracted = self.refracted_color_gi(comps, remaining, gi_samples, gi_depth);
                 if comps.object.material().reflective > 0.0
                     && comps.object.material().transparency > 0.0
                 {
                     let reflectance = schlick(comps);
-                    return surface + reflected * reflectance + refracted * (1.0 - reflectance);
+                    return surface
+                        + indirect
+                        + reflected * reflectance
+                        + refracted * (1.0 - reflectance);
                 }
-                surface + reflected + refracted
+                surface + indirect + reflected + refracted
             }
             None => Tuple::color(0.0, 0.0, 0.0),
         }
@@ -785,6 +885,16 @@ impl World {
     }
 
     pub fn reflected_color(&self, comps: &Computations, remaining: i32) -> Tuple {
+        self.reflected_color_gi(comps, remaining, self.gi_samples, self.gi_depth)
+    }
+
+    fn reflected_color_gi(
+        &self,
+        comps: &Computations,
+        remaining: i32,
+        gi_samples: usize,
+        gi_depth: i32,
+    ) -> Tuple {
         if remaining <= 0 {
             return tuple::colors::BLACK;
         }
@@ -794,11 +904,65 @@ impl World {
         }
 
         let reflect_ray = Ray::new(comps.over_point, comps.reflectv).with_time(comps.time);
-        let color = self.color_at(&reflect_ray, remaining - 1);
+        // A mirror bounce keeps the path's GI state: it neither branches the
+        // path nor uses up a diffuse bounce.
+        let color = self.color_at_gi(&reflect_ray, remaining - 1, gi_samples, gi_depth);
         color * comps.object.material().reflective
     }
 
+    /// Path-traced indirect lighting (book chapter 17): the diffuse light
+    /// arriving at the hit from other surfaces, estimated with `gi_samples`
+    /// cosine-weighted hemisphere rays. With that sampling density the pdf
+    /// cancels both the cosine and the Lambertian 1/π, so the estimate is
+    /// simply `albedo * mean(incoming color)`. Black when path tracing is
+    /// off, the surface has no diffuse component, or no bounces remain.
+    pub fn indirect_color(&self, comps: &Computations, remaining: i32) -> Tuple {
+        self.indirect_color_gi(comps, remaining, self.gi_samples, self.gi_depth)
+    }
+
+    fn indirect_color_gi(
+        &self,
+        comps: &Computations,
+        remaining: i32,
+        gi_samples: usize,
+        gi_depth: i32,
+    ) -> Tuple {
+        if gi_samples == 0 || gi_depth <= 0 || remaining <= 0 {
+            return tuple::colors::BLACK;
+        }
+        let material = comps.object.material();
+        if approx_eq(material.diffuse, 0.0) {
+            return tuple::colors::BLACK;
+        }
+
+        let color = match &material.pattern {
+            Some(pattern) => pattern.color_at_local(comps.object_point),
+            None => material.color,
+        };
+        let albedo = color * material.diffuse;
+
+        let mut sum = tuple::colors::BLACK;
+        for i in 0..gi_samples {
+            let (r1, r2) = gi_uniforms(comps.over_point, i, gi_depth);
+            let direction = cosine_direction(comps.normalv, r1, r2);
+            let bounce = Ray::new(comps.over_point, direction).with_time(comps.time);
+            // One ray per deeper bounce: the path continues without branching.
+            sum = sum + self.color_at_gi(&bounce, remaining - 1, 1, gi_depth - 1);
+        }
+        albedo * (sum / gi_samples as f64)
+    }
+
     pub fn refracted_color(&self, comps: &Computations, remaining: i32) -> Tuple {
+        self.refracted_color_gi(comps, remaining, self.gi_samples, self.gi_depth)
+    }
+
+    fn refracted_color_gi(
+        &self,
+        comps: &Computations,
+        remaining: i32,
+        gi_samples: usize,
+        gi_depth: i32,
+    ) -> Tuple {
         if remaining <= 0 {
             return tuple::colors::BLACK;
         }
@@ -834,7 +998,8 @@ impl World {
 
         // Find the color of the refracted ray, making sure to multiply
         // by the transparency value to account for any opacity
-        self.color_at(&refracted_ray, remaining - 1) * comps.object.material().transparency
+        self.color_at_gi(&refracted_ray, remaining - 1, gi_samples, gi_depth)
+            * comps.object.material().transparency
     }
 
     pub fn render_parallel(&self, camera: Camera) -> Canvas {
@@ -5000,6 +5165,167 @@ mod tests {
             .map_err(|e| format!("failed to write PPM: {e}"))
     }
 
+    /// Chap 17 - Path tracing: cosine-weighted hemisphere directions are
+    /// unit vectors on the normal's side of the surface, and `r2 = 0` is
+    /// the normal itself.
+    #[test]
+    fn test_chap_17_27() -> Result<(), String> {
+        let normals = [
+            Tuple::vector(0.0, 1.0, 0.0),
+            Tuple::vector(1.0, 0.0, 0.0),
+            Tuple::vector(0.0, 0.0, -1.0),
+            Tuple::vector(1.0, -2.0, 3.0).normalize(),
+        ];
+        for normal in normals {
+            for i in 0..8 {
+                for j in 0..8 {
+                    let r1 = (i as f64 + 0.5) / 8.0;
+                    let r2 = (j as f64 + 0.5) / 8.0;
+                    let d = cosine_direction(normal, r1, r2);
+                    if !approx_eq(d.magnitude(), 1.0) || d.dot(normal) < 0.0 {
+                        loge!(
+                            "test_chap_17_27",
+                            "normal:{} r1:{r1} r2:{r2} d:{}",
+                            normal,
+                            d
+                        );
+                        return Err("Direction must be unit and in the hemisphere".into());
+                    }
+                }
+            }
+            if !cosine_direction(normal, 0.37, 0.0).approx_eq(normal) {
+                loge!("test_chap_17_27", "normal:{}", normal);
+                return Err("r2 = 0 must yield the normal".into());
+            }
+        }
+        Ok(())
+    }
+
+    /// Chap 17 - Path tracing gates: the indirect color is black when path
+    /// tracing is off, when no bounces remain, and when the recursion
+    /// allowance is spent — and with it off, shading is untouched.
+    #[test]
+    fn test_chap_17_28() -> Result<(), String> {
+        let w = World::default_world();
+        let ray = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let xs = w.intersect(&ray);
+        let hit = xs.hit().ok_or("expected a hit")?;
+        let comps = prepare_computations(hit, &ray, &w.shapes, &xs);
+
+        if !w.indirect_color(&comps, 5).approx_eq(BLACK) {
+            return Err("Path tracing off: indirect color must be black".into());
+        }
+
+        let mut w2 = World::default_world();
+        w2.set_path_tracing(4, 0);
+        if !w2.indirect_color(&comps, 5).approx_eq(BLACK) {
+            return Err("No bounces left: indirect color must be black".into());
+        }
+        w2.set_path_tracing(4, 2);
+        if !w2.indirect_color(&comps, 0).approx_eq(BLACK) {
+            return Err("Recursion spent: indirect color must be black".into());
+        }
+
+        let expected = Tuple::color(0.380661193081, 0.475826491351, 0.285495894811);
+        let c = w.color_at(&ray, 5);
+        if c.approx_eq(expected) {
+            Ok(())
+        } else {
+            loge!("test_chap_17_28", "c:{}", c);
+            Err("Path tracing off must not change color_at".into())
+        }
+    }
+
+    /// Chap 17 - Path tracing is deterministic, and replaces the ambient
+    /// term: in the default world the outer sphere's hemisphere sees only
+    /// darkness, so the path-traced color is exactly the plain color minus
+    /// the ambient contribution.
+    #[test]
+    fn test_chap_17_29() -> Result<(), String> {
+        let ray = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let plain = World::default_world().color_at(&ray, 5);
+
+        let mut w = World::default_world();
+        w.set_path_tracing(8, 2);
+        let traced = w.color_at(&ray, 5);
+
+        if !traced.approx_eq(w.color_at(&ray, 5)) {
+            return Err("Path tracing must be deterministic".into());
+        }
+
+        // ambient = material color * light intensity * 0.1
+        let ambient = Tuple::color(0.08, 0.1, 0.06);
+        if (traced + ambient).approx_eq(plain) {
+            Ok(())
+        } else {
+            loge!("test_chap_17_29", "plain:{} traced:{}", plain, traced);
+            Err("Indirect light must replace the ambient term".into())
+        }
+    }
+
+    /// Chap 17 - Color bleeding: a white floor next to a lit red wall picks
+    /// up red from the bounce light, and only red.
+    #[test]
+    fn test_chap_17_30() -> Result<(), String> {
+        use std::f64::consts::PI;
+
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(5.0, 5.0, 5.0), WHITE));
+
+        let mut floor = Plane::new();
+        let mut m = Material::new();
+        m.ambient = 0.0;
+        m.specular = 0.0;
+        floor.set_material(m); // white
+        w.add_shape(Box::new(floor));
+
+        let mut wall = Plane::new();
+        let mut m = Material::new();
+        m.color = Tuple::color(1.0, 0.0, 0.0);
+        m.ambient = 0.0;
+        m.specular = 0.0;
+        wall.set_material(m);
+        wall.set_transform(Matrix4::rotation_z(PI / 2.0)); // the plane x = 0
+        w.add_shape(Box::new(wall));
+
+        w.set_path_tracing(64, 1);
+        let ray = Ray::new(Tuple::point(0.3, 2.0, 0.0), Tuple::vector(0.0, -1.0, 0.0));
+        let c = w.color_at(&ray, 5);
+
+        // Direct light on the white floor is grey (r = g = b); the wall's
+        // bounce adds only red.
+        if c.x > c.y + 0.01 && approx_eq(c.y, c.z) {
+            Ok(())
+        } else {
+            loge!("test_chap_17_30", "c:{}", c);
+            Err("The floor must pick up red bounce light from the wall".into())
+        }
+    }
+
+    /// Chap 17 - Putting it together, path tracing: the Cornell box with
+    /// indirect lighting — red and green bleed onto the blocks and walls,
+    /// and surfaces the light misses are lit by bounces instead of a flat
+    /// ambient term.
+    #[test]
+    fn test_chap_17_path_tracing_putting_it_together() -> Result<(), String> {
+        use std::f64::consts::PI;
+
+        let light = Light::point_light(Tuple::point(0.0, 1.8, -0.6), WHITE);
+        let mut w = cornell_box(light);
+        w.set_path_tracing(16, 2);
+
+        let from = Tuple::point(0.0, 1.0, -3.5);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let camera =
+            Camera::new(150, 150, PI * 39.0 / 180.0).with_transform(view_transform(from, to, up));
+
+        let image = w.render_parallel(camera);
+        image
+            .write_ppm("test_chap_17_path_tracing_putting_it_together.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
     /// Chap 17 - Putting it together, spotlight: the Cornell box lit by a
     /// single spotlight aimed at the tall block, with a soft-edged pool of
     /// light and darkness outside the cone.
@@ -5695,6 +6021,18 @@ mod tests {
         );
         light.jitter_by = Sequence::new(vec![0.7, 0.3, 0.9, 0.1, 0.5, 0.2, 0.8, 0.4, 0.6]);
         render_cornell_box_with("test_cornell_box_antialias", &cornell_box(light), 4)
+    }
+
+    /// Chap 17 - Cornell box, point light, path-traced indirect lighting
+    /// (32 first-hit samples, 2 diffuse bounces), to measure what path
+    /// tracing costs.
+    #[test]
+    #[ignore]
+    fn test_cornell_box_path_tracing() -> Result<(), String> {
+        let light = Light::point_light(Tuple::point(0.0, 1.8, -0.6), Tuple::color(1.0, 1.0, 1.0));
+        let mut w = cornell_box(light);
+        w.set_path_tracing(32, 2);
+        render_cornell_box("test_cornell_box_path_tracing", &w)
     }
 
     /// Chap 17 - Cornell box, point light, focal blur with 32 lens samples
