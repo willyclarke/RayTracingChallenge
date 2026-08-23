@@ -40,7 +40,7 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is a placeholder. Rendering
 
 **Rendering pipeline:**
 
-**`shape` / `shapes`** — `Shape` is the object-safe trait every primitive implements; shared state (id, transform, material) lives in `ShapeData`, exposed via `data()`/`data_mut()`. Each primitive implements `local_intersect` and `local_normal_at` in object space; the trait handles the world↔object transform. Primitives: `sphere`, `plane`, `cube`, `cylinder`, `cone`.
+**`shape` / `shapes`** — `Shape` is the object-safe trait every primitive implements; shared state (id, transform, material) lives in `ShapeData`, exposed via `data()`/`data_mut()`. Each primitive implements `local_intersect` and `local_normal_at` in object space; the trait handles the world↔object transform. Primitives: `sphere`, `plane`, `cube`, `cylinder`, `cone`, `torus` (quartic intersection via `solve_quartic`/`solve_cubic`/`solve_quadratic` in `shapes/torus.rs`).
 
 **`pattern` / `patterns`** — `Pattern` trait for material surface patterns: `stripe`, `gradient`, `ring`, `checkers`, plus `nested`/`blended` combinators and a `test` pattern for unit tests. Texture mapping (bonus chapter): `uvpattern` (`UvPattern` trait — `UvCheckers`, `UvAlignCheck`, `UvImage`) and `texturemap` (`TextureMap` with spherical/planar/cylindrical `UvMap`, `CubeMap` with one UV pattern per face).
 

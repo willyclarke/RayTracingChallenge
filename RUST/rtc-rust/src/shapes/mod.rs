@@ -5,5 +5,6 @@ pub mod cylinder;
 pub mod group;
 pub mod plane;
 pub mod sphere;
+pub mod torus;
 pub mod triangle;
 pub mod triangleuv;

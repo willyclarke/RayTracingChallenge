@@ -5181,6 +5181,66 @@ mod tests {
             .map_err(|e| format!("failed to write PPM: {e}"))
     }
 
+    /// Chap 17 - Putting it together, torus: two interlocked rings on a
+    /// reflective checkered floor. Every pixel on the rings exercises the
+    /// quartic solver; any missed root shows up as a speckle.
+    #[test]
+    fn test_chap_17_torus_putting_it_together() -> Result<(), String> {
+        use crate::shapes::torus::Torus;
+        use std::f64::consts::PI;
+
+        let mut w = World::new();
+        w.set_light(Light::point_light(Tuple::point(-6.0, 8.0, -8.0), WHITE));
+
+        let mut floor = Plane::new();
+        let mut m = Material::new();
+        m.pattern = Some(Box::new(CheckersPattern::new(
+            Tuple::color(0.3, 0.3, 0.3),
+            Tuple::color(0.75, 0.75, 0.75),
+        )));
+        m.specular = 0.0;
+        m.reflective = 0.2;
+        floor.set_material(m);
+        w.add_shape(Box::new(floor));
+
+        let mut gold = Torus::with_radii(1.2, 0.35);
+        gold.set_transform(Matrix4::translation(-0.7, 0.35, 0.0));
+        let mut m = Material::new();
+        m.color = Tuple::color(0.9, 0.7, 0.2);
+        m.specular = 0.8;
+        m.shininess = 60.0;
+        m.reflective = 0.15;
+        gold.set_material(m);
+        w.add_shape(Box::new(gold));
+
+        let mut blue = Torus::with_radii(1.2, 0.35);
+        blue.set_transform(
+            Matrix4::translation(0.7, 1.2, 0.0)
+                * Matrix4::rotation_x(PI / 2.0)
+                * Matrix4::rotation_y(PI / 6.0),
+        );
+        let mut m = Material::new();
+        m.color = Tuple::color(0.2, 0.4, 0.9);
+        m.specular = 0.8;
+        m.shininess = 60.0;
+        m.reflective = 0.15;
+        blue.set_material(m);
+        w.add_shape(Box::new(blue));
+
+        let from = Tuple::point(0.0, 3.0, -6.5);
+        let to = Tuple::point(0.0, 0.8, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let camera = Camera::new(400, 300, PI / 3.5)
+            .with_transform(view_transform(from, to, up))
+            .with_antialias(3);
+
+        w.build_bounds();
+        let image = w.render_parallel(camera);
+        image
+            .write_ppm("test_chap_17_torus_putting_it_together.ppm")
+            .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
     /// Chap 17 - Putting it together: Perlin noise two ways. Left, stripes
     /// perturbed into marble; right, a plain sphere with a bumpy normal.
     #[test]
