@@ -31,8 +31,13 @@ cargo run --release -- scene.json -o render.ppm
 ```
 
 `scenes/cover.json` — the book's cover image (Appendix A1), translated from the appendix's
-YAML — is a complete example. The loader lives in `src/scene.rs`
-(`scene::load(path) -> (World, Camera)`), with field-level errors and `test_scene_*` tests.
+YAML — is a complete example. The dice scenes (`scenes/dice-light-area.json` and
+`scenes/dice-light-spot.json`, emitted by the Python generators of the same name) are larger
+ones: three marbled dice built from nested CSG (rounded cube minus 21 pip spheres, materials
+on the CSG leaves) in a checkered room, with perturbed-stripe patterns and adaptive
+anti-aliasing — one lit by an area light, the other by a spotlight aimed at the stack. The
+loader lives in `src/scene.rs` (`scene::load(path) -> (World, Camera)`), with field-level
+errors and `test_scene_*` tests.
 
 Design rules:
 
