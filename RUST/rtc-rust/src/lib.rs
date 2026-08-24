@@ -13,6 +13,7 @@ pub mod obj;
 pub mod pattern;
 pub mod patterns;
 pub mod ray;
+pub mod scene;
 pub mod shape;
 pub mod shapes;
 pub mod tuple;

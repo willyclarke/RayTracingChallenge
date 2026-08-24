@@ -11,6 +11,13 @@ project. The tests have not been named so that they can be referenced from the b
 
 TODO: Rename all the Google Tests so that they can be referenced from the book.
 
+== Implementations
+
+* C++ — this directory (build instructions below).
+* Rust — link:RUST/rtc-rust/README.md[RUST/rtc-rust]: complete through chapter 17 plus the
+  bonus chapters; its README also sketches a JSON scene format for a scene-file-driven renderer.
+* Zig — ZIG/raytracer-zig: work in progress.
+
 == Dependencies
 
 * CMake
