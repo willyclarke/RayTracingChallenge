@@ -1,0 +1,14 @@
+  {
+      "comment": "smallest useful scene",
+      "camera": {
+        "width": 400, "height": 300, "field_of_view": 1.047,
+        "from": [0, 1.5, -5], "to": [0, 1, 0], "up": [0, 1, 0]
+      },
+      "light": { "type": "point", "position": [-10, 10, -10], "intensity": [1, 1, 1] },
+      "shapes": [
+        { "type": "plane" },
+        { "type": "sphere",
+          "transform": [ { "translate": [0, 1, 0] } ],
+          "material": { "color": [0.1, 0.2, 0.8] } }
+      ]
+    }
