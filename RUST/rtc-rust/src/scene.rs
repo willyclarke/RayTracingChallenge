@@ -1023,11 +1023,19 @@ mod tests {
         }
     }
 
-    /// Scene loader - the book's cover image (Appendix A1) renders from JSON
+    /// Scene loader - the book's cover image (Appendix A1) renders from JSON.
+    /// The scene file's camera is wallpaper-sized, so the test renders it
+    /// downscaled; `cargo run --release -- scenes/cover.json` does the full one.
     #[test]
     fn test_scene_cover_putting_it_together() -> std::io::Result<()> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("scenes/cover.json");
-        let (world, camera) = load(&path).map_err(std::io::Error::other)?;
+        let json = std::fs::read_to_string(&path)?;
+        let mut scene = SceneDescription::from_json(&json).map_err(std::io::Error::other)?;
+        scene.camera.width = 216; // full scene, 1/16 of the file's resolution
+        scene.camera.height = 140;
+        let (world, camera) = scene
+            .build(path.parent().unwrap())
+            .map_err(std::io::Error::other)?;
         let canvas = world.render_parallel(camera);
         canvas.write_ppm("test_scene_cover_putting_it_together.ppm")?;
         Ok(())
