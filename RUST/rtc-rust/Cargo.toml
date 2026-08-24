@@ -3,6 +3,10 @@ name = "rtc-rust"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "rtc"
+path = "src/main.rs"
+
 [dependencies]
 rayon = "1"
 serde = { version = "1", features = ["derive"] }

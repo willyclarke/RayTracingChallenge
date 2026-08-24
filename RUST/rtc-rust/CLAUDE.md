@@ -23,7 +23,7 @@ cargo fmt                # auto-format
 
 ## Architecture
 
-The crate is a library (`src/lib.rs`); `src/main.rs` is the `rtc` CLI (`rtc <scene.json> [-o out.ppm]`). Rendering flows: a `Camera` casts rays through a `World` of shapes lit by a `Light`, and `World::color_at` returns the shaded color (with reflection/refraction recursion).
+The crate is a library (`src/lib.rs`); `src/main.rs` is the `rtc` CLI (`rtc <scene.json> [-o out.ppm]`; `rtc help [topic]` prints a man-style scene-format reference from `src/help.rs`, a binary-only module kept in sync with the loader by hand). Rendering flows: a `Camera` casts rays through a `World` of shapes lit by a `Light`, and `World::color_at` returns the shaded color (with reflection/refraction recursion).
 
 **Foundation types:**
 

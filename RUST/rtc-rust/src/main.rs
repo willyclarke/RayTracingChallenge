@@ -14,12 +14,22 @@ use std::time::Instant;
 
 use rtc_rust::scene;
 
+mod help;
+
 fn usage() {
     eprintln!("usage: rtc <scene.json> [-o out.ppm]");
+    eprintln!("       rtc help [topic]      scene-format reference ('rtc help' lists topics)");
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    if args.first().map(String::as_str) == Some("help") {
+        return match help::print(args.get(1).map(String::as_str)) {
+            true => ExitCode::SUCCESS,
+            false => ExitCode::FAILURE,
+        };
+    }
     let mut scene_path: Option<PathBuf> = None;
     let mut out_path: Option<PathBuf> = None;
 

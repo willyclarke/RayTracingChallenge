@@ -28,7 +28,13 @@ never writes scenes back):
 ```bash
 cargo run --release -- scenes/cover.json            # → cover.ppm
 cargo run --release -- scene.json -o render.ppm
+cargo run --release -- help                         # man-style scene-format reference
+cargo run --release -- help shapes                  # one topic, with copyable JSON examples
 ```
+
+`rtc help` covers the whole format (topics: scene, camera, lights, transforms, shapes,
+materials, patterns, settings; `rtc help all` prints everything), so the sections below
+are also available from the binary itself.
 
 `scenes/cover.json` — the book's cover image (Appendix A1), translated from the appendix's
 YAML — is a complete example. The dice scenes (`scenes/dice-light-area.json` and
