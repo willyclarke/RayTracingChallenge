@@ -37,13 +37,22 @@ materials, patterns, settings; `rtc help all` prints everything), so the section
 are also available from the binary itself.
 
 `scenes/cover.json` — the book's cover image (Appendix A1), translated from the appendix's
-YAML — is a complete example. The dice scenes (`scenes/dice-light-area.json` and
-`scenes/dice-light-spot.json`, emitted by the Python generators of the same name) are larger
-ones: three marbled dice built from nested CSG (rounded cube minus 21 pip spheres, materials
-on the CSG leaves) in a checkered room, with perturbed-stripe patterns and adaptive
-anti-aliasing — one lit by an area light, the other by a spotlight aimed at the stack. The
-loader lives in `src/scene.rs` (`scene::load(path) -> (World, Camera)`), with field-level
-errors and `test_scene_*` tests.
+YAML — is a complete example. The dice scenes are larger ones: three marbled dice built from
+nested CSG (rounded cube minus 21 pip spheres, materials on the CSG leaves) in a checkered
+room, with perturbed-stripe patterns and adaptive anti-aliasing. Their Python generators
+share `scenes/dicelib.py` (die/room/camera/light builders plus a 3×5 dot-matrix dice font):
+
+```bash
+python3 scenes/dice-light-area.py            # area light, soft shadows
+python3 scenes/dice-light-spot.py            # spotlight aimed at the stack
+python3 scenes/dice-sentence.py "HELLO"      # text spelled in small dice, colors per letter
+cargo run --release -- scenes/dice-sentence.json
+```
+
+Each writes the JSON of the same name (optional trailing `width height` arguments;
+`dice-sentence.py` auto-frames the camera to the text length and supports A–Z, 0–9 and
+basic punctuation). The loader lives in `src/scene.rs`
+(`scene::load(path) -> (World, Camera)`), with field-level errors and `test_scene_*` tests.
 
 Design rules:
 

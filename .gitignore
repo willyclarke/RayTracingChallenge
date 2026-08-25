@@ -13,6 +13,7 @@ ZIG/raytracer-zig/*.ppm
 ZIG/raytracer-zig/src/scrapbook.zig
 /RUST/rtc-rust/target
 /RUST/rtc-rust/*.ppm
+__pycache__/
 /RUST/rtc-rust/resume.txt
 # profiling / debug artifacts
 /RUST/rtc-rust/profile.json
