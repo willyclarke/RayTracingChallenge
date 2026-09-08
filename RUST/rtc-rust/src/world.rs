@@ -1249,6 +1249,31 @@ pub fn view_transform(from: Tuple, to: Tuple, up: Tuple) -> Matrix4 {
     orientation * Matrix4::translation(-from.x, -from.y, -from.z)
 }
 
+/// Eye position after rotating `from` by `angle` radians about the `up` axis
+/// through `to` — one step of a camera orbit around the look-at point. A full
+/// turn (`angle = 2π`) returns `from`; the distance to `to` never changes.
+///
+/// # Examples
+/// ```
+/// use std::f64::consts::PI;
+/// use rtc_rust::tuple::Tuple;
+/// use rtc_rust::world::orbit_from;
+///
+/// let from = Tuple::point(0.0, 1.5, -5.0);
+/// let to = Tuple::point(0.0, 1.0, 0.0);
+/// let up = Tuple::vector(0.0, 1.0, 0.0);
+/// let eye = orbit_from(from, to, up, PI / 2.0);
+/// assert!(eye.approx_eq(Tuple::point(-5.0, 1.5, 0.0)));
+/// ```
+pub fn orbit_from(from: Tuple, to: Tuple, up: Tuple, angle: f64) -> Tuple {
+    // Rodrigues' rotation of the eye offset about the unit axis k.
+    let v = from - to;
+    let k = up.normalize();
+    let (sin, cos) = angle.sin_cos();
+    let rotated = v * cos + k.cross(v) * sin + k * (k.dot(v) * (1.0 - cos));
+    to + rotated
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6067,5 +6092,60 @@ mod tests {
         image
             .write_ppm("test_cornell_box_focal_blur.ppm")
             .map_err(|e| format!("failed to write PPM: {e}"))
+    }
+
+    /// Orbit - angle 0 and a full turn both leave the eye where it started
+    #[test]
+    fn test_orbit_1() -> Result<(), String> {
+        let from = Tuple::point(0.0, 1.5, -5.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        for angle in [0.0, 2.0 * std::f64::consts::PI] {
+            let eye = orbit_from(from, to, up, angle);
+            if !eye.approx_eq(from) {
+                return Err(format!("orbit by {angle}: expected {from:?}, got {eye:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Orbit - a quarter turn about y matches rotation_y applied to the eye offset
+    #[test]
+    fn test_orbit_2() -> Result<(), String> {
+        let from = Tuple::point(0.0, 1.5, -5.0);
+        let to = Tuple::point(0.0, 1.0, 0.0);
+        let up = Tuple::vector(0.0, 1.0, 0.0);
+        let eye = orbit_from(from, to, up, std::f64::consts::PI / 2.0);
+        let expected = to + Matrix4::rotation_y(std::f64::consts::PI / 2.0) * (from - to);
+        if !eye.approx_eq(expected) {
+            return Err(format!("expected {expected:?}, got {eye:?}"));
+        }
+        if !eye.approx_eq(Tuple::point(-5.0, 1.5, 0.0)) {
+            return Err(format!("expected (-5, 1.5, 0), got {eye:?}"));
+        }
+        Ok(())
+    }
+
+    /// Orbit - the eye keeps its distance to the look-at point for any angle and axis
+    #[test]
+    fn test_orbit_3() -> Result<(), String> {
+        let from = Tuple::point(3.0, 2.0, -4.0);
+        let to = Tuple::point(1.0, 0.5, 1.0);
+        let up = Tuple::vector(0.2, 1.0, -0.1);
+        let radius = (from - to).magnitude();
+        for k in 0..12 {
+            let angle = 2.0 * std::f64::consts::PI * k as f64 / 12.0;
+            let eye = orbit_from(from, to, up, angle);
+            let r = (eye - to).magnitude();
+            if !approx_eq(r, radius) {
+                return Err(format!("angle {angle}: radius {r}, expected {radius}"));
+            }
+            // The eye stays on the plane through `from` perpendicular to `up`.
+            let h = (eye - from).dot(up.normalize());
+            if !approx_eq(h, 0.0) {
+                return Err(format!("angle {angle}: eye left the orbit plane by {h}"));
+            }
+        }
+        Ok(())
     }
 }

@@ -16,6 +16,8 @@ cargo test --lib --ignored   # run only ignored tests (projectile demos, benchma
 cargo test --release --lib cornell_box -- --ignored --nocapture --test-threads=1   # Cornell box benchmarks (point light, area light, area light + AA, focal blur, path tracing), log render time; single-threaded test runner so the parallel renders don't contend and timings stay comparable
 cargo test --lib test_chap_13 # run one chapter's tests by name prefix
 cargo run --release -- scenes/cover.json -o cover.ppm   # render a JSON scene (the rtc CLI; scene format in README.md)
+cargo run --release -- scenes/small.json --orbit 240 -o frames/small/small.ppm   # 240 numbered frames, camera circling the look-at point
+./film.sh scenes/small.json [frames=240] [fps=24]   # orbit frames + ffmpeg merge -> small.mp4
 cargo test --doc         # run documentation examples (doctests)
 cargo clippy --lib       # lint
 cargo fmt                # auto-format
@@ -23,7 +25,7 @@ cargo fmt                # auto-format
 
 ## Architecture
 
-The crate is a library (`src/lib.rs`); `src/main.rs` is the `rtc` CLI (`rtc <scene.json> [-o out.ppm]`; `rtc help [topic]` prints a man-style scene-format reference from `src/help.rs`, a binary-only module kept in sync with the loader by hand). Rendering flows: a `Camera` casts rays through a `World` of shapes lit by a `Light`, and `World::color_at` returns the shaded color (with reflection/refraction recursion).
+The crate is a library (`src/lib.rs`); `src/main.rs` is the `rtc` CLI (`rtc <scene.json> [-o out.ppm] [--orbit <frames>]`, the latter writing numbered orbit frames for `film.sh`/ffmpeg; `rtc help [topic]` prints a man-style scene-format reference from `src/help.rs`, a binary-only module kept in sync with the loader by hand). Rendering flows: a `Camera` casts rays through a `World` of shapes lit by a `Light`, and `World::color_at` returns the shaded color (with reflection/refraction recursion).
 
 **Foundation types:**
 
@@ -45,16 +47,16 @@ The crate is a library (`src/lib.rs`); `src/main.rs` is the `rtc` CLI (`rtc <sce
 
 **`pattern` / `patterns`** — `Pattern` trait for material surface patterns: `stripe`, `gradient`, `ring`, `checkers`, plus `nested`/`blended` combinators and a `test` pattern for unit tests. Texture mapping (bonus chapter): `uvpattern` (`UvPattern` trait — `UvCheckers`, `UvAlignCheck`, `UvImage`) and `texturemap` (`TextureMap` with spherical/planar/cylindrical `UvMap`, `CubeMap` with one UV pattern per face).
 
-**`world`** — Holds the shapes and light. `intersect`, `is_shadowed` (allocation-free any-hit walk via `Shape::local_occludes`), `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel` and `view_transform`. Shapes get a world-assigned id via `add_shape`. Path tracing (`set_path_tracing(samples, depth)`): `indirect_color` gathers indirect diffuse light with cosine-weighted hemisphere rays (`cosine_direction`, deterministic hash RNG) and replaces the ambient term; paths never branch after the first hit (1 ray per deeper bounce).
+**`world`** — Holds the shapes and light. `intersect`, `is_shadowed` (allocation-free any-hit walk via `Shape::local_occludes`), `color_at`, `shade_hit`, `reflected_color`, `refracted_color`, `prepare_computations` (builds `Computations`, including `n1`/`n2` for refraction), plus `render`/`render_parallel`, `view_transform` and `orbit_from` (eye position rotated about the `up` axis through the look-at point; drives the CLI's `--orbit` film). Shapes get a world-assigned id via `add_shape`. Path tracing (`set_path_tracing(samples, depth)`): `indirect_color` gathers indirect diffuse light with cosine-weighted hemisphere rays (`cosine_direction`, deterministic hash RNG) and replaces the ambient term; paths never branch after the first hit (1 ray per deeper bounce).
 
 **`intersection`** — `Intersection { t, object_id }` and `Intersections`, a `t`-sorted collection (`push` inserts in order; `hit()` returns the first non-negative).
 
 **`ray`, `camera`, `light`, `material`** — `Ray` (origin/direction, plus `time` in the shutter interval for motion blur; shapes with `set_motion(velocity)` are offset by `velocity × time` in the world→object transform); `Camera` (view rays via `ray_for_pixel`/`ray_for_subpixel`; `with_antialias(n)` enables edge-detected n×n supersampling and `with_focal_blur(aperture, focal_distance, samples)` depth of field via `ray_for_lens`, `with_motion_blur(samples)` jittered shutter times — all in `render_parallel`); `Light` (jittered rectangular area light — `point_light` is the 1×1 case, `spotlight` adds a `Spot` cone — with `intensity_at` for soft shadows and Phong `lighting` averaged over the sample points; `Sequence` is the jitter generator); `Material` (color, ambient/diffuse/specular/shininess, reflective, transparency, refractive_index, optional pattern, optional `Bump`).
 
-**`scene`** — Load-only JSON scene descriptions (format documented in `README.md`, example: `scenes/cover.json` — the book's Appendix A1 cover image). serde-derived description types (`SceneDescription`, tagged enums for shapes/lights/patterns, transform op lists) mirror the core types, which stay serde-free; `scene::load(path)` parses and `build()`s a `(World, Camera)`, resolving `.obj`/`.ppm` asset paths relative to the scene file and rebuilding computed state (ids, bounds, BVH via `divide` when `bvh_threshold` is set).
+**`scene`** — Load-only JSON scene descriptions (format documented in `README.md`, example: `scenes/cover.json` — the book's Appendix A1 cover image). serde-derived description types (`SceneDescription`, tagged enums for shapes/lights/patterns, transform op lists) mirror the core types, which stay serde-free; `scene::load(path)` parses (`SceneDescription::from_path`) and `build()`s a `(World, Camera)`, resolving `.obj`/`.ppm` asset paths relative to the scene file and rebuilding computed state (ids, bounds, BVH via `divide` when `bvh_threshold` is set).
 
 **`log` / `color`** — `logi!()`, `logd!()`, `loge!()` macros with timestamps; `Color` enum for ANSI codes. Used in tests and demos.
 
 ## Tests
 
-Tests live inline at the bottom of each module under `#[cfg(test)]`, named by book chapter (`test_chap_1_05`, `test_chap_13_9`, etc.) so a chapter's tests share a `test_chap_N` prefix. They return `Result<(), String>` (or `std::io::Result<()>` for I/O). `#[ignore]` marks the projectile trajectory demos and the Cornell box benchmarks. Bonus-chapter tests use a `test_bonus_*` prefix (`test_bonus_soft_shadows_N`, `test_bonus_texture_N`); the JSON scene loader's tests use `test_scene_N`. Some `*_putting_it_all_together` tests render a scene to a PPM. Public helpers additionally carry doctests (run with `cargo test --doc`).
+Tests live inline at the bottom of each module under `#[cfg(test)]`, named by book chapter (`test_chap_1_05`, `test_chap_13_9`, etc.) so a chapter's tests share a `test_chap_N` prefix. They return `Result<(), String>` (or `std::io::Result<()>` for I/O). `#[ignore]` marks the projectile trajectory demos and the Cornell box benchmarks. Bonus-chapter tests use a `test_bonus_*` prefix (`test_bonus_soft_shadows_N`, `test_bonus_texture_N`); the JSON scene loader's tests use `test_scene_N`, the camera-orbit helper's `test_orbit_N`. Some `*_putting_it_all_together` tests render a scene to a PPM. Public helpers additionally carry doctests (run with `cargo test --doc`).

@@ -26,3 +26,5 @@ __pycache__/
 !/RUST/rtc-rust/models/generate.py
 !/RUST/rtc-rust/models/icosahedron.obj
 !/RUST/rtc-rust/models/torus_smooth.obj
+/RUST/rtc-rust/frames/
+/RUST/rtc-rust/*.mp4

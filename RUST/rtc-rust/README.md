@@ -1,7 +1,8 @@
 # rtc-rust
 
 Rust implementation of [The Ray Tracer Challenge](http://raytracerchallenge.com/) (Jamis Buck),
-built chapter by chapter with the book's test-driven approach. All 16 core chapters, the three
+built chapter by chapter with the book's test-driven approach — one of three implementations
+in this repository, alongside C++ and Zig (see the repo root `Readme.adoc`). All 16 core chapters, the three
 online bonus chapters (soft shadows, bounding boxes/BVH, texture mapping), and all eight
 chapter 17 "next steps" (area lights, spotlights, focal blur, motion blur, anti-aliasing,
 texture maps, normal perturbation, torus) are implemented, plus path-traced indirect lighting.
@@ -28,6 +29,7 @@ never writes scenes back):
 ```bash
 cargo run --release -- scenes/cover.json            # → cover.ppm
 cargo run --release -- scene.json -o render.ppm
+cargo run --release -- scene.json --orbit 240 -o frames/scene.ppm   # film: 240 numbered frames
 cargo run --release -- help                         # man-style scene-format reference
 cargo run --release -- help shapes                  # one topic, with copyable JSON examples
 ```
@@ -53,6 +55,27 @@ Each writes the JSON of the same name (optional trailing `width height` argument
 `dice-sentence.py` auto-frames the camera to the text length and supports A–Z, 0–9 and
 basic punctuation). The loader lives in `src/scene.rs`
 (`scene::load(path) -> (World, Camera)`), with field-level errors and `test_scene_*` tests.
+
+### Filming an orbit
+
+`--orbit <frames>` renders a film instead of a still: the camera circles the look-at point
+once, rotating about the camera's `up` axis at constant height and distance, and writes
+`<stem>_0000.ppm` … `<stem>_<frames-1>.ppm` next to the `-o` path. The last frame stops one
+step short of 360° so the sequence loops seamlessly. The scene is parsed and built once;
+only the camera transform changes per frame. `rtc` prints the ffmpeg command that merges the
+frames, and `film.sh` runs both steps:
+
+```bash
+./film.sh scenes/dice-light-spot.json            # 240 frames at 24 fps → 10 s dice-light-spot.mp4
+./film.sh scenes/small.json frames=48 fps=12     # both optional; bare numbers work too
+ffmpeg -framerate 24 -i frames/small/small_%04d.ppm -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" \
+    -c:v libx264 -pix_fmt yuv420p small.mp4      # what film.sh runs after rendering
+```
+
+Render time scales with the frame count, so preview with a copy of the scene at a small
+`width`/`height` (or a few frames) before the full run. Open scenes (`small.json`,
+`cover.json`) orbit cleanly; the dice scenes are closed rooms, so most of the turn looks at
+the walls from outside — move the walls out or drop them to film those.
 
 Design rules:
 
@@ -261,6 +284,8 @@ Texture mapping (bonus chapter):
   JSON, then `build()` instantiates the real `World`/`Camera` — the core types are serde-free.
 - `scene::load(path)` resolves relative asset paths (`.obj`, `.ppm`) against the scene
   file's directory.
-- `src/main.rs` is the CLI: `rtc <scene.json> [-o out.ppm]`; without `-o` the output is
-  `<scene-stem>.ppm` in the working directory.
+- `src/main.rs` is the CLI: `rtc <scene.json> [-o out.ppm] [--orbit <frames>]`; without
+  `-o` the output is `<scene-stem>.ppm` in the working directory. `--orbit` keeps the parsed
+  `SceneDescription` (`from_path` + `build`) to read the camera's `from`/`to`/`up` and moves
+  the eye with `world::orbit_from` per frame.
 - Acceptance test: `test_scene_cover_putting_it_together` renders `scenes/cover.json`.

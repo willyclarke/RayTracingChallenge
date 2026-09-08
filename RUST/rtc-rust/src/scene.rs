@@ -716,6 +716,16 @@ impl SceneDescription {
         serde_json::from_str(json).map_err(|e| SceneError(format!("scene JSON: {e}")))
     }
 
+    /// Read and parse a scene file. Pair with [`SceneDescription::build`] when
+    /// the description itself is needed after building (the `rtc` CLI reads
+    /// the camera's `from`/`to`/`up` back for orbit animations).
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, SceneError> {
+        let path = path.as_ref();
+        let json = std::fs::read_to_string(path)
+            .map_err(|e| SceneError(format!("reading {}: {e}", path.display())))?;
+        Self::from_json(&json)
+    }
+
     /// Build the world and camera. `base_dir` anchors relative asset paths
     /// (`.obj`, `.ppm`); pass the scene file's directory.
     pub fn build(&self, base_dir: &Path) -> Result<(World, Camera), SceneError> {
@@ -748,10 +758,7 @@ impl SceneDescription {
 /// file's directory.
 pub fn load<P: AsRef<Path>>(path: P) -> Result<(World, Camera), SceneError> {
     let path = path.as_ref();
-    let json = std::fs::read_to_string(path)
-        .map_err(|e| SceneError(format!("reading {}: {e}", path.display())))?;
-    let scene = SceneDescription::from_json(&json)?;
-    scene.build(path.parent().unwrap_or(Path::new(".")))
+    SceneDescription::from_path(path)?.build(path.parent().unwrap_or(Path::new(".")))
 }
 
 #[cfg(test)]
@@ -1021,6 +1028,18 @@ mod tests {
                 "OBJ scene must load triangles, got {n_children} children"
             ))
         }
+    }
+
+    /// Scene loader - from_path reports a missing file by name
+    #[test]
+    fn test_scene_9() -> Result<(), String> {
+        let err = SceneDescription::from_path("scenes/does-not-exist.json")
+            .err()
+            .ok_or("expected an error for a missing scene file")?;
+        if !err.to_string().contains("does-not-exist.json") {
+            return Err(format!("error should name the file: {err}"));
+        }
+        Ok(())
     }
 
     /// Scene loader - the book's cover image (Appendix A1) renders from JSON.
