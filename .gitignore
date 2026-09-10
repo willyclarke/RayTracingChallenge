@@ -28,3 +28,4 @@ __pycache__/
 !/RUST/rtc-rust/models/torus_smooth.obj
 /RUST/rtc-rust/frames/
 /RUST/rtc-rust/*.mp4
+/RUST/rtc-rust/screensaver/build/

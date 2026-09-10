@@ -18,6 +18,7 @@ cargo test --lib test_chap_13 # run one chapter's tests by name prefix
 cargo run --release -- scenes/cover.json -o cover.ppm   # render a JSON scene (the rtc CLI; scene format in README.md)
 cargo run --release -- scenes/small.json --orbit 240 -o frames/small/small.ppm   # 240 numbered frames, camera circling the look-at point
 ./film.sh scenes/small.json [frames=240] [fps=24]   # orbit frames + ffmpeg merge -> small.mp4
+./screensaver/build.sh cover.mp4 [install]   # macOS screen saver looping a film (Swift ScreenSaverView, swiftc, ad-hoc signed)
 cargo test --doc         # run documentation examples (doctests)
 cargo clippy --lib       # lint
 cargo fmt                # auto-format

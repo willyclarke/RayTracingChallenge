@@ -73,7 +73,25 @@ ffmpeg -framerate 24 -i frames/small/small_%04d.ppm -vf "pad=ceil(iw/2)*2:ceil(i
 ```
 
 Render time scales with the frame count, so preview with a copy of the scene at a small
-`width`/`height` (or a few frames) before the full run. Open scenes (`small.json`,
+`width`/`height` (or a few frames) before the full run.
+
+`screensaver/` turns a film into a macOS screen saver: `RtcSaverView.swift` is a
+`ScreenSaverView` that loops the bundled MP4 with `AVPlayerLooper` (muted, aspect-fill, one
+instance per display), and `build.sh` compiles it with `swiftc`, packs the film into
+`build/RtcSaver.saver`, ad-hoc signs it, and optionally installs it:
+
+```bash
+./film.sh scenes/cover.json frames=480 fps=48     # render at the display's resolution first
+./screensaver/build.sh cover.mp4 install          # -> ~/Library/Screen Savers/RtcSaver.saver
+```
+
+Then pick RtcSaver under "Other" in the screen saver section of System Settings > Wallpaper
+(macOS 26 folded the Screen Saver pane into Wallpaper). The settings tile shows the film's
+first frame, which `build.sh` extracts with ffmpeg as `thumbnail.png`/`thumbnail@2x.png`.
+Needs Xcode's command-line tools.
+Third-party savers run in Apple's sandboxed legacy host, so the film must live inside the
+bundle; rebuild and reinstall after re-rendering. The System Settings preview thumbnail may
+stay black for video savers; the full-screen saver is unaffected. Open scenes (`small.json`,
 `cover.json`) orbit cleanly; the dice scenes are closed rooms, so most of the turn looks at
 the walls from outside — move the walls out or drop them to film those.
 
