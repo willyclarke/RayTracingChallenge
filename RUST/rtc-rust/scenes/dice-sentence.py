@@ -16,7 +16,7 @@ import sys
 
 import dicelib as dl
 
-TEXT_Z = 3.0  # letters stand this far back; the wall behind them is at z=7
+TEXT_Z = 3.0  # letters stand this far back; the solid wall is well behind
 
 
 def scene(text, width, height):
@@ -33,7 +33,9 @@ def scene(text, width, height):
         "camera": dl.camera(width, height, camera_from, [0, 1.9, TEXT_Z]),
         "light": dl.area_light(),
         "settings": {"bvh_threshold": 4},
-        "shapes": dl.room(right_x=max(7, text_w / 2 + 5)) + letters,
+        # Floor only: the scene is filmed with `rtc --orbit`, and walls would
+        # put the camera outside the room for half the turn.
+        "shapes": dl.solid_room(walls=False) + letters,
     }
 
 

@@ -54,12 +54,12 @@ GOLD = ([1.0, 0.8, 0.12], [0.62, 0.42, 0.05])
 PALETTE = [MAGENTA, TEAL, ORANGE, LIME, VIOLET, GOLD]
 
 
-def checkers(a):
-    """The room's checkers pattern; `a` sets each surface's light-square tint."""
+def checkers(a, b=(0.14, 0.13, 0.16), scale=2):
+    """A checkers pattern; `a`/`b` are the square colors, `scale` the size."""
     return {
         "type": "checkers",
-        "a": a, "b": [0.14, 0.13, 0.16],
-        "transform": [{"scale": [2, 2, 2]}],
+        "a": list(a), "b": list(b),
+        "transform": [{"scale": [scale, scale, scale]}],
     }
 
 
@@ -153,6 +153,44 @@ def room(back_z=7, right_x=7):
                 "specular": 0.3, "reflective": 0.12,
             },
         },
+    ]
+
+
+def solid_room(back_z=16.0, right_x=16.0,
+               back_color=(0.17, 0.21, 0.32), right_color=(0.12, 0.15, 0.24),
+               floor_a=(0.80, 0.78, 0.74), floor_b=(0.60, 0.58, 0.55),
+               walls=True):
+    """A calmer stage than room(): the walls sit far back in solid deep-slate
+    tones and the floor's tiles are large and low-contrast, so a colorful
+    subject owns the frame. `walls=False` keeps only the floor, an open stage
+    the camera can orbit (`rtc --orbit`) without ending up behind a wall."""
+
+    def wall(color, transform):
+        return {
+            "type": "plane",
+            "material": {
+                "color": list(color),
+                "diffuse": 0.8, "ambient": 0.15, "specular": 0.05,
+            },
+            "transform": transform,
+        }
+
+    floor = {
+        "type": "plane",
+        "material": {
+            "pattern": checkers(floor_a, floor_b, scale=4),
+            "diffuse": 0.8, "ambient": 0.2,
+            "specular": 0.3, "reflective": 0.15,
+        },
+    }
+    if not walls:
+        return [floor]
+    return [
+        wall(back_color, [{"rotate_x": math.pi / 2},
+                          {"translate": [0, 0, back_z]}]),
+        wall(right_color, [{"rotate_z": math.pi / 2},
+                           {"translate": [right_x, 0, 0]}]),
+        floor,
     ]
 
 
