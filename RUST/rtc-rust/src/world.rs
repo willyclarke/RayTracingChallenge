@@ -293,13 +293,20 @@ pub fn prepare_computations<'a>(
     let mut n1 = 1.0;
     let mut n2 = 1.0;
 
+    // n1/n2 only feed refracted_color and schlick, both gated on transparency,
+    // so an opaque hit skips the container walk. That also sidesteps the
+    // unbalanced entries CSG children leave behind (a ray can enter a CSG
+    // through one child and leave through another), which pile up along a
+    // grazing ray through many dice.
+    let opaque = approx_eq(shape.material().transparency, 0.0);
+
     let mut containers = [0usize; 32]; // stack-allocated, no heap
     let last = |c: &[usize], len: usize| -> Option<usize> {
         if len == 0 { None } else { Some(c[len - 1]) }
     };
     let mut len = 0;
 
-    for i in xs.iter() {
+    for i in xs.iter().filter(|_| !opaque) {
         let is_hit = approx_eq(i.t, hit.t) && i.object_id == hit.object_id;
 
         if is_hit {
@@ -311,7 +318,12 @@ pub fn prepare_computations<'a>(
             containers.copy_within(pos + 1..len, pos); // shift left, preserve order
             len -= 1;
         } else {
-            debug_assert!(len < containers.len(), "container overflow");
+            if len == containers.len() {
+                // Full: forget the outermost medium rather than panic. Only
+                // the innermost (last) entries matter for n1/n2.
+                containers.copy_within(1.., 0);
+                len -= 1;
+            }
             containers[len] = i.object_id;
             len += 1;
         }
@@ -2648,6 +2660,55 @@ mod tests {
                     comps.n1, comps.n2
                 ));
             }
+        }
+        Ok(())
+    }
+
+    /// Chap 11 - n1/n2 survive a ray nested inside more media than the
+    /// container buffer holds (dice-sentence orbit frame 11 panicked here);
+    /// the innermost media still win
+    #[test]
+    fn test_chap_11_9_deep_nesting() -> Result<(), String> {
+        let mut w = World::new();
+        let mut ids = Vec::new();
+        for k in 0..40 {
+            let mut s = Sphere::glass();
+            s.data.material.refractive_index = 1.0 + k as f64 * 0.01;
+            ids.push(w.add_shape(Box::new(s)));
+        }
+        let r = Ray::new(Tuple::point(0.0, 0.0, -50.0), Tuple::vector(0.0, 0.0, 1.0));
+        let mut xs = Intersections::new();
+        // Enter all 40 spheres, one after another, then hit the last one's
+        // far side: n1 is the innermost medium (sphere 39), n2 the one outside it.
+        for (k, id) in ids.iter().enumerate() {
+            xs.push(Intersection::new(k as f64, *id));
+        }
+        let hit = Intersection::new(100.0, ids[39]);
+        xs.push(hit);
+        let comps = prepare_computations(hit, &r, &w.shapes, &xs);
+        if !approx_eq(comps.n1, 1.39) || !approx_eq(comps.n2, 1.38) {
+            return Err(format!(
+                "got ({}, {}), expected (1.39, 1.38)",
+                comps.n1, comps.n2
+            ));
+        }
+        Ok(())
+    }
+
+    /// Chap 11 - an opaque hit skips the container walk: n1 = n2 = 1
+    #[test]
+    fn test_chap_11_9_opaque() -> Result<(), String> {
+        let mut w = World::new();
+        let glass_id = w.add_shape(Box::new(Sphere::glass()));
+        let opaque_id = w.add_shape(Box::new(Sphere::new()));
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+        let mut xs = Intersections::new();
+        xs.push(Intersection::new(1.0, glass_id));
+        let hit = Intersection::new(2.0, opaque_id);
+        xs.push(hit);
+        let comps = prepare_computations(hit, &r, &w.shapes, &xs);
+        if !approx_eq(comps.n1, 1.0) || !approx_eq(comps.n2, 1.0) {
+            return Err(format!("got ({}, {}), expected (1, 1)", comps.n1, comps.n2));
         }
         Ok(())
     }
