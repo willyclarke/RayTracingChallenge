@@ -197,7 +197,8 @@ fn main() -> ExitCode {
         total.elapsed().as_secs_f64()
     );
     println!(
-        "ffmpeg -framerate 24 -i {pattern} -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\" -c:v libx264 -pix_fmt yuv420p {}",
+        "ffmpeg -framerate 24 -i {pattern} -vf \"pad=ceil(iw/2)*2:ceil(ih/2)*2\" \
+-c:v hevc_videotoolbox -q:v 65 -tag:v hvc1 -g 24 -pix_fmt yuv420p -movflags +faststart {}",
         video.display()
     );
     ExitCode::SUCCESS

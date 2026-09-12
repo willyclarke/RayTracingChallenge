@@ -69,8 +69,16 @@ frames, and `film.sh` runs both steps:
 ./film.sh scenes/dice-light-spot.json            # 240 frames at 24 fps → 10 s dice-light-spot.mp4
 ./film.sh scenes/small.json frames=48 fps=12     # both optional; bare numbers work too
 ffmpeg -framerate 24 -i frames/small/small_%04d.ppm -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" \
-    -c:v libx264 -pix_fmt yuv420p small.mp4      # what film.sh runs after rendering
+    -c:v hevc_videotoolbox -q:v 65 -tag:v hvc1 -g 24 -pix_fmt yuv420p \
+    -movflags +faststart small.mp4               # what film.sh runs after rendering
 ```
+
+The film is HEVC from Apple's hardware encoder (`hevc_videotoolbox`, macOS only): Retina-sized
+frames at 48 fps push H.264 to level 5.2, the top of what the decoder supports, and QuickTime
+and the screen saver stalled partway through such films. `-tag:v hvc1` is the four-character
+code Apple players need, `-g <fps>` puts a keyframe every second so a looping player restarts
+and resynchronises quickly (x264's default of 250 leaves a 10 s film with two), and
+`+faststart` moves the index to the front of the file.
 
 Render time scales with the frame count, so preview with a copy of the scene at a small
 `width`/`height` (or a few frames) before the full run.

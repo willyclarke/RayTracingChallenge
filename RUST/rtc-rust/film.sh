@@ -37,6 +37,13 @@ stem=$(basename "$scene" .json)
 cargo build --release
 rm -rf "frames/$stem"   # stale frames from a longer run would otherwise end up in the video
 target/release/rtc "$scene" --orbit "$frames" -o "frames/$stem/$stem.ppm"
+# HEVC through Apple's hardware encoder: much lighter to decode than H.264 at
+# Retina-sized 48 fps frames, which QuickTime and the screen saver stalled on.
+# -tag:v hvc1 is the four-char code Apple players require; -g <fps> puts a
+# keyframe every second so a looping player restarts and recovers quickly
+# (x264's default of 250 left a 10 s film with two); +faststart moves the
+# index to the front of the file.
 ffmpeg -y -framerate "$fps" -i "frames/$stem/${stem}_%04d.ppm" \
-    -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v libx264 -pix_fmt yuv420p "$stem.mp4"
+    -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -c:v hevc_videotoolbox -q:v 65 -tag:v hvc1 \
+    -g "$fps" -pix_fmt yuv420p -movflags +faststart "$stem.mp4"
 echo "wrote $stem.mp4 ($frames frames at $fps fps)"
