@@ -63,12 +63,18 @@ pub struct GpuMaterial {
     pub shininess: f32,
 }
 
-/// MSL `Sphere`: a unit sphere seen through its world-to-object transform.
+/// `GpuShape::kind` values; must match the `SHAPE_*` constants in rt.metal.
+pub const SHAPE_SPHERE: u32 = 0;
+pub const SHAPE_PLANE: u32 = 1;
+
+/// MSL `Shape`: a primitive (`kind`) seen through its world-to-object
+/// transform. One tagged array holds every kind, like rtc-rust's `shapes`.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GpuSphere {
+pub struct GpuShape {
     pub inverse: GpuMat4,
     pub material: GpuMaterial,
+    pub kind: u32,
 }
 
 /// MSL `Light`: a point light.
@@ -97,11 +103,12 @@ pub struct GpuCamera {
 pub struct GpuSceneInfo {
     pub camera: GpuCamera,
     pub light: GpuLight,
-    pub sphere_count: u32,
+    pub shape_count: u32,
 }
 
 const _: () = assert!(size_of::<GpuMaterial>() == 32);
-const _: () = assert!(size_of::<GpuSphere>() == 96);
+// 64 + 32 + 4 = 100 bytes of fields, padded to the 16-byte alignment.
+const _: () = assert!(size_of::<GpuShape>() == 112);
 const _: () = assert!(size_of::<GpuLight>() == 32);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);

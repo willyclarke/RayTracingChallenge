@@ -3,13 +3,17 @@
 
 use crate::gpu::Gpu;
 use crate::scene::{gpu_camera, gpu_light, gpu_material};
-use crate::types::{Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, float4};
+use crate::types::{
+    Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_PLANE, SHAPE_SPHERE,
+    float4,
+};
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
 use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
 use rtc_rust::ray::Ray;
 use rtc_rust::shape::Shape;
+use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
 use rtc_rust::tuple::Tuple;
 
@@ -118,12 +122,21 @@ fn test_chap_5_gpu_intersect_sphere() -> Result<(), String> {
     Ok(())
 }
 
-/// Input to `probe_sphere_normal_at`.
+/// Input to `probe_normal_at`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct NormalProbe {
-    inverse: GpuMat4,
+    shape: GpuShape,
     point: Float4,
+}
+
+/// A `GpuShape` of `kind` with transform `m` (material irrelevant here).
+fn probe_shape(kind: u32, m: &Matrix4) -> GpuShape {
+    GpuShape {
+        inverse: (&m.inverse().unwrap()).into(),
+        material: gpu_material(&Material::new()).unwrap(),
+        kind,
+    }
 }
 
 #[test]
@@ -147,12 +160,12 @@ fn test_chap_6_gpu_sphere_normal_at() -> Result<(), String> {
     let input: Vec<NormalProbe> = cases
         .iter()
         .map(|(m, p)| NormalProbe {
-            inverse: (&m.inverse().unwrap()).into(),
+            shape: probe_shape(SHAPE_SPHERE, m),
             point: float4(*p),
         })
         .collect();
 
-    let out: Vec<Float4> = Gpu::new()?.run("probe_sphere_normal_at", &input)?;
+    let out: Vec<Float4> = Gpu::new()?.run("probe_normal_at", &input)?;
 
     for (i, ((m, p), got)) in cases.iter().zip(&out).enumerate() {
         let mut sphere = Sphere::new();
@@ -322,6 +335,81 @@ fn test_chap_5_gpu_intersect_sphere_far_origin() -> Result<(), String> {
         }
         check_close(got[0], xs[0].t, &format!("ray {i} t0"))?;
         check_close(got[1], xs[1].t, &format!("ray {i} t1"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_9_gpu_plane_normal_at() -> Result<(), String> {
+    // Constant in object space; the second case checks the world transform.
+    let cases = [
+        (Matrix4::identity(), Tuple::point(0.0, 0.0, 0.0)),
+        (Matrix4::identity(), Tuple::point(10.0, 0.0, -10.0)),
+        (Matrix4::identity(), Tuple::point(-5.0, 0.0, 150.0)),
+        (
+            Matrix4::translation(0.0, 0.0, 5.0) * Matrix4::rotation_x(1.0),
+            Tuple::point(1.0, 2.0, 3.0),
+        ),
+    ];
+    let input: Vec<NormalProbe> = cases
+        .iter()
+        .map(|(m, p)| NormalProbe {
+            shape: probe_shape(SHAPE_PLANE, m),
+            point: float4(*p),
+        })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run("probe_normal_at", &input)?;
+
+    for (i, ((m, p), got)) in cases.iter().zip(&out).enumerate() {
+        let mut plane = Plane::new();
+        plane.set_transform(*m);
+        check_tuple(*got, plane.normal_at_no_intersect(*p), &format!("case {i}"))?;
+    }
+    Ok(())
+}
+
+/// Input to `probe_local_intersect`.
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct IntersectProbe {
+    ray: GpuRay,
+    kind: u32,
+}
+
+#[test]
+fn test_chap_9_gpu_intersect_plane() -> Result<(), String> {
+    // The book's cases: parallel, coplanar, from above, from below.
+    let rays = [
+        Ray::new(Tuple::point(0.0, 10.0, 0.0), Tuple::vector(0.0, 0.0, 1.0)),
+        Ray::new(Tuple::point(0.0, 0.0, 0.0), Tuple::vector(0.0, 0.0, 1.0)),
+        Ray::new(Tuple::point(0.0, 1.0, 0.0), Tuple::vector(0.0, -1.0, 0.0)),
+        Ray::new(Tuple::point(0.0, -1.0, 0.0), Tuple::vector(0.0, 1.0, 0.0)),
+    ];
+    let input: Vec<IntersectProbe> = rays
+        .iter()
+        .map(|r| IntersectProbe {
+            ray: r.into(),
+            kind: SHAPE_PLANE,
+        })
+        .collect();
+
+    // Each result is (t0, t1, hit count, unused).
+    let out: Vec<Float4> = Gpu::new()?.run("probe_local_intersect", &input)?;
+
+    let plane = Plane::new();
+    for (i, (ray, got)) in rays.iter().zip(&out).enumerate() {
+        let xs = plane.local_intersect(ray);
+        if got[2] as usize != xs.count() {
+            return Err(format!(
+                "ray {i}: gpu {} hits vs cpu {}",
+                got[2],
+                xs.count()
+            ));
+        }
+        if !xs.is_empty() {
+            check_close(got[0], xs[0].t, &format!("ray {i} t"))?;
+        }
     }
     Ok(())
 }

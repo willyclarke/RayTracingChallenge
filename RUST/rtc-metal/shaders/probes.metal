@@ -26,15 +26,30 @@ kernel void probe_intersect_sphere(device const Ray *in [[buffer(0)]],
 }
 
 struct NormalProbe {
-    float4x4 inverse;
+    Shape shape;
     float4 point;
 };
 
-kernel void probe_sphere_normal_at(device const NormalProbe *in [[buffer(0)]],
-                                   device float4 *out           [[buffer(1)]],
-                                   uint i                       [[thread_position_in_grid]])
+kernel void probe_normal_at(device const NormalProbe *in [[buffer(0)]],
+                            device float4 *out           [[buffer(1)]],
+                            uint i                       [[thread_position_in_grid]])
 {
-    out[i] = sphere_normal_at(in[i].inverse, in[i].point);
+    out[i] = normal_at(in[i].shape, in[i].point);
+}
+
+struct IntersectProbe {
+    Ray ray;
+    uint kind;
+};
+
+// out[i] = (t0, t1, hit count, unused)
+kernel void probe_local_intersect(device const IntersectProbe *in [[buffer(0)]],
+                                  device float4 *out              [[buffer(1)]],
+                                  uint i                          [[thread_position_in_grid]])
+{
+    float2 ts = float2(0.0);
+    uint count = local_intersect(in[i].kind, in[i].ray, ts);
+    out[i] = float4(ts, float(count), 0.0);
 }
 
 struct LightingProbe {

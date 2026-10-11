@@ -8,6 +8,7 @@ use rtc_rust::light::Light;
 use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
 use rtc_rust::shape::Shape;
+use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
 use rtc_rust::tuple::Tuple;
 use rtc_rust::world::{World, view_transform};
@@ -76,16 +77,48 @@ fn ball(color: Tuple) -> Material {
     m
 }
 
-#[test]
-fn test_chap_7_gpu_render_matches_cpu() -> Result<(), String> {
-    let (world, camera) = chapter_7_scene(200, 100);
-    let scene = GpuScene::from_world(&world, &camera)?;
+/// The book's chapter 9 "putting it together" scene: chapter 7's spheres,
+/// now on a real plane floor in front of a plane wall.
+fn chapter_9_scene(width: usize, height: usize) -> (World, Camera) {
+    let (chapter_7, camera) = chapter_7_scene(width, height);
+    let mut world = World::new();
+    world.light = chapter_7.light.clone();
+    let mut wall = Material::new();
+    wall.color = Tuple::color(1.0, 0.9, 0.9);
+    wall.specular = 0.0;
+    let mut floor = Plane::new();
+    floor.set_material(wall.clone());
+    world.add_shape(Box::new(floor));
+    let mut back = Plane::new();
+    back.set_transform(Matrix4::translation(0.0, 0.0, 5.0) * Matrix4::rotation_x(PI / 2.0));
+    back.set_material(wall);
+    world.add_shape(Box::new(back));
+    // chapter 7's last three shapes are the balls
+    for ball in &chapter_7.shapes[3..] {
+        let mut s = Sphere::new();
+        s.set_transform(*ball.transform());
+        s.set_material(ball.material().clone());
+        world.add_shape(Box::new(s));
+    }
+    (world, camera)
+}
+
+/// Render on both GPU and CPU and compare. A pixel is "off" when a channel
+/// differs by more than `1e-3`; at most 0.05% of pixels may be off.
+///
+/// Why any at all: a pixel on a hard shadow edge is a yes/no decision on a
+/// shadow ray grazing an occluder (discriminant ~ 0), and f32 rounds some of
+/// those the other way than rtc-rust's f64. At 1600x800 the chapter 9 scene
+/// has 11 such pixels, all on shadow edges. Real bugs are far over budget
+/// (the chapter 7 wall acne was 14% of pixels).
+fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
+    let scene = GpuScene::from_world(world, &camera)?;
     let gpu = Gpu::new()?.render(&scene)?;
     let cpu = world.render_parallel(camera);
 
     let (w, h) = (scene.width(), scene.height());
     let mut worst = (0.0f64, 0, 0);
-    let mut off = 0; // pixels more than one 8-bit step apart
+    let mut off = 0;
     for y in 0..h {
         for x in 0..w {
             let c = cpu.pixel_at(x, y);
@@ -98,23 +131,38 @@ fn test_chap_7_gpu_render_matches_cpu() -> Result<(), String> {
             if diff > worst.0 {
                 worst = (diff, x, y);
             }
-            if diff > 1.0 / 255.0 {
+            if diff > 1e-3 {
                 off += 1;
             }
         }
     }
+    let budget = w * h / 2000;
     eprintln!(
-        "worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by more than 1/255",
+        "worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget})",
         worst.0,
         worst.1,
         worst.2,
         w * h
     );
-    if worst.0 > 1e-3 {
+    if off > budget {
         return Err(format!(
-            "worst diff {:.2e} at ({}, {})",
+            "{off} pixels off by > 1e-3 (budget {budget}); worst {:.2e} at ({}, {})",
             worst.0, worst.1, worst.2
         ));
     }
     Ok(())
+}
+
+#[test]
+fn test_chap_7_gpu_render_matches_cpu() -> Result<(), String> {
+    let (world, camera) = chapter_7_scene(200, 100);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_9_gpu_render_matches_cpu() -> Result<(), String> {
+    // Higher resolution than chapter 7: more shadow-edge pixels to exercise
+    // the budget, and the plane runs out to the horizon.
+    let (world, camera) = chapter_9_scene(800, 400);
+    check_matches_cpu(&world, camera)
 }
