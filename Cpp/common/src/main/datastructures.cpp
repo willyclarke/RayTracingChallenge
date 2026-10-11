@@ -1493,7 +1493,8 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
     {
       float const X = Ray.Origin.X + t * Ray.Direction.X;
       float const Z = Ray.Origin.Z + t * Ray.Direction.Z;
-      bool const Result = (X * X + Z * Z) <= 1.f;
+      // NOTE: Allow EPSILON so a ray through the cap's rim isn't lost to float rounding.
+      bool const Result = (X * X + Z * Z) <= 1.f + EPSILON;
       return Result;
     };
 
