@@ -1581,6 +1581,63 @@ intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
 }
 
 //------------------------------------------------------------------------------
+// \brief Local Intersect of a Capsule
+//
+// Split the job into three parts.
+// 1. Check intersect with a cylinder.
+// 2. Check intersect with the top sphere.
+// 3. Check intersect with the bottom sphere.
+//------------------------------------------------------------------------------
+intersections LocalIntersectCapsule(shared_ptr_shape PtrShape, ray const &RayIn)
+{
+  auto const ptrCapsule = dynamic_cast<capsule const *>(PtrShape.get());
+
+  auto const IntersectionSphereTop = LocalIntersectSphere(ptrCapsule->pTopSphere, RayIn);
+  if (IntersectionSphereTop.Count()) return IntersectionSphereTop;
+
+  auto const IntersectionSphereBottom = LocalIntersectSphere(ptrCapsule->pBottomSphere, RayIn);
+  if (IntersectionSphereBottom.Count()) return IntersectionSphereBottom;
+
+  auto const IntersectionCylinder = LocalIntersectCylinder(ptrCapsule->pCylinder, RayIn);
+  if (IntersectionCylinder.Count()) return IntersectionCylinder;
+
+  return {};
+}
+
+//------------------------------------------------------------------------------
+/// \brief Local Intersect for a group. Calls local intersect on all its
+///        children.
+intersections LocalIntersectGroup(shared_ptr_shape PtrShape, ray const &RayIn)
+{
+  if (!PtrShape->isA<group>())
+  {
+    std::cerr << __FUNCTION__ << " -> Returning because " << PtrShape << " is not a group." << std::endl;
+    return {};
+  }
+
+  auto PtrGroup = std::dynamic_pointer_cast<group>(PtrShape);
+
+  intersections XSResult{};
+  for (auto PtrChild : PtrGroup->vChildren)
+  {
+    /**
+     * No matter if the shape is a group or a concrete shape.
+     * Create a local ray and call local intersect with that ray.
+     */
+    auto const LocalRay = Inverse(PtrChild->Transform) * RayIn;
+    auto const XS = PtrChild->funcPtrLocalIntersect(PtrChild, LocalRay);
+    for (auto Intersection : XS.vI)
+    {
+      XSResult.vI.push_back(Intersection);
+    }
+  }
+  std::sort(XSResult.vI.begin(), XSResult.vI.end(),
+            [](intersection const &IntA, intersection const &IntB) { return IntA.t < IntB.t; });
+
+  return XSResult;
+}
+
+//------------------------------------------------------------------------------
 /// \brief Generic Local Intersect
 ///
 ///        Looks up the type of shape and calls the specific
@@ -1610,6 +1667,15 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
   else if (PtrShape->isA<cylinder>())
   {
     Result = LocalIntersectCylinder(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<capsule>())
+  {
+    Result = LocalIntersectCapsule(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<group>())
+  {
+    auto const LocalRay = Inverse(PtrShape->Transform) * RayIn;
+    Result = LocalIntersectGroup(PtrShape, LocalRay);
   }
 
   return (Result);
@@ -1910,6 +1976,40 @@ tup LocalNormalAtCylinder(shape const &Cylinder, tup const &LocalPoint)
 }
 
 /**
+ * The local normal for a capsule is the point on the cylinder with the
+ * Y-component removed when localpoint is between the points.
+ * Otherwise it is the normal of the sphere at either end.
+ */
+tup LocalNormalAtCapsule(shape const &Capsule, tup const &LocalPoint)
+{
+  tup Result{};
+
+  std::cout << __FUNCTION__ << " " << LocalPoint << std::endl;
+  capsule const *pCapsule = dynamic_cast<capsule const *>(&Capsule);
+
+  if (pCapsule->B.Y >= LocalPoint.Y && pCapsule->A.Y <= LocalPoint.Y)
+  {
+    std::cout << __FUNCTION__ << " " << LocalPoint << std::endl;
+
+    Result = LocalNormalAtCylinder(Capsule, LocalPoint);
+  }
+
+  std::cout << __FUNCTION__ << " " << LocalPoint << std::endl;
+  if (LocalPoint.Y > pCapsule->B.Y)
+  {
+    Result = LocalNormalAt(*pCapsule->pTopSphere, LocalPoint);
+  }
+
+  std::cout << __FUNCTION__ << " " << LocalPoint << std::endl;
+  if (LocalPoint.Y < pCapsule->A.Y)
+  {
+    Result = LocalNormalAt(*pCapsule->pBottomSphere, LocalPoint);
+  }
+
+  return Result;
+}
+
+/**
  * The local normal for a plane is always 0, 1, 0.
  */
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
@@ -1923,16 +2023,19 @@ tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
  \brief Calculate normal vector at given point. The resulting vector will
         be normalized to a length of 1.f.
 */
-tup NormalAt(shape const &Shape, tup const &PointInput)
+tup NormalAt(shape const &Shape, tup const &WorldPoint)
 {
-  tup const LocalPoint = Inverse(Shape.Transform) * PointInput;
-  // tup const LocalNormal = LocalNormalAt(Shape, LocalPoint);
+  auto const LocalPoint = WorldToObject(Shape, WorldPoint);
   tup const LocalNormal = Shape.funcPtrLocalNormalAt(Shape, LocalPoint);
-  tup WorldNormal = Transpose(Inverse(Shape.Transform)) * LocalNormal;
-  WorldNormal.W = 0.f;
-
-  tup const Result = Normalize(WorldNormal);
-  return (Result);
+  auto WorldNormal = NormalToWorld(Shape, LocalNormal);
+  if (Shape.Print)
+  {
+    std::cout << __FUNCTION__ << " -> WorldPoint:" << WorldPoint << std::endl;
+    std::cout << __FUNCTION__ << " -> LocalPoint:" << LocalPoint << std::endl;
+    std::cout << __FUNCTION__ << " -> LocalNormal:" << LocalNormal << std::endl;
+    std::cout << __FUNCTION__ << " -> WorldNormal:" << WorldNormal << std::endl;
+  }
+  return (WorldNormal);
 }
 
 //------------------------------------------------------------------------------
@@ -2213,6 +2316,139 @@ shared_ptr_sphere PtrGlassSphere()
 }
 
 //------------------------------------------------------------------------------
+shared_ptr_capsule PtrDefaultCapsule()
+{
+  shared_ptr_capsule pCapsule{};
+  pCapsule.reset(new capsule);
+  if (pCapsule)
+  {
+    // std::cout << "Capsule: \nA: " << pCapsule->A << ". \nB: " << pCapsule->B << "\nR: " << pCapsule->Radius
+    //           << "\nTip : " << pCapsule->Tip << "\nBase: " << pCapsule->Base << std::endl;
+
+    pCapsule->Material = {};
+
+    pCapsule->pTopSphere = PtrDefaultSphere();
+    if (pCapsule->pTopSphere)
+    {
+      pCapsule->pTopSphere->Material = pCapsule->Material;
+      pCapsule->pTopSphere->Radius = pCapsule->Radius;
+      pCapsule->pTopSphere->Center = pCapsule->B;
+      // pCapsule->pTopSphere->Transform = Translation(pCapsule->B.X, pCapsule->B.Y, pCapsule->B.Z);
+      // pCapsule->pTopSphere->Center = {2.f, 10.f, 0.f, 0.f};
+      pCapsule->pTopSphere->Material.Color = Color(1.f, 0.f, 1.f);
+    }
+
+    pCapsule->pBottomSphere = PtrDefaultSphere();
+    if (pCapsule->pBottomSphere)
+    {
+      pCapsule->pBottomSphere->Material = pCapsule->Material;
+      pCapsule->pBottomSphere->Radius = pCapsule->Radius;
+      pCapsule->pBottomSphere->Center = pCapsule->A;
+      // pCapsule->pBottomSphere->Transform = Translation(pCapsule->A.X, pCapsule->A.Y, pCapsule->A.Z);
+      pCapsule->pBottomSphere->Material.Color = Color(0.f, 1.f, 0.f);
+    }
+
+    pCapsule->pCylinder = PtrCappedCylinder(pCapsule->A.Y, .1f * pCapsule->B.Y);
+    if (pCapsule->pCylinder)
+    {
+      pCapsule->pCylinder->Material = pCapsule->Material;
+      pCapsule->pCylinder->Material.Color = Color(0.5f, 0.5f, 0.5f);
+      pCapsule->pCylinder->Radius = pCapsule->Radius;
+    }
+
+    pCapsule->funcPtrLocalIntersect = &ww::LocalIntersectCapsule;
+    pCapsule->funcPtrLocalNormalAt = &ww::LocalNormalAtCapsule;
+  }
+  return (pCapsule);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_bounds PtrDefaultBounds()
+{
+  shared_ptr_bounds pBounds = std::make_shared<bounds>();
+  pBounds->Minimum = Point(-1.f, -1.f, -1.f);
+  pBounds->Maximum = Point(1.f, 1.f, 1.f);
+  return pBounds;
+}
+
+//------------------------------------------------------------------------------
+bounds Bounds(shared_ptr_shape const pShape)
+{
+  bounds Result{};
+  if (pShape->isA<cube>())
+  {
+    cube *pCube = dynamic_cast<cube *>(pShape.get());
+    Result.Minimum = Point(-pCube->Transform.R0.X, -pCube->Transform.R1.Y, -pCube->Transform.R2.Z);
+    Result.Maximum = Point(pCube->Transform.R0.X, pCube->Transform.R1.Y, pCube->Transform.R2.Z);
+  }
+  else if (pShape->isA<cone>())
+  {
+    cone *pCone = dynamic_cast<cone *>(pShape.get());
+    Result.Minimum = Point(-pCone->Transform.R0.X, pCone->Transform.R1.Y * pCone->Minimum, -pCone->Transform.R2.Z);
+    Result.Maximum = Point(pCone->Transform.R0.X, pCone->Transform.R1.Y * pCone->Maximum, pCone->Transform.R2.Z);
+  }
+  else if (pShape->isA<cylinder>())
+  {
+    cylinder *pCylinder = dynamic_cast<cylinder *>(pShape.get());
+    Result.Minimum =
+        Point(-pCylinder->Transform.R0.X, pCylinder->Transform.R1.Y * pCylinder->Minimum, -pCylinder->Transform.R2.Z);
+    Result.Maximum =
+        Point(pCylinder->Transform.R0.X, pCylinder->Transform.R1.Y * pCylinder->Maximum, pCylinder->Transform.R2.Z);
+  }
+  else if (pShape->isA<plane>())
+  {
+    Result.Minimum = Point(-INIFINITY, -INIFINITY, 0.f);
+    Result.Maximum = Point(INIFINITY, INIFINITY, 0.f);
+  }
+  else if (pShape->isA<sphere>())
+  {
+    Result.Minimum = Point(-1.f, -1.f, -1.f);
+    Result.Maximum = Point(1.f, 1.f, 1.f);
+    // sphere *pSphere = dynamic_cast<sphere *>(pShape.get());
+    // Result.Minimum = Point(-pSphere->Transform.R0.X, -pSphere->Transform.R1.Y, -pSphere->Transform.R2.Z);
+    // Result.Maximum = Point(pSphere->Transform.R0.X, pSphere->Transform.R1.Y, pSphere->Transform.R2.Z);
+  }
+  else
+  {
+    std::cerr << __FUNCTION__ << " -> Unhandled Shape type: " << pShape << ". Transform:" << pShape->Transform
+              << std::endl;
+    Assert(false, __FUNCTION__, __LINE__);
+  }
+
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+bounds Bounds(shared_ptr_group const pGroup)
+{
+  bounds Result{};
+
+  for (size_t Idx = 0;                  //!<
+       Idx < pGroup->vChildren.size();  //!<
+       ++Idx)
+  {
+    auto pShape = pGroup->vChildren[Idx];
+    auto ShapeBounds = Bounds(pShape);
+
+    /**
+     * Move the shape's bounds into the parents space by Multiplying
+     * with the transform for the shape.
+     */
+    auto ShapesParentSpaceBoundsMaximum = pShape->Transform * ShapeBounds.Maximum;
+    auto ShapesParentSpaceBoundsMinimum = pShape->Transform * ShapeBounds.Minimum;
+
+    Result.Maximum.X = std::max(Result.Maximum.X, ShapesParentSpaceBoundsMaximum.X);
+    Result.Maximum.Y = std::max(Result.Maximum.Y, ShapesParentSpaceBoundsMaximum.Y);
+    Result.Maximum.Z = std::max(Result.Maximum.Z, ShapesParentSpaceBoundsMaximum.Z);
+
+    Result.Minimum.X = std::min(Result.Minimum.X, ShapesParentSpaceBoundsMinimum.X);
+    Result.Minimum.Y = std::min(Result.Minimum.Y, ShapesParentSpaceBoundsMinimum.Y);
+    Result.Minimum.Z = std::min(Result.Minimum.Z, ShapesParentSpaceBoundsMinimum.Z);
+  }
+  return Result;
+}
+
+//------------------------------------------------------------------------------
 shared_ptr_cube PtrDefaultCube()
 {
   shared_ptr_cube pCube{};
@@ -2264,9 +2500,8 @@ prepare_computation PrepareComputations(intersection const &Hit, ray const &R, i
     {
       intersection const &I = ptrXS->vI[Idx];
       // ---
-      // NOTE: 1. If the intersection is the hit, set the refractive index to the refractive index of the last object in
-      // the
-      //          containers list. If that list is empty, then there is no containing object and n1 should be set to 1.
+      // NOTE: 1. If the intersection is the hit, set the refractive index to the refractive index of the last object
+      // in the containers list. If that list is empty, then there is no containing object and n1 should be set to 1.
       // ---
       if (I == Hit)
       {
@@ -2281,8 +2516,8 @@ prepare_computation PrepareComputations(intersection const &Hit, ray const &R, i
       }
 
       // ---
-      // NOTE: 2. If the intersection's object is already in the Containers list, then this intersection must be exiting
-      //          the object. Remove the object from the Containers list in this case. Otherwise, the intersection is
+      // NOTE: 2. If the intersection's object is already in the Containers list, then this intersection must be
+      // exiting the object. Remove the object from the Containers list in this case. Otherwise, the intersection is
       //          entering the object, and the object should be added to the end of the list.
       // ---
       //
@@ -2844,6 +3079,186 @@ shape TestShape()
 }
 
 //------------------------------------------------------------------------------
+// \brief Return a group object/struct.
+//------------------------------------------------------------------------------
+group Group()
+{
+  group G{};
+  G.funcPtrLocalIntersect = &LocalIntersectGroup;
+  return (G);
+}
+
+//------------------------------------------------------------------------------
+auto AddVectorOfChildren(world &World, shared_ptr_shape Shape) -> void
+{
+  if (Shape->isA<group>())
+  {
+    auto PtrGroup = std::dynamic_pointer_cast<group>(Shape);
+    for (auto Elem : PtrGroup->vChildren)
+    {
+      if (Elem->isA<group>())
+      {
+        AddVectorOfChildren(World, Elem);
+      }
+      else
+      {
+        auto PtrChild = Elem;
+        auto PtrParent = PtrChild->PtrParent;
+        auto T = PtrChild->Transform;
+        auto Pattern = PtrChild->Material.Pattern;
+
+        /**
+         * Move up until there are no more parents.
+         */
+        while (PtrParent)
+        {
+          T = PtrParent->Transform * T;
+
+          /**
+           * Use the pattern from the to level group to the Child.
+           */
+          if (PtrParent->Material.Pattern != pattern{})
+          {
+            Pattern = PtrParent->Material.Pattern;
+            Pattern.Transform = PtrParent->Material.Pattern.Transform;
+          }
+
+          /**
+           * Move up to the next parent.
+           */
+          PtrParent = PtrParent->PtrParent;
+        }
+
+        /**
+         * Create the group by use of the fundamental building blocks.
+         */
+        if (Elem->isA<sphere>())
+        {
+          auto Sphere = PtrDefaultSphere();
+          Sphere->Transform = T;
+          Sphere->Material.Pattern = Pattern;
+
+          World.vPtrObjects.push_back(Sphere);
+        }
+        else if (PtrChild->isA<cylinder>())
+        {
+          auto PtrInputCylinder = std::dynamic_pointer_cast<cylinder>(PtrChild);
+          auto Cylinder = PtrCappedCylinder(0.f, 1.f);
+          Cylinder->Minimum = PtrInputCylinder->Minimum;
+          Cylinder->Maximum = PtrInputCylinder->Maximum;
+          Cylinder->Transform = T;
+          Cylinder->Material.Pattern = Pattern;
+          World.vPtrObjects.push_back(Cylinder);
+        }
+        else if (PtrChild->isA<cube>())
+        {
+          auto PtrInputCube = std::dynamic_pointer_cast<cube>(PtrChild);
+          auto Cube = PtrDefaultCube();
+          Cube->Transform = T;
+          Cube->Material.Pattern = Pattern;
+          World.vPtrObjects.push_back(Cube);
+        }
+      }
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+void AddGroupToWorld(world &World, shared_ptr_group PtrGroup) { AddVectorOfChildren(World, PtrGroup); }
+
+//------------------------------------------------------------------------------
+// auto UpdateChildTransform(shared_ptr_shape Shape, matrix const &Transform) -> void
+// {
+//   if (Shape->isA<group>())
+//   {
+//     auto ptr = dynamic_cast<group *>(Shape.get());
+//     for (auto ChildShape : ptr->vChildren)
+//     {
+//       // std::cout << __FUNCTION__ << ". Is a group. Will set transform recursively to shape." << std::endl;
+//       UpdateChildTransform(ChildShape, Transform);
+//     }
+//   }
+//   else
+//   {
+//     Shape->Transform = Shape->PtrParent->Transform * Shape->Transform;
+//     // std::cout << __FUNCTION__ << "Setting transform for " << Shape << " to " << Transform << std::endl;
+//   }
+// };
+
+//------------------------------------------------------------------------------
+/**
+ * Add a shape to an existing group.
+ */
+void AddChild(shared_ptr_group PtrGroup, shared_ptr_shape PtrShape, char const *ptrDescr)
+{
+  if (ptrDescr) std::cout << "Got the following description:" << ptrDescr << std::endl;
+
+  PtrShape->PtrParent = PtrGroup;
+
+  PtrGroup->vChildren.push_back(PtrShape);
+}
+
+/**
+ * Multiply the given world-space point by the inverse of the objects
+ * transformation matrix to convert the point to object space.
+ */
+tup WorldToObject(shared_ptr_shape PtrShape, tup Point)
+{
+  if (PtrShape->PtrParent)
+  {
+    Point = WorldToObject(PtrShape->PtrParent, Point);
+  }
+
+  return Inverse(PtrShape->Transform) * Point;
+}
+
+/**
+ * Multiply the given world-space point by the inverse of the objects
+ * transformation matrix to convert the point to object space.
+ */
+tup WorldToObject(shape const &Shape, tup Point)
+{
+  if (Shape.Print) std::cout << __FUNCTION__ << " -> Point: " << Point << std::endl;
+
+  if (Shape.PtrParent)
+  {
+    Point = WorldToObject(*Shape.PtrParent, Point);
+    if (Shape.Print) std::cout << __FUNCTION__ << " -> Has Parent. Point recalc: " << Point << std::endl;
+  }
+
+  return Inverse(Shape.Transform) * Point;
+}
+
+//------------------------------------------------------------------------------
+tup NormalToWorld(shared_ptr_shape PtrShape, tup const &Normal)
+{
+  auto N = Transpose(Inverse(PtrShape->Transform)) * Normal;
+  N.W = 0.f;
+  N = Normalize(N);
+
+  if (PtrShape->PtrParent)
+  {
+    N = NormalToWorld(PtrShape->PtrParent, N);
+  }
+
+  return N;
+}
+
+//------------------------------------------------------------------------------
+tup NormalToWorld(shape const &Shape, tup const &Normal)
+{
+  auto N = Transpose(Inverse(Shape.Transform)) * Normal;
+  N.W = 0.f;
+  N = Normalize(N);
+
+  if (Shape.PtrParent)
+  {
+    N = NormalToWorld(Shape.PtrParent, N);
+  }
+  return N;
+}
+
+//------------------------------------------------------------------------------
 // \fn TestShapePtr
 // \brief create an object and return a smart pointer to the object
 // \return smart pointer to shape
@@ -2854,6 +3269,22 @@ shared_ptr_shape SharedPtrShape(shape const &Shape)
   *PtrShape = Shape;
 
   return (PtrShape);
+}
+
+//------------------------------------------------------------------------------
+// \fn SharedPtrGroup
+// \brief create an object and return a smart pointer to the object
+// \return smart pointer to group
+shared_ptr_group SharedPtrGroup(group const &Group)
+{
+  ww::shared_ptr_group PtrGroup{};
+  PtrGroup.reset(new ww::group);
+  *PtrGroup = Group;
+  PtrGroup->funcPtrLocalNormalAt = nullptr;
+
+  if (PtrGroup->Print) std::cout << PtrGroup << "-> Group Transform:" << PtrGroup->Transform << std::endl;
+
+  return (PtrGroup);
 }
 
 //------------------------------------------------------------------------------
@@ -3113,13 +3544,13 @@ tup StripeAtObject(pattern const &Pattern, shape const Object, tup const &Point)
 tup PatternAtShape(pattern const &Pattern, shape const &Shape, tup const &Point)
 {
   Assert(Shape.Material.Pattern.funcPtrPatternAt != nullptr, __FILE__, __LINE__);
-  /**
-   * Multiply the given world-space point by the inverse of the objects
-   * transformation matrix to convert the point to object space.
-   */
-  tup const ShapePoint = Inverse(Shape.Transform) * Point;
 
-  tup const Color = Pattern.funcPtrPatternAt(Pattern, ShapePoint);
+  /**
+   * To support groups the world point need to be transferred into object space.
+   */
+  auto const LocalPoint = WorldToObject(Shape, Point);
+
+  tup const Color = Pattern.funcPtrPatternAt(Pattern, LocalPoint);
   return Color;
 }
 
@@ -3370,21 +3801,21 @@ auto CreateCapsule(tup const &A, tup const &B, float R, bool Print) -> capsule
   Assert(IsPoint(B), __FUNCTION__, __LINE__);
 
   ww::capsule C{};
-  C.R = R;
+  C.Radius = R;
   C.A = A;
   C.B = B;
 
   ww::tup const AB = B - A;  // Vector created from A to B.
   Assert(ww::IsVector(AB), __FUNCTION__, __LINE__);
 
-  C.Base = A - ww::Normalize(AB) * C.R;  // Subtract from point B to get to Base.
-  C.Tip = B + ww::Normalize(AB) * C.R;   // Add to point A to get to Tip.
+  C.Base = A - ww::Normalize(AB) * C.Radius;  // Subtract from point B to get to Base.
+  C.Tip = B + ww::Normalize(AB) * C.Radius;   // Add to point A to get to Tip.
 
   if (Print)
   {
     std::cout << "Capsule ---" << std::endl;
     std::cout << "From A: " << C.A << "\n  to B: " << C.B << "\n"
-              << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.R << std::endl;
+              << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.Radius << std::endl;
   }
   return C;
 }
