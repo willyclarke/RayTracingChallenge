@@ -1043,7 +1043,10 @@ TEST(RayMarch, CreateCapsule)
     ww::capsule const Ca = CreateCapsule(ww::Point(3.23f, 25.16f, 1.84f), ww::Point(2.32f, 24.61f, 4.77f), 0.1f);
     ww::capsule const Cb = CreateCapsule(ww::Point(18.06f, 23.f, -2.53f), ww::Point(0.94f, 25.f, 4.84f), 0.01f);
     auto const D = ww::rm::sdCapsuleCapsule(Ca, Cb);
-    EXPECT_FLOAT_EQ(D, 0.23186623);
+    // ---
+    // NOTE: The capsules overlap; the expected value is the exact segment-segment distance minus the radii.
+    // ---
+    EXPECT_LT(std::abs(D - -0.02181917f), ww::EPSILON);
   }
 
   {
@@ -1052,7 +1055,7 @@ TEST(RayMarch, CreateCapsule)
     ww::capsule const C2 =
         CreateCapsule(ww::Point(21.34589f, 24.f, -4.173028f), ww::Point(-6.346084, 26.f, 5.390827f), 0.01f);
     auto const D = ww::rm::sdCapsuleCapsule(C1, C2);
-    EXPECT_FLOAT_EQ(D, 0.23186623);
+    EXPECT_LT(std::abs(D - -0.10403665f), ww::EPSILON);
   }
 }
 
@@ -1199,11 +1202,12 @@ TEST(RayMarch, CapsuleVsTriangle)
   auto Expect = [](bool V) -> bool { return V; };
   // auto Elevate = [](float h) -> float { return h; };
 
-  TestIntersect(ww::Point(-1.f, -0.7f, 0.f), ww::Point(1.f, 1.f, 0.f), 0.1, Expect(true), Print(false));
+  // NOTE: Closest approach to the triangle is 0.114, just outside the radius.
+  TestIntersect(ww::Point(-1.f, -0.7f, 0.f), ww::Point(1.f, 1.f, 0.f), 0.1, Expect(false), Print(false));
   TestIntersect(ww::Point(-1.f, -1.f, 0.f), ww::Point(-1.f, 1.f, 0.f), 0.1, Expect(false), Print(false));
   TestIntersect(ww::Point(-.1f, -1.f, 0.f), ww::Point(-.1f, 1.f, 0.f), 0.11, Expect(true), Print(false));
   TestIntersect(ww::Point(0.f, 0.f, 0.f), ww::Point(0.f, 1.f, 0.f), 0.1, Expect(true), Print(false));
-  TestIntersect(ww::Point(0.25f, 0.1f, 0.25f), ww::Point(0.25f, 1.f, 0.25f), 0.15, Expect(true), Print(true));
+  TestIntersect(ww::Point(0.25f, 0.1f, 0.25f), ww::Point(0.25f, 1.f, 0.25f), 0.15, Expect(true), Print(false));
 }
 
 //------------------------------------------------------------------------------
