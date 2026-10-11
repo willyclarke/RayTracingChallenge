@@ -22,7 +22,8 @@ use rtc_rust::shapes::sphere::Sphere;
 use rtc_rust::shapes::triangle::Triangle;
 use rtc_rust::shapes::triangleuv::TriangleUV;
 use rtc_rust::tuple::Tuple;
-use rtc_rust::world::{World, prepare_computations, schlick};
+use rtc_rust::world::{World, prepare_computations, schlick, view_transform};
+use std::f64::consts::PI;
 
 /// Relative tolerance for f32 GPU results against f64 CPU results.
 const EPSILON: f64 = 1e-5;
@@ -1169,6 +1170,247 @@ fn test_chap_15_gpu_triangle_uv_and_normal() -> Result<(), String> {
             return Err(format!(
                 "{hits} of 49 rays hit; grid should mix hits and misses"
             ));
+        }
+    }
+    Ok(())
+}
+
+/// `probe_trace` inputs for `rays` toward `light`.
+fn trace_probes(rays: &[Ray], light: Tuple) -> Vec<TraceProbe> {
+    rays.iter()
+        .map(|r| TraceProbe {
+            ray: r.into(),
+            light_position: float4(light),
+        })
+        .collect()
+}
+
+#[test]
+fn test_chap_15_gpu_trace_through_bvh() -> Result<(), String> {
+    // An OBJ mesh on a floor: every camera ray's hit or miss, shape, t,
+    // normal and shadow must match the CPU, so the BVH never drops or
+    // reorders a hit (book chapter 15).
+    let mut world = World::new();
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+    let mut floor = Plane::new();
+    floor.set_transform(Matrix4::translation(0.0, -2.0, 0.0));
+    let floor = world.add_shape(Box::new(floor));
+    world
+        .load_obj_file(
+            "../rtc-rust/models/icosahedron.obj",
+            Matrix4::scaling(1.5, 1.5, 1.5),
+        )
+        .map_err(|e| e.to_string())?;
+    world.build_bounds();
+    let camera = Camera::new(20, 20, PI / 3.0).with_transform(view_transform(
+        Tuple::point(0.0, 1.5, -5.0),
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    ));
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let rays: Vec<Ray> = (0..20)
+        .flat_map(|y| (0..20).map(move |x| (x, y)))
+        .map(|(x, y)| camera.ray_for_pixel(x, y))
+        .collect();
+
+    let out: Vec<TraceResult> =
+        Gpu::new()?.run_with_scene("probe_trace", &trace_probes(&rays, light), &scene)?;
+
+    let mut on_mesh = 0;
+    for (i, (ray, got)) in rays.iter().zip(&out).enumerate() {
+        let xs = world.intersect(ray);
+        let got_id = scene.ids.get(got.index as usize);
+        let Some(hit) = xs.hit() else {
+            if got_id.is_some() {
+                return Err(format!("ray {i}: gpu hit {got_id:?}, cpu miss"));
+            }
+            continue;
+        };
+        if got_id != Some(&hit.object_id) {
+            return Err(format!(
+                "ray {i}: gpu shape {got_id:?} vs cpu {}",
+                hit.object_id
+            ));
+        }
+        if hit.object_id != floor {
+            on_mesh += 1;
+        }
+        let comps = prepare_computations(hit, ray, &world.shapes, &xs);
+        check_close(got.t, hit.t, &format!("ray {i} t"))?;
+        check_tuple(got.normal, comps.normalv, &format!("ray {i} normal"))?;
+        let shadowed = world.is_shadowed(comps.over_point, light);
+        if (got.shadowed != 0) != shadowed {
+            return Err(format!(
+                "ray {i}: gpu shadowed {} vs cpu {shadowed}",
+                got.shadowed != 0
+            ));
+        }
+    }
+    // The unit icosahedron scaled 1.5 fills ~15% of the 60 degree view
+    // from ~5.2 units: 56 of the 400 rays.
+    if on_mesh < 50 {
+        return Err(format!("only {on_mesh} rays hit the icosahedron"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_15_gpu_bvh_shared_edge_has_no_crack() -> Result<(), String> {
+    // A quad split along its diagonal into two triangles, in a real tree
+    // (12 spheres off to the side). Rays straight down the shared edge must
+    // hit one of the two: the edge is on both triangles' u + v = 1 border,
+    // and the end rays start on the leaf box's faces (x = z = -1 and 1),
+    // where intersect_box's axis-parallel guard decides.
+    let mut world = World::new();
+    world.light = Some(Light::point_light(
+        Tuple::point(-10.0, 10.0, -10.0),
+        Tuple::color(1.0, 1.0, 1.0),
+    ));
+    let a = world.add_shape(Box::new(TriangleUV::flat(
+        Tuple::point(-1.0, 0.0, -1.0),
+        Tuple::point(1.0, 0.0, -1.0),
+        Tuple::point(1.0, 0.0, 1.0),
+    )));
+    let b = world.add_shape(Box::new(TriangleUV::flat(
+        Tuple::point(-1.0, 0.0, -1.0),
+        Tuple::point(1.0, 0.0, 1.0),
+        Tuple::point(-1.0, 0.0, 1.0),
+    )));
+    for k in 0..12 {
+        let mut s = Sphere::new();
+        s.set_transform(
+            Matrix4::translation(3.0 + (k % 4) as f64, 0.5, 3.0 + (k / 4) as f64)
+                * Matrix4::scaling(0.3, 0.3, 0.3),
+        );
+        world.add_shape(Box::new(s));
+    }
+    let camera = Camera::new(1, 1, PI / 3.0);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    if scene.nodes.len() < 3 {
+        return Err(format!("only {} BVH nodes; no tree", scene.nodes.len()));
+    }
+    let rays: Vec<Ray> = (0..50)
+        .map(|k| {
+            let s = -1.0 + 2.0 * k as f64 / 49.0;
+            ray((s, 1.0, s), (0.0, -1.0, 0.0))
+        })
+        .collect();
+    let light = world.light.as_ref().unwrap().position;
+
+    let out: Vec<TraceResult> =
+        Gpu::new()?.run_with_scene("probe_trace", &trace_probes(&rays, light), &scene)?;
+
+    for (i, got) in out.iter().enumerate() {
+        let got_id = scene.ids.get(got.index as usize);
+        if got_id != Some(&a) && got_id != Some(&b) {
+            return Err(format!("ray {i}: missed the quad (gpu shape {got_id:?})"));
+        }
+        check_close(got.t, 1.0, &format!("ray {i} t"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_15_gpu_bvh_matches_linear() -> Result<(), String> {
+    // GPU against GPU: the BVH traversal must find exactly the hit, t and
+    // shadow that testing every shape linearly finds.
+    let (world, camera) = crate::compare::chapter_14_scene(40, 25);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let light = world.light.as_ref().unwrap().position;
+    let rays: Vec<Ray> = (0..25)
+        .flat_map(|y| (0..40).map(move |x| (x, y)))
+        .map(|(x, y)| camera.ray_for_pixel(x, y))
+        .collect();
+    let input = trace_probes(&rays, light);
+    let gpu = Gpu::new()?;
+
+    let bvh: Vec<TraceResult> = gpu.run_with_scene("probe_trace", &input, &scene)?;
+    let linear: Vec<TraceResult> = gpu.run_with_scene("probe_trace_linear", &input, &scene)?;
+
+    for (i, (b, l)) in bvh.iter().zip(&linear).enumerate() {
+        if (b.index, b.t, b.shadowed) != (l.index, l.t, l.shadowed) {
+            return Err(format!(
+                "ray {i}: bvh (index {}, t {}, shadowed {}) vs linear ({}, {}, {})",
+                b.index, b.t, b.shadowed, l.index, l.t, l.shadowed
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Input to `probe_intersect_box`.
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct BoxProbe {
+    min: Float4,
+    max: Float4,
+    ray: GpuRay,
+    tmin: f32,
+    tmax: f32,
+}
+
+#[test]
+fn test_chap_15_gpu_intersect_box() -> Result<(), String> {
+    // The BVH's slab test on the box [-1, 1]^3. Axis-parallel rays have a
+    // zero direction component, so 1 / direction is infinite; with the
+    // origin on a face, the slab products would be 0 * inf = NaN.
+    let cases = [
+        // (origin, direction, tmin, tmax, crosses)
+        ((0.0, 5.0, 0.0), (0.0, -1.0, 0.0), 0.0, f32::INFINITY, true),
+        ((0.5, 5.0, -0.5), (0.0, -1.0, 0.0), 0.0, f32::INFINITY, true),
+        ((1.0, 5.0, 0.0), (0.0, -1.0, 0.0), 0.0, f32::INFINITY, true), // on x = 1
+        (
+            (-1.0, 5.0, -1.0),
+            (0.0, -1.0, 0.0),
+            0.0,
+            f32::INFINITY,
+            true,
+        ), // on an edge
+        (
+            (-1.0, 5.0, 1.0),
+            (0.0, 1.0, 0.0),
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            true,
+        ),
+        ((1.5, 5.0, 0.0), (0.0, -1.0, 0.0), 0.0, f32::INFINITY, false), // outside x
+        (
+            (0.0, 5.0, -2.0),
+            (0.0, -1.0, 0.0),
+            0.0,
+            f32::INFINITY,
+            false,
+        ), // outside z
+        ((0.0, 5.0, 0.0), (0.0, 1.0, 0.0), 0.0, f32::INFINITY, false),  // behind
+        (
+            (0.0, 5.0, 0.0),
+            (0.0, 1.0, 0.0),
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            true,
+        ),
+        ((0.0, 5.0, 0.0), (0.0, -1.0, 0.0), 0.0, 3.0, false), // ends before
+        ((0.0, 5.0, 0.0), (0.0, -1.0, 0.0), 0.0, 4.0, true),  // ends on y = 1
+        ((-5.0, 0.0, 0.0), (1.0, 1.0, 0.0), 0.0, f32::INFINITY, false), // passes by
+        ((-5.0, 0.0, 0.0), (1.0, 0.2, 0.1), 0.0, f32::INFINITY, true),
+    ];
+    let input: Vec<BoxProbe> = cases
+        .iter()
+        .map(|&(o, d, tmin, tmax, _)| BoxProbe {
+            min: [-1.0, -1.0, -1.0, 0.0],
+            max: [1.0, 1.0, 1.0, 0.0],
+            ray: (&ray(o, d)).into(),
+            tmin,
+            tmax,
+        })
+        .collect();
+
+    let out: Vec<u32> = Gpu::new()?.run("probe_intersect_box", &input)?;
+
+    for (i, (case, got)) in cases.iter().zip(&out).enumerate() {
+        if (*got != 0) != case.4 {
+            return Err(format!("case {i} {case:?}: gpu {}", *got != 0));
         }
     }
     Ok(())

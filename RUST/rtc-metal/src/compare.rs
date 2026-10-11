@@ -160,7 +160,7 @@ fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
 /// it, several times over inside a tilted, scaled top group, on a mirror
 /// floor. `divide` then sorts the top group's children into BVH subgroups,
 /// so the flattening also walks the identity-transform groups it inserts.
-fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
+pub(crate) fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
     let mut world = World::new();
     world.light = Some(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),

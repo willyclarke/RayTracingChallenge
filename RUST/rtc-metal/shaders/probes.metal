@@ -153,18 +153,11 @@ static_assert(sizeof(TraceResult) == 32, "TraceResult must match probes.rs");
 
 // The first steps of color_at for one ray: nearest hit, normal, shadow test.
 // index = counts.shape_count on a miss.
-kernel void probe_trace(device const TraceProbe *in  [[buffer(0)]],
-                        device TraceResult *out      [[buffer(1)]],
-                        device const Shape *shapes   [[buffer(2)]],
-                        device const BvhNode *nodes  [[buffer(3)]],
-                        constant SceneCounts &counts [[buffer(4)]],
-                        uint i                       [[thread_position_in_grid]])
-{
-    TraceProbe p = in[i];
+inline TraceResult trace(TraceProbe p, device const Shape *shapes, device const BvhNode *nodes,
+                         SceneCounts counts) {
     Hit hit;
     if (!hit_shapes(p.ray, shapes, nodes, counts, hit)) {
-        out[i] = TraceResult{float4(0.0), INFINITY, counts.shape_count, 0, 0};
-        return;
+        return TraceResult{float4(0.0), INFINITY, counts.shape_count, 0, 0};
     }
     float4 point = p.ray.origin + p.ray.direction * hit.t;
     Shape s = shapes[hit.index];
@@ -175,7 +168,32 @@ kernel void probe_trace(device const TraceProbe *in  [[buffer(0)]],
         normalv = -normalv;
     }
     bool shadowed = is_shadowed(p.light_position, point + normalv * EPSILON, shapes, nodes, counts);
-    out[i] = TraceResult{normalv, hit.t, hit.index, hit.root, shadowed ? 1u : 0u};
+    return TraceResult{normalv, hit.t, hit.index, hit.root, shadowed ? 1u : 0u};
+}
+
+kernel void probe_trace(device const TraceProbe *in  [[buffer(0)]],
+                        device TraceResult *out      [[buffer(1)]],
+                        device const Shape *shapes   [[buffer(2)]],
+                        device const BvhNode *nodes  [[buffer(3)]],
+                        constant SceneCounts &counts [[buffer(4)]],
+                        uint i                       [[thread_position_in_grid]])
+{
+    out[i] = trace(in[i], shapes, nodes, counts);
+}
+
+// probe_trace with the BVH switched off: every shape counts as unbounded,
+// so the loops test them all linearly. The reference for the traversal.
+kernel void probe_trace_linear(device const TraceProbe *in  [[buffer(0)]],
+                               device TraceResult *out      [[buffer(1)]],
+                               device const Shape *shapes   [[buffer(2)]],
+                               device const BvhNode *nodes  [[buffer(3)]],
+                               constant SceneCounts &counts [[buffer(4)]],
+                               uint i                       [[thread_position_in_grid]])
+{
+    SceneCounts linear = counts;
+    linear.unbounded_count = counts.shape_count;
+    linear.node_count = 0;
+    out[i] = trace(in[i], shapes, nodes, linear);
 }
 
 struct TriangleProbe {
@@ -212,4 +230,22 @@ kernel void probe_triangle(device const TriangleProbe *in [[buffer(0)]],
         normalv = -normalv;
     }
     out[i] = TriangleResult{normalv, uv, ts.x, count};
+}
+
+struct BoxProbe {
+    float4 min;
+    float4 max;
+    Ray ray;
+    float tmin;
+    float tmax;
+};
+static_assert(sizeof(BoxProbe) == 80, "BoxProbe must match probes.rs");
+
+// out[i] = 1 when the ray crosses the box within [tmin, tmax], else 0
+kernel void probe_intersect_box(device const BoxProbe *in [[buffer(0)]],
+                                device uint *out          [[buffer(1)]],
+                                uint i                    [[thread_position_in_grid]])
+{
+    BoxProbe p = in[i];
+    out[i] = intersect_box(p.min, p.max, p.ray, p.tmin, p.tmax) ? 1 : 0;
 }
