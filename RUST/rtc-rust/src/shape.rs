@@ -8,6 +8,7 @@ use crate::material::Material;
 use crate::matrix::Matrix4;
 use crate::ray::Ray;
 use crate::tuple::Tuple;
+use std::any::Any;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(1);
@@ -57,7 +58,9 @@ impl Default for ShapeData {
     }
 }
 
-pub trait Shape: Send + Sync {
+/// `Any` lets callers outside the crate (rtc-metal) ask which concrete
+/// primitive a `&dyn Shape` is, via trait upcasting to `&dyn Any`.
+pub trait Shape: Any + Send + Sync {
     fn add_child_id(&mut self, _id: usize) {}
 
     fn bounds(&self) -> BoundingBox {
