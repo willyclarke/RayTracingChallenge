@@ -150,3 +150,20 @@ const _: () = assert!(size_of::<GpuLight>() == 32);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);
 const _: () = assert!(size_of::<GpuSceneInfo>() == 144);
+
+/// MSL `BvhNode` in rt.metal (added with the traversal). `count > 0` is a
+/// leaf over `shapes[start..start + count]`; otherwise the left child is the
+/// next node and `right` is the right child's index. `min`/`max` carry w = 0.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuBvhNode {
+    pub min: Float4,
+    pub max: Float4,
+    pub start: u32,
+    pub count: u32,
+    pub right: u32,
+    pub _pad: u32,
+}
+
+// 2 * 16 + 4 * 4 = 48 bytes of fields.
+const _: () = assert!(size_of::<GpuBvhNode>() == 48);
