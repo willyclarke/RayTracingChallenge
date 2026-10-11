@@ -8,7 +8,7 @@ build a raytracer, driven by tests. The code in this repository is my attempt to
 about raytracing in general — implemented, so far, in three programming languages, each
 with its own Readme:
 
-.The Appendix A1 cover scene from _The Ray Tracer Challenge_ by Jamis Buck, rendered by `RUST/rtc-rust`.
+.The Appendix A1 cover scene from _The Ray Tracer Challenge_ by Jamis Buck, rendered by the Rust implementation, link:RUST/rtc-rust/README.md[RUST/rtc-rust].
 image::RUST/rtc-rust/docs/cover.jpg[Cover scene rendered by rtc-rust,800]
 
 == Implementations
