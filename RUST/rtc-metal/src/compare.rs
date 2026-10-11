@@ -223,8 +223,10 @@ fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
 /// (the chapter 7 wall acne was 14% of pixels).
 fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     let scene = GpuScene::from_world(world, &camera)?;
+    // Compiling the MSL library is setup, not render time.
+    let gpu = Gpu::new()?;
     let start = std::time::Instant::now();
-    let gpu = Gpu::new()?.render(&scene)?;
+    let gpu = gpu.render(&scene)?;
     let gpu_secs = start.elapsed().as_secs_f64();
     let start = std::time::Instant::now();
     let cpu = world.render_parallel(camera);
@@ -317,7 +319,12 @@ fn test_chap_14_gpu_render_matches_cpu() -> Result<(), String> {
 
 #[test]
 fn test_chap_15_gpu_render_matches_cpu() -> Result<(), String> {
-    // Flat and smooth OBJ teapots, each a BVH of triangles.
+    // Flat and smooth OBJ teapots, each a BVH of triangles. About 12 pixels
+    // differ: the CPU (EPSILON 1e-9) and GPU (1e-5) over_point offsets decide
+    // shadows differently on the smooth teapot's shadow terminator, where
+    // interpolated normals put the light behind the flat facet and the CPU's
+    // shadow ray re-hits the same triangle, plus silhouette edges. Investigated:
+    // no triangle cracks.
     let (world, camera) = scene_file(include_str!("../scenes/chapter15.json"), 400, 200);
     check_matches_cpu(&world, camera)
 }

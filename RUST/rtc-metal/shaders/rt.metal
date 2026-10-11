@@ -507,7 +507,7 @@ inline bool intersect_box(float4 mn, float4 mx, Ray r, float tmin, float tmax) {
 }
 
 // The builder caps the tree at 32 levels below the root, so at most 32
-// right children wait on the stack at once.
+// right children wait on the stack at once. Must equal bvh::BVH_MAX_DEPTH.
 constant uint BVH_STACK = 32;
 constant uint BVH_DONE = 0xffffffff;
 

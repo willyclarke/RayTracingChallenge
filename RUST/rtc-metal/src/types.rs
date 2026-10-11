@@ -164,9 +164,9 @@ const _: () = assert!(size_of::<GpuSceneCounts>() == 12);
 // 96 + 32 + 12 = 140 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuSceneInfo>() == 144);
 
-/// MSL `BvhNode`. `count > 0` is a
-/// leaf over `shapes[start..start + count]`; otherwise the left child is the
-/// next node and `right` is the right child's index. `min`/`max` carry w = 0.
+/// MSL `BvhNode`. `count > 0` is a leaf over `shapes[start..start + count]`;
+/// otherwise the left child is the next node and `right` is the right child's
+/// index. `min`/`max` carry w = 0.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpuBvhNode {

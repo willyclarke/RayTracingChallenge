@@ -3,7 +3,9 @@
 
 use crate::types::{GpuBvhNode, GpuShape};
 
-pub const MAX_DEPTH: usize = 32;
+/// Deepest tree the builder accepts; must equal `BVH_STACK` in
+/// shaders/rt.metal, the traversal stack size.
+pub const BVH_MAX_DEPTH: usize = 32;
 pub const LEAF_SIZE: usize = 4;
 
 /// A flattened leaf. `bounds` is its f32 world box, None when unbounded.
@@ -48,8 +50,8 @@ fn node(
     depth: usize,
     nodes: &mut Vec<GpuBvhNode>,
 ) -> Result<(), String> {
-    if depth > MAX_DEPTH {
-        return Err(format!("BVH deeper than {MAX_DEPTH} levels"));
+    if depth > BVH_MAX_DEPTH {
+        return Err(format!("BVH deeper than {BVH_MAX_DEPTH} levels"));
     }
     let (min, max) = union(range);
     let index = nodes.len();
@@ -89,7 +91,7 @@ fn node(
     node(right, start + mid, depth + 1, nodes)
 }
 
-/// Err if the tree would be deeper than `MAX_DEPTH`, the traversal stack size.
+/// Err if the tree would be deeper than `BVH_MAX_DEPTH`, the traversal stack size.
 pub fn build(leaves: Vec<Leaf>) -> Result<Bvh, String> {
     let mut shapes = Vec::new();
     let mut ids = Vec::new();
@@ -216,7 +218,7 @@ mod tests {
                 1 + depth(bvh, i + 1).max(depth(bvh, n.right as usize))
             }
         }
-        assert!(depth(&bvh, 0) <= MAX_DEPTH);
+        assert!(depth(&bvh, 0) <= BVH_MAX_DEPTH);
     }
 
     #[test]

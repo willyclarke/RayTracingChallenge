@@ -1260,8 +1260,9 @@ fn test_chap_15_gpu_bvh_shared_edge_has_no_crack() -> Result<(), String> {
     // A quad split along its diagonal into two triangles, in a real tree
     // (12 spheres off to the side). Rays straight down the shared edge must
     // hit one of the two: the edge is on both triangles' u + v = 1 border,
-    // and the end rays start on the leaf box's faces (x = z = -1 and 1),
-    // where intersect_box's axis-parallel guard decides.
+    // and the end rays may start on or near the leaf box's faces. The
+    // quad's leaf likely holds a sphere too, so its box is larger; on-face
+    // cases are covered by test_chap_15_gpu_intersect_box.
     let mut world = World::new();
     world.light = Some(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
