@@ -23,21 +23,23 @@ namespace rtcch3
 struct run_matrix_test
 {
   //------------------------------------------------------------------------------
-  static void RunMatrixTest(int argc, char *argv[])
+  static int RunMatrixTest(int argc, char *argv[])
   {
     ::testing::InitGoogleTest(&argc, argv);
 
     int Count{};
+    int Result{};
     for (size_t Idx = 0;  //<!
          Idx < 1;         //<!
          ++Idx)
     {
       Count++;
-      int const Result = RUN_ALL_TESTS();
+      Result = RUN_ALL_TESTS();
       std::cout << "Testing result was " << (Result ? "Failure." : "Success.")  //<!
                 << ". Test count " << Count << std::endl;
       if (Result != 0) break;
     }
+    return Result;
   }
 };
 };  // namespace rtcch3

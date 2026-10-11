@@ -158,20 +158,26 @@ TEST(RayMarch, GetNormal)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, CalcNormal)
+TEST(RayMarch, CalcNormal)
 {
+  // ---
+  // NOTE: A unit sphere at the origin, so the normal at each probe point is the direction to it.
+  // ---
+  ww::funcPtrMap const MapUnitSphere = [](ww::tup const &Pos) -> ww::tup
+  { return ww::Vector(ww::rm::sdSphere(Pos - ww::Point(0.f, 0.f, 0.f), 1.f), 0.f, 0.f); };
+
   auto TestNormal = [](ww::ray const &R, ww::funcPtrMap Map)
   {
     ww::tup const N = ww::rm::CalcNormal(R.Origin, Map);
     EXPECT_FLOAT_EQ(ww::Mag(N), 1.0f);
     EXPECT_LT(ww::Mag(N - R.Direction), 0.01f);
   };
-  TestNormal(ww::Ray(ww::Point(0.f, 0.f, -1.f), ww::Vector(0.f, 0.f, -1.f)), ww::rm::MapBoxAndSphere);
-  TestNormal(ww::Ray(ww::Point(0.f, 0.f, 1.f), ww::Vector(0.f, 0.f, 1.f)), ww::rm::MapBoxAndSphere);
-  TestNormal(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)), ww::rm::MapBoxAndSphere);
-  TestNormal(ww::Ray(ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)), ww::rm::MapBoxAndSphere);
-  TestNormal(ww::Ray(ww::Point(1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f)), ww::rm::MapBoxAndSphere);
-  TestNormal(ww::Ray(ww::Point(-1.f, 0.f, 0.f), ww::Vector(-1.f, 0.f, 0.f)), ww::rm::MapBoxAndSphere);
+  TestNormal(ww::Ray(ww::Point(0.f, 0.f, -1.f), ww::Vector(0.f, 0.f, -1.f)), MapUnitSphere);
+  TestNormal(ww::Ray(ww::Point(0.f, 0.f, 1.f), ww::Vector(0.f, 0.f, 1.f)), MapUnitSphere);
+  TestNormal(ww::Ray(ww::Point(0.f, 1.f, 0.f), ww::Vector(0.f, 1.f, 0.f)), MapUnitSphere);
+  TestNormal(ww::Ray(ww::Point(0.f, -1.f, 0.f), ww::Vector(0.f, -1.f, 0.f)), MapUnitSphere);
+  TestNormal(ww::Ray(ww::Point(1.f, 0.f, 0.f), ww::Vector(1.f, 0.f, 0.f)), MapUnitSphere);
+  TestNormal(ww::Ray(ww::Point(-1.f, 0.f, 0.f), ww::Vector(-1.f, 0.f, 0.f)), MapUnitSphere);
 }
 
 //------------------------------------------------------------------------------
