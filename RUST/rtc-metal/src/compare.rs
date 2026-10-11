@@ -222,8 +222,12 @@ fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
 /// (the chapter 7 wall acne was 14% of pixels).
 fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     let scene = GpuScene::from_world(world, &camera)?;
+    let start = std::time::Instant::now();
     let gpu = Gpu::new()?.render(&scene)?;
+    let gpu_secs = start.elapsed().as_secs_f64();
+    let start = std::time::Instant::now();
     let cpu = world.render_parallel(camera);
+    let cpu_secs = start.elapsed().as_secs_f64();
 
     let (w, h) = (scene.width(), scene.height());
     let mut worst = (0.0f64, 0, 0);
@@ -247,7 +251,7 @@ fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     }
     let budget = w * h / 2000;
     eprintln!(
-        "worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget})",
+        "worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget}); gpu {gpu_secs:.2} s, cpu {cpu_secs:.2} s",
         worst.0,
         worst.1,
         worst.2,
@@ -307,5 +311,12 @@ fn test_chap_13_gpu_render_matches_cpu() -> Result<(), String> {
 fn test_chap_14_gpu_render_matches_cpu() -> Result<(), String> {
     // Hexagons three groups deep under a tilted top group plus BVH subgroups.
     let (world, camera) = chapter_14_scene(400, 200);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_15_gpu_render_matches_cpu() -> Result<(), String> {
+    // Flat and smooth OBJ teapots, each a BVH of triangles.
+    let (world, camera) = scene_file(include_str!("../scenes/chapter15.json"), 400, 200);
     check_matches_cpu(&world, camera)
 }
