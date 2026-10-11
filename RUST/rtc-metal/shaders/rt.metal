@@ -11,6 +11,10 @@ struct Ray {
 };
 static_assert(sizeof(Ray) == 32, "Ray must match GpuRay in types.rs");
 
+// Shape kinds; must match the SHAPE_* constants in src/types.rs.
+constant uint SHAPE_SPHERE = 0;
+constant uint SHAPE_PLANE = 1;
+
 inline Ray ray_transform(float4x4 m, Ray r) {
     return Ray{m * r.origin, m * r.direction};
 }
@@ -45,6 +49,29 @@ inline uint intersect_sphere(Ray r, thread float2 &ts) {
     return 2;
 }
 
+// The xz plane, ray in object space (book chapter 9). Returns the hit count,
+// 0 or 1; on a hit both `ts` slots hold the one t, so callers can treat
+// every primitive as "ascending pair, take the first non-negative".
+inline uint intersect_plane(Ray r, thread float2 &ts) {
+    // rtc-rust's parallel test, same threshold. f32 represents 1e-9 fine;
+    // it only has to keep t = -y / 0 out.
+    if (abs(r.direction.y) < 1e-9) {
+        return 0;
+    }
+    ts = float2(-r.origin.y / r.direction.y);
+    return 1;
+}
+
+// Dispatch on the primitive kind; hits in object space, ascending.
+inline uint local_intersect(uint kind, Ray r, thread float2 &ts) {
+    switch (kind) {
+    case SHAPE_PLANE:
+        return intersect_plane(r, ts);
+    default: // SHAPE_SPHERE
+        return intersect_sphere(r, ts);
+    }
+}
+
 // ---- Chapter 6: normals and Phong lighting --------------------------------
 
 struct Material {
@@ -56,12 +83,14 @@ struct Material {
 };
 static_assert(sizeof(Material) == 32, "Material must match GpuMaterial");
 
-// A unit sphere seen through its world-to-object transform.
-struct Sphere {
+// A primitive of `kind` seen through its world-to-object transform. One
+// tagged array holds every kind; functions switch on `kind`.
+struct Shape {
     float4x4 inverse;
     Material material;
+    uint kind;
 };
-static_assert(sizeof(Sphere) == 96, "Sphere must match GpuSphere");
+static_assert(sizeof(Shape) == 112, "Shape must match GpuShape");
 
 struct Light {
     float4 position;
@@ -69,9 +98,21 @@ struct Light {
 };
 static_assert(sizeof(Light) == 32, "Light must match GpuLight");
 
-inline float4 sphere_normal_at(float4x4 inverse, float4 world_point) {
-    float4 object_normal = inverse * world_point - float4(0.0, 0.0, 0.0, 1.0);
-    float4 world_normal = transpose(inverse) * object_normal;
+// Object-space normal of a primitive at `object_point`.
+inline float4 local_normal_at(uint kind, float4 object_point) {
+    switch (kind) {
+    case SHAPE_PLANE:
+        return float4(0.0, 1.0, 0.0, 0.0); // constant (book chapter 9)
+    default: // SHAPE_SPHERE
+        return object_point - float4(0.0, 0.0, 0.0, 1.0);
+    }
+}
+
+// World-space normal: to object space, local normal, back with the inverse
+// transpose (book chapter 6).
+inline float4 normal_at(Shape s, float4 world_point) {
+    float4 object_normal = local_normal_at(s.kind, s.inverse * world_point);
+    float4 world_normal = transpose(s.inverse) * object_normal;
     world_normal.w = 0.0;
     return normalize(world_normal);
 }
@@ -118,7 +159,7 @@ static_assert(sizeof(Camera) == 96, "Camera must match GpuCamera");
 struct SceneInfo {
     Camera camera;
     Light light;
-    uint sphere_count;
+    uint shape_count;
 };
 static_assert(sizeof(SceneInfo) == 144, "SceneInfo must match GpuSceneInfo");
 
@@ -132,13 +173,13 @@ inline Ray ray_for_pixel(Camera c, uint px, uint py) {
     return Ray{origin, normalize(pixel - origin)};
 }
 
-// Nearest non-negative hit over all spheres. Returns false on a miss.
-inline bool hit_spheres(Ray r, device const Sphere *spheres, uint count,
-                        thread float &t_hit, thread uint &hit_index) {
+// Nearest non-negative hit over all shapes. Returns false on a miss.
+inline bool hit_shapes(Ray r, device const Shape *shapes, uint count,
+                       thread float &t_hit, thread uint &hit_index) {
     t_hit = INFINITY;
     for (uint i = 0; i < count; i++) {
         float2 ts;
-        if (intersect_sphere(ray_transform(spheres[i].inverse, r), ts) == 0) {
+        if (local_intersect(shapes[i].kind, ray_transform(shapes[i].inverse, r), ts) == 0) {
             continue;
         }
         // ts is ascending, so the first non-negative one is this sphere's hit
@@ -159,13 +200,13 @@ constant float EPSILON = 1e-4;
 
 // Any-hit test: is anything between `point` and the light?
 inline bool is_shadowed(float4 light_position, float4 point,
-                        device const Sphere *spheres, uint count) {
+                        device const Shape *shapes, uint count) {
     float4 v = light_position - point;
     float distance = length(v);
     Ray r = Ray{point, v / distance};
     for (uint i = 0; i < count; i++) {
         float2 ts;
-        if (intersect_sphere(ray_transform(spheres[i].inverse, r), ts) != 0
+        if (local_intersect(shapes[i].kind, ray_transform(shapes[i].inverse, r), ts) != 0
             && ((ts.x >= 0.0 && ts.x < distance) || (ts.y >= 0.0 && ts.y < distance))) {
             return true;
         }
@@ -173,21 +214,21 @@ inline bool is_shadowed(float4 light_position, float4 point,
     return false;
 }
 
-inline float3 color_at(Ray r, constant SceneInfo &scene, device const Sphere *spheres) {
+inline float3 color_at(Ray r, constant SceneInfo &scene, device const Shape *shapes) {
     float t;
     uint index;
-    if (!hit_spheres(r, spheres, scene.sphere_count, t, index)) {
+    if (!hit_shapes(r, shapes, scene.shape_count, t, index)) {
         return float3(0.0);
     }
-    Sphere s = spheres[index];
+    Shape s = shapes[index];
     float4 point = r.origin + r.direction * t;
     float4 eyev = -r.direction;
-    float4 normalv = sphere_normal_at(s.inverse, point);
+    float4 normalv = normal_at(s, point);
     if (dot(normalv, eyev) < 0.0) {
         normalv = -normalv; // hit from inside
     }
     float4 over_point = point + normalv * EPSILON;
     float intensity =
-        is_shadowed(scene.light.position, over_point, spheres, scene.sphere_count) ? 0.0 : 1.0;
+        is_shadowed(scene.light.position, over_point, shapes, scene.shape_count) ? 0.0 : 1.0;
     return lighting(s.material, scene.light, over_point, eyev, normalv, intensity);
 }

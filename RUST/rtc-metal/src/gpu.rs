@@ -1,7 +1,7 @@
 //! Metal host side: device, command queue and the compiled shader library.
 
 use crate::scene::GpuScene;
-use crate::types::GpuSphere;
+use crate::types::GpuShape;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
@@ -75,11 +75,11 @@ impl Gpu {
         let pipeline = self.pipeline("render")?;
         let pixels = self.output_buffer::<[f32; 4]>(width * height)?;
         // Metal cannot make an empty buffer; an empty scene gets one unused
-        // sphere (sphere_count stays 0).
-        let spheres = if scene.spheres.is_empty() {
-            self.output_buffer::<GpuSphere>(1)?
+        // shape (shape_count stays 0).
+        let shapes = if scene.shapes.is_empty() {
+            self.output_buffer::<GpuShape>(1)?
         } else {
-            self.input_buffer(&scene.spheres)?
+            self.input_buffer(&scene.shapes)?
         };
         self.submit(|encoder| {
             encoder.setComputePipelineState(&pipeline);
@@ -92,7 +92,7 @@ impl Gpu {
                     size_of_val(&scene.info),
                     1,
                 );
-                encoder.setBuffer_offset_atIndex(Some(&spheres), 0, 2);
+                encoder.setBuffer_offset_atIndex(Some(&shapes), 0, 2);
             }
             dispatch_2d(encoder, &pipeline, width, height);
         })?;

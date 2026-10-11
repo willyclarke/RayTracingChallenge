@@ -1,0 +1,154 @@
+{
+  "comment": "Book chapter 9 'putting it together': chapter 7's balls on a plane floor before a plane wall",
+  "camera": {
+    "width": 1600,
+    "height": 800,
+    "field_of_view": 1.0471975512,
+    "from": [
+      0,
+      1.5,
+      -5
+    ],
+    "to": [
+      0,
+      1,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "light": {
+    "type": "point",
+    "position": [
+      -10,
+      10,
+      -10
+    ],
+    "intensity": [
+      1,
+      1,
+      1
+    ]
+  },
+  "shapes": [
+    {
+      "type": "plane",
+      "comment": "floor",
+      "material": {
+        "color": [
+          1,
+          0.9,
+          0.9
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "plane",
+      "comment": "back wall",
+      "transform": [
+        {
+          "rotate_x": 1.5707963268
+        },
+        {
+          "translate": [
+            0,
+            0,
+            5
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          1,
+          0.9,
+          0.9
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "sphere",
+      "comment": "middle",
+      "transform": [
+        {
+          "translate": [
+            -0.5,
+            1,
+            0.5
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.1,
+          1,
+          0.5
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3
+      }
+    },
+    {
+      "type": "sphere",
+      "comment": "right",
+      "transform": [
+        {
+          "scale": [
+            0.5,
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "translate": [
+            1.5,
+            0.5,
+            -0.5
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.5,
+          1,
+          0.1
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3
+      }
+    },
+    {
+      "type": "sphere",
+      "comment": "left",
+      "transform": [
+        {
+          "scale": [
+            0.33,
+            0.33,
+            0.33
+          ]
+        },
+        {
+          "translate": [
+            -1.5,
+            0.33,
+            -0.75
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          1,
+          0.8,
+          0.1
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3
+      }
+    }
+  ]
+}
