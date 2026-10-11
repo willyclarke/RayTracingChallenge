@@ -160,7 +160,7 @@ fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
 /// it, several times over inside a tilted, scaled top group, on a mirror
 /// floor. `divide` then sorts the top group's children into BVH subgroups,
 /// so the flattening also walks the identity-transform groups it inserts.
-fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
+pub(crate) fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
     let mut world = World::new();
     world.light = Some(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
@@ -204,10 +204,11 @@ fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
 }
 
 /// A scene from `scenes/`, at `width` x `height` instead of its own size.
+/// Model paths resolve relative to `scenes/`, as the CLI does for a scene file.
 fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
     let mut desc = SceneDescription::from_json(json).unwrap();
     (desc.camera.width, desc.camera.height) = (width, height);
-    desc.build(std::path::Path::new(".")).unwrap()
+    desc.build(std::path::Path::new("scenes")).unwrap()
 }
 
 /// Render on both GPU and CPU and compare. A pixel is "off" when a channel
@@ -222,8 +223,14 @@ fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
 /// (the chapter 7 wall acne was 14% of pixels).
 fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     let scene = GpuScene::from_world(world, &camera)?;
-    let gpu = Gpu::new()?.render(&scene)?;
+    // Compiling the MSL library is setup, not render time.
+    let gpu = Gpu::new()?;
+    let start = std::time::Instant::now();
+    let gpu = gpu.render(&scene)?;
+    let gpu_secs = start.elapsed().as_secs_f64();
+    let start = std::time::Instant::now();
     let cpu = world.render_parallel(camera);
+    let cpu_secs = start.elapsed().as_secs_f64();
 
     let (w, h) = (scene.width(), scene.height());
     let mut worst = (0.0f64, 0, 0);
@@ -247,7 +254,7 @@ fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     }
     let budget = w * h / 2000;
     eprintln!(
-        "worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget})",
+        "worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget}); gpu {gpu_secs:.2} s, cpu {cpu_secs:.2} s",
         worst.0,
         worst.1,
         worst.2,
@@ -307,5 +314,17 @@ fn test_chap_13_gpu_render_matches_cpu() -> Result<(), String> {
 fn test_chap_14_gpu_render_matches_cpu() -> Result<(), String> {
     // Hexagons three groups deep under a tilted top group plus BVH subgroups.
     let (world, camera) = chapter_14_scene(400, 200);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_15_gpu_render_matches_cpu() -> Result<(), String> {
+    // Flat and smooth OBJ teapots, each a BVH of triangles. About 12 pixels
+    // differ: the CPU (EPSILON 1e-9) and GPU (1e-5) over_point offsets decide
+    // shadows differently on the smooth teapot's shadow terminator, where
+    // interpolated normals put the light behind the flat facet and the CPU's
+    // shadow ray re-hits the same triangle, plus silhouette edges. Investigated:
+    // no triangle cracks.
+    let (world, camera) = scene_file(include_str!("../scenes/chapter15.json"), 400, 200);
     check_matches_cpu(&world, camera)
 }

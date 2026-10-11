@@ -17,6 +17,7 @@ constant uint SHAPE_PLANE = 1;
 constant uint SHAPE_CUBE = 2;
 constant uint SHAPE_CYLINDER = 3;
 constant uint SHAPE_CONE = 4;
+constant uint SHAPE_TRIANGLE = 5;
 
 // rtc-rust uses 1e-9 in f64. In f32 a point ~10 units from the origin is
 // only resolved to ~1e-6, so the shadow-acne offset has to be much larger.
@@ -61,8 +62,16 @@ struct Shape {
     float minimum;  // cylinder and cone: y extent (book chapter 13)
     float maximum;
     uint closed;    // cylinder and cone: nonzero for end caps
+    // Triangle (book chapter 15), object space: vertex 1, the edges to
+    // vertices 2 and 3, and the vertex normals.
+    float4 p1;
+    float4 e1;
+    float4 e2;
+    float4 n1;
+    float4 n2;
+    float4 n3;
 };
-static_assert(sizeof(Shape) == 224, "Shape must match GpuShape");
+static_assert(sizeof(Shape) == 320, "Shape must match GpuShape");
 
 struct Light {
     float4 position;
@@ -230,6 +239,51 @@ inline void intersect_wall(Shape s, Ray r, bool cone, thread float4 &ts, thread 
     }
 }
 
+// Triangle, ray in object space (book chapter 15): Moller-Trumbore. Returns
+// false on a miss; on a hit `tuv` is (t, u, v), where u and v are the
+// barycentric weights of vertices 2 and 3.
+inline bool moller_trumbore(Shape s, Ray r, thread float3 &tuv) {
+    float3 dir_cross_e2 = cross(r.direction.xyz, s.e2.xyz);
+    float det = dot(s.e1.xyz, dir_cross_e2);
+    // Only an exactly parallel ray (or collinear vertices) divides by zero.
+    // The u/v range checks reject near-parallel rays, and a fixed threshold
+    // would drop hits on tiny mesh triangles, whose det scales with |e1||e2|.
+    if (det == 0.0) {
+        return false;
+    }
+    float f = 1.0 / det;
+    float3 p1_to_origin = r.origin.xyz - s.p1.xyz;
+    float u = f * dot(p1_to_origin, dir_cross_e2);
+    if (u < 0.0 || u > 1.0) {
+        return false;
+    }
+    float3 origin_cross_e1 = cross(p1_to_origin, s.e1.xyz);
+    float v = f * dot(r.direction.xyz, origin_cross_e1);
+    if (v < 0.0 || u + v > 1.0) {
+        return false;
+    }
+    tuv = float3(f * dot(s.e2.xyz, origin_cross_e1), u, v);
+    return true;
+}
+
+// 0 or 1 roots; the hit's t goes in ts.x.
+inline uint intersect_triangle(Shape s, Ray r, thread float2 &ts) {
+    float3 tuv;
+    if (!moller_trumbore(s, r, tuv)) {
+        return 0;
+    }
+    ts = float2(tuv.x, 0.0);
+    return 1;
+}
+
+// The (u, v) of the object-space ray's hit, for the smooth normal; zero
+// on a miss.
+inline float2 triangle_uv(Shape s, Ray r) {
+    float3 tuv = float3(0.0);
+    moller_trumbore(s, r, tuv);
+    return tuv.yz;
+}
+
 // Dispatch on the primitive kind: up to 4 hits in object space, ascending
 // in ts[0..count). Only a closed cone has more than 2 (both halves plus
 // both caps).
@@ -242,6 +296,9 @@ inline uint local_intersect(Shape s, Ray r, thread float4 &ts) {
         break;
     case SHAPE_CUBE:
         n = intersect_cube(r, pair);
+        break;
+    case SHAPE_TRIANGLE:
+        n = intersect_triangle(s, r, pair);
         break;
     case SHAPE_CYLINDER:
     case SHAPE_CONE:
@@ -264,12 +321,16 @@ inline uint intersect(Shape s, Ray r, thread float4 &ts) {
 // ---- Chapter 6: normals and Phong lighting --------------------------------
 
 
-// Object-space normal of a primitive at `object_point`.
-inline float4 local_normal_at(Shape s, float4 object_point) {
+// Object-space normal of a primitive at `object_point`. `uv` is the hit's
+// barycentric pair, used only by triangles.
+inline float4 local_normal_at(Shape s, float4 object_point, float2 uv) {
     float4 p = object_point;
     switch (s.kind) {
     case SHAPE_PLANE:
         return float4(0.0, 1.0, 0.0, 0.0); // constant (book chapter 9)
+    case SHAPE_TRIANGLE:
+        // interpolated vertex normals (flat triangles have three equal ones)
+        return s.n2 * uv.x + s.n3 * uv.y + s.n1 * (1.0 - uv.x - uv.y);
     case SHAPE_CUBE: {
         // the face of the largest coordinate (book chapter 12)
         float3 a = abs(p.xyz);
@@ -306,8 +367,8 @@ inline float4 local_normal_at(Shape s, float4 object_point) {
 
 // World-space normal: to object space, local normal, back with the inverse
 // transpose (book chapter 6).
-inline float4 normal_at(Shape s, float4 world_point) {
-    float4 object_normal = local_normal_at(s, s.inverse * world_point);
+inline float4 normal_at(Shape s, float4 world_point, float2 uv) {
+    float4 object_normal = local_normal_at(s, s.inverse * world_point, uv);
     float4 world_normal = transpose(s.inverse) * object_normal;
     world_normal.w = 0.0;
     return normalize(world_normal);
@@ -381,12 +442,120 @@ struct Camera {
 };
 static_assert(sizeof(Camera) == 96, "Camera must match GpuCamera");
 
+// Book chapter 15: GpuScene orders `shapes` as the unbounded_count shapes
+// with no finite box first, then the bounded ones in BVH leaf order.
+struct SceneCounts {
+    uint shape_count;
+    uint unbounded_count;
+    uint node_count;  // 0 when nothing is bounded
+};
+static_assert(sizeof(SceneCounts) == 12, "SceneCounts must match GpuSceneCounts");
+
+// count > 0: a leaf over shapes[start .. start + count]. Otherwise an
+// interior node: the left child is the next node, the right one is `right`.
+struct BvhNode {
+    float4 min;
+    float4 max;
+    uint start;
+    uint count;
+    uint right;
+    uint pad;
+};
+static_assert(sizeof(BvhNode) == 48, "BvhNode must match GpuBvhNode");
+
 struct SceneInfo {
     Camera camera;
     Light light;
-    uint shape_count;
+    SceneCounts counts;
 };
 static_assert(sizeof(SceneInfo) == 144, "SceneInfo must match GpuSceneInfo");
+
+// Does the ray, over t in [tmin, tmax], pass through the box? The slab
+// method again (book chapter 12's cube), on the box's own bounds.
+//
+// An axis-parallel ray (direction component 0) is guarded explicitly rather
+// than left to IEEE infinities: with the origin exactly on a slab plane (a
+// ray down a mesh edge on a box face) the products are 0 * inf = NaN, and
+// the runtime-compiled shaders use fast math, which does not promise NaN
+// semantics for min/max. The padding below would also make inf - inf = NaN;
+// without the guard that accepted a ray outside the slab. Such an axis puts
+// no limit on t; the ray misses if its origin is outside the slab.
+//
+// The interval is widened by a few ulps (Ize, "Robust BVH Ray Traversal",
+// JCGT 2013): the boxes are rounded outward on the CPU, and this keeps the
+// f32 slab arithmetic from culling a ray that grazes the box either.
+inline bool intersect_box(float4 mn, float4 mx, Ray r, float tmin, float tmax) {
+    float3 o = r.origin.xyz;
+    float3 d = r.direction.xyz;
+    float3 inv = 1.0 / d;
+    float3 t0 = (mn.xyz - o) * inv;
+    float3 t1 = (mx.xyz - o) * inv;
+    float3 t_near = min(t0, t1);
+    float3 t_far = max(t0, t1);
+    bool3 parallel = d == 0.0;
+    if (any(parallel && (o < mn.xyz || o > mx.xyz))) {
+        return false;
+    }
+    t_near = select(t_near, float3(-INFINITY), parallel);
+    t_far = select(t_far, float3(INFINITY), parallel);
+    const float pad = 4e-7; // 2 gamma(3) in f32, rounded up
+    t_near -= abs(t_near) * pad;
+    t_far += abs(t_far) * pad;
+    float lo = max(tmin, max3(t_near.x, t_near.y, t_near.z));
+    float hi = min(tmax, min3(t_far.x, t_far.y, t_far.z));
+    return lo <= hi;
+}
+
+// The builder caps the tree at 32 levels below the root, so at most 32
+// right children wait on the stack at once. Must equal bvh::BVH_MAX_DEPTH.
+constant uint BVH_STACK = 32;
+constant uint BVH_DONE = 0xffffffff;
+
+// Depth-first walk over the BVH (book chapter 15). `next` is the node to
+// visit, BVH_DONE when the walk is over.
+struct BvhWalk {
+    uint stack[BVH_STACK];
+    uint top;
+    uint next;
+};
+
+inline BvhWalk bvh_walk(SceneCounts counts) {
+    BvhWalk w;
+    w.top = 0;
+    w.next = counts.node_count > 0 ? 0 : BVH_DONE;
+    return w;
+}
+
+inline void bvh_pop(thread BvhWalk &w) {
+    w.next = w.top > 0 ? w.stack[--w.top] : BVH_DONE;
+}
+
+// Advance to the next leaf whose box the ray crosses within [tmin, tmax]
+// and set shapes[first .. first + count] to its shapes. False when the walk
+// is over. Every loop runs its per-shape body over the unbounded shapes and
+// then over each leaf this returns:
+//
+//   uint first = 0, count = counts.unbounded_count;
+//   BvhWalk w = bvh_walk(counts);
+//   do { for (i in first .. first + count) ... } while (bvh_next_leaf(...));
+inline bool bvh_next_leaf(device const BvhNode *nodes, Ray r, float tmin, float tmax,
+                          thread BvhWalk &w, thread uint &first, thread uint &count) {
+    while (w.next != BVH_DONE) {
+        BvhNode n = nodes[w.next];
+        if (!intersect_box(n.min, n.max, r, tmin, tmax)) {
+            bvh_pop(w);
+        } else if (n.count > 0) {
+            first = n.start;
+            count = n.count;
+            bvh_pop(w);
+            return true;
+        } else {
+            w.stack[w.top++] = n.right;
+            w.next++; // the left child follows its parent
+        }
+    }
+    return false;
+}
 
 // Ray through the centre of pixel (px, py). The camera looks toward -z with
 // the canvas at z = -1, so +x is to the left.
@@ -406,21 +575,28 @@ struct Hit {
     uint root;
 };
 
-// Nearest non-negative hit over all shapes. Returns false on a miss.
-inline bool hit_shapes(Ray r, device const Shape *shapes, uint count, thread Hit &hit) {
+// Nearest non-negative hit over all shapes. Returns false on a miss. A box
+// entered beyond the nearest hit so far cannot hold a nearer one, so the
+// walk's interval shrinks to [0, hit.t] as hits are found.
+inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *nodes,
+                       SceneCounts counts, thread Hit &hit) {
     hit.t = INFINITY;
-    for (uint i = 0; i < count; i++) {
-        float4 ts;
-        uint n = intersect(shapes[i], r, ts);
-        // ts is ascending, so the first non-negative one is this shape's hit
-        uint root = 0;
-        while (root < n && ts[root] < 0.0) {
-            root++;
+    uint first = 0, count = counts.unbounded_count;
+    BvhWalk w = bvh_walk(counts);
+    do {
+        for (uint i = first; i < first + count; i++) {
+            float4 ts;
+            uint n = intersect(shapes[i], r, ts);
+            // ts is ascending, so the first non-negative one is this shape's hit
+            uint root = 0;
+            while (root < n && ts[root] < 0.0) {
+                root++;
+            }
+            if (root < n && ts[root] < hit.t) {
+                hit = Hit{ts[root], i, root};
+            }
         }
-        if (root < n && ts[root] < hit.t) {
-            hit = Hit{ts[root], i, root};
-        }
-    }
+    } while (bvh_next_leaf(nodes, r, 0.0, hit.t, w, first, count));
     return hit.t < INFINITY;
 }
 
@@ -428,19 +604,24 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, uint count, thread Hit
 
 // Any-hit test: is anything between `point` and the light?
 inline bool is_shadowed(float4 light_position, float4 point,
-                        device const Shape *shapes, uint count) {
+                        device const Shape *shapes, device const BvhNode *nodes,
+                        SceneCounts counts) {
     float4 v = light_position - point;
     float distance = length(v);
     Ray r = Ray{point, v / distance};
-    for (uint i = 0; i < count; i++) {
-        float4 ts;
-        uint n = intersect(shapes[i], r, ts);
-        for (uint k = 0; k < n; k++) {
-            if (ts[k] >= 0.0 && ts[k] < distance) {
-                return true;
+    uint first = 0, count = counts.unbounded_count;
+    BvhWalk w = bvh_walk(counts);
+    do {
+        for (uint i = first; i < first + count; i++) {
+            float4 ts;
+            uint n = intersect(shapes[i], r, ts);
+            for (uint k = 0; k < n; k++) {
+                if (ts[k] >= 0.0 && ts[k] < distance) {
+                    return true;
+                }
             }
         }
-    }
+    } while (bvh_next_leaf(nodes, r, 0.0, distance, w, first, count));
     return false;
 }
 
@@ -471,34 +652,41 @@ inline float schlick(float cos_i, float n1, float n2) {
 // is rebuilt per shape: the ray is inside a shape just before the hit when an
 // odd number of its roots (negative ones too) come first, and among those
 // the innermost - the end of rtc-rust's list - is the one entered last.
-inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes, uint count) {
+inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes,
+                                 device const BvhNode *nodes, SceneCounts counts) {
     float inner_t = -INFINITY;  // entry t of the innermost other medium
     float inner_n = 1.0;        // its refractive index; vacuum when none
     float hit_entry_t = -INFINITY;
-    for (uint i = 0; i < count; i++) {
-        float4 ts;
-        uint n = intersect(shapes[i], r, ts);
-        if (i == hit.index) {
-            // the hit's own roots before it: compare by index, not t, so the
-            // hit root itself never counts. An odd root leaves the shape,
-            // and the root before it entered.
-            if (hit.root % 2 == 1) {
-                hit_entry_t = ts[hit.root - 1];
+    // Roots behind the origin count too, so the walk visits every box the
+    // ray's line crosses, not just the part ahead of it.
+    uint first = 0, count = counts.unbounded_count;
+    BvhWalk w = bvh_walk(counts);
+    do {
+        for (uint i = first; i < first + count; i++) {
+            float4 ts;
+            uint n = intersect(shapes[i], r, ts);
+            if (i == hit.index) {
+                // the hit's own roots before it: compare by index, not t, so the
+                // hit root itself never counts. An odd root leaves the shape,
+                // and the root before it entered.
+                if (hit.root % 2 == 1) {
+                    hit_entry_t = ts[hit.root - 1];
+                }
+                continue;
             }
-            continue;
-        }
-        uint before = 0;
-        for (uint k = 0; k < n; k++) {
-            if (ts[k] < hit.t) {
-                before++;
+            uint before = 0;
+            for (uint k = 0; k < n; k++) {
+                if (ts[k] < hit.t) {
+                    before++;
+                }
+            }
+            // ts is ascending, so the last root before the hit is ts[before - 1]
+            if (before % 2 == 1 && ts[before - 1] > inner_t) {
+                inner_t = ts[before - 1];
+                inner_n = shapes[i].material.refractive_index;
             }
         }
-        // ts is ascending, so the last root before the hit is ts[before - 1]
-        if (before % 2 == 1 && ts[before - 1] > inner_t) {
-            inner_t = ts[before - 1];
-            inner_n = shapes[i].material.refractive_index;
-        }
-    }
+    } while (bvh_next_leaf(nodes, r, -INFINITY, INFINITY, w, first, count));
     float hit_n = shapes[hit.index].material.refractive_index;
     if (hit.root % 2 == 1) {
         // leaving the hit shape: it is n1 only if it is the innermost
@@ -523,7 +711,8 @@ struct PendingRay {
 // rays go on a stack with their weights. A ray pushes at most two children
 // and only while remaining > 0, so the stack never holds more than
 // MAX_DEPTH + 1 rays (one pending sibling per level, plus the current one).
-inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes) {
+inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes,
+                       device const BvhNode *nodes) {
     PendingRay stack[MAX_DEPTH + 1];
     int top = 0;
     stack[top++] = PendingRay{camera_ray, float3(1.0), MAX_DEPTH};
@@ -531,20 +720,23 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
     while (top > 0) {
         PendingRay p = stack[--top];
         Hit hit;
-        if (!hit_shapes(p.ray, shapes, scene.shape_count, hit)) {
+        if (!hit_shapes(p.ray, shapes, nodes, scene.counts, hit)) {
             continue;
         }
         Shape s = shapes[hit.index];
         Material m = s.material;
         float4 point = p.ray.origin + p.ray.direction * hit.t;
         float4 eyev = -p.ray.direction;
-        float4 normalv = normal_at(s, point);
+        float2 uv = s.kind == SHAPE_TRIANGLE
+                        ? triangle_uv(s, ray_transform(s.inverse, p.ray))
+                        : float2(0.0);
+        float4 normalv = normal_at(s, point, uv);
         if (dot(normalv, eyev) < 0.0) {
             normalv = -normalv; // hit from inside
         }
         float4 over_point = point + normalv * EPSILON;
         float intensity =
-            is_shadowed(scene.light.position, over_point, shapes, scene.shape_count) ? 0.0 : 1.0;
+            is_shadowed(scene.light.position, over_point, shapes, nodes, scene.counts) ? 0.0 : 1.0;
         // rtc-rust samples the pattern at over_point too: on a plane the raw
         // hit's y is ~0 with either sign, and checkers would speckle
         float4 object_point = s.inverse * over_point;
@@ -556,7 +748,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         }
         float reflected = m.reflective;
         if (m.transparency > 0.0) {
-            float2 n = refractive_indices(p.ray, hit, shapes, scene.shape_count);
+            float2 n = refractive_indices(p.ray, hit, shapes, nodes, scene.counts);
             float cos_i = dot(eyev, normalv);
             float refracted = m.transparency;
             if (m.reflective > 0.0) {

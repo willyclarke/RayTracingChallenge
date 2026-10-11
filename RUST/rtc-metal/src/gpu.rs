@@ -1,7 +1,7 @@
 //! Metal host side: device, command queue and the compiled shader library.
 
 use crate::scene::GpuScene;
-use crate::types::GpuShape;
+use crate::types::{GpuBvhNode, GpuShape};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
@@ -74,13 +74,7 @@ impl Gpu {
         let (width, height) = (scene.width(), scene.height());
         let pipeline = self.pipeline("render")?;
         let pixels = self.output_buffer::<[f32; 4]>(width * height)?;
-        // Metal cannot make an empty buffer; an empty scene gets one unused
-        // shape (shape_count stays 0).
-        let shapes = if scene.shapes.is_empty() {
-            self.output_buffer::<GpuShape>(1)?
-        } else {
-            self.input_buffer(&scene.shapes)?
-        };
+        let (shapes, nodes) = self.scene_buffers(scene)?;
         self.submit(|encoder| {
             encoder.setComputePipelineState(&pipeline);
             // SAFETY: indices and types match the kernel's [[buffer(n)]]
@@ -93,6 +87,7 @@ impl Gpu {
                     1,
                 );
                 encoder.setBuffer_offset_atIndex(Some(&shapes), 0, 2);
+                encoder.setBuffer_offset_atIndex(Some(&nodes), 0, 3);
             }
             dispatch_2d(encoder, &pipeline, width, height);
         })?;
@@ -110,22 +105,41 @@ impl Gpu {
         self.run_1d(kernel, input, None)
     }
 
-    /// `run` for kernels that also read a shape array, as
-    /// `device const Shape *shapes [[buffer(2)]]`. `shapes` must not be empty.
-    pub fn run_with_shapes<I: Copy, O: Copy>(
+    /// `run` for kernels that also read the scene, as
+    /// `device const Shape *shapes [[buffer(2)]], device const BvhNode *nodes
+    /// [[buffer(3)]], constant SceneCounts &counts [[buffer(4)]]`.
+    pub fn run_with_scene<I: Copy, O: Copy>(
         &self,
         kernel: &str,
         input: &[I],
-        shapes: &[GpuShape],
+        scene: &GpuScene,
     ) -> Result<Vec<O>, String> {
-        self.run_1d(kernel, input, Some(&self.input_buffer(shapes)?))
+        let (shapes, nodes) = self.scene_buffers(scene)?;
+        self.run_1d(kernel, input, Some((&shapes, &nodes, scene)))
+    }
+
+    /// The shape and BVH node buffers of `scene`. Metal cannot make an empty
+    /// buffer, so an empty array gets one unused element; the counts in
+    /// `scene.info` stay 0 and the shaders never read it.
+    fn scene_buffers(&self, scene: &GpuScene) -> Result<(Buffer, Buffer), String> {
+        let shapes = if scene.shapes.is_empty() {
+            self.output_buffer::<GpuShape>(1)?
+        } else {
+            self.input_buffer(&scene.shapes)?
+        };
+        let nodes = if scene.nodes.is_empty() {
+            self.output_buffer::<GpuBvhNode>(1)?
+        } else {
+            self.input_buffer(&scene.nodes)?
+        };
+        Ok((shapes, nodes))
     }
 
     fn run_1d<I: Copy, O: Copy>(
         &self,
         kernel: &str,
         input: &[I],
-        shapes: Option<&Buffer>,
+        scene: Option<(&Buffer, &Buffer, &GpuScene)>,
     ) -> Result<Vec<O>, String> {
         if input.is_empty() {
             return Ok(Vec::new());
@@ -135,12 +149,20 @@ impl Gpu {
         let out_buf = self.output_buffer::<O>(input.len())?;
         self.submit(|encoder| {
             encoder.setComputePipelineState(&pipeline);
-            // SAFETY: buffer indices match the kernel signatures documented above.
+            // SAFETY: buffer indices match the kernel signatures documented
+            // above; setBytes copies the counts before returning.
             unsafe {
                 encoder.setBuffer_offset_atIndex(Some(&in_buf), 0, 0);
                 encoder.setBuffer_offset_atIndex(Some(&out_buf), 0, 1);
-                if let Some(shapes) = shapes {
+                if let Some((shapes, nodes, scene)) = scene {
+                    let counts = &scene.info.counts;
                     encoder.setBuffer_offset_atIndex(Some(shapes), 0, 2);
+                    encoder.setBuffer_offset_atIndex(Some(nodes), 0, 3);
+                    encoder.setBytes_length_atIndex(
+                        NonNull::from(counts).cast(),
+                        size_of_val(counts),
+                        4,
+                    );
                 }
             }
             // The grid is exactly `input.len()` threads, so kernels need no

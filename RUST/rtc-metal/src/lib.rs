@@ -1,3 +1,4 @@
+pub mod bvh;
 pub mod gpu;
 pub mod scene;
 pub mod types;
