@@ -9,10 +9,11 @@ use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
 use rtc_rust::scene::SceneDescription;
 use rtc_rust::shape::Shape;
+use rtc_rust::shapes::group::Group;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
 use rtc_rust::tuple::Tuple;
-use rtc_rust::world::{World, view_transform};
+use rtc_rust::world::{World, hexagon, view_transform};
 use std::f64::consts::PI;
 
 /// The book's chapter 7 "putting it together" scene: three spheres on a
@@ -154,6 +155,54 @@ fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
     (world, camera)
 }
 
+/// The book's chapter 14 hexagon (spheres for corners, open cylinders for
+/// edges, three levels of groups) as rtc-rust's own chapter 14 scene builds
+/// it, several times over inside a tilted, scaled top group, on a mirror
+/// floor. `divide` then sorts the top group's children into BVH subgroups,
+/// so the flattening also walks the identity-transform groups it inserts.
+fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
+    let mut world = World::new();
+    world.light = Some(Light::point_light(
+        Tuple::point(-10.0, 10.0, -10.0),
+        Tuple::color(1.0, 1.0, 1.0),
+    ));
+    let mut floor = Plane::new();
+    let mut m = Material::new();
+    m.color = Tuple::color(1.0, 0.9, 0.9);
+    m.specular = 0.0;
+    m.reflective = 0.2;
+    floor.set_material(m);
+    world.add_shape(Box::new(floor));
+
+    let mut top = Group::new();
+    top.set_transform(Matrix4::translation(0.0, 1.2, 0.0) * Matrix4::rotation_x(-PI / 6.0));
+    let top = world.add_shape(Box::new(top));
+    for ix in 0..4 {
+        let mut m = Material::new();
+        m.color = Tuple::color(ix as f64 / 4.0, 0.5, 0.7);
+        m.specular = 0.6;
+        for iz in 0..2 {
+            let scale = 0.4 + 0.1 * iz as f64;
+            hexagon(
+                &mut world,
+                top,
+                Matrix4::translation(-2.4 + 1.6 * ix as f64, 0.0, 1.2 * iz as f64)
+                    * Matrix4::rotation_y(ix as f64 * PI / 12.0)
+                    * Matrix4::scaling(scale, scale, scale),
+                m.clone(),
+            );
+        }
+    }
+    world.divide(top, 4);
+    world.build_bounds();
+    let camera = Camera::new(width, height, PI / 3.0).with_transform(view_transform(
+        Tuple::point(0.0, 2.5, -6.0),
+        Tuple::point(0.0, 0.8, 0.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    ));
+    (world, camera)
+}
+
 /// A scene from `scenes/`, at `width` x `height` instead of its own size.
 fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
     let mut desc = SceneDescription::from_json(json).unwrap();
@@ -251,5 +300,12 @@ fn test_chap_12_gpu_render_matches_cpu() -> Result<(), String> {
 fn test_chap_13_gpu_render_matches_cpu() -> Result<(), String> {
     // Cylinders and cones, including a glass closed double cone (4 roots).
     let (world, camera) = scene_file(include_str!("../scenes/chapter13.json"), 400, 200);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_14_gpu_render_matches_cpu() -> Result<(), String> {
+    // Hexagons three groups deep under a tilted top group plus BVH subgroups.
+    let (world, camera) = chapter_14_scene(400, 200);
     check_matches_cpu(&world, camera)
 }
