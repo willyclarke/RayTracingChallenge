@@ -255,28 +255,33 @@ TEST(Ch13Cylinders, IntersectingTheCapsOfAClosedCylinder)
   Cyl->Maximum = 2.f;
   Cyl->Closed = true;
 
-  auto CheckIntersect = [](ww::shared_ptr_cylinder Cyl, ww::ray const &Ray, int NumIntersect)
+  auto CheckIntersect = [](ww::shared_ptr_cylinder Cyl, ww::ray const &Ray, int NumIntersect, int const Line = __LINE__)
   {
     ww::intersections const XS = ww::LocalIntersect(Cyl, Ray);
     EXPECT_EQ(XS.Count(), NumIntersect);
+    if (XS.Count() != NumIntersect)
+    {
+      std::cout << __FUNCTION__ << " failed for ray " << Ray << " towards " << Cyl << ". Offending line seems to be "
+                << Line << std::endl;
+    }
   };
 
   // ---
   // NOTE: Start above the cylinder and point a ray straight through downwards. Test #1.
   // ---
-  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 3.f, 0.f), ww::Normalize(ww::Vector(0.f, -1.f, 0.f))), 2);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 3.f, 0.f), ww::Normalize(ww::Vector(0.f, -1.f, 0.f))), 2, __LINE__);
 
   // ---
   // NOTE: Start above and below the cylinder and cast the ray diagonally. Tests #2 and #4.
   // ---
-  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 3.f, -2.f), ww::Normalize(ww::Vector(0.f, -1.f, 2.f))), 2);
-  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 0.f, -2.f), ww::Normalize(ww::Vector(0.f, 1.f, 2.f))), 2);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 3.f, -2.f), ww::Normalize(ww::Vector(0.f, -1.f, 2.f))), 2, __LINE__);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 0.f, -2.f), ww::Normalize(ww::Vector(0.f, 1.f, 2.f))), 2, __LINE__);
 
   // ---
   // NOTE: Check the corner cases, tests #3 and #5 in the book.
   // ---
-  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 4.f, -2.f), ww::Normalize(ww::Vector(0.f, -1.f, 1.f))), 2);
-  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, -1.f, -2.f), ww::Normalize(ww::Vector(0.f, 1.f, 1.f))), 2);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, 4.f, -2.f), ww::Normalize(ww::Vector(0.f, -1.f, 1.f))), 2, __LINE__);
+  CheckIntersect(Cyl, ww::Ray(ww::Point(0.f, -1.f, -2.f), ww::Normalize(ww::Vector(0.f, 1.f, 1.f))), 2, __LINE__);
 }
 
 //------------------------------------------------------------------------------
@@ -779,7 +784,7 @@ TEST(Ch13Cylinders, PuttingItTogetherTake2)
   Cone->Material.Specular = 0.1f;
   Cone->Material.Color = ww::Color(0.5f, 0.f, 0.f);
   Cone->Material.Pattern = P1Perturbed;
-  World.vPtrObjects.push_back(Cone);
+  // World.vPtrObjects.push_back(Cone);
 
   ww::cone Cone2 = *Cone;
   Cone2.Minimum = -0.25f;
@@ -794,12 +799,19 @@ TEST(Ch13Cylinders, PuttingItTogetherTake2)
   World.vPtrObjects.push_back(ptrCone2);
 
   ww::shared_ptr_cylinder Cyl = ww::PtrDefaultCylinder();
+  EXPECT_EQ(ww::LocalNormalAtCylinder(*Cyl, ww::Point(1.f, 0.f, 0.f)) == ww::Vector(1.f, 0.f, 0.f), true);
   Cyl->Minimum = 0.f;
   Cyl->Maximum = 2.f;
   Cyl->Transform = ww::TranslateScaleRotate(Cone->Transform.R0.W, 0.f, Cone->Transform.R2.W,              //!<
                                             Cone->Transform.R0.X / 2.f, 1.f, Cone->Transform.R2.Z / 2.f,  //!<
                                             0.f, 0.f, 0.f);
-  World.vPtrObjects.push_back(Cyl);
+  // World.vPtrObjects.push_back(Cyl);
+
+  // ww::capsule Capsule = ww::CreateCapsule(ww::Point(0.5f, 1.f, 1.f), ww::Point(0.5f, 3.f, 1.f), 0.1f, true);
+  ww::shared_ptr_capsule ptrCapsule = ww::PtrDefaultCapsule();
+  // TODO: Capsule is unfinished; the default capsule's B is not at (0,1,0) yet.
+  // EXPECT_EQ(ptrCapsule->B == ww::Point(0.f, 1.f, 0.f), true);
+  World.vPtrObjects.push_back(ptrCapsule);
 
   ww::shared_ptr_light pLight{};
   pLight.reset(new ww::light);

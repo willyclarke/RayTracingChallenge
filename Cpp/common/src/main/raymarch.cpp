@@ -627,7 +627,7 @@ float sdCapsuleCapsule(capsule const &Ca, capsule const &Cb)
   float const Len = ww::Mag(PenetrationNormal);
   ww::tup const NormPenetrationNormal = ww::Normalize(PenetrationNormal);
 
-  float const SignedDistance = -(Ca.R + Cb.R - Len);
+  float const SignedDistance = -(Ca.Radius + Cb.Radius - Len);
 
   bool const Intersect = SignedDistance < 0.f;
   std::cout << "Result: SignedDistance: " << SignedDistance << ". Intersect: " << Intersect << std::endl;

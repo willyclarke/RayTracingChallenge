@@ -974,19 +974,19 @@ TEST(RayMarch, CreateCapsule)
     Assert(ww::IsPoint(B), __FUNCTION__, __LINE__);
 
     ww::capsule C{};
-    C.R = R;
+    C.Radius = R;
     C.A = A;
     C.B = B;
 
     ww::tup const AB = B - A;  // Vector created from A to B.
     Assert(ww::IsVector(AB), __FUNCTION__, __LINE__);
 
-    C.Base = A - ww::Normalize(AB) * C.R;  // Subtract from point B to get to Base.
-    C.Tip = B + ww::Normalize(AB) * C.R;   // Add to point A to get to Tip.
+    C.Base = A - ww::Normalize(AB) * C.Radius;  // Subtract from point B to get to Base.
+    C.Tip = B + ww::Normalize(AB) * C.Radius;   // Add to point A to get to Tip.
 
     std::cout << "Capsule ---" << std::endl;
     std::cout << "From A: " << C.A << "\n  to B: " << C.B << "\n"
-              << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.R << std::endl;
+              << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.Radius << std::endl;
 
     return C;
   };
@@ -1184,7 +1184,7 @@ TEST(RayMarch, CapsuleVsTriangle)
     ww::tup HitNormal{};
 
     bool const Intersect =
-        ww::rm::CapsuleTriangleIntersect(C.A, C.B, C.R, V0, V1, V2, &Distance, &HitPoint, &HitNormal, Print);
+        ww::rm::CapsuleTriangleIntersect(C.A, C.B, C.Radius, V0, V1, V2, &Distance, &HitPoint, &HitNormal, Print);
     EXPECT_EQ(Intersect, Expect);
     if (Print)
     {
