@@ -7,8 +7,8 @@
     "Render with: cargo run --release -- scenes/cover.json"
   ],
   "camera": {
-    "width": 400,
-    "height": 400,
+    "width": 3456,
+    "height": 2234,
     "field_of_view": 0.785,
     "from": [-6, 6, -10],
     "to": [6, 0, 6],

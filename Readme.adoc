@@ -3,60 +3,23 @@
 
 == Project description
 
-The 'Ray Tracer Challenge' is a book. It contains a specification on how to build a raytracer. The
-code in this repository is my attempt to learn about raytracing in general.
-
-The book describes a test driven method of creating the code. I have pulled in the Google Test
-project. The tests have not been named so that they can be referenced from the book yet.
-
-TODO: Rename all the Google Tests so that they can be referenced from the book.
+The 'Ray Tracer Challenge' is a book by Jamis Buck. It contains a specification on how to
+build a raytracer, driven by tests. The code in this repository is my attempt to learn
+about raytracing in general — implemented, so far, in three programming languages, each
+with its own Readme:
 
 == Implementations
 
-* C++ — this directory (build instructions below).
-* Rust — link:RUST/rtc-rust/README.md[RUST/rtc-rust]: complete through chapter 17 plus the
-  bonus chapters; its README also sketches a JSON scene format for a scene-file-driven renderer.
-* Zig — ZIG/raytracer-zig: work in progress.
+* *C++* — the original implementation, living in `src/` at the repository root; built with
+  CMake and tested with Google Test. See link:Readme-cpp.adoc[Readme-cpp.adoc].
 
-== Dependencies
+* *Rust* — `RUST/rtc-rust`: complete through chapter 17, the three online bonus chapters,
+  and the Appendix A1 cover image. Ships an `rtc` CLI that renders JSON scene descriptions
+  (with man-style built-in help) and Python generators for example scenes. See
+  link:RUST/rtc-rust/README.md[RUST/rtc-rust/README.md].
 
-* CMake
-
-* Optional : ninja build
-
-== Building
-
-The intention is to use out of source build. So I normally do the following:
-
- * mkdir -P ../build/RayTracingChallenge
-
- * cd ../build/RayTracingChallenge
-
- * cmake ../../RayTracingChallenge -GNinja
-
- * ninja
-
-Note:
-
-On OSX it sometimes is necessary to build with the following command:
-
-cmake ../../RayTracingChallenge  -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -GNinja -D CMAKE_BUILD_TYPE=Release -D CMAKE_PREFIX_PATH=/usr/local/opt/qt/lib/cmake
-
-== Executing the tests
-
-Execute the tests by running the following command from the 'build' directory:
-
-[source,bash]
-----
-./src/raytrace/raytrace --test-matrix
-----
-
-Some tests may be disabled. In order to run all tests issue the following command from the 'build' directory:
-
-[source,bash]
-----
-./src/raytrace/raytrace --test-matrix --gtest_also_run_disabled_tests
-----
+* *Zig* — `ZIG/raytracer-zig`: work in progress, currently around chapter 10 (patterns).
+  See link:ZIG/raytracer-zig/README.md[ZIG/raytracer-zig/README.md].
 
 == Credits
 
