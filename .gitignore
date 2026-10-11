@@ -29,3 +29,5 @@ __pycache__/
 /RUST/rtc-rust/frames/
 /RUST/rtc-rust/*.mp4
 /RUST/rtc-rust/screensaver/build/
+/RUST/rtc-metal/target
+/RUST/rtc-metal/*.ppm

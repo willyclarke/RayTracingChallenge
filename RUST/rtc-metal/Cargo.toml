@@ -1,0 +1,10 @@
+[package]
+name = "rtc-metal"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+objc2 = "0.6.5"
+objc2-foundation = "0.3.2"
+objc2-metal = "0.3.2"
+rtc-rust = { version = "0.1.0", path = "../rtc-rust" }
