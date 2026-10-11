@@ -204,10 +204,11 @@ pub(crate) fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
 }
 
 /// A scene from `scenes/`, at `width` x `height` instead of its own size.
+/// Model paths resolve relative to `scenes/`, as the CLI does for a scene file.
 fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
     let mut desc = SceneDescription::from_json(json).unwrap();
     (desc.camera.width, desc.camera.height) = (width, height);
-    desc.build(std::path::Path::new(".")).unwrap()
+    desc.build(std::path::Path::new("scenes")).unwrap()
 }
 
 /// Render on both GPU and CPU and compare. A pixel is "off" when a channel

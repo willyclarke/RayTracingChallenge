@@ -27,7 +27,7 @@
     {
       "type": "obj",
       "comment": "flat-shaded teapot",
-      "file": "../rtc-rust/models/teapot.obj",
+      "file": "../../rtc-rust/models/teapot.obj",
       "transform": [
         { "scale": [0.35, 0.35, 0.35] },
         { "rotate_y": 0.4 },
@@ -42,7 +42,7 @@
     {
       "type": "obj",
       "comment": "smooth-shaded teapot",
-      "file": "../rtc-rust/models/teapot_smooth.obj",
+      "file": "../../rtc-rust/models/teapot_smooth.obj",
       "transform": [
         { "scale": [0.35, 0.35, 0.35] },
         { "rotate_y": 0.4 },
