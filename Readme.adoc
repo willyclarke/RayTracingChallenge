@@ -8,6 +8,9 @@ build a raytracer, driven by tests. The code in this repository is my attempt to
 about raytracing in general — implemented, so far, in three programming languages, each
 with its own Readme:
 
+.The Appendix A1 cover scene from _The Ray Tracer Challenge_ by Jamis Buck, rendered by `RUST/rtc-rust`.
+image::RUST/rtc-rust/docs/cover.jpg[Cover scene rendered by rtc-rust,800]
+
 == Implementations
 
 * *C++* — `Cpp`: the original implementation; built with CMake and tested with

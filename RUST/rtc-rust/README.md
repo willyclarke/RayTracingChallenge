@@ -7,6 +7,10 @@ online bonus chapters (soft shadows, bounding boxes/BVH, texture mapping), and a
 chapter 17 "next steps" (area lights, spotlights, focal blur, motion blur, anti-aliasing,
 texture maps, normal perturbation, torus) are implemented, plus path-traced indirect lighting.
 
+![Cover scene rendered by rtc-rust](docs/cover.jpg)
+
+_The Appendix A1 cover scene from The Ray Tracer Challenge by Jamis Buck, rendered by `rtc` from `scenes/cover.json`._
+
 The crate is a library plus the `rtc` scene-rendering binary. External dependencies: `rayon`
 (parallel rendering) and `serde`/`serde_json` (scene loading, confined to the `scene` module).
 
