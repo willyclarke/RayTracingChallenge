@@ -136,7 +136,7 @@ TEST(Tuples, Multiply)
 {
   ww::tup const A{1.f, -2.f, 3.f, -4.f};
   ww::tup const R{ww::Mul(3.5f, A)};
-  ww::tup const Expect{3.5f, -7.f, 10.5f, -14.0f};
+  ww::tup const Expect{3.5f, -7.f, 10.5f, A.W};
   EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 
@@ -145,7 +145,7 @@ TEST(Tuples, MultiplyOperatorMul1)
 {
   ww::tup const A{1.f, -2.f, 3.f, -4.f};
   ww::tup const R = A * 3.5f;
-  ww::tup const Expect{3.5f, -7.f, 10.5f, -14.0f};
+  ww::tup const Expect{3.5f, -7.f, 10.5f, A.W};
   EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 
@@ -154,7 +154,7 @@ TEST(Tuples, MultiplyOperatorMul2)
 {
   ww::tup const A{1.f, -2.f, 3.f, -4.f};
   ww::tup const R = 3.5f * A;
-  ww::tup const Expect{3.5f, -7.f, 10.5f, -14.0f};
+  ww::tup const Expect{3.5f, -7.f, 10.5f, A.W};
   EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 
@@ -163,7 +163,7 @@ TEST(Tuples, DivideOperatorDiv1)
 {
   ww::tup const A{1.f, -2.f, 3.f, -4.f};
   ww::tup const R = A / 2.f;
-  ww::tup const Expect{0.5f, -1.f, 1.5f, -2.0f};
+  ww::tup const Expect{0.5f, -1.f, 1.5f, A.W};
   EXPECT_EQ(ww::Equal(R, Expect), true);
 }
 

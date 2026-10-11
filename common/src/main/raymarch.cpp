@@ -1,0 +1,1856 @@
+/******************************************************************************
+ * * Filename : raymarch.cpp
+ * * Date     : 2022 Sep 07
+ * * Author   : Willy Clarke (willy@clarke.no)
+ * * Version  : Use git you GIT
+ * * Copyright: W. Clarke
+ * * License  : MIT
+ * * Descripti: Implementation of the ray marching algorithm.
+ * ******************************************************************************/
+#include "raymarch.hpp"
+
+#include <cmath>
+#include <thread>
+#include <vector>
+
+/**
+ */
+namespace ww
+{
+
+namespace rm
+{
+std::mutex gMutexPrint{};
+void PrintLine(char const *ptrFunc, char const *ptrLine)
+{
+  gMutexPrint.lock();
+  std::cout << ptrFunc << "." << ptrLine << std::endl;
+  gMutexPrint.unlock();
+}
+std::atomic<bool> gPrintMe{true};
+constexpr int MAX_STEPS = 100;
+constexpr float MAX_DIST = 100.f;
+constexpr float MIN_DIST = 0.001f;
+#if HW_PERFORMANCE == 0
+#define AA 1
+#else
+#define AA 2  // make this 2 or 3 for antialiasing
+#endif
+
+//------------------------------------------------------------------------------
+/**
+ * @param: P - Point of interest.
+ * @param: B - Box, tuple with dimensions for X, Y, Z.
+ * @param: R - Radius for box with rounded corners.
+ */
+float SdfBox(tup const &P, tup const &B, float const Radius = 0.f)
+{
+  Assert(IsVector(P), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(B), __PRETTY_FUNCTION__, __LINE__);
+  tup const Q = Abs(P) - B;
+  float const Distance = Mag(Max(Q, 0.f)) + std::min(std::max(Q.X, std::max(Q.Y, Q.Z)), 0.f) - Radius;
+
+  // std::cout << "P:\n" << P << "\nBox:\n" << B << "\nDistance:" << Distance << std::endl;
+
+  return Distance;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: P - Point
+ * @param: N - Normal (which must be normalized)
+ * @param: H - Height to lower the floor. i.e the distance increase by H.
+ */
+float SdfPlane(tup const &P, tup const &N, float H = 0.f)
+{
+  Assert(IsVector(P), __PRETTY_FUNCTION__, __LINE__);
+  float const Result = Dot(P, N) + H;
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+float SdfSphere(tup const &Center, float Radius, tup const &P)
+{
+  Assert(IsVector(P), __PRETTY_FUNCTION__, __LINE__);
+  float const Distance = Mag(P - Vector(Center));
+  float const DistToSphere = Distance - Radius;
+  return DistToSphere;
+  float const DistToSphere2 = P.Y + Radius;
+  return std::min(DistToSphere, DistToSphere2);
+}
+
+//-
+/**
+ * sd Functions taken from Inigios Shadertoy primitives.
+ */
+
+//------------------------------------------------------------------------------
+float sdPlane(tup const &Pos) { return Pos.Y; }
+
+//------------------------------------------------------------------------------
+float sdSphere(tup const &Pos, float S)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  return Mag(Pos) - S;
+}
+
+//------------------------------------------------------------------------------
+float sdBox(tup const &Pos, tup const &Box)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(Box), __PRETTY_FUNCTION__, __LINE__);
+  tup Distance = Abs(Pos) - Box;
+  float const Result = std::fmin(std::fmax(Distance.X, std::fmax(Distance.Y, Distance.Z)),  //!<
+                                 0.f)                                                       //!<
+                       + Mag(Max(Distance, 0.f));
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+float sdBoxFrame(tup Pos, tup const &Box, float e)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(Box), __PRETTY_FUNCTION__, __LINE__);
+  Pos = Abs(Pos) - Box;
+  tup const q = Abs(Pos + tup(e, e, e)) - tup(e, e, e);
+
+  return std::fmin(
+      std::fmin(Mag(Max(Vector(Pos.X, q.Y, q.Z), 0.0)) + std::fmin(std::fmax(Pos.X, std::fmax(q.Y, q.Z)), 0.0),   //!<
+                Mag(Max(Vector(q.X, Pos.Y, q.Z), 0.0)) + std::fmin(std::fmax(q.X, std::fmax(Pos.Y, q.Z)), 0.0)),  //!<
+      Mag(Max(Vector(q.X, q.Y, Pos.Z), 0.0)) + std::fmin(std::fmax(q.X, std::fmax(q.Y, Pos.Z)), 0.0)              //!<
+  );
+}
+
+//------------------------------------------------------------------------------
+float sdEllipsoid(tup const &Pos, tup const &Rad)  // approximated
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  float k0 = Mag(Pos / Rad);
+  float k1 = Mag(Pos / (Rad * Rad));
+  return k0 * (k0 - 1.0) / k1;
+}
+
+//------------------------------------------------------------------------------
+float sdTorus(tup const &Pos, tup const &t)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  float Result = Mag(tup(Mag(tup(Pos.X, Pos.Z)) - t.X, Pos.Y)) - t.Y;
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+float sdCappedTorus(tup Pos, tup const &Sc, float RadA, float RadB)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Pos.X = abs(Pos.X);
+  float k = (Sc.Y * Pos.X > Sc.X * Pos.Y) ? Dot(VectorXY(Pos), Sc) : Mag(VectorXY(Pos));
+  return std::sqrtf(Dot(Pos, Pos) + RadA * RadA - 2.f * RadA * k) - RadB;
+}
+
+//------------------------------------------------------------------------------
+float sdHexPrism(tup Pos, tup const &H)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Pos = Abs(Pos);
+
+  tup const k = Vector(-0.8660254f, 0.5f, 0.57735f);
+  Pos = Pos - VectorXY(2.f * std::fmin(Dot(VectorXY(k), VectorXY(Pos)), 0.f) * VectorXY(k));
+  tup const d = VectorXY(Mag(VectorXY(Pos) - VectorXY(Clamp(Pos.X, -k.Z * H.X, k.Z * H.X), H.X)) * Sign(Pos.Y - H.X),
+                         Pos.Z - H.Y);
+  return std::fmin(std::fmax(d.X, d.Y), 0.0f) + Mag(Max(d, 0.f));
+}
+
+//------------------------------------------------------------------------------
+float sdOctogonPrism(tup Pos, float Rad, float H)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup const k = Vector(-0.9238795325f,  // sqrt(2+sqrt(2))/2
+                       0.3826834323f,   // sqrt(2-sqrt(2))/2
+                       0.4142135623f);  // sqrt(2)-1
+  // reflections
+  Pos = Abs(Pos);
+  // p.xy -= 2.0*min(dot(vec2( k.x,k.y),p.xy),0.0)*vec2( k.x,k.y);
+  float pM1 = 2.f * std::fmin(Dot(VectorXY(k.X, k.Y), VectorXY(Pos)), 0.f);
+  Pos = Pos - pM1 * VectorXY(k.X, k.Y);
+
+  // p.xy -= 2.0 * min(dot(vec2(-k.x, k.y), p.xy), 0.0) * vec2(-k.x, k.y);
+  float pM2 = 2.f * std::fmin(Dot(VectorXY(-k.X, k.Y), VectorXY(Pos)), 0.f);
+  Pos = Pos - pM2 * VectorXY(k.X, k.Y);
+
+  // polygon side
+  // p.xy -= vec2(clamp(p.x, -k.z * r, k.z * r), r);
+  tup pM3 = VectorXY(Clamp(Pos.X, -k.Z * Rad, k.Z * Rad), Rad);
+  Pos.X = Pos.X - pM3.X;
+  Pos.Y = Pos.Y - pM3.Y;
+
+  // vec2 d = vec2(length(p.xy) * sign(p.y), p.z - h);
+  tup d = VectorXY(Mag(VectorXY(Pos)) * Sign(Pos.Y), Pos.Z - H);
+  return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.f));
+}
+
+//------------------------------------------------------------------------------
+float sdCapsule(tup const &Pos, tup const &A, tup const &B, float Rad)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(A), __PRETTY_FUNCTION__, __LINE__);
+  Assert(IsVector(B), __PRETTY_FUNCTION__, __LINE__);
+  tup pa = Pos - A;
+  tup ba = B - A;
+  float h = Clamp(Dot(pa, ba) / Dot(ba), 0.f, 1.f);
+  return Mag(pa - ba * h) - Rad;
+}
+
+//------------------------------------------------------------------------------
+float sdRoundCone(tup Pos, float Rad1, float Rad2, float H)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup q = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
+
+  float b = (Rad1 - Rad2) / H;
+  float a = sqrt(1.f - b * b);
+  float k = Dot(q, VectorXY(-b, a));
+
+  if (k < 0.f) return Mag(q) - Rad1;
+  if (k > a * H) return Mag(q - VectorXY(0.f, H)) - Rad2;
+
+  return Dot(q, VectorXY(a, b)) - Rad1;
+}
+
+//------------------------------------------------------------------------------
+float sdRoundCone(tup Pos, tup A, tup B, float Rad1, float Rad2)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  // sampling independent computations (only depend on shape)
+  tup ba = B - A;
+  float l2 = Dot(ba, ba);
+  float rr = Rad1 - Rad2;
+  float a2 = l2 - rr * rr;
+  float il2 = 1.f / l2;
+
+  // sampling dependant computations
+  tup pa = Pos - A;
+  float y = Dot(pa, ba);
+  float z = y - l2;
+  float x2 = Dot(pa * l2 - ba * y);
+  float y2 = y * y * l2;
+  float z2 = z * z * l2;
+
+  // single square root!
+  float k = Sign(rr) * rr * rr * x2;
+  if (Sign(z) * a2 * z2 > k) return std::sqrtf(x2 + z2) * il2 - Rad2;
+  if (Sign(y) * a2 * y2 < k) return std::sqrtf(x2 + y2) * il2 - Rad1;
+  return (std::sqrtf(x2 * a2 * il2) + y * rr) * il2 - Rad1;
+}
+
+//------------------------------------------------------------------------------
+float sdTriPrism(tup Pos, tup H)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup q = Abs(Pos);
+  return std::fmax(q.Z - H.Y, std::fmax(q.X * 0.866025f + Pos.Y * 0.5f, -Pos.Y) - H.X * 0.5f);
+}
+
+//------------------------------------------------------------------------------
+// vertical
+float sdCylinder(tup const &Pos, tup const &H)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup d = Abs(VectorXY(Mag(VectorXZ(Pos)), Pos.Y)) - H;
+  return std::min(std::max(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
+}
+
+//------------------------------------------------------------------------------
+// arbitrary orientation
+float sdCylinder(tup const &Pos, tup const &A, tup const &B, float Rad)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup pa = Pos - A;
+  tup ba = B - A;
+  float baba = Dot(ba, ba);
+  float paba = Dot(pa, ba);
+
+  float x = Mag(pa * baba - ba * paba) - Rad * baba;
+  float y = std::fabs(paba - baba * 0.5f) - baba * 0.5f;
+  float x2 = x * x;
+  float y2 = y * y * baba;
+  float d = (std::fmax(x, y) < 0.f) ? -std::fmin(x2, y2) : (((x > 0.f) ? x2 : 0.f) + ((y > 0.f) ? y2 : 0.f));
+  return Sign(d) * std::sqrtf(std::fabs(d)) / baba;
+}
+
+//------------------------------------------------------------------------------
+// vertical
+float sdCone(tup const &Pos, tup const &Center, float H)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup q = H * VectorXY(Center.X, -Center.Y) / Center.Y;
+  tup w = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
+  tup a = w - q * Clamp(Dot(w, q) / Dot(q, q), 0.f, 1.f);
+  tup b = w - q * VectorXY(Clamp(w.X / q.X, 0.f, 1.f), 1.f);
+  float k = Sign(q.Y);
+  float d = std::fmin(Dot(a, a), Dot(b, b));
+  float s = std::fmax(k * (w.X * q.Y - w.Y * q.X), k * (w.Y - q.Y));
+  return std::sqrtf(d) * Sign(s);
+}
+
+//------------------------------------------------------------------------------
+float sdCappedCone(tup const &Pos, float H, float Rad1, float Rad2)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup q = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
+
+  tup k1 = VectorXY(Rad2, H);
+  tup k2 = VectorXY(Rad2 - Rad1, 2.f * H);
+  tup ca = VectorXY(q.X - std::fmin(q.X, (q.Y < 0.f) ? Rad1 : Rad2), std::abs(q.Y) - H);
+  tup cb = q - k1 + k2 * Clamp(Dot(k1 - q, k2) / Dot(k2), 0.f, 1.f);
+  float s = (cb.X < 0.f && ca.Y < 0.f) ? -1.f : 1.f;
+  return s * std::sqrtf(std::fmin(Dot(ca), Dot(cb)));
+}
+
+//------------------------------------------------------------------------------
+float sdCappedCone(tup Pos, tup A, tup B, float RadA, float RadB)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  float rba = RadB - RadA;
+  float baba = Dot(B - A, B - A);
+  float papa = Dot(Pos - A, Pos - A);
+  float paba = Dot(Pos - A, B - A) / baba;
+
+  float x = std::sqrtf(papa - paba * paba * baba);
+
+  float cax = std::fmax(0.f, x - ((paba < 0.5f) ? RadA : RadB));
+  float cay = std::fabs(paba - 0.5f) - 0.5f;
+
+  float k = rba * rba + baba;
+  float f = Clamp((rba * (x - RadA) + paba * baba) / k, 0.f, 1.f);
+
+  float cbx = x - RadA - f * rba;
+  float cby = paba - f;
+
+  float s = (cbx < 0.f && cay < 0.f) ? -1.f : 1.f;
+
+  return s * std::sqrtf(std::fmin(cax * cax + cay * cay * baba, cbx * cbx + cby * cby * baba));
+}
+
+//------------------------------------------------------------------------------
+// c is the sin/cos of the desired cone angle
+float sdSolidAngle(tup Pos, tup c, float ra)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  tup p = VectorXY(Mag(VectorXZ(Pos)), Pos.Y);
+  float l = Mag(p) - ra;
+  float m = Mag(p - c * Clamp(Dot(p, c), 0.f, ra));
+  return std::fmax(l, m * Sign(c.Y * p.X - c.X * p.Y));
+}
+
+//------------------------------------------------------------------------------
+float sdOctahedron(tup Pos, float s)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Pos = Abs(Pos);
+  float m = Pos.X + Pos.Y + Pos.Z - s;
+
+// exact distance
+#if 0
+  tup o = Min(3.f * Pos - Vector(m, m, m), 0.f);
+  o = Max(6.f * Pos - Vector(m, m, m) * 2.f - o * 3.f + Vector(o.X + o.Y + o.Z, o.X + o.Y + o.Z, o.X + o.Y + o.Z), 0.f);
+  return Mag(Pos - s * o / (o.X + o.Y + o.Z));
+#endif
+
+// exact distance
+#if 1
+  tup q{};
+  if (3.f * Pos.X < m)
+    q = VectorXYZ(Pos);
+  else if (3.f * Pos.Y < m)
+    q = VectorYZX(Pos);
+  else if (3.f * Pos.Z < m)
+    q = VectorZXY(Pos);
+  else
+    return m * 0.57735027f;
+  float k = Clamp(0.5f * (q.Z - q.Y + s), 0.f, s);
+  return Mag(Vector(q.X, q.Y - s + k, q.Z - k));
+#endif
+
+// bound, not exact
+#if 0
+  return m * 0.57735027f;
+#endif
+}
+
+//------------------------------------------------------------------------------
+float sdPyramid(tup Pos, float H)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  float m2 = H * H + 0.25f;
+
+  // symmetry
+  Pos = Vector(std::abs(Pos.X), Pos.Y, std::abs(Pos.Z));
+  Pos = (Pos.Z > Pos.X) ? Vector(Pos.Z, Pos.Y, Pos.X) : Vector(Pos.X, Pos.Y, Pos.Z);
+  Pos.X -= 0.5f;
+  Pos.Z -= 0.5f;
+  // ==
+
+  // project into face plane (2D)
+  tup q = Vector(Pos.Z, H * Pos.Y - 0.5f * Pos.X, H * Pos.X + 0.5f * Pos.Y);
+
+  float s = std::fmax(-q.X, 0.f);
+  float t = Clamp((q.Y - 0.5f * Pos.Z) / (m2 + 0.25f), 0.f, 1.f);
+
+  float a = m2 * (q.X + s) * (q.X + s) + q.Y * q.Y;
+  float b = m2 * (q.X + 0.5f * t) * (q.X + 0.5f * t) + (q.Y - m2 * t) * (q.Y - m2 * t);
+
+  float d2 = std::fmin(q.Y, -q.X * m2 - q.Y * 0.5f) > 0.f ? 0.f : std::fmin(a, b);
+
+  // recover 3D and scale, and add sign
+  return std::sqrtf((d2 + q.Z * q.Z) / m2) * Sign(std::fmax(q.Z, -Pos.Y));
+}
+
+//------------------------------------------------------------------------------
+// LenA,LenB = semi axis, H=height, Rad = corner radius
+float sdRhombus(tup Pos, float LenA, float LenB, float H, float Rad)
+{
+  Assert(IsVector(Pos), __FUNCTION__, __LINE__);
+  Pos = Abs(Pos);
+  tup B = VectorXY(LenA, LenB);
+  float F = Clamp(NDot(B, B - 2.f * tup(Pos.X, Pos.Z)) / Dot(B, B), -1.f, 1.f);
+  // clang-format off
+  tup Q = tup(Mag(VectorXY(Pos.X, Pos.Z) - 0.5f * B * VectorXY(1.f - F, 1.f + F)) * Sign(Pos.X * B.Y + Pos.Z * B.X - B.X * B.Y) - Rad, Pos.Y - H);
+  float Result = std::fmin(std::fmax(Q.X, Q.Y), 0.f) + Mag(Max(Q, 0.f));
+  // clang-format on
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+float sdHorseshoe(tup Pos, tup C, float Rad, float le, tup w)
+{
+  Assert(IsVector(Pos), __PRETTY_FUNCTION__, __LINE__);
+  Pos.X = abs(Pos.X);
+  float l = Mag(VectorXY(Pos));
+
+  matrix M = Matrix22(VectorXY(-C.X, C.Y), VectorXY(C.Y, C.X));
+
+  // p.xy = mat2(-c.x, c.y, c.y, c.x) * p.xy;
+  tup pXY = M * VectorXY(Pos);
+  Pos.X = pXY.X;
+  Pos.Y = pXY.Y;
+
+  // p.xy = vec2((p.y > 0.0 || p.x > 0.0) ? p.x : l * sign(-c.x), (p.x > 0.0) ? p.y : l);
+  Pos.X = (Pos.Y > 0.f || Pos.X > 0.f) ? Pos.X : l * Sign(-C.X);
+  Pos.Y = (Pos.X > 0.f) ? Pos.Y : l;
+
+  // p.xy = vec2(p.x, abs(p.y - r)) - vec2(le, 0.0);
+  tup pXY2 = VectorXY(Pos.X, std::fabs(Pos.Y - Rad)) - VectorXY(le, 0.f);
+  Pos.X = pXY2.X;
+  Pos.Y = pXY2.Y;
+
+  // vec2 q = vec2(length(max(p.xy,0.0)) + min(0.0,max(p.x,p.y)),p.z);
+  tup q = VectorXY(Mag(Max(VectorXY(Pos), 0.f)) + std::fmin(0.f, std::fmax(Pos.X, Pos.Y)), Pos.Z);
+  tup d = Abs(q) - w;
+
+  // return min(max(d.x,d.y),0.0) + length(max(d,0.0));
+  return std::fmin(std::fmax(d.X, d.Y), 0.f) + Mag(Max(d, 0.0));
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: v1, v2, v3 - vertices of the triangle. Need to be a Point.
+ * @param: Pos - Position of the point of which the distance is to be
+ *               computed. Need to be a point.
+ * NOTE: Since the vertices are used for vector calculations the triangle is
+ *       always based around the world origo/base.
+ */
+float udTriangle(tup const &v1, tup const &v2, tup const &v3, tup const &Pos)
+{
+  Assert(IsPoint(v1), __FUNCTION__, __LINE__);
+  Assert(IsPoint(v2), __FUNCTION__, __LINE__);
+  Assert(IsPoint(v3), __FUNCTION__, __LINE__);
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+
+  // clang-format off
+    tup v21 = v2 - v1; tup p1 = Pos - v1;
+    tup v32 = v3 - v2; tup p2 = Pos - v2;
+    tup v13 = v1 - v3; tup p3 = Pos - v3;
+    tup nor = Cross( v21, v13 );
+
+    return std::sqrtf( (Sign(Dot(Cross( v21, nor ), p1)) +
+                        Sign(Dot(Cross( v32, nor ), p2)) +
+                        Sign(Dot(Cross( v13, nor ), p3)) < 2.f)
+                  ?
+                  std::fmin( std::fmin(
+                  Dot(v21 * Clamp(Dot( v21, p1) / Dot(v21), 0.f, 1.f) - p1),
+                  Dot(v32 * Clamp(Dot( v32, p2) / Dot(v32), 0.f, 1.f) - p2) ),
+                  Dot(v13 * Clamp(Dot( v13, p3) / Dot(v13), 0.f, 1.f) - p3) )
+                  :
+                  Dot(nor, p1) * Dot(nor, p1) / Dot(nor) );
+  // clang-format on
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: a, b, c, d - the corners of the quad. Need to be a Point.
+ * @param: Pos - Position of the point of which the distance is to be
+ *               computed. Need to be a point.
+ * NOTE: Since the corners are used for vector calculations the quad is
+ *       always based around the world origo/base.
+ */
+float udQuad(tup const &p, tup const &a, tup const &b, tup const &c, tup const &d)
+{
+  tup ba = b - a;
+  tup pa = p - a;
+  tup cb = c - b;
+  tup pb = p - b;
+  tup dc = d - c;
+  tup pc = p - c;
+  tup ad = a - d;
+  tup pd = p - d;
+  tup nor = Cross(ba, ad);
+
+  // clang-format off
+  return std::sqrtf(
+    (Sign(Dot(Cross(ba, nor), pa)) +
+     Sign(Dot(Cross(cb, nor), pb)) +
+     Sign(Dot(Cross(dc, nor), pc)) +
+     Sign(Dot(Cross(ad, nor), pd))<3.f)
+     ?
+     std::min( std::min( std::min(
+     Dot(ba * Clamp(Dot(ba, pa) / Dot(ba), 0.0, 1.f) - pa),
+     Dot(cb * Clamp(Dot(cb, pb) / Dot(cb), 0.0, 1.f) - pb) ),
+     Dot(dc * Clamp(Dot(dc, pc) / Dot(dc), 0.0, 1.f) - pc) ),
+     Dot(ad * Clamp(Dot(ad, pd) / Dot(ad), 0.0, 1.f) - pd) )
+     :
+     Dot(nor, pa) * Dot(nor, pa) / Dot(nor) );
+  // clang-format on
+}
+
+//------------------------------------------------------------------------------
+float sdSphereSphereDistance(tup const &PosA, float RadA, tup const &PosB, float RadB)
+{
+  float D = Mag(PosA - PosB) - RadA - RadB;
+  return D;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Calculate the penetration distance for collission between two spheres.
+ */
+float sdSphereSpherePenDist(tup const &PosA, float RadA, tup const &PosB, float RadB)
+{
+  float D = sdSphereSphereDistance(PosA, RadA, PosB, RadB);
+  float Pd = std::fmin(D, 0.f);
+  return Pd;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: true when there is a collission between the spheres.
+ */
+bool sdSphereSphereCollision(tup const &PosA, float RadA, tup const &PosB, float RadB)
+{
+  return sdSphereSpherePenDist(PosA, RadA, PosB, RadB) < 0.f;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: v1/2/3 - Vertice's
+ * @param: PosSphere - the world position of a sphere.
+ * @param: Radius - the sphere radius.
+ */
+float sdSphereTriangle(tup const &v1, tup const &v2, tup const &v3, tup const &PosSphere, float Radius)
+{
+  auto const D = udTriangle(v1, v2, v3, PosSphere) - Radius;
+  return D;
+}
+
+//------------------------------------------------------------------------------
+/**
+ */
+bool sdSphereTriangleCollision(tup const &v1, tup const &v2, tup const &v3, tup const &PosSphere, float Radius)
+{
+  auto const D = udTriangle(v1, v2, v3, PosSphere);
+  return (D < -Radius) || (D > Radius);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @param: A - Point starting the line segment.
+ * @param: B - Point ending the line segment.
+ * @param: Pos - Point of which the closest point is desired.
+ * @return: The closest point from Pos to the line segement set up between A and B.
+ * @reference: https://wickedengine.net/2020/04/26/capsule-collision-detection/
+ */
+tup ClosestPointOnLineSegment(tup const &A, tup const &B, tup const &Pos)
+{
+  Assert(IsPoint(A), __FUNCTION__, __LINE__);
+  Assert(IsPoint(B), __FUNCTION__, __LINE__);
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+  tup const AB = B - A;
+  float const t = Dot(Pos - A, AB) / Dot(AB);
+  tup Result = A + std::fmin(std::fmax(t, 0.f), 1.f) * AB;
+  return Result;
+}
+
+//------------------------------------------------------------------------------
+/**
+ */
+float sdCapsuleCapsule(capsule const &Ca, capsule const &Cb)
+{
+  // Create vectors between line endpoints
+  ww::tup const V0 = Cb.A - Ca.A;
+  ww::tup const V1 = Cb.B - Ca.A;
+  ww::tup const V2 = Cb.A - Ca.B;
+  ww::tup const V3 = Cb.B - Ca.B;
+
+  auto const P0 = ww::rm::ClosestPointOnLineSegment(Ca.Base, Ca.Tip, Cb.Base);
+  auto const P1 = ww::rm::ClosestPointOnLineSegment(Ca.Base, Ca.Tip, Cb.Tip);
+  auto const P2 = ww::rm::ClosestPointOnLineSegment(Cb.Base, Cb.Tip, Ca.Base);
+  auto const P3 = ww::rm::ClosestPointOnLineSegment(Cb.Base, Cb.Tip, Ca.Tip);
+
+  // Squared distances
+  auto const D0 = ww::Dot(V0);  // Calculate Mag squared with dot product.
+  auto const D1 = ww::Dot(V1);  // Calculate Mag squared with dot product.
+  auto const D2 = ww::Dot(V2);  // Calculate Mag squared with dot product.
+  auto const D3 = ww::Dot(V3);  // Calculate Mag squared with dot product.
+                                //
+  // select best potential endpoint on capsule A:
+  ww::tup bestA{Ca.A};
+  if (D2 < D0 || D2 < D1 || D3 < D0 || D3 < D1)
+  {
+    bestA = Ca.B;
+  }
+
+  // select point on capsule B line segment nearest to best potential endpoint on A capsule:
+  ww::tup bestB = ww::rm::ClosestPointOnLineSegment(Cb.A, Cb.B, bestA);
+  // now do the same for capsule A segment:
+  bestA = ww::rm::ClosestPointOnLineSegment(Ca.A, Ca.B, bestB);
+
+  ww::tup const PenetrationNormal = bestA - bestB;
+  float const Len = ww::Mag(PenetrationNormal);
+  ww::tup const NormPenetrationNormal = ww::Normalize(PenetrationNormal);
+
+  float const SignedDistance = -(Ca.R + Cb.R - Len);
+
+  bool const Intersect = SignedDistance < 0.f;
+  std::cout << "Result: SignedDistance: " << SignedDistance << ". Intersect: " << Intersect << std::endl;
+
+  return SignedDistance;
+};
+
+/**
+ * GetDistance to one particular object in the scene.
+ * The point in world coordinates is moved into local coordinates by use of
+ * the inverse transform of the shape.
+ * return: Distance to shape or MAX_DIST when shape is not supported.
+ */
+//------------------------------------------------------------------------------
+float GetDistance(tup const &P, shared_ptr_shape PtrShape)
+{
+  tup const LocalPoint = ww::Vector(ww::Inverse(PtrShape->Transform) * P);
+  if (PtrShape->isA<sphere>())
+  {
+    sphere const *pSphere = dynamic_cast<sphere *>(PtrShape.get());
+    // ---
+    // NOTE: A sphere will have uniform scaling in all directions.
+    //       So; for now the scaled X will be used as radius.
+    // ---
+    float const Radius = pSphere->Transform.R0.X;
+    float const Ds = SdfSphere(pSphere->Center, Radius, LocalPoint);
+    return Ds;
+  }
+  else if (PtrShape->isA<cube>())
+  {
+    cube const *pCube = dynamic_cast<cube *>(PtrShape.get());
+    tup const Box = Vector(pCube->Transform.R[0].X / 2.f, pCube->Transform.R[1].Y / 2.f, pCube->Transform.R[2].Z / 2.f);
+    float const Db = SdfBox(LocalPoint, Box, pCube->R);
+    return Db;
+  }
+  else if (PtrShape->isA<plane>())
+  {
+    plane const *pPlane = dynamic_cast<plane *>(PtrShape.get());
+    float const Dp = SdfPlane(LocalPoint, Point(0.f, 1.f, 0.f), pPlane->H);
+    return Dp;
+  }
+  return MAX_DIST;
+}
+
+//------------------------------------------------------------------------------
+float GetDistance(tup const &P, world const &World)
+{
+  float Distance{MAX_DIST};
+  // ---
+  // NOTE: Set up scene here.
+  // ---
+  for (int ObjIdx = 0; ObjIdx < World.vPtrObjects.size(); ++ObjIdx)
+  {
+    shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
+    Distance = std::min(GetDistance(P, PtrShape), Distance);
+  }
+
+  return Distance;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Operation union
+ */
+tup OpU(tup const &D1, tup const &D2, char const *pStr = nullptr)
+{
+  if (pStr && !(D1.X < D2.X))
+  {
+    gMutexPrint.lock();
+    std::cout << "Got hit with D:" << D2 << std::string(pStr) << std::endl;
+    gMutexPrint.unlock();
+  }
+  return (D1.X < D2.X) ? D1 : D2;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Map the various Signed Distance Functions of the objects in the scene.
+ */
+tup MapDefault(tup const &Pos)
+{
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+
+  tup Res = Point(Pos.Y, 0.f, 0.f);
+
+  // ---
+  // Bounding box.
+  // ---
+  if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  {
+    // clang-format off
+    Res = OpU(Res, Point(sdSphere(Pos - Point(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
+    // Res = OpU(Res, Point(sdRhombus(VectorXZY(Pos - Point(-2.f, 0.35f, 1.f)), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    static matrix const MRhombus = TranslateScaleRotate (-2.f, 0.35f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    Res = OpU(Res, Point(sdRhombus(VectorXZY(Inverse(MRhombus) * Pos), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    // clang-format on
+  }
+
+  // ---
+  // Bounding box.
+  // ---
+  if (sdBox(Pos - Point(0.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  {
+    // clang-format off
+    static matrix const MCappedTorus = TranslateScaleRotate(0.f, 0.3f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    Res = OpU(Res, Point(sdCappedTorus(Inverse(MCappedTorus) * Pos * Vector(1.f, -1.f, 1.f), Vector(0.866025f, -0.5f, 0.f), 0.25f, 0.05f), 25.f, 0.f));
+    Res = OpU(Res, Point(sdBoxFrame(Pos - Point(0.f, 0.25f, 0.f), Vector(0.3f, 0.25f, 0.2f), 0.025f), 16.9f, 0.f));
+    Res = OpU(Res, Point(sdCone(Pos - Point(0.f, 0.45f, -1.f), Vector(0.6f, 0.8f, 0.f), 0.45f), 55.f, 0.f));
+    Res = OpU(Res, Point(sdCappedCone(Pos - Point(0.f, 0.25f, -2.f), 0.25f, 0.25f, 0.1f), 13.67f, 0.f));
+    Res = OpU(Res, Point(sdSolidAngle(Pos - Point(0.f, 0.f, -3.f), VectorXY(3.f, 4.f) / 5.f, 0.4f), 49.13f, 0.f));
+    // clang-format on
+  }
+
+  // ---
+  // Bounding box
+  // ---
+  if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  {
+    // clang-format off
+    Res = OpU(Res, Point(sdTorus(VectorXZY(Pos - Point(1.f, 0.3f, 1.f)),  Vector(0.25f, 0.05f, 0.f)), 7.1f, 0.f));
+    Res = OpU(Res, Point(sdBox(            Pos - Point(1.f, 0.25f, 0.f),  Vector(0.3f, 0.25f, 0.1f)), 3.f, 0.f));
+    Res = OpU(Res, Point(sdCapsule(        Pos - Point(1.f, 0.f, -1.f),   Vector(-0.1f, 0.1f, -0.1f),  Vector(0.2f, 0.4f, 0.2f), 0.1f), 31.9f, 0.f));
+    Res = OpU(Res, Point(sdCylinder(       Pos - Point(1.f, 0.25f, -2.f), VectorXY(0.15f, 0.25f)), 8.f, 0.f));
+    Res = OpU(Res, Point(sdHexPrism(       Pos - Point(1.f, 0.2f, -3.f),  VectorXY(0.2f, 0.05f)), 18.4f, 0.f));
+    // clang-format on
+  }
+
+  // bounding box
+  if (sdBox(Pos - Point(-1.f, 0.35f, -1.f), Vector(0.35f, 0.35f, 2.5f)) < Res.X)
+  {
+    // clang-format off
+    Res = OpU(Res, Point(sdPyramid(   Pos - Point(-1.0f, -0.6f, -3.f), 1.f), 13.56f, 0.f));
+    Res = OpU(Res, Point(sdOctahedron(Pos - Point(-1.f, 0.15f, -2.f), 0.35f), 23.56f, 0.f));
+    Res = OpU(Res, Point(sdTriPrism(  Pos - Point(-1.f, 0.15f, -1.f), VectorXY(0.3f, 0.05f)), 43.5f, 0.f));
+    Res = OpU(Res, Point(sdEllipsoid( Pos - Point(-1.f, 0.25f, 0.f), Vector(0.2f, 0.25f, 0.05f)), 43.17f, 0.f));
+    Res = OpU(Res, Point(sdHorseshoe( Pos - Point(-1.f, 0.25f, 1.f), VectorXY(std::cosf(1.3f), std::sinf(1.3f)), 0.2f, 0.3f, VectorXY(0.03f, 0.08f)), 11.5f, 0.f));
+    // clang-format on
+  }
+
+  // bounding box
+  if (sdBox(Pos - Point(2.f, 0.3f, -1.f), Vector(0.35f, 0.3f, 2.5f)) < Res.X)
+  {
+    // clang-format off
+    Res = OpU(Res, Point(sdOctogonPrism(Pos - Point(2.f, 0.2f, -3.f), 0.2f, 0.05f), 51.8f, 0.f));
+    Res = OpU(Res, Point(sdCylinder(    Pos - Point(2.f, 0.14f, -2.f), Vector(0.1f, -0.1f, 0.f), Vector(-0.2f, 0.35f, 0.1f), 0.08f), 31.2f, 0.f));
+    Res = OpU(Res, Point(sdCappedCone(  Pos - Point(2.f, 0.09f, -1.f), Vector(0.1f, 0.f, 0.f), Vector(-0.2f, 0.4f, 0.1f), 0.15f, 0.05f), 46.1f, 0.f));
+    Res = OpU(Res, Point(sdRoundCone(   Pos - Point(2.f, 0.15f, 0.f),  Vector(0.1f, 0.f, 0.f), Vector(-0.1f, 0.35f, 0.1f), 0.15f, 0.05f), 51.7f ,0.f));
+    Res = OpU(Res, Point(sdRoundCone(   Pos - Point(2.f, 0.2f, 1.f), 0.2f, 0.1f, 0.3f), 37.f, 0.f ) );
+    // clang-format on
+  }
+
+  return VectorXY(Res);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Map the various Signed Distance Functions of the objects in the scene.
+ */
+tup MapBoxAndSphere(tup const &Pos)
+{
+  Assert(IsPoint(Pos), __FUNCTION__, __LINE__);
+
+  // tup Res = Point(Pos.Y, 0.f, 0.f);
+  tup Res = Point(1000.f, 0.f, 0.f);
+
+  // ---
+  // Bounding box.
+  // ---
+  // if (sdBox(Pos - Point(-2.f, 0.3f, 0.25f), Vector(0.3f, 0.3f, 1.f)) < Res.X)
+  if (false)
+  {
+    // clang-format off
+    // Res = OpU(Res, Point(sdSphere(Pos - Point(-2.f, 0.25f, 0.f), 0.25f), 26.9f, 0.f));
+    float const Rad{0.1};
+    static tup const Centre = Vector(0.f, 0.1f, 0.f);
+    static tup const Delta = Vector(Rad, 1.5f * Rad, 0.f);
+    static matrix const M1 = TranslateScaleRotate (Centre.X, Centre.Y, Centre.Z, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+    static matrix const MI1 = Inverse(M1);
+    static matrix const M2 = TranslateScaleRotate (Centre.X + 2.f * Delta.X, Centre.Y + 3.f * Delta.Y, Centre.Z + 2.f * Delta.Z, 2.f, 2.f, 2.f, 0.f, 0.f, 0.f);
+    static matrix const MI2 = Inverse(M2);
+    Res = OpU(Res, Point(sdSphere(Vector(MI1 * Pos), 0.1f), 46.9f, 0.f));
+    Res = OpU(Res, Point(sdSphere(Vector(MI2 * Pos), 0.1f), 16.9f, 0.f));
+    // Res = OpU(Res, Point(sdRhombus(VectorXZY(Pos - Point(-2.f, 0.35f, 1.f)), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    // static matrix const MRhombus = TranslateScaleRotate (-2.f, 0.35f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    // Res = OpU(Res, Point(sdRhombus(VectorXZY(Inverse(MRhombus) * Pos), 0.15f, 0.25f, 0.04f, 0.08f), 17.f, 0.f));
+    // clang-format on
+  }
+
+  // static matrix const MBox = TranslateScaleRotate(0.f, .0f, 0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+  // Res = OpU(Res,
+  //           Point(sdBoxFrame(Inverse(MBox) * Pos * Vector(1.f, 1.f, 1.f), Vector(0.3f, .25f, .20f), .010f),
+  //           0.0f, 5.f));
+
+  // ---
+  // Bounding box
+  // ---
+  // if (sdBox(Pos - Point(1.f, 0.3f, -1.f), Vector(1.f, 1.f, 1.f)) < Res.X)
+  {
+    // clang-format off
+    static matrix const MBox = TranslateScaleRotate (-1.f, 0.f, 1.f, 1.f, 1.f, 1.f, 0.f, 0.f, 0.f);
+    static matrix const MBoxI = Inverse(MBox);
+    Res = OpU(Res, Point(sdBox(            Vector(MBoxI * Pos),  Vector(.1f, .1f, .1f)), 4.f, 0.f));
+    // Res = OpU(Res, Point(sdBox(            Pos - Point(-1.f, 1.f, 1.f),  Vector(1.0f, 1.f, 1.0f)), 2.f, 0.f));
+    // Res = OpU(Res, Point(sdCapsule(        Pos - Point(1.f, 0.f, -1.f),   Vector(-0.1f, 0.1f, -0.1f),  Vector(0.2f, 0.4f, 0.2f), 0.1f), 31.9f, 0.f));
+    // clang-format on
+  }
+  return VectorXY(Res);
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/rmshadows
+float CalcSoftShadow(ray const &R, float tMin, float tMax, funcPtrMap Map)
+{
+  // bounding volume
+  float tp = (0.8 - R.Origin.Y) / R.Direction.Y;
+  if (tp > 0.f) tMax = std::min(tMax, tp);
+
+  float Res = 1.0;
+  float t = tMin;
+  for (int Idx = 0; Idx < 24; ++Idx)
+  {
+    float H = Map(R.Origin + R.Direction * t).X;
+    float S = Clamp(8.f * H / t, 0.f, 1.f);
+    Res = std::min(Res, S);
+    t += Clamp(H, 0.01f, 0.2f);
+    if (Res < 0.004f || t > tMax) break;
+  }
+  Res = Clamp(Res, 0.f, 1.f);
+  return Res * Res * (3.f - 2.f * Res);
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/normalsSDF
+tup CalcNormal(tup const &Pos, funcPtrMap Map)
+{
+#if 1
+  tup const e = Vector(1.f, -1.f, 0.f) * 0.5773f * 0.0005f;
+  tup const exyy = Vector(e.X, e.Y, e.Y);
+  tup const eyyx = Vector(e.Y, e.Y, e.X);
+  tup const eyxy = Vector(e.Y, e.X, e.Y);
+  tup const exxx = Vector(e.X, e.X, e.X);
+  tup const N = Normalize(exyy * Map(Pos + exyy).X +  //!<
+                          eyyx * Map(Pos + eyyx).X +  //!<
+                          eyxy * Map(Pos + eyxy).X +  //!<
+                          exxx * Map(Pos + exxx).X    //!<
+  );
+  Assert(IsVector(N), __FUNCTION__, __LINE__);
+  return N;
+#else
+  // inspired by tdhooper and klems - a way to prevent the compiler from inlining map() 4 times
+  vec3 n = vec3(0.0);
+  for (int i = ZERO; i < 4; i++)
+  {
+    vec3 e = 0.5773 * (2.0 * vec3((((i + 3) >> 1) & 1), ((i >> 1) & 1), (i & 1)) - 1.0);
+    n += e * map(pos + 0.0005 * e).x;
+    // if( n.x+n.y+n.z>100.0 ) break;
+  }
+  return normalize(n);
+#endif
+}
+
+//------------------------------------------------------------------------------
+tup GetNormal(tup const &P, shared_ptr_shape PtrShape)
+{
+  float constexpr E{0.01f};
+  tup const EpsilonXYY{E, 0.f, 0.f, 0.f};
+  tup const EpsilonYXY{0.f, E, 0.f, 0.f};
+  tup const EpsilonYYX{0.f, 0.f, E, 0.f};
+
+  tup const N{GetDistance(P + EpsilonXYY, PtrShape), GetDistance(P + EpsilonYXY, PtrShape),
+              GetDistance(P + EpsilonYYX, PtrShape), 0.f};
+
+  tup const WorldNormal = ww::Transpose(ww::Inverse(PtrShape->Transform)) * N;
+
+  return Normalize(WorldNormal);
+}
+
+//------------------------------------------------------------------------------
+tup GetLight(tup const &P, shared_ptr_shape PtrShape)
+{
+  // ---
+  // NOTE: Test code:
+  // ---
+  // "normal white" material should be around 0.2 gray
+  static tup const Mate = Color(0.2f, 0.2f, 0.2f);
+  tup const Nor = GetNormal(P, PtrShape);
+
+  // Lighting
+  static tup const SunDir = Normalize(Vector(0.8f, 0.4f, 0.2f));
+  float const SunDif = Clamp(Dot(Nor, SunDir), 0.f, 1.f);
+  float const SunSha = Step(RayMarch(Ray(P + Nor * 0.001f, SunDir), PtrShape), 0.f);
+  float const SkyDif = Clamp(0.5f + 0.5f * Dot(Nor, Vector(0.f, 1.f, 0.f)), 0.f, 1.f);
+  float const BouDif = Clamp(0.5f + 0.5f * Dot(Nor, Vector(0.f, -1.f, 0.f)), 0.f, 1.f);
+
+  // ---
+  // NOTE: Key light ~- 10.
+  //       Fill light ~- 1.
+  tup const Color0 = Mate * Point(7.f, 5.f, 3.f) * SunDif * SunSha;
+  tup const Color1 = Mate * Point(0.5f, 0.8f, 0.9f) * SkyDif;
+  tup const Color2 = Mate * Point(0.7f, 0.3f, 0.2f) * BouDif;
+  tup const Color = Color0 + Color1 + Color2;
+  return Color;
+}
+
+//------------------------------------------------------------------------------
+float GetLight(light const &Light, tup const &P, shared_ptr_shape PtrShape)
+{
+  // ---
+  // Original code
+  // ---
+  tup const LightDir = Normalize(P - Light.Position);
+  return -Dot(GetNormal(P, PtrShape), LightDir);
+}
+
+//------------------------------------------------------------------------------
+tup Lighting(material const &Material, light const &Light, tup const &P, tup const &EyeV, tup const NormalV)
+{
+  tup const EffectiveColor = Material.Color * Light.Intensity;
+  tup const LightV = Normalize(Light.Position - P);
+  tup const Ambient = EffectiveColor * Material.Ambient;
+  float const LightDotNormal = Dot(LightV, NormalV);
+
+  tup Diffuse{};
+  tup Specular{};
+
+  if (LightDotNormal < 0.f)
+  {
+    return Ambient;
+  }
+  // std::cout << __FUNCTION__ << ". LightDotNormal: " << LightDotNormal << ". Ambient:" << Ambient << ". Intensity:"
+  // << Light.Intensity << std::endl;
+
+  Diffuse = EffectiveColor * Material.Diffuse * LightDotNormal;
+
+  tup const ReflectV = Reflect(-LightV, NormalV);
+  float const ReflectDotEye = Dot(ReflectV, EyeV);
+  if (ReflectDotEye > 0.f)  // a negative number means pointing away.
+  {
+    float const Factor = std::pow(ReflectDotEye, Material.Shininess);
+    Specular = Light.Intensity * Material.Specular * Factor;
+  }
+  return Ambient + Diffuse + Specular;
+}
+
+//------------------------------------------------------------------------------
+float RayMarch(ray const &Ray, shared_ptr_shape PtrShape)
+{
+  float Distance{};
+  for (int Idx = 0;          //!<
+       Idx < rm::MAX_STEPS;  //!<
+       ++Idx                 //!<
+  )
+  {
+    // ---
+    // NOTE: Compute the incremental position.
+    // ---
+    tup iPos = Ray.Origin + Ray.Direction * Distance;
+
+    // ---
+    // NOTE: Get the increment in distance to the shape of interest.
+    //      This is called distance aided ray marching.
+    //      A useful blogpost is this one:
+    //      https://michaelwalczyk.com/blog-ray-marching.html
+    // ---
+    float const incrDistance = GetDistance(iPos, PtrShape);
+
+    // ---
+    // NOTE: Ray march to the new distance.
+    // ---
+    Distance += incrDistance;
+
+    // std::cout << __FUNCTION__ << "-> Step: " << Idx << ". Distance: " << Distance << ". incrDistance: " <<
+    // incrDistance
+    //           << std::endl;
+
+    if (Distance > ww::rm::MAX_DIST || incrDistance < ww::rm::MIN_DIST) break;
+  }
+
+  return Distance;
+}
+
+//------------------------------------------------------------------------------
+float RayMarch(ray const &Ray, world const &World, shared_ptr_shape PtrShape) { return {}; }
+
+//------------------------------------------------------------------------------
+tup MainImage(camera const &Camera, world const &World, int X, int Y, shared_ptr_shape PtrShape)
+{
+  ray const R = ww::RayForPixel(Camera, X, Y);
+  float const Distance = RayMarch(R, PtrShape);
+
+  shared_ptr_light PtrLights = World.vPtrLights[0];
+  light const &Light = *PtrLights;
+
+  // tup fragColor = Color(0.65f, 0.75f, 0.9f) * 0.2;
+  tup fragColor{};
+  if (Distance < MAX_DIST)  // then there is a hit
+  {
+    tup const pHit = R.Origin + R.Direction * Distance;
+    fragColor = PtrShape->Material.Color * GetLight(Light, pHit, PtrShape);
+    // fragColor = GetLight(pHit, PtrShape);
+    // std::cout << __FUNCTION__ << ": Got hit at X:" << X << " Y:" << Y << ". Color:" << fragColor << std::endl;
+  }
+
+  // fragColor = Pow(fragColor, Color(0.4545f, 0.4545f, 0.4545f));
+  return fragColor;
+}
+
+// https://iquilezles.org/articles/boxfunctions
+tup iBox(ray const &R, tup const &Rad)
+{
+  tup const M = 1.f / R.Direction;  // is a Vector.
+  tup const N = M * R.Origin;       // becomes a Vector.
+  tup const K = Abs(M) * Rad;       // becomes a Vector since M is a Vector.
+  tup const t1 = -N - K;
+  tup const t2 = -N + K;
+  return tup(std::max(std::max(t1.X, t1.Y), t1.Z), std::min(std::min(t2.X, t2.Y), t2.Z));
+}
+
+//------------------------------------------------------------------------------
+// The following functions have been copied from
+// https://photodiode.github.io/article/triangle-capsule-intersection.html
+// Many thanks to 'photodiode' for sharing his experience.
+/**
+ */
+static inline float PointLineDistance(tup const &Pos, tup const &A, tup const &B)
+{
+  tup PosA = Pos - A;
+  tup BA = B - A;
+
+  float h = Dot(PosA, BA) / Dot(BA, BA);
+  h = std::fminf(std::fmaxf(h, 0.0f), 1.0f);
+
+  return Mag(PosA - BA * h);
+}
+
+/**
+ */
+static inline bool RayCapsuleIntersect(tup const &RayOrigin, tup const &RayDirection,  //!<
+                                       tup const &CapsuleA, tup const &CapsuleB,       //!<
+                                       float Radius, float *Distance)
+{
+  tup const BA = CapsuleB - CapsuleA;
+  tup const OA = RayOrigin - CapsuleA;
+
+  float const baba = Dot(BA, BA);
+  float const bard = Dot(BA, RayDirection);
+  float const baoa = Dot(BA, OA);
+  float const rdoa = Dot(RayDirection, OA);
+  float const oaoa = Dot(OA, OA);
+
+  float const a = baba - bard * bard;
+  float b = baba * rdoa - baoa * bard;
+  float c = baba * oaoa - baoa * baoa - Radius * Radius * baba;
+  float h = b * b - a * c;
+
+  if (h >= 0.0f)
+  {
+    float const t = (-b - std::sqrtf(h)) / a;
+    float const y = baoa + t * bard;
+
+    // body
+    if (y > 0.0f && y < baba)
+    {
+      *Distance = t;
+      return true;
+    }
+
+    // caps
+    tup const OC = (y <= 0.0) ? OA : RayOrigin - CapsuleB;
+
+    b = Dot(RayDirection, OC);
+    c = Dot(OC, OC) - Radius * Radius;
+    h = b * b - c;
+
+    if (h > 0.0f)
+    {
+      *Distance = -b - std::sqrtf(h);
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ */
+static inline tup CapsuleNormal(tup const &Pos, tup const &CapA, tup const &CapB, float Radius)
+{
+  tup BA = CapB - CapA;
+  tup PA = Pos - CapA;
+
+  float h = Dot(PA, BA) / Dot(BA, BA);
+  h = std::fminf(std::fmaxf(h, 0.f), 1.f);
+
+  return (PA - BA * h) / Radius;
+}
+
+/**
+ * Find the intersection point between a capsule or SSV (Swept Sphere Volume) and a triangle.
+ * How it works
+ *
+ * a) Make an infinite plane out of the triangle surface.
+ *
+ * b) Move this plane towards the origin of the ray capsule by it's radius.
+ *
+ * c) Check if we intersect this plane
+ *
+ * d) If an intersection point is found check if the point is outside the triangle (as projected onto the moved plane)
+ *
+ * If outside:
+ *
+ * e) Find the closest edge to the capsule
+ *
+ * f) Perform a ray / capsule intersect test
+ *
+ * g) If it intersected calculate the capsule hit normal
+ *
+ * If inside:
+ *
+ * h) Get the normal
+ *
+ * The functions ray_capsule_intersect, point_line_distance and capsule_normal are all taken from iquilezles.org.
+ */
+bool CapsuleTriangleIntersect(tup const &CapA, tup const &CapB,  //!<
+                              float Radius,                      //!<
+                              tup const &V0,                     //!<
+                              tup const &V1,                     //!<
+                              tup const &V2,                     //!<
+                              float *ptrdistance, tup *ptrHitPoint, tup *ptrHitNormal, bool Print)
+{
+  Assert(IsPoint(CapA), __FUNCTION__, __LINE__);
+  Assert(IsPoint(CapB), __FUNCTION__, __LINE__);
+
+  tup const Origin = CapA;
+  tup const Velocity = CapB - CapA;
+
+  Assert(IsPoint(Origin), __FUNCTION__, __LINE__);
+  Assert(IsVector(Velocity), __FUNCTION__, __LINE__);
+
+  // plane normal
+  tup const E0 = V1 - V0;
+  tup const E1 = V2 - V0;
+  tup const E0E1 = Cross(E0, E1);
+  tup PN = Normalize(E0E1);
+  // ----
+
+  Assert(IsVector(E0E1), __FUNCTION__, __LINE__);
+  Assert(IsVector(PN), __FUNCTION__, __LINE__);
+
+  float cap_len = Mag(Velocity);
+  tup const CapNormal = Normalize(Velocity);
+
+  tup const CapBase = CapA - CapNormal * Radius;
+  tup const CapTip = CapB + CapNormal * Radius;
+
+  float const denom = Dot(PN, CapNormal);
+  if (std::fabsf(denom) < 0.00001f) return false;
+
+  // grow plane thickness by radius towards origin
+  float const r = (denom < 0.0f) ? Radius : -Radius;
+  tup const PO = V0 + PN * r;
+  Assert(IsPoint(PO), __FUNCTION__, __LINE__);
+  // ----
+
+  // find intersection point
+  float u = Dot(PN, PO - Origin) / denom;
+  if (u > cap_len) return false;
+  tup P = Origin + CapNormal * u;
+  tup const PInterSectDebug = P;  // for debug only
+  // ----
+
+  // is projected point outside triangle
+  bool outside = false;
+
+  tup const W = P - V0;
+  float const y = Dot(Cross(E0, W), E0E1) / Dot(E0E1);  // γ=[(u×w)⋅n]/n²
+  float const b = Dot(Cross(W, E1), E0E1) / Dot(E0E1);  // β=[(w×v)⋅n]/n²
+  float const a = 1.0f - y - b;
+
+  if ((0.0f <= a) && (a <= 1.0f) && (0.0f <= b) && (b <= 1.0f) && (0.0f <= y) && (y <= 1.0f))
+  {
+    outside = true;
+  }
+  // ----
+
+  if (outside)
+  {
+    // find closest edge
+    float const d1 = PointLineDistance(P, V0, V1);
+    float const d2 = PointLineDistance(P, V1, V2);
+    float const d3 = PointLineDistance(P, V2, V0);
+
+    if (Print)
+    {
+      std::cout << "d1:   " << d1 << std::endl;
+      std::cout << "d2:   " << d2 << std::endl;
+      std::cout << "d3:   " << d3 << std::endl;
+    }
+
+    tup VA = V0;
+    tup VB = V1;
+
+    float dt = d1;
+
+    if (d2 < dt)
+    {
+      dt = d2;
+      VA = V1;
+      VB = V2;
+    }
+    if (d3 < dt)
+    {
+      VA = V2;
+      VB = V0;
+    }
+    // ----
+
+    if (Print) std::cout << "u (orig)               :" << u << std::endl;
+    if (!RayCapsuleIntersect(Origin, CapNormal, VA, VB, Radius, &u)) return false;
+    if (Print) std::cout << "u (dist)               :" << u << std::endl;
+    if (u > cap_len) return false;
+
+    P = Origin + CapNormal * u;
+    PN = CapsuleNormal(P, VA, VB, Radius);
+  }
+
+  if (Print)
+  {
+    std::cout << "PlaneN (triangle) :" << PN << std::endl;
+    std::cout << "E0E1              :" << E0E1 << std::endl;
+    std::cout << "PO (plane origin) :" << PO << std::endl;
+    std::cout << "PInterSect        :" << PInterSectDebug << std::endl;
+    std::cout << "CapBase           :" << CapBase << std::endl;
+    std::cout << "CapTip            :" << CapTip << std::endl;
+    std::cout << "CapNormal         :" << CapNormal << std::endl;
+    std::cout << "Intersect at Pos  :" << P << std::endl;
+    std::cout << "cap_len           :" << cap_len << std::endl;
+    std::cout << "denom             :" << denom << std::endl;
+    std::cout << "u                 :" << u << std::endl;
+    std::cout << "outside           :" << outside << std::endl;
+  }
+
+  if (u < 0.0f) return false;
+
+  *ptrdistance = u;
+  *ptrHitPoint = P;
+  *ptrHitNormal = PN;
+
+  return true;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Detect Ray hit with a triangle.
+ *
+ * What : Detect a ray R = P + t*D hitting a triangle
+ *        given by vertices A, B, C.
+ *
+ * This involves solving the following equation:
+ *
+ *    R = A + AB * u + AC * v
+ * => P + t * D = A + AB * u + AC * v
+ *
+ * with the constraints t>=0, u>=0, v>=0, u+v<=1
+ *
+ * Use the method described in the book 'Geometry for programmers - chapter 3.'
+ * The https://live.sympy.org code to make the formulas is as follows:
+ *
+  from sympy import *
+  Px,Py,Pz=symbols('Px Py Pz')      #A - The point where the ray starts.
+  dx,dy,dz=symbols('dx dy dz')      #B - The ray direction vector.
+  Ax,Ay,Az=symbols('Ax,Ay,Az')      #C - Point A of the ABC triangle.
+  ABx,ABy,ABz=symbols('ABx ABy ABz')#D - The vector AB.
+  ACx,ACy,ACz=symbols('ACx ACy ACz')#E - The vector AC.
+  t,u,v=symbols('t u v')            #F - Parms that specify point on the ray and the point on the triangle's plane.
+
+  solution=solve([
+    Px + t*dx - (Ax + ABx*u + ACx*v),
+    Py + t*dy - (Ay + ABy*u + ACy*v),
+    Pz + t*dz - (Az + ABz*u + ACz*v)
+  ],(t, u, v))
+
+  print(pycode(solution))
+
+  tNominator=collect(
+  (ABx*ACy*Az - ABx*ACy*Pz - ABx*ACz*Ay + ABx*ACz*Py - ABy*ACx*Az + ABy*ACx*Pz
+  + ABy*ACz*Ax - ABy*ACz*Px + ABz*ACx*Ay - ABz*ACx*Py - ABz*ACy*Ax + ABz*ACy*Px)
+  ,(ACx,ACy,ACz)
+  )
+  print(tNominator)
+
+  uNumerator=collect(
+  (ACx*Ay*dz - ACx*Az*dy - ACx*Py*dz + ACx*Pz*dy - ACy*Ax*dz + ACy*Az*dx + ACy*Px*dz
+  - ACy*Pz*dx + ACz*Ax*dy - ACz*Ay*dx - ACz*Px*dy + ACz*Py*dx),
+  (dx,dy,dz))
+  print(uNumerator)
+
+  vNumerator=collect(
+  (-ABx*Ay*dz + ABx*Az*dy + ABx*Py*dz - ABx*Pz*dy + ABy*Ax*dz - ABy*Az*dx - ABy*Px*dz
+  + ABy*Pz*dx - ABz*Ax*dy + ABz*Ay*dx + ABz*Px*dy - ABz*Py*dx),
+  (dx,dy,dz)
+  print(vNumerator)
+)
+ */
+auto RayTriangleIntersect(ray const &R, triangle const &Triangle, bool Print) -> rti_result
+{
+  tup const &P = R.Origin;
+  tup const &d = R.Direction;
+  tup const &A = Triangle.VA;
+  tup const &B = Triangle.VB;
+  tup const &C = Triangle.VC;
+
+  tup const AB = B - A;
+  tup const AC = C - A;
+
+  // ---
+  // NOTE: Compute common divisor.
+  // ---
+  float const Div =
+      d.X * (AB.Y * AC.Z - AB.Z * AC.Y) + d.Y * (-AB.X * AC.Z + AB.Z * AC.X) + d.Z * (AB.X * AC.Y - AB.Y * AC.X);
+
+  if (std::fabs(Div) < 0.001f) return {};
+
+  float const tNumerator = AC.X * (-AB.Y * A.Z + AB.Y * P.Z + AB.Z * A.Y - AB.Z * P.Y) +
+                           AC.Y * (AB.X * A.Z - AB.X * P.Z - AB.Z * A.X + AB.Z * P.X) +
+                           AC.Z * (-AB.X * A.Y + AB.X * P.Y + AB.Y * A.X - AB.Y * P.X);
+  float const t = tNumerator / Div;
+
+  float const uNumerator = d.X * (AC.Y * A.Z - AC.Y * P.Z - AC.Z * A.Y + AC.Z * P.Y) +
+                           d.Y * (-AC.X * A.Z + AC.X * P.Z + AC.Z * A.X - AC.Z * P.X) +
+                           d.Z * (AC.X * A.Y - AC.X * P.Y - AC.Y * A.X + AC.Y * P.X);
+  float const u = uNumerator / Div;
+
+  float const vNumerator = d.X * (-AB.Y * A.Z + AB.Y * P.Z + AB.Z * A.Y - AB.Z * P.Y) +
+                           d.Y * (AB.X * A.Z - AB.X * P.Z - AB.Z * A.X + AB.Z * P.X) +
+                           d.Z * (-AB.X * A.Y + AB.X * P.Y + AB.Y * A.X - AB.Y * P.X);
+  float const v = vNumerator / Div;
+
+  if (Print)
+  {
+    std::cout << __FUNCTION__ << "\nAB: " << AB << std::endl;
+    std::cout << "AC: " << AC << std::endl;
+    std::cout << "Div: " << Div << std::endl;
+    std::cout << "t: " << t << ". u: " << u << ". v: " << v << std::endl;
+  }
+
+  if (t >= 0.f && u >= 0.f && v >= 0.f && (u + v) <= 1.f)
+  {
+    rti_result Result{};
+    Result.Hit = true;
+    Result.t = t;
+    Result.u = u;
+    Result.v = v;
+    Result.P = u * AB + v * AC;
+    return Result;
+  }
+
+  return {};
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Raycast from Inigios primitive's example.
+ */
+tup RayCast(ray const &R, funcPtrMap Map)
+{
+  tup Res = Vector(-1.f, -1.f, 0.f);
+  float Tmin{1.f};
+  float Tmax{20.f};
+
+  // ---
+  // Raytrace floor plane
+  // ---
+  float Tp1 = (0.f - R.Origin.Y) / R.Direction.Y;
+  if (Tp1 > 0.f)
+  {
+    Tmax = std::min(Tmax, Tp1);
+    Res = Vector(Tp1, 1.f, 0.f);
+  }
+
+  //
+  // Raymarch primitives
+  //
+  tup Tb = iBox(Ray(R.Origin - Vector(0.f, 0.4f, -0.5f), R.Direction), Point(2.5f, 0.41f, 3.f));
+  if (Tb.X < Tb.Y && Tb.Y > 0.f && Tb.X < Tmax)
+  {
+    Tmin = std::max(Tb.X, Tmin);
+    Tmax = std::min(Tb.Y, Tmax);
+
+    float t = Tmin;
+    for (int Idx = 0; Idx < 70 && t < Tmax; ++Idx)
+    {
+      tup h = Map(R.Origin + R.Direction * t);
+      if (std::abs(h.X) < (0.0001f * t))
+      {
+        Res = Vector(t, h.Y, 0.f);
+        break;
+      }
+      t += h.X;
+    }
+  }
+
+  return Res;
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/rmshadows
+float CalcSoftshadow(ray const &R, float mint, float tmax, funcPtrMap Map)
+{
+  // bounding volume
+  float tp = (0.8f - R.Origin.Y) / R.Direction.Y;
+  if (tp > 0.f) tmax = std::min(tmax, tp);
+
+  float Res = 1.f;
+  float t = mint;
+  for (int Idx = 0; Idx < 24; ++Idx)
+  {
+    float h = Map(R.Origin + R.Direction * t).X;
+    float s = Clamp(8.f * h / t, 0.f, 1.f);
+    Res = std::fmin(Res, s);
+    t += Clamp(h, 0.01f, 0.2f);
+    if (Res < 0.004f || t > tmax) break;
+  }
+  Res = Clamp(Res, 0.f, 1.f);
+  return Res * Res * (3.f - 2.f * Res);
+}
+
+//------------------------------------------------------------------------------
+//
+// https://iquilezles.org/articles/nvscene2008/rwwtt.pdf
+//
+//------------------------------------------------------------------------------
+/**
+ * Calculate the Ambient Occlusion factor.
+ * @Pos: Position.
+ * @Nor: Normal Vector.
+ * @N: Number of samples - optional.
+ * @return: float describing the Occlusion after N samples.
+ */
+float CalcAO(tup const &Pos, tup const &Nor, funcPtrMap Map, int N = 5)
+{
+  float Occ{};
+  float Sca{1.f};
+  for (int Idx = 0;  //!<
+       Idx < N;      //!<
+       ++Idx)
+  {
+    float H = 0.01f + 0.12f * float(Idx) / 4.f;
+    float D = Map(Pos + H * Nor).X;
+    Occ += (H - D) * Sca;
+    Sca *= 0.95f;
+    if (Occ > 0.35f) break;
+  }
+  return Clamp(1.f - 3.f * Occ, 0.f, 1.f) * (0.5f + 0.5 * Nor.Y);
+}
+
+//------------------------------------------------------------------------------
+// https://iquilezles.org/articles/checkerfiltering
+float CheckersGradBox(tup const &Pos, tup const &dPdx, tup const &dPdy)
+{
+  // filter kernel
+  tup W = Abs(dPdx) + Abs(dPdy) + Color(0.001f, 0.001f, 0.f);
+  // analytical integral (box filter)
+  tup I = 2.f *
+          (Abs(Fract((Pos - 0.5f * W) * 0.5f) - Color(0.5f, 0.5f, 0.f)) -
+           Abs(Fract((Pos + 0.5f * W) * 0.5f) - Color(0.5f, 0.5f, 0.0f))) /
+          W;
+  // xor pattern
+  return 0.5f - 0.5f * I.X * I.Y;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Render from Inigios primitive's example.
+ */
+tup Render(funcPtrMap Map, ray const &R, tup const &Rdx, tup const &Rdy)
+{
+  // Background
+  tup Col = Color(0.7f, 0.7f, 0.9f) - 0.3f * Color(std::max(R.Direction.Y, 0.f),  //!<
+                                                   std::max(R.Direction.Y, 0.f),  //!<
+                                                   std::max(R.Direction.Y, 0.f)   //!<
+                                             );
+
+  // ---
+  // Raycast scene
+  // ---
+
+  tup Res = RayCast(R, Map);
+  float t = Res.X;
+  float M = Res.Y;
+
+  if (M > -0.5f)
+  {
+    tup Pos = R.Origin + t * R.Direction;
+
+    tup Nor = (M < 1.5f) ? Vector(0.f, 1.f, 0.f) : CalcNormal(Pos, Map);
+    tup Ref = Reflect(R.Direction, Nor);
+
+    // Material
+    Col = Color(0.2f, 0.2f, 0.2f) + 0.2f * Sin(2.f * Color(M, M, M) + Color(0.f, 1.f, 2.f));
+    float Ks = 1.f;
+
+    if (M < 1.5f)
+    {
+      // Project pixel footprint into the plane
+      tup dPdx = R.Origin.Y * (R.Direction / R.Direction.Y - Rdx / Rdx.Y);
+      tup dPdy = R.Origin.Y * (R.Direction / R.Direction.Y - Rdy / Rdy.Y);
+
+      float Floor = CheckersGradBox(3.0 * Vector(Pos.X, Pos.Z, 0.f),    //!<
+                                    3.0 * Vector(dPdx.X, dPdx.Z, 0.f),  //!<
+                                    3.0 * Vector(dPdy.X, dPdy.Z, 0.f)   //!<
+      );
+      Col = Color(0.15f, 0.15f, 0.15f) + Floor * Color(0.05f, 0.05f, 0.05f);
+      Ks = 0.4;
+    }
+
+    // ---
+    // Lighting.
+    // ---
+
+    // ---
+    // Calculate Ambient Occlusion.
+    // ---
+    float Occ = CalcAO(Pos, Nor, Map);
+
+    tup Lin{};
+
+    // ---
+    // Sun
+    // ---
+    if (1)
+    {
+      tup Lig = Normalize(Vector(-0.5f, 0.4, -0.6f));
+      tup Hal = Normalize(Lig - R.Direction);
+      float Dif = Clamp(Dot(Nor, Lig), 0.f, 1.f);
+
+      Dif *= CalcSoftShadow(Ray(Pos, Lig), 0.02f, 2.5f, Map);
+      float Spe = std::powf(Clamp(Dot(Nor, Hal), 0.f, 1.f), 16.f);
+      Spe *= Dif;
+      Spe *= 0.04f + 0.96f * std::powf(Clamp(1.f - Dot(Hal, Lig), 0.f, 1.f), 5.f);
+      Lin = Lin + Col * 2.2f * Dif * Vector(1.3f, 1.f, 0.7f);
+      Lin = Lin + 5.f * Spe * Vector(1.3f, 1.f, 0.7f) * Ks;
+    }
+
+    // ---
+    // Sky
+    // ---
+    if (1)
+    {
+      float Dif = std::sqrtf(Clamp(0.5f + 0.5f * Nor.Y, 0.f, 1.f));
+      Dif *= Occ;
+      float Spe = SmoothStep(-0.2f, 0.2f, Ref.Y);
+      Spe *= Dif;
+      Spe *= 0.04f + 0.96f * std::powf(Clamp(1.f + Dot(Nor, R.Direction), 0.f, 1.f), 5.f);
+      // if( spe>0.001 )
+      Spe *= CalcSoftshadow(Ray(Pos, Ref), 0.02, 2.5, Map);
+      Lin = Lin + Col * 0.60 * Dif * Vector(0.4f, 0.6f, 1.15f);
+      Lin = Lin + 2.00 * Spe * Vector(0.4f, 0.6f, 1.3f) * Ks;
+    }
+
+    Col = Lin;
+  }
+
+  return Clamp(Col, 0.f, 1.f);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * SetCamera
+ */
+matrix SetCamera(tup const &Origin, tup const &Ta, float const Cr)
+{
+  tup const Cw = Normalize(Ta - Origin);
+  tup const Cp = Vector(std::sinf(Cr), std::cosf(Cr), 0.f);
+  tup const Cu = Normalize(Cross(Cw, Cp));
+  tup const Cv = Cross(Cu, Cw);
+  matrix M{};
+  M.R0 = Cu;
+  M.R1 = Cv;
+  M.R2 = Cw;
+
+  return M;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * MainImage: https://www.shadertoy.com/view/Xds3zN
+ * Raymarching - Primitives.
+ * A set of raw primitives. All except the ellipsoid are exact euclidean distances.
+ * Based on the work by iq in 2013-03-25.
+ * @param: FragCoord.X - Horisontal coordinate of the screen.
+ * @param: FragCoord.Y - Vertical coordinate of the screen.
+ * @param: Resolution.X - Horisontal resolution.
+ * @param: Resolution.Y - Vertical resolution.
+ * @return: FragColor - The color of the pixel at X,Y.
+ */
+tup MainImage(tup const &FragCoord, mainimage_config const &Cfg)
+{
+  Assert(Cfg.Map != nullptr, __PRETTY_FUNCTION__, __LINE__);
+  ray R{};
+  float const Time{};
+  tup const Mouse{};
+
+  // ---
+  // Camera:
+  // ---
+  // tup const Ta = Vector(0.25f, -0.75f, -0.75f);
+  tup const Ta = Vector(0.5f, -0.5f, -.5f);
+  R.Origin = Ta + Point(4.5f * std::cosf(0.1f * Time + 7.f * Mouse.X),  //!<
+                        2.2f,                                           //!<
+                        4.5f * std::sinf(0.1f * Time + 7.f * Mouse.X)   //!<
+                  );
+
+  // Camera to World transformation
+  // TODO: (Willy Clarke) Move the camera instantiation.
+  // static matrix const Ca = SetCamera(R.Origin, Ta, 0.f);
+  // static matrix const Ca = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+  matrix const &Ca = Cfg.MCamera;
+
+  tup Tot{};
+
+  // ---
+  // Pixel coordinates. NOTE: This becomes a vector.
+  // ---
+  tup PixelCoord = (2.f * FragCoord - Cfg.Resolution) / Cfg.Resolution.Y;
+  PixelCoord.Z = Cfg.FocalLength;
+
+  // ---
+  // Ray direction.
+  // ---
+  R.Direction = Ca * Normalize(PixelCoord);
+
+  // ---
+  // Ray differentials
+  // ---
+  tup Px = (2.f * (FragCoord + Vector(1.f, 0.f, 0.f)) - Cfg.Resolution) / Cfg.Resolution.Y;  // is a vector.
+  Px.Z = Cfg.FocalLength;
+  Assert(IsVector(Px), __FUNCTION__, __LINE__);
+
+  tup Py = (2.f * (FragCoord + Vector(0.f, 1.f, 0.f)) - Cfg.Resolution) / Cfg.Resolution.Y;  // is a vector.
+  Py.Z = Cfg.FocalLength;
+  Assert(IsVector(Py), __FUNCTION__, __LINE__);
+
+  tup Rdx = Ca * Normalize(Px);
+  tup Rdy = Ca * Normalize(Py);
+
+  // ---
+  // Render
+  // ---
+  tup Color = Render(Cfg.Map, R, Rdx, Rdy);
+  // ---
+  // Gain
+  // ---
+  Color = 3.f * Color / (Vector(2.5f, 2.5f, 2.5f) + Color);
+
+  // ---
+  // Gamma.
+  // ---
+  Color = Pow(Color, Vector(0.4545f, 0.4545f, 0.4545f));
+
+  Tot = Tot + Color;
+  return Tot;
+}
+
+//------------------------------------------------------------------------------
+canvas RenderSingleThread(camera const &Camera, world const &World)
+{
+  canvas Image(Camera.HSize, Camera.VSize);
+  mainimage_config Cfg{};
+  Cfg.Resolution = Point(Image.W, Image.H, 0.f);
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, -2.f * 0.78f, 0.f);
+  Cfg.Map = World.Map;
+
+  for (int X = 0; X < Image.W; ++X)
+    for (int Y = 0; Y < Image.H; ++Y)
+    {
+      for (int ObjIdx = 0; ObjIdx < World.vPtrObjects.size(); ++ObjIdx)
+      {
+#if 0
+        tup const Color = MainImage(Camera, World, X, Y, World.vPtrObjects[ObjIdx]);
+        Image.vXY[X + Image.W * Y] = Color + Image.vXY[X + Image.W * Y];
+#endif
+        tup const FragCoord = Point(X, Y, 0.f);
+        Image.vXY[X + Image.W * Y] = MainImage(FragCoord, Cfg);
+      }
+    }
+  return Image;
+}
+
+/**
+ * Render a block of pixels defined in the struct render_block.
+ * This function locks on a mutex defined in the render block.
+ */
+void RenderBlock(render_block const &RB)
+{
+  canvas &Image = *RB.ptrImage;
+  camera const &Camera = *RB.ptrCamera;
+  tup const Resolution = Point(Camera.HSize, Camera.VSize, 0.f);
+
+  for (int Y = RB.VStart;           ///<!
+       Y < RB.VStart + RB.VHeigth;  ///<!
+       ++Y)
+  {
+    for (int X = RB.HStart;           ///<!
+         X < RB.HStart + RB.HLength;  ///<!
+         ++X)
+    {
+#if 0
+      // ---
+      // NOTE:
+      // This section iterates over all the shapes for each pixel.
+      // It is not as efficient as the version with the global map.
+      // This section is used for testing some of the initial methods
+      // for Raymarching that was made.
+      // ---
+      world const &World = *RB.ptrWorld;
+      for (int ObjIdx = 0; ObjIdx < RB.ptrWorld->vPtrObjects.size(); ++ObjIdx)
+      {
+        shared_ptr_shape PtrShape = World.vPtrObjects[ObjIdx];
+
+        if (Image.vXY[X + Image.W * Y].W < 1.f)
+        {
+          tup const Color = MainImage(Camera, World, X, Y, PtrShape);
+          if (Mag(Color) > 0.001f)  // then there is an object there
+          {
+            Image.vXY[X + Image.W * Y] = Color;  //+ Image.vXY[X + Image.W * Y];
+            Image.vXY[X + Image.W * Y].W = 1.f;  // store the update
+          }
+        }
+      }
+#else
+      tup const FragCoord = Point(X, Y, 0.f);
+      Image.vXY[X + Image.W * Y] = MainImage(FragCoord, RB.Cfg);
+#endif
+    }
+  }
+}
+
+/**
+ * Use a number of threads to render the image on to the canvas.
+ * NOTE: The function is not thread safe but since the canvas is
+ *       split into blocks that are not overlapping there should (?)
+ *       not be any undefinded behavior.
+ */
+void RenderMultiThread(camera const &Camera, world const &World, canvas &Image)
+{
+  mainimage_config Cfg{};
+  Cfg.Resolution = Point(Image.W, Image.H, 0.f);
+  Cfg.FocalLength = 2.0f;
+  // Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 6.1f * Radians(45.f), 0.f);
+  Cfg.MCamera = TranslateScaleRotate(0.f, 0.f, 0.f, 1.f, 1.f, 1.f, M_PI, 5.9f * Radians(45.f), 0.f);
+  Cfg.Map = World.Map;
+
+  int const NumBlocksH = Camera.NumBlocksH;
+  int const NumBlocksV = Camera.NumBlocksV;
+  int const HSizeBlock = Camera.HSize / NumBlocksH;
+  int const VSizeBlock = Camera.VSize / NumBlocksV;
+
+  std::vector<render_block> vRenderBlocks{};
+
+  for (int HIdx = 0;       //!<
+       HIdx < NumBlocksH;  //!<
+       ++HIdx)
+  {
+    for (int VIdx = 0;       //!<
+         VIdx < NumBlocksV;  //!<
+         ++VIdx)
+    {
+      render_block RB{};
+      RB.HLength = HSizeBlock;
+      RB.VHeigth = VSizeBlock;
+      RB.HStart = HIdx * HSizeBlock;
+      RB.VStart = VIdx * VSizeBlock;
+      RB.ptrImage = &Image;
+      RB.ptrCamera = &Camera;
+      RB.ptrWorld = &World;
+      RB.Cfg = Cfg;
+      vRenderBlocks.push_back(RB);
+    }
+  }
+
+  struct WorkerThread
+  {
+    std::thread T;
+    render_block _RB{};
+    WorkerThread() { std::cout << __PRETTY_FUNCTION__ << " -> Called XXXXXXXXXXXXXXXXXXXXXXXXXX " << std::endl; }
+    WorkerThread(render_block const &RB) { _RB = RB; }
+
+    void Start() { T = std::thread(RenderBlock, _RB); }
+
+    WorkerThread(WorkerThread const &Orig) { _RB = Orig._RB; };
+    ~WorkerThread()
+    {
+      if (T.joinable())
+      {
+        T.join();
+      }
+    };
+  };
+
+  std::vector<WorkerThread> vWorkerThreads{};
+
+  for (auto const &RB : vRenderBlocks)
+  {
+    vWorkerThreads.push_back(RB);
+  }
+
+  for (auto &T : vWorkerThreads)
+  {
+    T.Start();
+  }
+}
+
+//------------------------------------------------------------------------------
+canvas Render(camera const &Camera, world const &World)
+{
+  Assert(World.vPtrLights.size() > 0, __FUNCTION__, __LINE__);
+
+  if (Camera.RenderSingleThread) return RenderSingleThread(Camera, World);
+
+  canvas Image(Camera.HSize, Camera.VSize);
+  RenderMultiThread(Camera, World, Image);
+  return Image;
+}
+
+};  // end of namespace rm
+};  // end of namespace ww

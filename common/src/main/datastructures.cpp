@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "perlinnoise.hpp"
+#include "raymarch.hpp"
 
 // ---
 // NOTE: Stream operator
@@ -218,6 +219,13 @@ tup Cross(tup const &A, tup const &B)
 }
 
 //------------------------------------------------------------------------------
+tup Div(tup const &A, tup const &B)
+{
+  tup Result{A.X / B.X, A.Y / B.Y, A.Z / B.Z, A.W};
+  return Result;
+}
+
+//------------------------------------------------------------------------------
 float Dot(tup const &A, tup const &B)
 {
   float const Result = A.X * B.X +  //!<
@@ -226,6 +234,15 @@ float Dot(tup const &A, tup const &B)
                        A.W * B.W;   //<!
   return (Result);
 }
+
+//------------------------------------------------------------------------------
+float NDot(tup const &A, tup const &B) { return A.X * B.X - A.Y * B.Y; }
+
+//------------------------------------------------------------------------------
+/**
+ * @return: The dot product of the vector itself.
+ */
+float Dot(tup const &A) { return Dot(A, A); }
 
 //------------------------------------------------------------------------------
 bool Equal(float const A, float const B)
@@ -265,9 +282,23 @@ bool IsVector(tup const &Tup)
 }
 
 //------------------------------------------------------------------------------
+/**
+ * Return the maximum of tup and variable.
+ * Works for both point and vector. Ignores W which is returned unaltered.
+ */
+tup Max(tup const &A, float const B) { return tup{std::fmax(A.X, B), std::fmax(A.Y, B), std::fmax(A.Z, B), A.W}; }
+
+//------------------------------------------------------------------------------
+/**
+ * Return the minimum of tup and variable.
+ * Works for both point and vector. Ignores W which is returned unaltered.
+ */
+tup Min(tup const &A, float const B) { return tup{std::fmin(A.X, B), std::fmin(A.Y, B), std::fmin(A.Z, B), A.W}; }
+
+//------------------------------------------------------------------------------
 tup Mul(float const S, tup const &Tup)
 {
-  tup const Result{S * Tup.X, S * Tup.Y, S * Tup.Z, S * Tup.W};
+  tup const Result{S * Tup.X, S * Tup.Y, S * Tup.Z, Tup.W};
   return (Result);
 }
 
@@ -292,6 +323,25 @@ float MagSquared(tup const &Tup)
 float Mag(tup const &Tup) { return (std::sqrtf(MagSquared(Tup))); }
 
 //------------------------------------------------------------------------------
+tup Abs(tup const &Tup)
+{
+  tup const Result{std::abs(Tup.X), std::abs(Tup.Y), std::abs(Tup.Z), std::abs(Tup.W)};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: fract returns the fractional part of X.
+ */
+float Fract(float X) { return X - std::floorf(X); }
+
+//------------------------------------------------------------------------------
+/**
+ * @return: fract returns the fractional part of X.
+ */
+tup Fract(tup const &X) { return tup{Fract(X.X), Fract(X.Y), Fract(X.Z), Fract(X.W)}; }
+
+//------------------------------------------------------------------------------
 tup Negate(tup const &Tup)
 {
   tup const Result{-Tup.X, -Tup.Y, -Tup.Z, -Tup.W};
@@ -313,6 +363,27 @@ tup Point(float A, float B, float C)
 }
 
 //------------------------------------------------------------------------------
+tup Point(tup P)
+{
+  P.W = 1.f;
+  return P;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: std::sinf to the elements X, Y, Z individually. W remains unchanged.
+ */
+tup Sin(tup const &Input)
+{
+  return tup{
+      std::sinf(Input.X),  //!<
+      std::sinf(Input.Y),  //!<
+      std::sinf(Input.Z),  //!<
+      Input.W              //!<
+  };
+}
+
+//------------------------------------------------------------------------------
 tup Sub(tup const &A, tup const &B)
 {
   tup const Result = {A.X - B.X, A.Y - B.Y, A.Z - B.Z, A.W - B.W};
@@ -323,6 +394,88 @@ tup Sub(tup const &A, tup const &B)
 tup Vector(float A, float B, float C)
 {
   tup Result{A, B, C, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup Vector(tup A)
+{
+  // ---
+  // NOTE: Use the variable on the stack and convert the incoming tuple to a vector.
+  // --
+  A.W = 0.f;
+  return A;
+}
+
+//------------------------------------------------------------------------------
+tup VectorXZY(float X, float Y, float Z)
+{
+  tup Result{X, Z, Y, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorXY(float X, float Y)
+{
+  tup Result{X, Y, 0.f, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorXYZ(tup const &A)
+{
+  tup Result{A.X, A.Y, A.Z, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorYZX(tup const &A)
+{
+  tup Result{A.Y, A.Z, A.X, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorXZY(tup const &A)
+{
+  tup Result{A.X, A.Z, A.Y, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+tup VectorZXY(tup const &A)
+{
+  tup Result{A.Z, A.X, A.Y, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: Vector with Z=0.
+ */
+tup VectorXY(tup const &A)
+{
+  tup Result{A.X, A.Y, 0.f, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: Vector where Z->Y and the resulting Z=0.
+ */
+tup VectorXZ(tup const &A)
+{
+  tup Result{A.X, 0.f, A.Z, 0.f};
+  return (Result);
+}
+
+//------------------------------------------------------------------------------
+/**
+ * @return: Vector where X<->Z and the resulting Y=0.
+ */
+tup VectorZX(tup const &A)
+{
+  tup Result{A.Z, 0.f, A.X, 0.f};
   return (Result);
 }
 
@@ -584,7 +737,7 @@ matrix Matrix22(tup const &R0, tup const &R1)
 float Get(matrix const &M, int Row, int Col)
 {
   Assert(Row < M.Dimension, __FUNCTION__, __LINE__);
-  Assert(Col < M.Dimension, __FUNCTION__, __LINE__);
+  Assert(Col < 4, __FUNCTION__, __LINE__);
   return M.R[Row].C[Col];
 };
 
@@ -647,12 +800,12 @@ matrix Inverse(matrix const &M)
 matrix Mul(matrix const &A, matrix const &B)
 {
   matrix M{};
-  for (size_t Row = 0;  ///<!
-       Row < 4;         ///<!
+  for (size_t Row = 0;                            ///<!
+       Row < std::min(A.Dimension, B.Dimension);  ///<!
        ++Row)
   {
-    for (size_t Col = 0;  ///<!
-         Col < 4;         ///<!
+    for (size_t Col = 0;                            ///<!
+         Col < std::min(A.Dimension, B.Dimension);  ///<!
          ++Col)
     {
       float const Mrc = Get(A, Row, 0) * Get(B, 0, Col) +  //
@@ -669,8 +822,8 @@ matrix Mul(matrix const &A, matrix const &B)
 tup Mul(matrix const &A, tup const &T)
 {
   tup Result{};
-  for (size_t Idx = 0;  ///<!
-       Idx < 4;         ///<!
+  for (size_t Idx = 0;     ///<!
+       Idx < A.Dimension;  ///<!
        ++Idx)
   {
     Result.C[Idx] = Get(A, Idx, 0) * T.C[0] +  //
@@ -1196,6 +1349,237 @@ ww::intersections LocalIntersectCube(shared_ptr_shape PtrShape, ray const &Ray)
   return XS;
 }
 
+/**
+ * Check if a ray has a local intersect with a cone.
+ * Param: PtrShape: A cone is needed to do some actual checks for intersections.
+ * Return: intersections.
+ * NOTE: For reference :
+ * stackoverflow:
+ *https://gamedev.stackexchange.com/questions/112382/how-do-i-test-for-intersection-between-a-ray-and-a-cone
+ *
+ * In geometry quadric shapes are any surface that can be defined by an algebraic equation of second degree
+ *
+ * On the normal form this equation looks like this:
+ *
+ * Ax^2 + By^2 + Cz^2 +2Dxy + 2Exz + 2Fyz + 2Gx + 2Hy + 2Iz + J = 0
+ *
+ * For the local intersect of a cone A, B and C above are 1 and the remaining capital letters are 0.
+ **/
+intersections LocalIntersectCone(shared_ptr_shape PtrShape, ray const &Ray)
+{
+  Assert(PtrShape->isA<cone>(), __FUNCTION__, __LINE__);
+
+  auto IntersectCaps = [&](cone const *pCone, ray const &Ray, intersections &XS)
+  {
+    auto CheckCap = [](ray const &Ray, float t, float Radius) -> bool
+    {
+      float const X = Ray.Origin.X + t * Ray.Direction.X;
+      float const Z = Ray.Origin.Z + t * Ray.Direction.Z;
+      bool const Result = (X * X + Z * Z) <= std::abs(Radius);
+      return Result;
+    };
+
+    // ---
+    // NOTE: Caps only matter if the cone is closed, and might possibly be intersected
+    //       by the ray.
+    // ---
+    if (!pCone->Closed) return;
+
+    // ---
+    // NOTE: The ray must not be horizontal in order to hit the cap.
+    // ---
+    if (std::abs(Ray.Direction.Y) < EPSILON) return;
+
+    // ---
+    // NOTE: Check for an intersection with the lower end cap by intersecting the ray
+    //       with the plane a y=cyl.minimum.
+    // ---
+    {
+      float const t = (pCone->Minimum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t, pCone->Minimum)) XS.vI.push_back({t, PtrShape});
+    }
+
+    // ---
+    // NOTE: Check for an intersection with the upper cap by intersecting
+    //       the ray with the plane at y=cyl.maximum.
+    // ---
+    {
+      float const t = (pCone->Maximum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t, pCone->Maximum)) XS.vI.push_back({t, PtrShape});
+    }
+  };
+
+  intersections XS{};
+  cone const *pCone = dynamic_cast<cone *>(PtrShape.get());
+
+  float const A = Ray.Direction.X * Ray.Direction.X          //!<
+                  - Ray.Direction.Y * Ray.Direction.Y        //!<
+                  + Ray.Direction.Z * Ray.Direction.Z;       //!<
+  float const B = 2.f * (Ray.Origin.X * Ray.Direction.X      //!<
+                         - Ray.Origin.Y * Ray.Direction.Y    //!<
+                         + Ray.Origin.Z * Ray.Direction.Z);  //!<
+  float const C = Ray.Origin.X * Ray.Origin.X                //!<
+                  - Ray.Origin.Y * Ray.Origin.Y +            //!<
+                  Ray.Origin.Z * Ray.Origin.Z;
+
+  // ---
+  // NOTE: The ray will miss when A and B are both 0. With A beeing 0 and B at somevalue there will be one hit.
+  //       When the cone is closed there may be additional hits for the capped ends though.
+  // ---
+  if (std::abs(A) < EPSILON)
+  {
+    if (std::abs(B) < EPSILON)
+    {
+      return XS;
+    }
+
+    IntersectCaps(pCone, Ray, XS);
+    float const t = -C / (2.f * B);
+
+    XS.vI.push_back({t, PtrShape});
+    return XS;
+  }
+
+  float Discriminant = B * B - 4.f * A * C;
+  // ---
+  // NOTE: No solutions when Discriminant i less than zero.
+  // FIXME: (Willy Clarke) Check to see if InterectCaps need to be called here before returning.
+  // ---
+  if (Discriminant < -EPSILON) return {};
+  if (Discriminant < 0.f) Discriminant = 0.f;  // FIXME: (Willy Clarke) What is the correct way of handling -0.f???
+
+  float t0 = (-B - std::sqrtf(Discriminant)) / (2.f * A);
+  float t1 = (-B + std::sqrtf(Discriminant)) / (2.f * A);
+
+  if (t0 > t1)  // swap
+  {
+    float const tmp = t0;
+    t0 = t1;
+    t1 = tmp;
+  }
+
+  float const Y0 = Ray.Origin.Y + t0 * Ray.Direction.Y;
+  if (pCone->Minimum < Y0 && Y0 < pCone->Maximum)
+  {
+    XS.vI.push_back({t0, PtrShape});
+  }
+
+  float const Y1 = Ray.Origin.Y + t1 * Ray.Direction.Y;
+  if (pCone->Minimum < Y1 && Y1 < pCone->Maximum)
+  {
+    XS.vI.push_back({t1, PtrShape});
+  }
+
+  IntersectCaps(pCone, Ray, XS);
+
+  return XS;
+}
+
+/**
+ * Check if a ray has a local intersect with a cylinder.
+ * Param: PtrShape: A cylinder is needed to do some actual checks for intersections.
+ * Return: intersections.
+ **/
+intersections LocalIntersectCylinder(shared_ptr_shape PtrShape, ray const &Ray)
+{
+  Assert(PtrShape->isA<cylinder>(), __FUNCTION__, __LINE__);
+
+  intersections XS{};
+  cylinder const *pCylinder = dynamic_cast<cylinder *>(PtrShape.get());
+
+  auto IntersectCaps = [&](cylinder const *pCylinder, ray const &Ray, intersections &XS)
+  {
+    auto CheckCap = [](ray const &Ray, float t) -> bool
+    {
+      float const X = Ray.Origin.X + t * Ray.Direction.X;
+      float const Z = Ray.Origin.Z + t * Ray.Direction.Z;
+      bool const Result = (X * X + Z * Z) <= 1.f;
+      return Result;
+    };
+
+    // ---
+    // NOTE: Caps only matter if the cylinder is closed, and might possibly be intersected
+    //       by the ray.
+    // ---
+    if (!pCylinder->Closed) return;
+
+    if (std::abs(Ray.Direction.Y) < EPSILON) return;
+
+    // ---
+    // NOTE: Check for an intersection with the lower end cap by intersecting the ray
+    //       with the plane a y=cyl.minimum.
+    // ---
+    {
+      float const t = (pCylinder->Minimum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t)) XS.vI.push_back({t, PtrShape});
+    }
+
+    // ---
+    // NOTE: Check for an intersection with the upper cap by intersecting
+    //       the ray with the plane at y=cyl.maximum.
+    // ---
+    {
+      float const t = (pCylinder->Maximum - Ray.Origin.Y) / Ray.Direction.Y;
+      if (CheckCap(Ray, t)) XS.vI.push_back({t, PtrShape});
+    }
+  };
+
+  float const A = Ray.Direction.X * Ray.Direction.X + Ray.Direction.Z * Ray.Direction.Z;
+
+  // ---
+  // NOTE: A ray is parallel to the y axis, return empty set.
+  // ---
+  if (std::abs(A) < EPSILON)
+  {
+    IntersectCaps(pCylinder, Ray, XS);
+    return XS;
+  }
+
+  float const B = 2.f * Ray.Origin.X * Ray.Direction.X +  //!<
+                  2.f * Ray.Origin.Z * Ray.Direction.Z;
+  float const C = Ray.Origin.X * Ray.Origin.X + Ray.Origin.Z * Ray.Origin.Z - 1.f;
+  float const Discriminant = B * B - 4 * A * C;
+
+  // ---
+  // NOTE: No solutions when Discriminant i less than zero.
+  // FIXME: (Willy Clarke) Check to see if InterectCaps need to be called here before returning.
+  // ---
+  if (Discriminant < 0.f) return {};
+
+  float t0 = (-B - std::sqrtf(Discriminant)) / (2 * A);
+  float t1 = (-B + std::sqrtf(Discriminant)) / (2 * A);
+
+  if (t0 > t1)  // swap
+  {
+    float const tmp = t0;
+    t0 = t1;
+    t1 = tmp;
+  }
+
+  float const Y0 = Ray.Origin.Y + t0 * Ray.Direction.Y;
+  if (pCylinder->Minimum < Y0 && Y0 < pCylinder->Maximum)
+  {
+    XS.vI.push_back({t0, PtrShape});
+  }
+
+  float const Y1 = Ray.Origin.Y + t1 * Ray.Direction.Y;
+  if (pCylinder->Minimum < Y1 && Y1 < pCylinder->Maximum)
+  {
+    XS.vI.push_back({t1, PtrShape});
+  }
+
+  // ---
+  // NOTE: When the ray has less than two intersections it can still possibly intersect
+  //       with the caps at either end.
+  // ---
+  if (XS.Count() < 2)
+  {
+    IntersectCaps(pCylinder, Ray, XS);
+  }
+
+  return XS;
+}
+
 //------------------------------------------------------------------------------
 /// \brief Generic Local Intersect
 ///
@@ -1218,6 +1602,14 @@ intersections LocalIntersect(shared_ptr_shape PtrShape, ray const &RayIn)
   else if (PtrShape->isA<cube>())
   {
     Result = LocalIntersectCube(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<cone>())
+  {
+    Result = LocalIntersectCone(PtrShape, RayIn);
+  }
+  else if (PtrShape->isA<cylinder>())
+  {
+    Result = LocalIntersectCylinder(PtrShape, RayIn);
   }
 
   return (Result);
@@ -1463,6 +1855,61 @@ tup LocalNormalAtCube(shape const &Cube, tup const &LocalPoint)
 }
 
 /**
+ * The local normal for a cone is the ...
+ */
+tup LocalNormalAtCone(shape const &Cone, tup const &LocalPoint)
+{
+  float Y = std::sqrt(LocalPoint.X * LocalPoint.X + LocalPoint.Z * LocalPoint.Z);
+  if (LocalPoint.Y > 0.f) Y = -Y;
+
+  tup Result = Vector(LocalPoint.X, Y, LocalPoint.Z);
+
+  cone const *pCone = dynamic_cast<cone const *>(&Cone);
+
+  // ---
+  // NOTE: Compute the square of the distance from the y axis.
+  // ---
+  float const Distance = LocalPoint.X * LocalPoint.X + LocalPoint.Z * LocalPoint.Z;
+
+  if (Distance < 1.f && LocalPoint.Y >= pCone->Maximum - EPSILON)
+  {
+    Result = Vector(0.f, 1.f, 0.f);
+  }
+  else if (Distance < 1.f && LocalPoint.Y <= pCone->Minimum + EPSILON)
+  {
+    Result = Vector(0.f, -1.f, 0.f);
+  }
+  return Result;
+}
+
+/**
+ * The local normal for a cylinder is the point on the cylinder with the
+ * Y-component removed.
+ */
+tup LocalNormalAtCylinder(shape const &Cylinder, tup const &LocalPoint)
+{
+  tup Result = Vector(LocalPoint.X, 0.f, LocalPoint.Z);
+
+  cylinder const *pCylinder = dynamic_cast<cylinder const *>(&Cylinder);
+
+  // ---
+  // NOTE: Compute the square of the distance from the y axis.
+  // ---
+  float const Distance = LocalPoint.X * LocalPoint.X + LocalPoint.Z * LocalPoint.Z;
+
+  if (Distance < 1.f && LocalPoint.Y >= pCylinder->Maximum - EPSILON)
+  {
+    Result = Vector(0.f, 1.f, 0.f);
+  }
+  else if (Distance < 1.f && LocalPoint.Y <= pCylinder->Minimum + EPSILON)
+  {
+    Result = Vector(0.f, -1.f, 0.f);
+  }
+
+  return Result;
+}
+
+/**
  * The local normal for a plane is always 0, 1, 0.
  */
 tup LocalNormalAtPlane(shape const &Plane, tup const &LocalPoint)
@@ -1600,6 +2047,8 @@ world World()
 {
   world W{};
 
+  W.Map = ww::rm::MapDefault;
+
   light Light = ww::PointLight(ww::Point(-10.f, 10.f, -10.f), ww::Color(1.f, 1.f, 1.f));
   // W.vLights.push_back(Light);
   {
@@ -1693,6 +2142,44 @@ intersections IntersectWorld(world const &World, ray const &Ray)
   //       Use lambda function to extract the t value for each intersection.
   std::sort(XS.vI.begin(), XS.vI.end(), [](intersection const &A, intersection const &B) { return A.t < B.t; });
   return (XS);
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cone PtrDefaultCone()
+{
+  shared_ptr_cone pCone = SharedPtrSh<cone>(cone{});
+  pCone->funcPtrLocalIntersect = &ww::LocalIntersectCone;
+  pCone->funcPtrLocalNormalAt = &ww::LocalNormalAtCone;
+  return pCone;
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cone PtrCappedCone(float Minimum, float Maximum)
+{
+  shared_ptr_cone pCone = PtrDefaultCone();
+  pCone->Closed = true;
+  pCone->Minimum = Minimum;
+  pCone->Maximum = Maximum;
+  return pCone;
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cylinder PtrDefaultCylinder()
+{
+  shared_ptr_cylinder pCylinder = SharedPtrSh<cylinder>(cylinder{});
+  pCylinder->funcPtrLocalIntersect = &ww::LocalIntersectCylinder;
+  pCylinder->funcPtrLocalNormalAt = &ww::LocalNormalAtCylinder;
+  return pCylinder;
+}
+
+//------------------------------------------------------------------------------
+shared_ptr_cylinder PtrCappedCylinder(float Minimum, float Maximum)
+{
+  shared_ptr_cylinder pCylinder = PtrDefaultCylinder();
+  pCylinder->Closed = true;
+  pCylinder->Minimum = Minimum;
+  pCylinder->Maximum = Maximum;
+  return pCylinder;
 }
 
 //------------------------------------------------------------------------------
@@ -2024,17 +2511,6 @@ void RenderSingleThread(camera const &Camera, world const &World, canvas &Image)
     }
   }
 }
-
-struct render_block
-{
-  int HStart{};
-  int HLength{};
-  int VStart{};
-  int VHeigth{};
-  canvas *ptrImage{nullptr};
-  camera const *ptrCamera{nullptr};
-  world const *ptrWorld{nullptr};
-};
 
 /**
  * Render a block of pixels defined in the struct render_block.
@@ -2827,6 +3303,91 @@ tup CheckersGradientPatternAt(pattern const &Pattern, tup const &ShapePoint)
       (0 == Floor % 2) ? CheckersPatternAt(Pattern, PatternPoint) : GradientPatternAt(Pattern, PatternPoint);
   return Color;
 }
+
+//------------------------------------------------------------------------------
+/**
+ * Description: clamp returns the value of x constrained to the range minVal to maxVal.
+ * The returned value is computed as min(max(x, minVal), maxVal).
+ */
+float Clamp(float X, float MinVal, float MaxVal) { return std::min(std::max(X, MinVal), MaxVal); }
+
+//------------------------------------------------------------------------------
+tup Clamp(tup const &X, float MinVal, float MaxVal)
+{
+  return {
+      Clamp(X.X, MinVal, MaxVal),  //!<
+      Clamp(X.Y, MinVal, MaxVal),  //!<
+      Clamp(X.Z, MinVal, MaxVal),  //!<
+      X.W                          //!<
+  };
+}
+
+/**
+ * pow — return the value of the first parameter raised to the power of the second
+ * @param: tup X - Specify the value to raise to the power Y.
+ * @param: tup Y - Specify the power to which to raise X.
+ * @return: tup that maitainse type beeing either Point or Vector. i.e. X.W remains unchanged.
+ */
+tup Pow(tup const &X, tup const &Y) { return tup{std::powf(X.X, Y.X), std::powf(X.Y, Y.Y), std::powf(X.Z, Y.Z), X.W}; }
+
+//------------------------------------------------------------------------------
+float Sign(float X)
+{
+  if (X < 0.f) return -1.f;
+  return 1.f;
+}
+
+//------------------------------------------------------------------------------
+/**
+ * Perform Hermite interpolation between two values
+ * @param: Edge0 - Specifies the value of the lower edge of the Hermite function.
+ * @param: Edge1 - Specifies the value of the upper edge of the Hermite function.
+ * @param: X - Specifies the source value for interpolation.
+ * @return: Interpolated value.
+ */
+float SmoothStep(float Edge0, float Edge1, float X)
+{
+  Assert(Edge1 > Edge0, __FUNCTION__, __LINE__);
+  float const t = Clamp((X - Edge0) / (Edge1 - Edge0), 0.f, 1.f);
+  return t * t * (3.f - 2.f * t);
+}
+/**
+ * Description: step generates a step function by comparing x to edge.
+ * For element i of the return value, 0.0 is returned if x[i] < edge[i],
+ * and 1.0 is returned otherwise.
+ */
+float Step(float Edge, float X)
+{
+  if (X < Edge) return 0.f;
+  return 1.f;
+}
+
+/**
+ */
+auto CreateCapsule(tup const &A, tup const &B, float R, bool Print) -> capsule
+{
+  Assert(IsPoint(A), __FUNCTION__, __LINE__);
+  Assert(IsPoint(B), __FUNCTION__, __LINE__);
+
+  ww::capsule C{};
+  C.R = R;
+  C.A = A;
+  C.B = B;
+
+  ww::tup const AB = B - A;  // Vector created from A to B.
+  Assert(ww::IsVector(AB), __FUNCTION__, __LINE__);
+
+  C.Base = A - ww::Normalize(AB) * C.R;  // Subtract from point B to get to Base.
+  C.Tip = B + ww::Normalize(AB) * C.R;   // Add to point A to get to Tip.
+
+  if (Print)
+  {
+    std::cout << "Capsule ---" << std::endl;
+    std::cout << "From A: " << C.A << "\n  to B: " << C.B << "\n"
+              << "Base  : " << C.Base << "\nTip   : " << C.Tip << "\nRadius : " << C.R << std::endl;
+  }
+  return C;
+}
 };  // namespace ww
 
 // ---
@@ -2838,6 +3399,8 @@ ww::tup operator-(ww::tup const &A, ww::tup const &B) { return (ww::Sub(A, B)); 
 ww::tup operator*(float const S, ww::tup const &Tup) { return (ww::Mul(S, Tup)); }
 ww::tup operator*(ww::tup const &Tup, float const S) { return (ww::Mul(S, Tup)); }
 ww::tup operator*(ww::tup const &A, ww::tup const &B) { return (ww::Mul(A, B)); }
+ww::tup operator/(ww::tup const &A, ww::tup const &B) { return (ww::Div(A, B)); }
+ww::tup operator/(float const A, ww::tup const &B) { return ww::tup{A / B.X, A / B.Y, A / B.Z, B.W}; }
 ww::matrix operator*(ww::matrix const &A, ww::matrix const &B) { return (ww::Mul(A, B)); }
 ww::tup operator*(ww::matrix const &A, ww::tup const &T) { return (ww::Mul(A, T)); }
 ww::ray operator*(ww::matrix const &M, ww::ray const &R) { return (ww::Mul(M, R)); }

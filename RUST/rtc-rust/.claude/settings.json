@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // \"\"'); case \"$cmd\" in *'cargo test'*) case \"$cmd\" in *--lib*|*--doc*) ;; *) echo 'Blocked by hook: use cargo test --lib (or cargo test --doc) instead of bare cargo test.' >&2; exit 2 ;; esac ;; esac"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // \"\"'); case \"$f\" in *.ppm|*.PPM) echo 'Blocked by hook: do not read PPM image files into context; check size/header with ls or head -c instead.' >&2; exit 2 ;; esac"
+          }
+        ]
+      }
+    ]
+  }
+}

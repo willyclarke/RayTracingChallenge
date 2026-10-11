@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0) # setting this is required
+cmake_minimum_required(VERSION 3.20) # setting this is required
 project(raytrace_project)                # this sets the project name
 ###############################################################################
 # Copied from

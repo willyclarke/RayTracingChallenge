@@ -7,3 +7,25 @@ GTAGS
 .LICENSE.icloud
 .clangd/
 .cache/
+.DS_Store
+tmp/
+ZIG/raytracer-zig/*.ppm
+ZIG/raytracer-zig/src/scrapbook.zig
+/RUST/rtc-rust/target
+/RUST/rtc-rust/*.ppm
+__pycache__/
+/RUST/rtc-rust/resume.txt
+# profiling / debug artifacts
+/RUST/rtc-rust/profile.json
+/RUST/rtc-rust/profile.json.gz
+/RUST/rtc-rust/log.txt
+# models downloaded from the internet stay local; only the files generated
+# by models/generate.py (MIT, ours) are committed
+/RUST/rtc-rust/models/*
+!/RUST/rtc-rust/models/README.md
+!/RUST/rtc-rust/models/generate.py
+!/RUST/rtc-rust/models/icosahedron.obj
+!/RUST/rtc-rust/models/torus_smooth.obj
+/RUST/rtc-rust/frames/
+/RUST/rtc-rust/*.mp4
+/RUST/rtc-rust/screensaver/build/
