@@ -48,7 +48,9 @@ impl Default for PatternData {
     }
 }
 
-pub trait Pattern: std::fmt::Debug + Send + Sync {
+/// `Any` lets callers outside the crate (rtc-metal) ask which concrete
+/// pattern a `&dyn Pattern` is, via trait upcasting to `&dyn Any`.
+pub trait Pattern: std::any::Any + std::fmt::Debug + Send + Sync {
     fn data(&self) -> &PatternData;
     fn data_mut(&mut self) -> &mut PatternData;
 

@@ -228,6 +228,13 @@ fn test_chap_9_gpu_render_matches_cpu() -> Result<(), String> {
 }
 
 #[test]
+fn test_chap_10_gpu_render_matches_cpu() -> Result<(), String> {
+    // Chapter 9's layout with a pattern on every surface.
+    let (world, camera) = scene_file(include_str!("../scenes/chapter10.json"), 400, 200);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
 fn test_chap_11_gpu_render_matches_cpu() -> Result<(), String> {
     let (world, camera) = chapter_11_scene(400, 200);
     check_matches_cpu(&world, camera)

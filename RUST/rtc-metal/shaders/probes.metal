@@ -42,7 +42,7 @@ struct IntersectProbe {
     Shape shape;
     Ray ray;
 };
-static_assert(sizeof(IntersectProbe) == 160, "IntersectProbe must match probes.rs");
+static_assert(sizeof(IntersectProbe) == 256, "IntersectProbe must match probes.rs");
 
 struct IntersectResult {
     float4 ts;  // ascending; ts[count..] unspecified
@@ -63,18 +63,19 @@ struct LightingProbe {
     Material material;
     Light light;
     float4 point;
+    float4 object_point;
     float4 eyev;
     float4 normalv;
     float intensity;
 };
-static_assert(sizeof(LightingProbe) == 144, "LightingProbe must match probes.rs");
+static_assert(sizeof(LightingProbe) == 256, "LightingProbe must match probes.rs");
 
 kernel void probe_lighting(device const LightingProbe *in [[buffer(0)]],
                            device float4 *out             [[buffer(1)]],
                            uint i                         [[thread_position_in_grid]])
 {
     LightingProbe p = in[i];
-    out[i] = float4(lighting(p.material, p.light, p.point, p.eyev, p.normalv, p.intensity), 0.0);
+    out[i] = float4(lighting(p.material, p.light, p.point, p.object_point, p.eyev, p.normalv, p.intensity), 0.0);
 }
 
 struct CameraProbe {
@@ -118,6 +119,20 @@ kernel void probe_schlick(device const float4 *in [[buffer(0)]],
                           uint i                  [[thread_position_in_grid]])
 {
     out[i] = schlick(in[i].x, in[i].y, in[i].z);
+}
+
+struct PatternProbe {
+    Shape shape;
+    float4 point;
+};
+
+// out[i] = the pattern color of in[i].shape at world point in[i].point
+kernel void probe_pattern_at(device const PatternProbe *in [[buffer(0)]],
+                             device float4 *out            [[buffer(1)]],
+                             uint i                        [[thread_position_in_grid]])
+{
+    Shape s = in[i].shape;
+    out[i] = float4(pattern_at(s.material, s.inverse * in[i].point), 0.0);
 }
 
 struct TraceProbe {
