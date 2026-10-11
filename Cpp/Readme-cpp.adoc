@@ -2,7 +2,7 @@
 :author: Willy Clarke
 
 The original implementation of 'The Ray Tracer Challenge' in this repository. The code
-lives in `src/` at the repository root (`src/raytrace`, plus a `src/shadertoy` experiment),
+lives in `src/` in this directory (`src/raytrace`, plus a `src/shadertoy` experiment),
 with shared code in `common/` and third-party dependencies pulled in under `external/`
 (Google Test among them).
 
@@ -25,7 +25,7 @@ The intention is to use out of source build. So I normally do the following:
 
  * cd ../build/RayTracingChallenge
 
- * cmake ../../RayTracingChallenge -GNinja
+ * cmake ../../RayTracingChallenge/Cpp -GNinja
 
  * ninja
 
@@ -33,7 +33,7 @@ Note:
 
 On OSX it sometimes is necessary to build with the following command:
 
-cmake ../../RayTracingChallenge  -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -GNinja -D CMAKE_BUILD_TYPE=Release -D CMAKE_PREFIX_PATH=/usr/local/opt/qt/lib/cmake
+cmake ../../RayTracingChallenge/Cpp  -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -GNinja -D CMAKE_BUILD_TYPE=Release -D CMAKE_PREFIX_PATH=/usr/local/opt/qt/lib/cmake
 
 == Executing the tests
 

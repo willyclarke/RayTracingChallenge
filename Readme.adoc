@@ -10,8 +10,8 @@ with its own Readme:
 
 == Implementations
 
-* *C++* — the original implementation, living in `src/` at the repository root; built with
-  CMake and tested with Google Test. See link:Readme-cpp.adoc[Readme-cpp.adoc].
+* *C++* — `Cpp`: the original implementation; built with CMake and tested with
+  Google Test. See link:Cpp/Readme-cpp.adoc[Cpp/Readme-cpp.adoc].
 
 * *Rust* — `RUST/rtc-rust`: complete through chapter 17, the three online bonus chapters,
   and the Appendix A1 cover image. Ships an `rtc` CLI that renders JSON scene descriptions
