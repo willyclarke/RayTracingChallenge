@@ -1,0 +1,314 @@
+{
+  "comment": "Book chapter 12: cubes. A room (one big cube seen from inside), a table whose top is a flattened cube, a glass cube and a mirror cube on it, and a box on the floor",
+  "camera": {
+    "width": 1600,
+    "height": 800,
+    "field_of_view": 1.0471975512,
+    "from": [
+      1.5,
+      2.5,
+      -6.5
+    ],
+    "to": [
+      0,
+      1,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "light": {
+    "type": "point",
+    "position": [
+      -4,
+      6,
+      -5
+    ],
+    "intensity": [
+      1,
+      1,
+      1
+    ]
+  },
+  "shapes": [
+    {
+      "type": "cube",
+      "comment": "room",
+      "transform": [
+        {
+          "scale": [
+            8,
+            4,
+            8
+          ]
+        },
+        {
+          "translate": [
+            0,
+            4,
+            0
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.9,
+          0.85,
+          0.8
+        ],
+        "specular": 0,
+        "ambient": 0.15
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "table top",
+      "transform": [
+        {
+          "scale": [
+            1.5,
+            0.05,
+            1
+          ]
+        },
+        {
+          "translate": [
+            0,
+            1.05,
+            0
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.55,
+          0.35,
+          0.2
+        ],
+        "diffuse": 0.8,
+        "specular": 0.1,
+        "reflective": 0.2
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "table leg",
+      "transform": [
+        {
+          "scale": [
+            0.05,
+            0.5,
+            0.05
+          ]
+        },
+        {
+          "translate": [
+            -1.4,
+            0.5,
+            -0.9
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.55,
+          0.35,
+          0.2
+        ],
+        "diffuse": 0.8,
+        "specular": 0.1
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "table leg",
+      "transform": [
+        {
+          "scale": [
+            0.05,
+            0.5,
+            0.05
+          ]
+        },
+        {
+          "translate": [
+            -1.4,
+            0.5,
+            0.9
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.55,
+          0.35,
+          0.2
+        ],
+        "diffuse": 0.8,
+        "specular": 0.1
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "table leg",
+      "transform": [
+        {
+          "scale": [
+            0.05,
+            0.5,
+            0.05
+          ]
+        },
+        {
+          "translate": [
+            1.4,
+            0.5,
+            -0.9
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.55,
+          0.35,
+          0.2
+        ],
+        "diffuse": 0.8,
+        "specular": 0.1
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "table leg",
+      "transform": [
+        {
+          "scale": [
+            0.05,
+            0.5,
+            0.05
+          ]
+        },
+        {
+          "translate": [
+            1.4,
+            0.5,
+            0.9
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.55,
+          0.35,
+          0.2
+        ],
+        "diffuse": 0.8,
+        "specular": 0.1
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "glass cube",
+      "transform": [
+        {
+          "scale": [
+            0.3,
+            0.3,
+            0.3
+          ]
+        },
+        {
+          "rotate_y": 0.5
+        },
+        {
+          "translate": [
+            -0.6,
+            1.41,
+            -0.1
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0,
+          0,
+          0
+        ],
+        "diffuse": 0.1,
+        "specular": 1,
+        "shininess": 300,
+        "reflective": 0.9,
+        "transparency": 0.9,
+        "refractive_index": 1.5
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "mirror cube",
+      "transform": [
+        {
+          "scale": [
+            0.25,
+            0.25,
+            0.25
+          ]
+        },
+        {
+          "rotate_y": -0.4
+        },
+        {
+          "translate": [
+            0.7,
+            1.36,
+            0.3
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.1,
+          0.1,
+          0.1
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3,
+        "reflective": 0.9
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "box on the floor",
+      "transform": [
+        {
+          "scale": [
+            0.5,
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "rotate_y": 0.8
+        },
+        {
+          "translate": [
+            -2.5,
+            0.5,
+            1
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.2,
+          0.4,
+          0.8
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3
+      }
+    }
+  ]
+}

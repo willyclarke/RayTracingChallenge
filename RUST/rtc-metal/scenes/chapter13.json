@@ -1,0 +1,206 @@
+{
+  "comment": "Book chapter 13: cylinders and cones. A closed and an open (hollow) cylinder, a closed cone standing on its base, and a glass double cone with caps, where a ray can cross four surfaces of one shape. Shapes resting on the floor are lifted 0.01 so no cap is coincident with it",
+  "camera": {
+    "width": 1600,
+    "height": 800,
+    "field_of_view": 1.0471975512,
+    "from": [
+      0,
+      2.5,
+      -6
+    ],
+    "to": [
+      0,
+      0.8,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "light": {
+    "type": "point",
+    "position": [
+      -10,
+      10,
+      -10
+    ],
+    "intensity": [
+      1,
+      1,
+      1
+    ]
+  },
+  "shapes": [
+    {
+      "type": "plane",
+      "comment": "floor",
+      "material": {
+        "color": [
+          1,
+          0.9,
+          0.9
+        ],
+        "specular": 0,
+        "reflective": 0.1
+      }
+    },
+    {
+      "type": "plane",
+      "comment": "wall",
+      "transform": [
+        {
+          "rotate_x": 1.5707963268
+        },
+        {
+          "translate": [
+            0,
+            0,
+            6
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          1,
+          0.9,
+          0.9
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "cylinder",
+      "comment": "closed cylinder",
+      "min": 0,
+      "max": 1.5,
+      "closed": true,
+      "transform": [
+        {
+          "scale": [
+            0.5,
+            1,
+            0.5
+          ]
+        },
+        {
+          "translate": [
+            -2,
+            0.01,
+            1
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.8,
+          0.2,
+          0.2
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3
+      }
+    },
+    {
+      "type": "cylinder",
+      "comment": "open cylinder: a tube seen from above, inside visible",
+      "min": 0,
+      "max": 0.8,
+      "transform": [
+        {
+          "scale": [
+            0.7,
+            1,
+            0.7
+          ]
+        },
+        {
+          "translate": [
+            2,
+            0.01,
+            1.5
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.2,
+          0.6,
+          0.3
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3
+      }
+    },
+    {
+      "type": "cone",
+      "comment": "closed cone on its base",
+      "min": -1,
+      "max": 0,
+      "closed": true,
+      "transform": [
+        {
+          "scale": [
+            0.5,
+            1,
+            0.5
+          ]
+        },
+        {
+          "translate": [
+            0,
+            1.01,
+            2.5
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.9,
+          0.7,
+          0.2
+        ],
+        "diffuse": 0.7,
+        "specular": 0.3
+      }
+    },
+    {
+      "type": "cone",
+      "comment": "glass double cone with caps",
+      "min": -1,
+      "max": 1,
+      "closed": true,
+      "transform": [
+        {
+          "scale": [
+            0.6,
+            0.6,
+            0.6
+          ]
+        },
+        {
+          "translate": [
+            0.3,
+            0.61,
+            -1
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0,
+          0,
+          0
+        ],
+        "diffuse": 0.1,
+        "specular": 1,
+        "shininess": 300,
+        "reflective": 0.9,
+        "transparency": 0.9,
+        "refractive_index": 1.5
+      }
+    }
+  ]
+}

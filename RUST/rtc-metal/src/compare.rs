@@ -7,6 +7,7 @@ use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
 use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
+use rtc_rust::scene::SceneDescription;
 use rtc_rust::shape::Shape;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
@@ -153,6 +154,13 @@ fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
     (world, camera)
 }
 
+/// A scene from `scenes/`, at `width` x `height` instead of its own size.
+fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
+    let mut desc = SceneDescription::from_json(json).unwrap();
+    (desc.camera.width, desc.camera.height) = (width, height);
+    desc.build(std::path::Path::new(".")).unwrap()
+}
+
 /// Render on both GPU and CPU and compare. A pixel is "off" when a channel
 /// differs by more than `1e-3`; at most 0.05% of pixels may be off.
 ///
@@ -222,5 +230,19 @@ fn test_chap_9_gpu_render_matches_cpu() -> Result<(), String> {
 #[test]
 fn test_chap_11_gpu_render_matches_cpu() -> Result<(), String> {
     let (world, camera) = chapter_11_scene(400, 200);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_12_gpu_render_matches_cpu() -> Result<(), String> {
+    // Cubes: a room seen from inside, a flattened table top, glass and mirror.
+    let (world, camera) = scene_file(include_str!("../scenes/chapter12.json"), 400, 200);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_13_gpu_render_matches_cpu() -> Result<(), String> {
+    // Cylinders and cones, including a glass closed double cone (4 roots).
+    let (world, camera) = scene_file(include_str!("../scenes/chapter13.json"), 400, 200);
     check_matches_cpu(&world, camera)
 }
