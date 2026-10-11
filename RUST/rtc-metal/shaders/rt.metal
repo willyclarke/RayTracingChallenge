@@ -442,10 +442,31 @@ struct Camera {
 };
 static_assert(sizeof(Camera) == 96, "Camera must match GpuCamera");
 
+// Book chapter 15: GpuScene orders `shapes` as the unbounded_count shapes
+// with no finite box first, then the bounded ones in BVH leaf order.
+struct SceneCounts {
+    uint shape_count;
+    uint unbounded_count;
+    uint node_count;  // 0 when nothing is bounded
+};
+static_assert(sizeof(SceneCounts) == 12, "SceneCounts must match GpuSceneCounts");
+
+// count > 0: a leaf over shapes[start .. start + count]. Otherwise an
+// interior node: the left child is the next node, the right one is `right`.
+struct BvhNode {
+    float4 min;
+    float4 max;
+    uint start;
+    uint count;
+    uint right;
+    uint pad;
+};
+static_assert(sizeof(BvhNode) == 48, "BvhNode must match GpuBvhNode");
+
 struct SceneInfo {
     Camera camera;
     Light light;
-    uint shape_count;
+    SceneCounts counts;
 };
 static_assert(sizeof(SceneInfo) == 144, "SceneInfo must match GpuSceneInfo");
 
@@ -468,9 +489,10 @@ struct Hit {
 };
 
 // Nearest non-negative hit over all shapes. Returns false on a miss.
-inline bool hit_shapes(Ray r, device const Shape *shapes, uint count, thread Hit &hit) {
+inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *nodes,
+                       SceneCounts counts, thread Hit &hit) {
     hit.t = INFINITY;
-    for (uint i = 0; i < count; i++) {
+    for (uint i = 0; i < counts.shape_count; i++) {
         float4 ts;
         uint n = intersect(shapes[i], r, ts);
         // ts is ascending, so the first non-negative one is this shape's hit
@@ -489,11 +511,12 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, uint count, thread Hit
 
 // Any-hit test: is anything between `point` and the light?
 inline bool is_shadowed(float4 light_position, float4 point,
-                        device const Shape *shapes, uint count) {
+                        device const Shape *shapes, device const BvhNode *nodes,
+                        SceneCounts counts) {
     float4 v = light_position - point;
     float distance = length(v);
     Ray r = Ray{point, v / distance};
-    for (uint i = 0; i < count; i++) {
+    for (uint i = 0; i < counts.shape_count; i++) {
         float4 ts;
         uint n = intersect(shapes[i], r, ts);
         for (uint k = 0; k < n; k++) {
@@ -532,11 +555,12 @@ inline float schlick(float cos_i, float n1, float n2) {
 // is rebuilt per shape: the ray is inside a shape just before the hit when an
 // odd number of its roots (negative ones too) come first, and among those
 // the innermost - the end of rtc-rust's list - is the one entered last.
-inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes, uint count) {
+inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes,
+                                 device const BvhNode *nodes, SceneCounts counts) {
     float inner_t = -INFINITY;  // entry t of the innermost other medium
     float inner_n = 1.0;        // its refractive index; vacuum when none
     float hit_entry_t = -INFINITY;
-    for (uint i = 0; i < count; i++) {
+    for (uint i = 0; i < counts.shape_count; i++) {
         float4 ts;
         uint n = intersect(shapes[i], r, ts);
         if (i == hit.index) {
@@ -584,7 +608,8 @@ struct PendingRay {
 // rays go on a stack with their weights. A ray pushes at most two children
 // and only while remaining > 0, so the stack never holds more than
 // MAX_DEPTH + 1 rays (one pending sibling per level, plus the current one).
-inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes) {
+inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes,
+                       device const BvhNode *nodes) {
     PendingRay stack[MAX_DEPTH + 1];
     int top = 0;
     stack[top++] = PendingRay{camera_ray, float3(1.0), MAX_DEPTH};
@@ -592,7 +617,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
     while (top > 0) {
         PendingRay p = stack[--top];
         Hit hit;
-        if (!hit_shapes(p.ray, shapes, scene.shape_count, hit)) {
+        if (!hit_shapes(p.ray, shapes, nodes, scene.counts, hit)) {
             continue;
         }
         Shape s = shapes[hit.index];
@@ -608,7 +633,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         }
         float4 over_point = point + normalv * EPSILON;
         float intensity =
-            is_shadowed(scene.light.position, over_point, shapes, scene.shape_count) ? 0.0 : 1.0;
+            is_shadowed(scene.light.position, over_point, shapes, nodes, scene.counts) ? 0.0 : 1.0;
         // rtc-rust samples the pattern at over_point too: on a plane the raw
         // hit's y is ~0 with either sign, and checkers would speckle
         float4 object_point = s.inverse * over_point;
@@ -620,7 +645,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         }
         float reflected = m.reflective;
         if (m.transparency > 0.0) {
-            float2 n = refractive_indices(p.ray, hit, shapes, scene.shape_count);
+            float2 n = refractive_indices(p.ray, hit, shapes, nodes, scene.counts);
             float cos_i = dot(eyev, normalv);
             float refracted = m.transparency;
             if (m.reflective > 0.0) {

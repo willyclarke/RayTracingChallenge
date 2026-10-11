@@ -95,7 +95,6 @@ struct RefractiveProbe {
     Ray ray;
     uint hit_index;
     uint hit_root;
-    uint shape_count;
 };
 static_assert(sizeof(RefractiveProbe) == 48, "RefractiveProbe must match probes.rs");
 
@@ -103,6 +102,8 @@ static_assert(sizeof(RefractiveProbe) == 48, "RefractiveProbe must match probes.
 kernel void probe_refractive_indices(device const RefractiveProbe *in [[buffer(0)]],
                                      device float2 *out               [[buffer(1)]],
                                      device const Shape *shapes       [[buffer(2)]],
+                                     device const BvhNode *nodes      [[buffer(3)]],
+                                     constant SceneCounts &counts     [[buffer(4)]],
                                      uint i                           [[thread_position_in_grid]])
 {
     RefractiveProbe p = in[i];
@@ -110,7 +111,7 @@ kernel void probe_refractive_indices(device const RefractiveProbe *in [[buffer(0
     float4 ts;
     intersect(s, p.ray, ts);
     Hit hit = Hit{ts[p.hit_root], p.hit_index, p.hit_root};
-    out[i] = refractive_indices(p.ray, hit, shapes, p.shape_count);
+    out[i] = refractive_indices(p.ray, hit, shapes, nodes, counts);
 }
 
 // in[i] = (cos_i, n1, n2, unused)
@@ -138,9 +139,8 @@ kernel void probe_pattern_at(device const PatternProbe *in [[buffer(0)]],
 struct TraceProbe {
     Ray ray;
     float4 light_position;
-    uint shape_count;
 };
-static_assert(sizeof(TraceProbe) == 64, "TraceProbe must match probes.rs");
+static_assert(sizeof(TraceProbe) == 48, "TraceProbe must match probes.rs");
 
 struct TraceResult {
     float4 normal;  // world-space, flipped toward the eye as in color_at
@@ -152,16 +152,18 @@ struct TraceResult {
 static_assert(sizeof(TraceResult) == 32, "TraceResult must match probes.rs");
 
 // The first steps of color_at for one ray: nearest hit, normal, shadow test.
-// index = shape_count on a miss.
-kernel void probe_trace(device const TraceProbe *in [[buffer(0)]],
-                        device TraceResult *out     [[buffer(1)]],
-                        device const Shape *shapes  [[buffer(2)]],
-                        uint i                      [[thread_position_in_grid]])
+// index = counts.shape_count on a miss.
+kernel void probe_trace(device const TraceProbe *in  [[buffer(0)]],
+                        device TraceResult *out      [[buffer(1)]],
+                        device const Shape *shapes   [[buffer(2)]],
+                        device const BvhNode *nodes  [[buffer(3)]],
+                        constant SceneCounts &counts [[buffer(4)]],
+                        uint i                       [[thread_position_in_grid]])
 {
     TraceProbe p = in[i];
     Hit hit;
-    if (!hit_shapes(p.ray, shapes, p.shape_count, hit)) {
-        out[i] = TraceResult{float4(0.0), INFINITY, p.shape_count, 0, 0};
+    if (!hit_shapes(p.ray, shapes, nodes, counts, hit)) {
+        out[i] = TraceResult{float4(0.0), INFINITY, counts.shape_count, 0, 0};
         return;
     }
     float4 point = p.ray.origin + p.ray.direction * hit.t;
@@ -172,7 +174,7 @@ kernel void probe_trace(device const TraceProbe *in [[buffer(0)]],
     if (dot(normalv, -p.ray.direction) < 0.0) {
         normalv = -normalv;
     }
-    bool shadowed = is_shadowed(p.light_position, point + normalv * EPSILON, shapes, p.shape_count);
+    bool shadowed = is_shadowed(p.light_position, point + normalv * EPSILON, shapes, nodes, counts);
     out[i] = TraceResult{normalv, hit.t, hit.index, hit.root, shadowed ? 1u : 0u};
 }
 

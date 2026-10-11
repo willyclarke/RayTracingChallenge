@@ -2,7 +2,7 @@
 //! case, and compare with the rtc-rust CPU version of the same function.
 
 use crate::gpu::Gpu;
-use crate::scene::{gpu_camera, gpu_light, gpu_material, gpu_shape};
+use crate::scene::{GpuScene, gpu_camera, gpu_light, gpu_material, gpu_shape};
 use crate::types::{
     Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_PLANE, SHAPE_SPHERE,
     float4,
@@ -662,14 +662,13 @@ fn test_chap_13_gpu_cone_normal_at() -> Result<(), String> {
 }
 
 /// Input to `probe_refractive_indices`: the hit is root `hit_root` (0 or 1,
-/// ascending) of shape `hit_index` along `ray`.
+/// ascending) of `shapes[hit_index]` along `ray`.
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct RefractiveProbe {
     ray: GpuRay,
     hit_index: u32,
     hit_root: u32,
-    shape_count: u32,
 }
 
 #[test]
@@ -678,6 +677,10 @@ fn test_chap_11_gpu_refractive_indices() -> Result<(), String> {
     // along z) overlapping, so the ray crosses six boundaries. The real
     // geometry puts them at the book's t = 2, 2.75, 3.25, 4.75, 5.25, 6.
     let mut world = World::new();
+    world.light = Some(Light::point_light(
+        Tuple::point(-10.0, 10.0, -10.0),
+        Tuple::color(1.0, 1.0, 1.0),
+    ));
     for (transform, refractive_index) in [
         (Matrix4::scaling(2.0, 2.0, 2.0), 1.5),
         (Matrix4::translation(0.0, 0.0, -0.25), 2.0),
@@ -688,20 +691,14 @@ fn test_chap_11_gpu_refractive_indices() -> Result<(), String> {
         s.data.material.refractive_index = refractive_index;
         world.add_shape(Box::new(s));
     }
-    let shapes: Vec<GpuShape> = world
-        .shapes
-        .iter()
-        .map(|s| GpuShape {
-            material: gpu_material(s.material()).unwrap(),
-            ..probe_shape(SHAPE_SPHERE, s.transform())
-        })
-        .collect();
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
     let ray = Ray::new(Tuple::point(0.0, 0.0, -4.0), Tuple::vector(0.0, 0.0, 1.0));
     let xs = world.intersect(&ray);
     if xs.count() != 6 {
         return Err(format!("cpu: {} intersections, expected 6", xs.count()));
     }
-    let index_of = |id| world.shapes.iter().position(|s| s.id() == id).unwrap();
+    // The BVH reorders the shapes; scene.ids maps them back.
+    let index_of = |id| scene.ids.iter().position(|&i| i == id).unwrap();
     let input: Vec<RefractiveProbe> = (0..xs.count())
         .map(|k| RefractiveProbe {
             ray: (&ray).into(),
@@ -710,13 +707,12 @@ fn test_chap_11_gpu_refractive_indices() -> Result<(), String> {
             hit_root: (0..k)
                 .filter(|&j| xs[j].object_id == xs[k].object_id)
                 .count() as u32,
-            shape_count: shapes.len() as u32,
         })
         .collect();
 
     // Each result is (n1, n2).
     let out: Vec<[f32; 2]> =
-        Gpu::new()?.run_with_shapes("probe_refractive_indices", &input, &shapes)?;
+        Gpu::new()?.run_with_scene("probe_refractive_indices", &input, &scene)?;
 
     for (k, got) in out.iter().enumerate() {
         let comps = prepare_computations(xs[k], &ray, &world.shapes, &xs);
@@ -775,7 +771,6 @@ fn test_chap_11_gpu_schlick() -> Result<(), String> {
 struct TraceProbe {
     ray: GpuRay,
     light_position: Float4,
-    shape_count: u32,
 }
 
 /// Output of `probe_trace`.
@@ -802,11 +797,7 @@ fn test_chap_13_gpu_cone_far_origin_no_acne() -> Result<(), String> {
             .unwrap();
     (desc.camera.width, desc.camera.height) = (400, 200);
     let (world, camera) = desc.build(std::path::Path::new(".")).unwrap();
-    let shapes: Vec<GpuShape> = world
-        .shapes
-        .iter()
-        .map(|s| gpu_shape(s.as_ref()))
-        .collect::<Result<_, _>>()?;
+    let scene = GpuScene::from_world(&world, &camera)?;
     let light = world.light.as_ref().unwrap().position;
     let pixels: Vec<(usize, usize)> = (190..205)
         .flat_map(|x| (78..90).map(move |y| (x, y)))
@@ -820,24 +811,20 @@ fn test_chap_13_gpu_cone_far_origin_no_acne() -> Result<(), String> {
         .map(|r| TraceProbe {
             ray: r.into(),
             light_position: float4(light),
-            shape_count: shapes.len() as u32,
         })
         .collect();
 
-    let out: Vec<TraceResult> = Gpu::new()?.run_with_shapes("probe_trace", &input, &shapes)?;
+    let out: Vec<TraceResult> = Gpu::new()?.run_with_scene("probe_trace", &input, &scene)?;
 
-    let cone = 4; // index of the cone on its base in chapter13.json
+    let cone = world.shapes[4].id(); // the cone on its base in chapter13.json
     let mut on_cone = 0;
     for (((x, y), ray), got) in pixels.iter().zip(&rays).zip(&out) {
         let xs = world.intersect(ray);
         let hit = xs.hit().ok_or(format!("({x}, {y}): cpu miss"))?;
         let comps = prepare_computations(hit, ray, &world.shapes, &xs);
-        let index = world
-            .shapes
-            .iter()
-            .position(|s| s.id() == hit.object_id)
-            .unwrap();
-        if got.index as usize != index || index != cone {
+        // got.index is into the BVH-ordered shapes; a miss is past the end.
+        let got_id = scene.ids.get(got.index as usize);
+        if got_id != Some(&hit.object_id) || hit.object_id != cone {
             continue; // only the cone's wall is under test
         }
         on_cone += 1;

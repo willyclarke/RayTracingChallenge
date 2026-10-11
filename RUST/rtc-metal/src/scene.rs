@@ -3,10 +3,11 @@
 //! Only what the shaders implement so far is accepted; anything else is an
 //! error rather than being silently dropped from the image.
 
+use crate::bvh::{self, Leaf};
 use crate::types::{
-    GpuCamera, GpuLight, GpuMaterial, GpuSceneInfo, GpuShape, PATTERN_CHECKERS, PATTERN_GRADIENT,
-    PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE, SHAPE_CONE, SHAPE_CUBE, SHAPE_CYLINDER,
-    SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE, float4,
+    GpuBvhNode, GpuCamera, GpuLight, GpuMaterial, GpuSceneCounts, GpuSceneInfo, GpuShape,
+    PATTERN_CHECKERS, PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE, SHAPE_CONE,
+    SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -31,7 +32,13 @@ use std::any::Any;
 
 pub struct GpuScene {
     pub info: GpuSceneInfo,
+    /// Unbounded shapes first, then the bounded ones in BVH leaf order.
     pub shapes: Vec<GpuShape>,
+    /// Book chapter 15's bounding volume hierarchy over the bounded shapes;
+    /// empty when there are none.
+    pub nodes: Vec<GpuBvhNode>,
+    /// rtc-rust shape id per entry of `shapes`.
+    pub ids: Vec<usize>,
 }
 
 impl GpuScene {
@@ -40,17 +47,25 @@ impl GpuScene {
             return Err("path tracing is not supported yet".into());
         }
         let light = world.light.as_ref().ok_or("scene has no light")?;
-        let mut shapes = Vec::new();
+        let mut leaves = Vec::new();
+        let identity = Matrix4::identity();
         for root in world.shapes.iter().filter(|s| s.data().parent.is_none()) {
-            flatten(world, root.as_ref(), &Matrix4::identity(), &mut shapes)?;
+            flatten(world, root.as_ref(), &identity, &identity, &mut leaves)?;
         }
+        let bvh = bvh::build(leaves)?;
         Ok(Self {
             info: GpuSceneInfo {
                 camera: gpu_camera(camera)?,
                 light: gpu_light(light)?,
-                shape_count: shapes.len() as u32,
+                counts: GpuSceneCounts {
+                    shape_count: bvh.shapes.len() as u32,
+                    unbounded_count: bvh.unbounded_count,
+                    node_count: bvh.nodes.len() as u32,
+                },
             },
-            shapes,
+            shapes: bvh.shapes,
+            nodes: bvh.nodes,
+            ids: bvh.ids,
         })
     }
 
@@ -141,21 +156,30 @@ fn gpu_pattern(pattern: &dyn Pattern) -> Result<(u32, Tuple, Tuple), String> {
 }
 
 /// Book chapter 14 without the tree: append the leaves under `shape` to
-/// `out`, each carrying its whole world-to-object transform, so the shaders
-/// never see a group. `parent_inverse` maps world space to the space `shape`
-/// sits in. Composing in f64 here, rather than per level in f32 on the GPU,
-/// also keeps deep trees from accumulating rounding. Group bounds (and the
-/// BVH that `World::divide` builds) are dropped: every leaf is tested.
+/// `out`, each carrying its whole world-to-object transform and world box,
+/// so the shaders never see a group. `parent_transform` maps the space
+/// `shape` sits in to world space, `parent_inverse` the other way. Composing
+/// in f64 here, rather than per level in f32 on the GPU, also keeps deep
+/// trees from accumulating rounding. Group bounds (and the BVH that
+/// `World::divide` builds) are dropped: `bvh::build` makes its own over the
+/// leaves (book chapter 15).
 fn flatten(
     world: &World,
     shape: &dyn Shape,
+    parent_transform: &Matrix4,
     parent_inverse: &Matrix4,
-    out: &mut Vec<GpuShape>,
+    out: &mut Vec<Leaf>,
 ) -> Result<(), String> {
-    // world_to_object applies the parent chain first, then the shape's own.
+    // world_to_object applies the parent chain first, then the shape's own;
+    // object_to_world is the reverse.
+    let full = *parent_transform * *shape.transform();
     let inverse = *shape.transform_inv() * *parent_inverse;
     match shape.children() {
-        None => out.push(gpu_leaf(shape, &inverse)?),
+        None => out.push(Leaf {
+            shape: gpu_leaf(shape, &inverse)?,
+            id: shape.id(),
+            bounds: world_bounds(shape, full),
+        }),
         Some(_) if shape.csg_operation().is_some() => {
             return Err(format!("shape {}: CSG is not supported yet", shape.id()));
         }
@@ -165,11 +189,38 @@ fn flatten(
             }
             for &id in children {
                 // World ids are 1-based arena indices.
-                flatten(world, world.shapes[id - 1].as_ref(), &inverse, out)?;
+                flatten(world, world.shapes[id - 1].as_ref(), &full, &inverse, out)?;
             }
         }
     }
     Ok(())
+}
+
+/// The f32 world box of a leaf whose object-to-world transform is `full`,
+/// or None when it is unbounded. An infinite object box is unbounded as is:
+/// transforming its corners would give inf * 0 = NaN under a rotation.
+fn world_bounds(shape: &dyn Shape, full: Matrix4) -> Option<([f32; 3], [f32; 3])> {
+    let b = shape.bounds();
+    let xyz = |t: Tuple| [t.x, t.y, t.z];
+    if !xyz(b.min).iter().chain(&xyz(b.max)).all(|v| v.is_finite()) {
+        return None;
+    }
+    let b = b.transform(full);
+    // Round outward, so the f32 box still holds the f64 one and a ray
+    // grazing the shape is never culled.
+    let lo = xyz(b.min).map(|v| {
+        let f = v as f32;
+        if f as f64 > v { f.next_down() } else { f }
+    });
+    let hi = xyz(b.max).map(|v| {
+        let f = v as f32;
+        if (f as f64) < v { f.next_up() } else { f }
+    });
+    // A finite f64 box can still overflow f32.
+    lo.iter()
+        .chain(&hi)
+        .all(|v| v.is_finite())
+        .then_some((lo, hi))
 }
 
 /// A shape outside any group, as the probes upload it.
@@ -325,6 +376,81 @@ mod tests {
             n.iter().zip(want).all(|(a, b)| (a / len - b).abs() < 1e-4),
             "{n:?}"
         );
+    }
+
+    #[test]
+    fn test_chap_15_scene_bounds_and_order() {
+        let mut world = World::new();
+        world.light = Some(Light::point_light(
+            Tuple::point(0.0, 0.0, 0.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        ));
+        let p1 = world.add_shape(Box::new(Plane::new()));
+        // A naive transform of the plane's infinite box gives inf * 0 = NaN.
+        let mut tilted = Plane::new();
+        tilted.set_transform(Matrix4::rotation_x(0.3));
+        let p2 = world.add_shape(Box::new(tilted));
+        let mut cyl = Cylinder::new();
+        cyl.set_transform(Matrix4::rotation_z(0.5));
+        let c = world.add_shape(Box::new(cyl));
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
+        world.add_shape(Box::new(s));
+        let mut g = Group::new();
+        g.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let g = world.add_shape(Box::new(g));
+        world.add_child(g, Box::new(Sphere::new()));
+
+        let scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+        assert_eq!(scene.info.counts.unbounded_count, 3);
+        assert_eq!(scene.info.counts.shape_count, 5);
+        assert_eq!(scene.shapes.len(), 5);
+        assert_eq!(scene.ids[..3], [p1, p2, c]);
+        assert_eq!(scene.nodes.len(), 1);
+        assert_eq!(scene.info.counts.node_count, 1);
+        let n = &scene.nodes[0];
+        assert_eq!((n.start, n.count), (3, 2));
+        let contains = |lo: [f64; 3], hi: [f64; 3]| {
+            (0..3).all(|a| n.min[a] as f64 <= lo[a] && n.max[a] as f64 >= hi[a])
+        };
+        assert!(contains([4.0, -1.0, -1.0], [6.0, 1.0, 1.0]), "{n:?}");
+        assert!(contains([-2.0; 3], [2.0; 3]), "{n:?}");
+        // The outward cast keeps the f64 box inside the f32 one.
+        for &id in &scene.ids[3..] {
+            let shape = world.shapes[id - 1].as_ref();
+            let parent = match shape.data().parent {
+                Some(p) => *world.shapes[p - 1].transform(),
+                None => Matrix4::identity(),
+            };
+            let b = shape.bounds().transform(parent * *shape.transform());
+            assert!(
+                contains([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z]),
+                "shape {id}: {n:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_chap_15_scene_without_bounded_shapes_renders() {
+        // Metal cannot bind an empty buffer: an empty node array must still
+        // render.
+        let mut camera = Camera::new(4, 2, PI / 2.0);
+        camera.set_transform(&Matrix4::translation(0.0, 1.0, 0.0));
+        let gpu = crate::gpu::Gpu::new().unwrap();
+        for with_plane in [true, false] {
+            let mut world = World::new();
+            world.light = Some(Light::point_light(
+                Tuple::point(0.0, 5.0, 0.0),
+                Tuple::color(1.0, 1.0, 1.0),
+            ));
+            if with_plane {
+                world.add_shape(Box::new(Plane::new()));
+            }
+            let scene = GpuScene::from_world(&world, &camera).unwrap();
+            assert!(scene.nodes.is_empty());
+            assert_eq!(scene.info.counts.node_count, 0);
+            assert_eq!(gpu.render(&scene).unwrap().len(), 8);
+        }
     }
 
     #[test]

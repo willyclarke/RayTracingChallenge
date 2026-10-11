@@ -139,7 +139,18 @@ pub struct GpuCamera {
 pub struct GpuSceneInfo {
     pub camera: GpuCamera,
     pub light: GpuLight,
+    pub counts: GpuSceneCounts,
+}
+
+/// MSL `SceneCounts`: the sizes of the scene buffers. `shapes` holds the
+/// `unbounded_count` shapes the BVH skips first, then the bounded ones;
+/// `node_count` is 0 when nothing is bounded.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuSceneCounts {
     pub shape_count: u32,
+    pub unbounded_count: u32,
+    pub node_count: u32,
 }
 
 // 16 + 8 * 4 + 64 + 2 * 16 = 144 bytes of fields.
@@ -149,9 +160,11 @@ const _: () = assert!(size_of::<GpuShape>() == 320);
 const _: () = assert!(size_of::<GpuLight>() == 32);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);
+const _: () = assert!(size_of::<GpuSceneCounts>() == 12);
+// 96 + 32 + 12 = 140 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuSceneInfo>() == 144);
 
-/// MSL `BvhNode` in rt.metal (added with the traversal). `count > 0` is a
+/// MSL `BvhNode`. `count > 0` is a
 /// leaf over `shapes[start..start + count]`; otherwise the left child is the
 /// next node and `right` is the right child's index. `min`/`max` carry w = 0.
 #[repr(C, align(16))]
