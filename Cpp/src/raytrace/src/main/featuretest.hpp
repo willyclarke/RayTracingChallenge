@@ -460,20 +460,22 @@ TEST(ObjectPointer, Features)
 //     : Prints out expected results for some simple tests define in the
 //     : raytracing book.
 // ---
-void RunTupleTest(int argc, char *argv[])
+int RunTupleTest(int argc, char *argv[])
 {
   ::testing::InitGoogleTest(&argc, argv);
 
   int Count{};
+  int Result{};
   for (size_t Idx = 0;  //<!
        Idx < 1;         //<!
        ++Idx)
   {
     Count++;
-    int const Result = RUN_ALL_TESTS();
+    Result = RUN_ALL_TESTS();
     std::cout << "Testing result was " << (Result ? "Failure." : "Success.")  //<!
               << ". Test count " << Count << std::endl;
     if (Result != 0) break;
   }
+  return Result;
 }
 #endif

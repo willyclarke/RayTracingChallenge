@@ -37,6 +37,7 @@ void PrintHelp()
 // ---
 auto main(int argc, char *argv[]) -> int
 {
+  int Result{};
   if (argc > 1)
   {
     std::string const Argv1{argv[1]};
@@ -46,7 +47,7 @@ auto main(int argc, char *argv[]) -> int
     }
     else if ("--test" == Argv1)
     {
-      RunTupleTest(argc, argv);
+      Result = RunTupleTest(argc, argv);
     }
     else if ("--projectile" == Argv1)
     {
@@ -55,7 +56,7 @@ auto main(int argc, char *argv[]) -> int
     }
     else if ("--test-matrix" == Argv1)
     {
-      rtcch3::run_matrix_test::RunMatrixTest(argc, argv);
+      Result = rtcch3::run_matrix_test::RunMatrixTest(argc, argv);
       //rtcch3::Ch9Planes_AssigningATransformation_Test();
     }
   }
@@ -64,5 +65,5 @@ auto main(int argc, char *argv[]) -> int
     PrintHelp();
   }
 
-  return 0;
+  return Result;
 }
