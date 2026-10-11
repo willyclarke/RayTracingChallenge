@@ -16,6 +16,7 @@ use rtc_rust::shape::Shape;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
 use rtc_rust::tuple::Tuple;
+use rtc_rust::world::{World, prepare_computations, schlick};
 
 /// Relative tolerance for f32 GPU results against f64 CPU results.
 const EPSILON: f64 = 1e-5;
@@ -410,6 +411,114 @@ fn test_chap_9_gpu_intersect_plane() -> Result<(), String> {
         if !xs.is_empty() {
             check_close(got[0], xs[0].t, &format!("ray {i} t"))?;
         }
+    }
+    Ok(())
+}
+
+/// Input to `probe_refractive_indices`: the hit is root `hit_root` (0 or 1,
+/// ascending) of shape `hit_index` along `ray`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct RefractiveProbe {
+    ray: GpuRay,
+    hit_index: u32,
+    hit_root: u32,
+    shape_count: u32,
+}
+
+#[test]
+fn test_chap_11_gpu_refractive_indices() -> Result<(), String> {
+    // The book's n1/n2 table: glass spheres A (scaled 2), B and C (offset
+    // along z) overlapping, so the ray crosses six boundaries. The real
+    // geometry puts them at the book's t = 2, 2.75, 3.25, 4.75, 5.25, 6.
+    let mut world = World::new();
+    for (transform, refractive_index) in [
+        (Matrix4::scaling(2.0, 2.0, 2.0), 1.5),
+        (Matrix4::translation(0.0, 0.0, -0.25), 2.0),
+        (Matrix4::translation(0.0, 0.0, 0.25), 2.5),
+    ] {
+        let mut s = Sphere::glass();
+        s.set_transform(transform);
+        s.data.material.refractive_index = refractive_index;
+        world.add_shape(Box::new(s));
+    }
+    let shapes: Vec<GpuShape> = world
+        .shapes
+        .iter()
+        .map(|s| GpuShape {
+            material: gpu_material(s.material()).unwrap(),
+            ..probe_shape(SHAPE_SPHERE, s.transform())
+        })
+        .collect();
+    let ray = Ray::new(Tuple::point(0.0, 0.0, -4.0), Tuple::vector(0.0, 0.0, 1.0));
+    let xs = world.intersect(&ray);
+    if xs.count() != 6 {
+        return Err(format!("cpu: {} intersections, expected 6", xs.count()));
+    }
+    let index_of = |id| world.shapes.iter().position(|s| s.id() == id).unwrap();
+    let input: Vec<RefractiveProbe> = (0..xs.count())
+        .map(|k| RefractiveProbe {
+            ray: (&ray).into(),
+            hit_index: index_of(xs[k].object_id) as u32,
+            // how many of this shape's hits come before this one
+            hit_root: (0..k)
+                .filter(|&j| xs[j].object_id == xs[k].object_id)
+                .count() as u32,
+            shape_count: shapes.len() as u32,
+        })
+        .collect();
+
+    // Each result is (n1, n2).
+    let out: Vec<[f32; 2]> =
+        Gpu::new()?.run_with_shapes("probe_refractive_indices", &input, &shapes)?;
+
+    for (k, got) in out.iter().enumerate() {
+        let comps = prepare_computations(xs[k], &ray, &world.shapes, &xs);
+        check_close(got[0], comps.n1, &format!("hit {k} n1"))?;
+        check_close(got[1], comps.n2, &format!("hit {k} n2"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_11_gpu_schlick() -> Result<(), String> {
+    use std::f64::consts::FRAC_1_SQRT_2 as H;
+    // The book's cases, all on a glass sphere: total internal reflection,
+    // a perpendicular view, and a small angle with n2 > n1. Each case is
+    // (ray, which of the t-sorted intersections is the hit).
+    let cases = [
+        (
+            Ray::new(Tuple::point(0.0, 0.0, H), Tuple::vector(0.0, 1.0, 0.0)),
+            1,
+        ),
+        (
+            Ray::new(Tuple::point(0.0, 0.0, 0.0), Tuple::vector(0.0, 1.0, 0.0)),
+            1,
+        ),
+        (
+            Ray::new(Tuple::point(0.0, 0.99, -2.0), Tuple::vector(0.0, 0.0, 1.0)),
+            0,
+        ),
+    ];
+    let mut world = World::new();
+    world.add_shape(Box::new(Sphere::glass()));
+    let comps: Vec<_> = cases
+        .iter()
+        .map(|(ray, k)| {
+            let xs = world.intersect(ray);
+            prepare_computations(xs[*k], ray, &world.shapes, &xs)
+        })
+        .collect();
+    // Each input is (cos_i, n1, n2, unused).
+    let input: Vec<Float4> = comps
+        .iter()
+        .map(|c| [c.eyev.dot(c.normalv) as f32, c.n1 as f32, c.n2 as f32, 0.0])
+        .collect();
+
+    let out: Vec<f32> = Gpu::new()?.run("probe_schlick", &input)?;
+
+    for (i, (c, got)) in comps.iter().zip(&out).enumerate() {
+        check_close(*got, schlick(c), &format!("case {i}"))?;
     }
     Ok(())
 }

@@ -103,13 +103,65 @@ fn chapter_9_scene(width: usize, height: usize) -> (World, Camera) {
     (world, camera)
 }
 
+/// Chapter 9's scene with chapter 11 materials: a dim mirror floor, a
+/// mirror ball, and a hollow glass ball (an air bubble inside glass, so
+/// refraction crosses nested media) in front of it.
+fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
+    let (chapter_9, camera) = chapter_9_scene(width, height);
+    let mut world = World::new();
+    world.light = chapter_9.light.clone();
+    let mut materials: Vec<Material> = chapter_9
+        .shapes
+        .iter()
+        .map(|s| s.material().clone())
+        .collect();
+    materials[0].reflective = 0.3; // floor
+    let mirror = &mut materials[2]; // middle ball
+    mirror.color = Tuple::color(0.1, 0.1, 0.1);
+    mirror.reflective = 0.9;
+    let glass = &mut materials[3]; // right ball
+    glass.color = Tuple::color(0.0, 0.0, 0.0);
+    glass.diffuse = 0.1;
+    glass.specular = 1.0;
+    glass.shininess = 300.0;
+    glass.reflective = 0.9;
+    glass.transparency = 0.9;
+    glass.refractive_index = 1.5;
+    // chapter 9's first two shapes are the planes
+    for (i, (shape, material)) in chapter_9.shapes.iter().zip(materials).enumerate() {
+        let mut s: Box<dyn Shape> = if i < 2 {
+            Box::new(Plane::new())
+        } else {
+            Box::new(Sphere::new())
+        };
+        s.set_transform(*shape.transform());
+        s.set_material(material);
+        world.add_shape(s);
+    }
+    let mut bubble = Sphere::new();
+    bubble.set_transform(*chapter_9.shapes[3].transform() * Matrix4::scaling(0.5, 0.5, 0.5));
+    let air = &mut bubble.data.material;
+    air.color = Tuple::color(0.0, 0.0, 0.0);
+    air.ambient = 0.0;
+    air.diffuse = 0.0;
+    air.specular = 1.0;
+    air.shininess = 300.0;
+    air.reflective = 0.9;
+    air.transparency = 0.9;
+    air.refractive_index = 1.0000034;
+    world.add_shape(Box::new(bubble));
+    (world, camera)
+}
+
 /// Render on both GPU and CPU and compare. A pixel is "off" when a channel
 /// differs by more than `1e-3`; at most 0.05% of pixels may be off.
 ///
 /// Why any at all: a pixel on a hard shadow edge is a yes/no decision on a
 /// shadow ray grazing an occluder (discriminant ~ 0), and f32 rounds some of
-/// those the other way than rtc-rust's f64. At 1600x800 the chapter 9 scene
-/// has 11 such pixels, all on shadow edges. Real bugs are far over budget
+/// those the other way than rtc-rust's f64. Refraction adds edges seen
+/// through glass, which f32 shifts by a fraction of a pixel. At 1600x800
+/// the chapter 11 scene has 290 such pixels, nearly all where the CPU image
+/// itself changes sharply between neighbours. Real bugs are far over budget
 /// (the chapter 7 wall acne was 14% of pixels).
 fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     let scene = GpuScene::from_world(world, &camera)?;
@@ -164,5 +216,11 @@ fn test_chap_9_gpu_render_matches_cpu() -> Result<(), String> {
     // Higher resolution than chapter 7: more shadow-edge pixels to exercise
     // the budget, and the plane runs out to the horizon.
     let (world, camera) = chapter_9_scene(800, 400);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_11_gpu_render_matches_cpu() -> Result<(), String> {
+    let (world, camera) = chapter_11_scene(400, 200);
     check_matches_cpu(&world, camera)
 }

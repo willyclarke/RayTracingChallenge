@@ -80,8 +80,8 @@ pub fn gpu_light(light: &Light) -> Result<GpuLight, String> {
 }
 
 pub fn gpu_material(m: &Material) -> Result<GpuMaterial, String> {
-    if m.pattern.is_some() || m.bump.is_some() || m.reflective > 0.0 || m.transparency > 0.0 {
-        return Err("patterns, bump maps, reflection and refraction are not supported yet".into());
+    if m.pattern.is_some() || m.bump.is_some() {
+        return Err("patterns and bump maps are not supported yet".into());
     }
     Ok(GpuMaterial {
         color: float4(m.color),
@@ -89,6 +89,9 @@ pub fn gpu_material(m: &Material) -> Result<GpuMaterial, String> {
         diffuse: m.diffuse as f32,
         specular: m.specular as f32,
         shininess: m.shininess as f32,
+        reflective: m.reflective as f32,
+        transparency: m.transparency as f32,
+        refractive_index: m.refractive_index as f32,
     })
 }
 
