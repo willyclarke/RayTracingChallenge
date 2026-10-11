@@ -88,6 +88,7 @@ pub const SHAPE_PLANE: u32 = 1;
 pub const SHAPE_CUBE: u32 = 2;
 pub const SHAPE_CYLINDER: u32 = 3;
 pub const SHAPE_CONE: u32 = 4;
+pub const SHAPE_TRIANGLE: u32 = 5;
 
 /// MSL `Shape`: a primitive (`kind`) seen through its world-to-object
 /// transform. One tagged array holds every kind, like rtc-rust's `shapes`.
@@ -102,6 +103,14 @@ pub struct GpuShape {
     pub maximum: f32,
     /// Cylinder and cone: nonzero for end caps.
     pub closed: u32,
+    /// Triangle (book chapter 15), in object space: vertex 1, the edges to
+    /// vertices 2 and 3, and the vertex normals. Zero for other kinds.
+    pub p1: Float4,
+    pub e1: Float4,
+    pub e2: Float4,
+    pub n1: Float4,
+    pub n2: Float4,
+    pub n3: Float4,
 }
 
 /// MSL `Light`: a point light.
@@ -135,8 +144,8 @@ pub struct GpuSceneInfo {
 
 // 16 + 8 * 4 + 64 + 2 * 16 = 144 bytes of fields.
 const _: () = assert!(size_of::<GpuMaterial>() == 144);
-// 64 + 144 + 4 * 4 = 224 bytes of fields.
-const _: () = assert!(size_of::<GpuShape>() == 224);
+// 64 + 144 + 4 * 4 + 6 * 16 = 320 bytes of fields.
+const _: () = assert!(size_of::<GpuShape>() == 320);
 const _: () = assert!(size_of::<GpuLight>() == 32);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);

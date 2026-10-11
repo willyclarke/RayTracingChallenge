@@ -6,7 +6,7 @@
 use crate::types::{
     GpuCamera, GpuLight, GpuMaterial, GpuSceneInfo, GpuShape, PATTERN_CHECKERS, PATTERN_GRADIENT,
     PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE, SHAPE_CONE, SHAPE_CUBE, SHAPE_CYLINDER,
-    SHAPE_PLANE, SHAPE_SPHERE, float4,
+    SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -23,6 +23,8 @@ use rtc_rust::shapes::cube::Cube;
 use rtc_rust::shapes::cylinder::Cylinder;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
+use rtc_rust::shapes::triangle::Triangle;
+use rtc_rust::shapes::triangleuv::TriangleUV;
 use rtc_rust::tuple::Tuple;
 use rtc_rust::world::World;
 use std::any::Any;
@@ -189,6 +191,7 @@ fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4) -> Result<GpuShape, String> {
     let any: &dyn Any = shape;
     // (kind, minimum, maximum, closed); the extent only matters for
     // cylinders and cones. f64 infinities stay infinite in f32.
+    let mut triangle = [[0.0; 4]; 6]; // p1, e1, e2, n1, n2, n3
     let (kind, minimum, maximum, closed) = if any.is::<Sphere>() {
         (SHAPE_SPHERE, 0.0, 0.0, false)
     } else if any.is::<Plane>() {
@@ -199,9 +202,16 @@ fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4) -> Result<GpuShape, String> {
         (SHAPE_CYLINDER, c.minimum, c.maximum, c.closed)
     } else if let Some(c) = any.downcast_ref::<Cone>() {
         (SHAPE_CONE, c.minimum, c.maximum, c.closed)
+    } else if let Some(t) = any.downcast_ref::<Triangle>() {
+        // flat: every vertex normal is the face normal
+        triangle = [t.p1, t.e1, t.e2, t.normal, t.normal, t.normal].map(float4);
+        (SHAPE_TRIANGLE, 0.0, 0.0, false)
+    } else if let Some(t) = any.downcast_ref::<TriangleUV>() {
+        triangle = [t.p1, t.e1, t.e2, t.n1, t.n2, t.n3].map(float4);
+        (SHAPE_TRIANGLE, 0.0, 0.0, false)
     } else {
         return Err(format!(
-            "shape {}: only spheres, planes, cubes, cylinders and cones are supported so far",
+            "shape {}: only spheres, planes, cubes, cylinders, cones and triangles are supported so far",
             shape.id()
         ));
     };
@@ -216,6 +226,12 @@ fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4) -> Result<GpuShape, String> {
         minimum: minimum as f32,
         maximum: maximum as f32,
         closed: closed as u32,
+        p1: triangle[0],
+        e1: triangle[1],
+        e2: triangle[2],
+        n1: triangle[3],
+        n2: triangle[4],
+        n3: triangle[5],
     })
 }
 

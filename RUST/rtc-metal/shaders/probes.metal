@@ -34,7 +34,7 @@ kernel void probe_normal_at(device const NormalProbe *in [[buffer(0)]],
                             device float4 *out           [[buffer(1)]],
                             uint i                       [[thread_position_in_grid]])
 {
-    out[i] = normal_at(in[i].shape, in[i].point);
+    out[i] = normal_at(in[i].shape, in[i].point, float2(0.0));
 }
 
 // The ray is in object space; shape.inverse is unused.
@@ -42,7 +42,7 @@ struct IntersectProbe {
     Shape shape;
     Ray ray;
 };
-static_assert(sizeof(IntersectProbe) == 256, "IntersectProbe must match probes.rs");
+static_assert(sizeof(IntersectProbe) == 352, "IntersectProbe must match probes.rs");
 
 struct IntersectResult {
     float4 ts;  // ascending; ts[count..] unspecified
@@ -165,10 +165,49 @@ kernel void probe_trace(device const TraceProbe *in [[buffer(0)]],
         return;
     }
     float4 point = p.ray.origin + p.ray.direction * hit.t;
-    float4 normalv = normal_at(shapes[hit.index], point);
+    Shape s = shapes[hit.index];
+    float2 uv = s.kind == SHAPE_TRIANGLE ? triangle_uv(s, ray_transform(s.inverse, p.ray))
+                                         : float2(0.0);
+    float4 normalv = normal_at(s, point, uv);
     if (dot(normalv, -p.ray.direction) < 0.0) {
         normalv = -normalv;
     }
     bool shadowed = is_shadowed(p.light_position, point + normalv * EPSILON, shapes, p.shape_count);
     out[i] = TraceResult{normalv, hit.t, hit.index, hit.root, shadowed ? 1u : 0u};
+}
+
+struct TriangleProbe {
+    Shape shape;
+    Ray ray;  // world space
+};
+static_assert(sizeof(TriangleProbe) == 352, "TriangleProbe must match probes.rs");
+
+struct TriangleResult {
+    float4 normal;  // world-space, flipped toward the eye as in color_at
+    float2 uv;
+    float t;
+    uint count;
+};
+static_assert(sizeof(TriangleResult) == 32, "TriangleResult must match probes.rs");
+
+// Chapter 15: hit count, t, (u, v) and the smooth normal of a world-space
+// ray at one triangle. A miss leaves every field zero.
+kernel void probe_triangle(device const TriangleProbe *in [[buffer(0)]],
+                           device TriangleResult *out     [[buffer(1)]],
+                           uint i                         [[thread_position_in_grid]])
+{
+    TriangleProbe p = in[i];
+    float4 ts = float4(0.0);
+    uint count = intersect(p.shape, p.ray, ts);
+    if (count == 0) {
+        out[i] = TriangleResult{float4(0.0), float2(0.0), 0.0, 0};
+        return;
+    }
+    float2 uv = triangle_uv(p.shape, ray_transform(p.shape.inverse, p.ray));
+    float4 point = p.ray.origin + p.ray.direction * ts.x;
+    float4 normalv = normal_at(p.shape, point, uv);
+    if (dot(normalv, -p.ray.direction) < 0.0) {
+        normalv = -normalv;
+    }
+    out[i] = TriangleResult{normalv, uv, ts.x, count};
 }

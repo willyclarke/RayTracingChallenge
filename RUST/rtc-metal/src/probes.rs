@@ -19,6 +19,8 @@ use rtc_rust::shapes::cube::Cube;
 use rtc_rust::shapes::cylinder::Cylinder;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
+use rtc_rust::shapes::triangle::Triangle;
+use rtc_rust::shapes::triangleuv::TriangleUV;
 use rtc_rust::tuple::Tuple;
 use rtc_rust::world::{World, prepare_computations, schlick};
 
@@ -144,6 +146,12 @@ fn probe_shape(kind: u32, m: &Matrix4) -> GpuShape {
         minimum: 0.0,
         maximum: 0.0,
         closed: 0,
+        p1: [0.0; 4],
+        e1: [0.0; 4],
+        e2: [0.0; 4],
+        n1: [0.0; 4],
+        n2: [0.0; 4],
+        n3: [0.0; 4],
     }
 }
 
@@ -1011,6 +1019,169 @@ fn test_chap_10_gpu_lighting_with_pattern() -> Result<(), String> {
         let want = light.lighting(&sphere, *p, *p, eyev, normalv, 1.0);
         for (c, (g, w)) in got.iter().zip([want.x, want.y, want.z]).enumerate() {
             check_close(*g, w, &format!("point {i} channel {c}"))?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_15_gpu_intersect_triangle() -> Result<(), String> {
+    // The book's rays at its triangle: parallel, three edge misses, a hit.
+    let rays = [
+        ray((0.0, -1.0, -2.0), (0.0, 1.0, 0.0)),
+        ray((1.0, 1.0, -2.0), (0.0, 0.0, 1.0)),
+        ray((-1.0, 1.0, -2.0), (0.0, 0.0, 1.0)),
+        ray((0.0, -1.0, -2.0), (0.0, 0.0, 1.0)),
+        ray((0.0, 0.5, -2.0), (0.0, 0.0, 1.0)),
+    ];
+    check_local_intersect(&Triangle::default(), &rays)?;
+
+    // Collinear vertices: zero determinant, so no hit (Review Focus 1).
+    let degenerate = Triangle::new(
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::point(1.0, 0.0, 0.0),
+        Tuple::point(2.0, 0.0, 0.0),
+    );
+    let rays = [
+        ray((1.0, 0.0, -2.0), (0.0, 0.0, 1.0)),
+        ray((1.0, 1.0, -2.0), (0.0, -0.5, 1.0)),
+        ray((-1.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
+    ];
+    check_local_intersect(&degenerate, &rays)?;
+    let gpu = gpu_shape(&degenerate)?;
+    let input: Vec<IntersectProbe> = rays
+        .iter()
+        .map(|r| IntersectProbe {
+            shape: gpu,
+            ray: r.into(),
+        })
+        .collect();
+    let out: Vec<IntersectResult> = Gpu::new()?.run("probe_local_intersect", &input)?;
+    for (i, (r, got)) in rays.iter().zip(&out).enumerate() {
+        let cpu = degenerate.local_intersect(r).count();
+        if got.count != 0 || cpu != 0 {
+            return Err(format!("degenerate ray {i}: gpu {} cpu {cpu}", got.count));
+        }
+    }
+    Ok(())
+}
+
+/// Input to `probe_triangle`: `ray` is in world space.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TriangleProbe {
+    shape: GpuShape,
+    ray: GpuRay,
+}
+
+/// Output of `probe_triangle`.
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct TriangleResult {
+    normal: Float4, // flipped toward the eye
+    uv: [f32; 2],
+    t: f32,
+    count: u32,
+}
+
+#[test]
+fn test_chap_15_gpu_triangle_uv_and_normal() -> Result<(), String> {
+    let (p1, p2, p3) = (
+        Tuple::point(0.0, 1.0, 0.0),
+        Tuple::point(-1.0, 0.0, 0.0),
+        Tuple::point(1.0, 0.0, 0.0),
+    );
+    let (n1, n2, n3) = (
+        Tuple::vector(0.0, 1.0, 0.0),
+        Tuple::vector(-1.0, 0.0, 0.0),
+        Tuple::vector(1.0, 0.0, 0.0),
+    );
+
+    // The book's smooth triangle: u = 0.45, v = 0.25.
+    let smooth = TriangleUV::new(p1, p2, p3, n1, n2, n3);
+    let book_ray = ray((-0.2, 0.3, -2.0), (0.0, 0.0, 1.0));
+    let input = [TriangleProbe {
+        shape: gpu_shape(&smooth)?,
+        ray: (&book_ray).into(),
+    }];
+    let out: Vec<TriangleResult> = Gpu::new()?.run("probe_triangle", &input)?;
+    let got = out[0];
+    check_close(got.uv[0], 0.45, "book u")?;
+    check_close(got.uv[1], 0.25, "book v")?;
+    // The book's normal, up to the flip toward the eye the CPU also applies.
+    let mut world = World::new();
+    world.add_shape(Box::new(smooth));
+    let xs = world.intersect(&book_ray);
+    let hit = xs.hit().ok_or("cpu miss on the book ray")?;
+    let comps = prepare_computations(hit, &book_ray, &world.shapes, &xs);
+    let expected = Tuple::vector(-0.5547, 0.83205, 0.0);
+    let flipped = Tuple::vector(0.5547, -0.83205, 0.0);
+    let book = if (comps.normalv - expected).magnitude() < 1e-3 {
+        expected
+    } else {
+        flipped
+    };
+    for (g, c) in got.normal.iter().zip([book.x, book.y, book.z, 0.0]) {
+        if (*g as f64 - c).abs() > 1e-4 {
+            return Err(format!("book normal {:?} vs {c}", got.normal));
+        }
+    }
+    check_tuple(got.normal, comps.normalv, "book normal vs cpu")?;
+
+    // A grid of rays at smooth and flat triangles under one transform.
+    let m = Matrix4::translation(1.0, -2.0, 0.5)
+        * Matrix4::rotation_y(0.7)
+        * Matrix4::scaling(1.0, 2.0, 3.0);
+    let mut smooth = TriangleUV::new(p1, p2, p3, n1, n2, n3);
+    smooth.set_transform(m);
+    let mut flat = Triangle::new(p1, p2, p3);
+    flat.set_transform(m);
+    for shape in [Box::new(smooth) as Box<dyn Shape>, Box::new(flat)] {
+        let gpu = gpu_shape(shape.as_ref())?;
+        let mut world = World::new();
+        world.add_shape(shape);
+        // Aim a fan from a fixed eye at points around the triangle's
+        // centroid, so some rays hit and some miss.
+        let eye = Tuple::point(0.5, -1.0, -6.0);
+        let target = m * Tuple::point(0.0, 0.33, 0.0);
+        let mut rays = Vec::new();
+        for i in 0..7 {
+            for j in 0..7 {
+                let aim =
+                    target + Tuple::vector((i as f64 - 3.0) * 0.3, (j as f64 - 3.0) * 0.5, 0.0);
+                rays.push(Ray::new(eye, (aim - eye).normalize()));
+            }
+        }
+        let input: Vec<TriangleProbe> = rays
+            .iter()
+            .map(|r| TriangleProbe {
+                shape: gpu,
+                ray: r.into(),
+            })
+            .collect();
+        let out: Vec<TriangleResult> = Gpu::new()?.run("probe_triangle", &input)?;
+        let mut hits = 0;
+        for (i, (r, got)) in rays.iter().zip(&out).enumerate() {
+            let xs = world.intersect(r);
+            if got.count as usize != xs.count() {
+                return Err(format!(
+                    "ray {i}: gpu {} hits vs cpu {}",
+                    got.count,
+                    xs.count()
+                ));
+            }
+            let Some(hit) = xs.hit() else { continue };
+            hits += 1;
+            check_close(got.t, hit.t, &format!("ray {i} t"))?;
+            check_close(got.uv[0], hit.u, &format!("ray {i} u"))?;
+            check_close(got.uv[1], hit.v, &format!("ray {i} v"))?;
+            let comps = prepare_computations(hit, r, &world.shapes, &xs);
+            check_tuple(got.normal, comps.normalv, &format!("ray {i} normal"))?;
+        }
+        if !(5..49).contains(&hits) {
+            return Err(format!(
+                "{hits} of 49 rays hit; grid should mix hits and misses"
+            ));
         }
     }
     Ok(())

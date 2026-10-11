@@ -17,6 +17,7 @@ constant uint SHAPE_PLANE = 1;
 constant uint SHAPE_CUBE = 2;
 constant uint SHAPE_CYLINDER = 3;
 constant uint SHAPE_CONE = 4;
+constant uint SHAPE_TRIANGLE = 5;
 
 // rtc-rust uses 1e-9 in f64. In f32 a point ~10 units from the origin is
 // only resolved to ~1e-6, so the shadow-acne offset has to be much larger.
@@ -61,8 +62,16 @@ struct Shape {
     float minimum;  // cylinder and cone: y extent (book chapter 13)
     float maximum;
     uint closed;    // cylinder and cone: nonzero for end caps
+    // Triangle (book chapter 15), object space: vertex 1, the edges to
+    // vertices 2 and 3, and the vertex normals.
+    float4 p1;
+    float4 e1;
+    float4 e2;
+    float4 n1;
+    float4 n2;
+    float4 n3;
 };
-static_assert(sizeof(Shape) == 224, "Shape must match GpuShape");
+static_assert(sizeof(Shape) == 320, "Shape must match GpuShape");
 
 struct Light {
     float4 position;
@@ -230,6 +239,49 @@ inline void intersect_wall(Shape s, Ray r, bool cone, thread float4 &ts, thread 
     }
 }
 
+// Triangle, ray in object space (book chapter 15): Moller-Trumbore. Returns
+// false on a miss; on a hit `tuv` is (t, u, v), where u and v are the
+// barycentric weights of vertices 2 and 3.
+inline bool moller_trumbore(Shape s, Ray r, thread float3 &tuv) {
+    float3 dir_cross_e2 = cross(r.direction.xyz, s.e2.xyz);
+    float det = dot(s.e1.xyz, dir_cross_e2);
+    // rtc-rust's approx_eq(det, 0), and the guard for collinear vertices
+    if (abs(det) < 1e-9) {
+        return false;
+    }
+    float f = 1.0 / det;
+    float3 p1_to_origin = r.origin.xyz - s.p1.xyz;
+    float u = f * dot(p1_to_origin, dir_cross_e2);
+    if (u < 0.0 || u > 1.0) {
+        return false;
+    }
+    float3 origin_cross_e1 = cross(p1_to_origin, s.e1.xyz);
+    float v = f * dot(r.direction.xyz, origin_cross_e1);
+    if (v < 0.0 || u + v > 1.0) {
+        return false;
+    }
+    tuv = float3(f * dot(s.e2.xyz, origin_cross_e1), u, v);
+    return true;
+}
+
+// 0 or 1 roots; the hit's t goes in ts.x.
+inline uint intersect_triangle(Shape s, Ray r, thread float2 &ts) {
+    float3 tuv;
+    if (!moller_trumbore(s, r, tuv)) {
+        return 0;
+    }
+    ts = float2(tuv.x, 0.0);
+    return 1;
+}
+
+// The (u, v) of the object-space ray's hit, for the smooth normal; zero
+// on a miss.
+inline float2 triangle_uv(Shape s, Ray r) {
+    float3 tuv = float3(0.0);
+    moller_trumbore(s, r, tuv);
+    return tuv.yz;
+}
+
 // Dispatch on the primitive kind: up to 4 hits in object space, ascending
 // in ts[0..count). Only a closed cone has more than 2 (both halves plus
 // both caps).
@@ -242,6 +294,9 @@ inline uint local_intersect(Shape s, Ray r, thread float4 &ts) {
         break;
     case SHAPE_CUBE:
         n = intersect_cube(r, pair);
+        break;
+    case SHAPE_TRIANGLE:
+        n = intersect_triangle(s, r, pair);
         break;
     case SHAPE_CYLINDER:
     case SHAPE_CONE:
@@ -264,12 +319,16 @@ inline uint intersect(Shape s, Ray r, thread float4 &ts) {
 // ---- Chapter 6: normals and Phong lighting --------------------------------
 
 
-// Object-space normal of a primitive at `object_point`.
-inline float4 local_normal_at(Shape s, float4 object_point) {
+// Object-space normal of a primitive at `object_point`. `uv` is the hit's
+// barycentric pair, used only by triangles.
+inline float4 local_normal_at(Shape s, float4 object_point, float2 uv) {
     float4 p = object_point;
     switch (s.kind) {
     case SHAPE_PLANE:
         return float4(0.0, 1.0, 0.0, 0.0); // constant (book chapter 9)
+    case SHAPE_TRIANGLE:
+        // interpolated vertex normals (flat triangles have three equal ones)
+        return s.n2 * uv.x + s.n3 * uv.y + s.n1 * (1.0 - uv.x - uv.y);
     case SHAPE_CUBE: {
         // the face of the largest coordinate (book chapter 12)
         float3 a = abs(p.xyz);
@@ -306,8 +365,8 @@ inline float4 local_normal_at(Shape s, float4 object_point) {
 
 // World-space normal: to object space, local normal, back with the inverse
 // transpose (book chapter 6).
-inline float4 normal_at(Shape s, float4 world_point) {
-    float4 object_normal = local_normal_at(s, s.inverse * world_point);
+inline float4 normal_at(Shape s, float4 world_point, float2 uv) {
+    float4 object_normal = local_normal_at(s, s.inverse * world_point, uv);
     float4 world_normal = transpose(s.inverse) * object_normal;
     world_normal.w = 0.0;
     return normalize(world_normal);
@@ -538,7 +597,10 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         Material m = s.material;
         float4 point = p.ray.origin + p.ray.direction * hit.t;
         float4 eyev = -p.ray.direction;
-        float4 normalv = normal_at(s, point);
+        float2 uv = s.kind == SHAPE_TRIANGLE
+                        ? triangle_uv(s, ray_transform(s.inverse, p.ray))
+                        : float2(0.0);
+        float4 normalv = normal_at(s, point, uv);
         if (dot(normalv, eyev) < 0.0) {
             normalv = -normalv; // hit from inside
         }
