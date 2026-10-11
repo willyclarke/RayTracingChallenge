@@ -60,7 +60,7 @@ struct LightingProbe {
     float4 normalv;
     float intensity;
 };
-static_assert(sizeof(LightingProbe) == 128, "LightingProbe must match probes.rs");
+static_assert(sizeof(LightingProbe) == 144, "LightingProbe must match probes.rs");
 
 kernel void probe_lighting(device const LightingProbe *in [[buffer(0)]],
                            device float4 *out             [[buffer(1)]],
@@ -81,4 +81,34 @@ kernel void probe_ray_for_pixel(device const CameraProbe *in [[buffer(0)]],
                                 uint i                       [[thread_position_in_grid]])
 {
     out[i] = ray_for_pixel(in[i].camera, in[i].pixel.x, in[i].pixel.y);
+}
+
+struct RefractiveProbe {
+    Ray ray;
+    uint hit_index;
+    uint hit_root;
+    uint shape_count;
+};
+static_assert(sizeof(RefractiveProbe) == 48, "RefractiveProbe must match probes.rs");
+
+// out[i] = (n1, n2) at root hit_root of shapes[hit_index] along ray
+kernel void probe_refractive_indices(device const RefractiveProbe *in [[buffer(0)]],
+                                     device float2 *out               [[buffer(1)]],
+                                     device const Shape *shapes       [[buffer(2)]],
+                                     uint i                           [[thread_position_in_grid]])
+{
+    RefractiveProbe p = in[i];
+    Shape s = shapes[p.hit_index];
+    float2 ts;
+    local_intersect(s.kind, ray_transform(s.inverse, p.ray), ts);
+    Hit hit = Hit{ts[p.hit_root], p.hit_index, p.hit_root};
+    out[i] = refractive_indices(p.ray, hit, shapes, p.shape_count);
+}
+
+// in[i] = (cos_i, n1, n2, unused)
+kernel void probe_schlick(device const float4 *in [[buffer(0)]],
+                          device float *out       [[buffer(1)]],
+                          uint i                  [[thread_position_in_grid]])
+{
+    out[i] = schlick(in[i].x, in[i].y, in[i].z);
 }

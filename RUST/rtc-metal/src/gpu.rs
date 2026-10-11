@@ -107,6 +107,26 @@ impl Gpu {
     /// `I` and `O` must be plain-old-data `#[repr(C)]` types matching the MSL
     /// structs byte for byte (see `types.rs`).
     pub fn run<I: Copy, O: Copy>(&self, kernel: &str, input: &[I]) -> Result<Vec<O>, String> {
+        self.run_1d(kernel, input, None)
+    }
+
+    /// `run` for kernels that also read a shape array, as
+    /// `device const Shape *shapes [[buffer(2)]]`. `shapes` must not be empty.
+    pub fn run_with_shapes<I: Copy, O: Copy>(
+        &self,
+        kernel: &str,
+        input: &[I],
+        shapes: &[GpuShape],
+    ) -> Result<Vec<O>, String> {
+        self.run_1d(kernel, input, Some(&self.input_buffer(shapes)?))
+    }
+
+    fn run_1d<I: Copy, O: Copy>(
+        &self,
+        kernel: &str,
+        input: &[I],
+        shapes: Option<&Buffer>,
+    ) -> Result<Vec<O>, String> {
         if input.is_empty() {
             return Ok(Vec::new());
         }
@@ -115,10 +135,13 @@ impl Gpu {
         let out_buf = self.output_buffer::<O>(input.len())?;
         self.submit(|encoder| {
             encoder.setComputePipelineState(&pipeline);
-            // SAFETY: buffer indices match the kernel signature documented above.
+            // SAFETY: buffer indices match the kernel signatures documented above.
             unsafe {
                 encoder.setBuffer_offset_atIndex(Some(&in_buf), 0, 0);
                 encoder.setBuffer_offset_atIndex(Some(&out_buf), 0, 1);
+                if let Some(shapes) = shapes {
+                    encoder.setBuffer_offset_atIndex(Some(shapes), 0, 2);
+                }
             }
             // The grid is exactly `input.len()` threads, so kernels need no
             // bounds check.

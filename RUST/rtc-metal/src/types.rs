@@ -52,7 +52,7 @@ impl From<&Matrix4> for GpuMat4 {
 const _: () = assert!(size_of::<GpuRay>() == 32);
 const _: () = assert!(size_of::<GpuMat4>() == 64);
 
-/// MSL `Material`: the Phong subset of rtc-rust's `Material`.
+/// MSL `Material`: rtc-rust's `Material` without patterns and bump maps.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpuMaterial {
@@ -61,6 +61,9 @@ pub struct GpuMaterial {
     pub diffuse: f32,
     pub specular: f32,
     pub shininess: f32,
+    pub reflective: f32,
+    pub transparency: f32,
+    pub refractive_index: f32,
 }
 
 /// `GpuShape::kind` values; must match the `SHAPE_*` constants in rt.metal.
@@ -106,9 +109,10 @@ pub struct GpuSceneInfo {
     pub shape_count: u32,
 }
 
-const _: () = assert!(size_of::<GpuMaterial>() == 32);
-// 64 + 32 + 4 = 100 bytes of fields, padded to the 16-byte alignment.
-const _: () = assert!(size_of::<GpuShape>() == 112);
+// 16 + 7 * 4 = 44 bytes of fields, padded to the 16-byte alignment.
+const _: () = assert!(size_of::<GpuMaterial>() == 48);
+// 64 + 48 + 4 = 116 bytes of fields, padded to the 16-byte alignment.
+const _: () = assert!(size_of::<GpuShape>() == 128);
 const _: () = assert!(size_of::<GpuLight>() == 32);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);

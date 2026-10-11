@@ -80,8 +80,11 @@ struct Material {
     float diffuse;
     float specular;
     float shininess;
+    float reflective;       // chapter 11
+    float transparency;
+    float refractive_index;
 };
-static_assert(sizeof(Material) == 32, "Material must match GpuMaterial");
+static_assert(sizeof(Material) == 48, "Material must match GpuMaterial");
 
 // A primitive of `kind` seen through its world-to-object transform. One
 // tagged array holds every kind; functions switch on `kind`.
@@ -90,7 +93,7 @@ struct Shape {
     Material material;
     uint kind;
 };
-static_assert(sizeof(Shape) == 112, "Shape must match GpuShape");
+static_assert(sizeof(Shape) == 128, "Shape must match GpuShape");
 
 struct Light {
     float4 position;
@@ -173,30 +176,41 @@ inline Ray ray_for_pixel(Camera c, uint px, uint py) {
     return Ray{origin, normalize(pixel - origin)};
 }
 
+// The nearest non-negative hit: root `root` (0 or 1, of the ascending pair
+// local_intersect returns) of shapes[index], at distance t.
+struct Hit {
+    float t;
+    uint index;
+    uint root;
+};
+
 // Nearest non-negative hit over all shapes. Returns false on a miss.
-inline bool hit_shapes(Ray r, device const Shape *shapes, uint count,
-                       thread float &t_hit, thread uint &hit_index) {
-    t_hit = INFINITY;
+inline bool hit_shapes(Ray r, device const Shape *shapes, uint count, thread Hit &hit) {
+    hit.t = INFINITY;
     for (uint i = 0; i < count; i++) {
         float2 ts;
         if (local_intersect(shapes[i].kind, ray_transform(shapes[i].inverse, r), ts) == 0) {
             continue;
         }
-        // ts is ascending, so the first non-negative one is this sphere's hit
-        float t = ts.x >= 0.0 ? ts.x : ts.y;
-        if (t >= 0.0 && t < t_hit) {
-            t_hit = t;
-            hit_index = i;
+        // ts is ascending, so the first non-negative one is this shape's hit
+        uint root = ts.x >= 0.0 ? 0 : 1;
+        float t = ts[root];
+        if (t >= 0.0 && t < hit.t) {
+            hit = Hit{t, i, root};
         }
     }
-    return t_hit < INFINITY;
+    return hit.t < INFINITY;
 }
 
 // ---- Chapter 8: shadows ---------------------------------------------------
 
 // rtc-rust uses 1e-9 in f64. In f32 a point ~10 units from the origin is
 // only resolved to ~1e-6, so the shadow-acne offset has to be much larger.
-constant float EPSILON = 1e-4;
+// But not too large: refraction magnifies the offset of each under_point
+// into visible edge shifts. At 1e-4, the chapter 11 test scene's glass ball
+// put 0.23% of pixels off the CPU image; at 1e-5, 0.02%. Scenes much larger
+// than ~10 units may need a larger value or an offset that scales with |point|.
+constant float EPSILON = 1e-5;
 
 // Any-hit test: is anything between `point` and the light?
 inline bool is_shadowed(float4 light_position, float4 point,
@@ -214,21 +228,136 @@ inline bool is_shadowed(float4 light_position, float4 point,
     return false;
 }
 
-inline float3 color_at(Ray r, constant SceneInfo &scene, device const Shape *shapes) {
-    float t;
-    uint index;
-    if (!hit_shapes(r, shapes, scene.shape_count, t, index)) {
-        return float3(0.0);
+// ---- Chapter 11: reflection and refraction -------------------------------
+
+// Schlick's approximation to the Fresnel reflectance: the fraction of light
+// reflected at a boundary from index n1 into n2, at cos(angle) = eyev . normalv.
+inline float schlick(float cos_i, float n1, float n2) {
+    float cos = cos_i;
+    // total internal reflection can only occur if n1 > n2
+    if (n1 > n2) {
+        float n = n1 / n2;
+        float sin2_t = n * n * (1.0 - cos * cos);
+        if (sin2_t > 1.0) {
+            return 1.0;
+        }
+        cos = sqrt(1.0 - sin2_t);
     }
-    Shape s = shapes[index];
-    float4 point = r.origin + r.direction * t;
-    float4 eyev = -r.direction;
-    float4 normalv = normal_at(s, point);
-    if (dot(normalv, eyev) < 0.0) {
-        normalv = -normalv; // hit from inside
+    float r0 = (n1 - n2) / (n1 + n2);
+    r0 *= r0;
+    return r0 + (1.0 - r0) * pow(1.0 - cos, 5.0);
+}
+
+// (n1, n2): refractive indices on the near and far side of `hit`.
+//
+// rtc-rust walks the t-sorted intersection list keeping a list of the shapes
+// the ray is inside, in entry order. With no sorted list here, the same state
+// is rebuilt per shape: the ray is inside a shape just before the hit when an
+// odd number of its roots (negative ones too) come first, and among those
+// the innermost - the end of rtc-rust's list - is the one entered last.
+inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes, uint count) {
+    float inner_t = -INFINITY;  // entry t of the innermost other medium
+    float inner_n = 1.0;        // its refractive index; vacuum when none
+    float hit_entry_t = -INFINITY;
+    for (uint i = 0; i < count; i++) {
+        float2 ts;
+        uint n = local_intersect(shapes[i].kind, ray_transform(shapes[i].inverse, r), ts);
+        if (i == hit.index) {
+            // the hit's own roots before it: compare by index, not t, so the
+            // hit root itself never counts
+            if (hit.root == 1) {
+                hit_entry_t = ts.x;
+            }
+            continue;
+        }
+        uint before = 0;
+        for (uint k = 0; k < n; k++) {
+            if (ts[k] < hit.t) {
+                before++;
+            }
+        }
+        // ts is ascending, so the last root before the hit is ts[before - 1]
+        if (before % 2 == 1 && ts[before - 1] > inner_t) {
+            inner_t = ts[before - 1];
+            inner_n = shapes[i].material.refractive_index;
+        }
     }
-    float4 over_point = point + normalv * EPSILON;
-    float intensity =
-        is_shadowed(scene.light.position, over_point, shapes, scene.shape_count) ? 0.0 : 1.0;
-    return lighting(s.material, scene.light, over_point, eyev, normalv, intensity);
+    float hit_n = shapes[hit.index].material.refractive_index;
+    if (hit.root == 1) {
+        // leaving the hit shape: it is n1 only if it is the innermost
+        return float2(hit_entry_t > inner_t ? hit_n : inner_n, inner_n);
+    }
+    return float2(inner_n, hit_n); // entering it
+}
+
+// rtc-rust's render_parallel gives every camera ray remaining = 10.
+constant int MAX_DEPTH = 10;
+
+// A ray still to be traced, and how much its color counts in the pixel.
+struct PendingRay {
+    Ray ray;
+    float3 weight;
+    int remaining;
+};
+
+// rtc-rust's recursive color_at / shade_hit / reflected_color /
+// refracted_color, as a loop: MSL has no recursion. The pixel is a sum over
+// the tree of rays, each hit adding weight * its surface color, so pending
+// rays go on a stack with their weights. A ray pushes at most two children
+// and only while remaining > 0, so the stack never holds more than
+// MAX_DEPTH + 1 rays (one pending sibling per level, plus the current one).
+inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes) {
+    PendingRay stack[MAX_DEPTH + 1];
+    int top = 0;
+    stack[top++] = PendingRay{camera_ray, float3(1.0), MAX_DEPTH};
+    float3 color = float3(0.0);
+    while (top > 0) {
+        PendingRay p = stack[--top];
+        Hit hit;
+        if (!hit_shapes(p.ray, shapes, scene.shape_count, hit)) {
+            continue;
+        }
+        Shape s = shapes[hit.index];
+        Material m = s.material;
+        float4 point = p.ray.origin + p.ray.direction * hit.t;
+        float4 eyev = -p.ray.direction;
+        float4 normalv = normal_at(s, point);
+        if (dot(normalv, eyev) < 0.0) {
+            normalv = -normalv; // hit from inside
+        }
+        float4 over_point = point + normalv * EPSILON;
+        float intensity =
+            is_shadowed(scene.light.position, over_point, shapes, scene.shape_count) ? 0.0 : 1.0;
+        color += p.weight * lighting(m, scene.light, over_point, eyev, normalv, intensity);
+
+        if (p.remaining <= 0) {
+            continue;
+        }
+        float reflected = m.reflective;
+        if (m.transparency > 0.0) {
+            float2 n = refractive_indices(p.ray, hit, shapes, scene.shape_count);
+            float cos_i = dot(eyev, normalv);
+            float refracted = m.transparency;
+            if (m.reflective > 0.0) {
+                float reflectance = schlick(cos_i, n.x, n.y);
+                reflected *= reflectance;
+                refracted *= 1.0 - reflectance;
+            }
+            // Snell's law; nothing refracts on total internal reflection
+            float n_ratio = n.x / n.y;
+            float sin2_t = n_ratio * n_ratio * (1.0 - cos_i * cos_i);
+            if (sin2_t <= 1.0) {
+                float cos_t = sqrt(1.0 - sin2_t);
+                float4 direction = normalv * (n_ratio * cos_i - cos_t) - eyev * n_ratio;
+                float4 under_point = point - normalv * EPSILON;
+                stack[top++] = PendingRay{Ray{under_point, direction}, p.weight * refracted,
+                                          p.remaining - 1};
+            }
+        }
+        if (m.reflective > 0.0) {
+            Ray reflect_ray = Ray{over_point, reflect(p.ray.direction, normalv)};
+            stack[top++] = PendingRay{reflect_ray, p.weight * reflected, p.remaining - 1};
+        }
+    }
+    return color;
 }
