@@ -6,7 +6,7 @@
 #include <memory>
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, GetDistance)
+TEST(RayMarch, GetDistance)
 {
   ww::shared_ptr_shape pDefaultSphere = ww::PtrDefaultSphere();
   ww::ray const R = ww::Ray(ww::Point(0.f, 0.f, -1.6f), ww::Vector(0.f, 0.f, 1.f));
@@ -15,7 +15,7 @@ TEST(DISABLED_RayMarch, GetDistance)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, GetDistanceBox)
+TEST(RayMarch, GetDistanceBox)
 {
   ww::shared_ptr_shape pDefaultBox = ww::PtrDefaultCube();
 
@@ -140,7 +140,7 @@ TEST(DISABLED_RayMarch, GetDistanceBox)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, GetNormal)
+TEST(RayMarch, GetNormal)
 {
   auto TestNormal = [](ww::ray const &R)
   {
@@ -175,7 +175,7 @@ TEST(DISABLED_RayMarch, CalcNormal)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, RayMarch)
+TEST(RayMarch, RayMarch)
 {
   auto TestDistance = [](ww::ray const &R, ww::shared_ptr_shape pDefaultSphere) -> float
   {
@@ -214,7 +214,7 @@ TEST(DISABLED_RayMarch, RayMarch)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, RayMarchMovedSphere)
+TEST(RayMarch, RayMarchMovedSphere)
 {
   auto TestDistance = [](ww::ray const &R, ww::shared_ptr_shape pDefaultSphere) -> float
   {
@@ -369,7 +369,7 @@ TEST(DISABLED_RayMarch, Test1)
 
 //------------------------------------------------------------------------------
 // Scenario:
-TEST(DISABLED_RayMarch, Test2)
+TEST(RayMarch, Test2)
 {
   ww::tup const ColorBrown = ww::Color(float(0x87) / float(0xff), float(0x63) / float(0xff), float(0x3b) / float(0xff));
   ww::tup const ColorBrownLight =
@@ -407,7 +407,7 @@ TEST(DISABLED_RayMarch, Test2)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, TestSignedDistanceFunctionsBox1)
+TEST(RayMarch, TestSignedDistanceFunctionsBox1)
 {
   ww::tup BoxPos = ww::Vector(0.f, 0.f, 0.f);
   ww::tup BoxSize = ww::Vector(1.f, 1.f, 1.f);
@@ -487,7 +487,7 @@ TEST(DISABLED_RayMarch, TestSignedDistanceFunctionsBox1)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, TestSignedDistanceFunctionsBox2)
+TEST(RayMarch, TestSignedDistanceFunctionsBox2)
 {
   // char const *pTestDescription = "TestSignedDistanceFunctionsBox2";
   ww::tup BoxPos = ww::Vector(15.f, 10.f, 0.f);
@@ -564,7 +564,7 @@ TEST(DISABLED_RayMarch, TestSignedDistanceFunctionsBox2)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, TestSignedDistanceFunctionsBox3)
+TEST(RayMarch, TestSignedDistanceFunctionsBox3)
 {
   // char const *pTestDescription = "TestSignedDistanceFunctionsBox3";
   ww::tup BoxPos = ww::Vector(15.f, 10.f, 0.f);
@@ -671,10 +671,10 @@ TEST(DISABLED_RayMarch, TestRaymarchPrimitives)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, TestMap) {}
+TEST(RayMarch, TestMap) {}
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, TestSphereSphere1)
+TEST(RayMarch, TestSphereSphere1)
 {
   auto CheckDist = [](ww::tup const &PosA, float RadA, ww::tup const &PosB, float RadB,  //!<
                       float ExpectD, float ExpectPd, bool ExpectC)                       //!<
@@ -708,7 +708,7 @@ TEST(DISABLED_RayMarch, TestSphereSphere1)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, TestTriangle1)
+TEST(RayMarch, TestTriangle1)
 {
   ww::tup V1 = ww::Point(-1.f, 0.f, 0.f);
   ww::tup V2 = ww::Point(0.f, 1.f, 0.f);
@@ -734,7 +734,7 @@ TEST(DISABLED_RayMarch, TestTriangle1)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, TestTriangle2)
+TEST(RayMarch, TestTriangle2)
 {
   struct triangle
   {
@@ -791,7 +791,7 @@ TEST(DISABLED_RayMarch, TestTriangle2)
 
 //------------------------------------------------------------------------------
 // Test to confirm a triangle that has moved - see the translation.
-TEST(DISABLED_RayMarch, TestTriangle3)
+TEST(RayMarch, TestTriangle3)
 {
   struct triangle
   {
@@ -860,7 +860,7 @@ TEST(DISABLED_RayMarch, TestTriangle3)
 
 //------------------------------------------------------------------------------
 // Test to confirm a triangle that has moved - see the translation.
-TEST(DISABLED_RayMarch, TestTriangle4)
+TEST(RayMarch, TestTriangle4)
 {
   struct triangle
   {
@@ -929,7 +929,7 @@ TEST(DISABLED_RayMarch, TestTriangle4)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, CreateCapsule)
+TEST(RayMarch, CreateCapsule)
 {
   ww::tup A = ww::Point(0.f, 0.f, 0.f);
   ww::tup B = ww::Point(1.f, 0.f, 0.f);
@@ -1057,7 +1057,7 @@ TEST(DISABLED_RayMarch, CreateCapsule)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, udSquare)
+TEST(RayMarch, udSquare)
 {
   ww::quad Q{};
   EXPECT_FLOAT_EQ(Q.A.X, -1.f);
@@ -1099,7 +1099,7 @@ TEST(DISABLED_RayMarch, udSquare)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, udSquareTranslate)
+TEST(RayMarch, udSquareTranslate)
 {
   ww::quad QOrigin{};
   ww::matrix M =
@@ -1137,7 +1137,7 @@ TEST(DISABLED_RayMarch, udSquareTranslate)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, CapsuleVsTriangle)
+TEST(RayMarch, CapsuleVsTriangle)
 {
   // ---
   // NOTE: Create a triangle with one vertex at origin.
@@ -1207,7 +1207,7 @@ TEST(DISABLED_RayMarch, CapsuleVsTriangle)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, DistanceBetweenPoints)
+TEST(RayMarch, DistanceBetweenPoints)
 {
   /**
    *            c
@@ -1239,7 +1239,7 @@ TEST(DISABLED_RayMarch, DistanceBetweenPoints)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, RayIntersectTriangle)
+TEST(RayMarch, RayIntersectTriangle)
 {
   auto Expect = [](bool V) -> bool { return V; };
 
@@ -1269,7 +1269,7 @@ TEST(DISABLED_RayMarch, RayIntersectTriangle)
 }
 
 //------------------------------------------------------------------------------
-TEST(DISABLED_RayMarch, LineSegmentIntersectTriangle)
+TEST(RayMarch, LineSegmentIntersectTriangle)
 {
   // ---
   // NOTE: Convenience lambda for setting flags.
