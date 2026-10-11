@@ -1,5 +1,7 @@
 //! Metal host side: device, command queue and the compiled shader library.
 
+use crate::scene::GpuScene;
+use crate::types::GpuSphere;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
@@ -15,6 +17,7 @@ use std::ptr::NonNull;
 const SHADER_SRC: &str = concat!(
     include_str!("../shaders/rt.metal"),
     include_str!("../shaders/gradient.metal"),
+    include_str!("../shaders/render.metal"),
     include_str!("../shaders/probes.metal"),
 );
 
@@ -60,22 +63,38 @@ impl Gpu {
                 encoder.setBuffer_offset_atIndex(Some(&pixels), 0, 0);
                 encoder.setBytes_length_atIndex(NonNull::from(&size).cast(), size_of_val(&size), 1);
             }
-            // Threadgroup = one SIMD-group wide, as many rows as the pipeline
-            // allows. dispatchThreads trims the edge groups to the grid size.
-            let group_w = pipeline.threadExecutionWidth();
-            let group_h = pipeline.maxTotalThreadsPerThreadgroup() / group_w;
-            encoder.dispatchThreads_threadsPerThreadgroup(
-                MTLSize {
-                    width,
-                    height,
-                    depth: 1,
-                },
-                MTLSize {
-                    width: group_w,
-                    height: group_h,
-                    depth: 1,
-                },
-            );
+            dispatch_2d(encoder, &pipeline, width, height);
+        })?;
+        Ok(read(&pixels, width * height))
+    }
+
+    /// Render `scene` with the `render` kernel: row-major RGBA pixels, one
+    /// GPU thread each.
+    pub fn render(&self, scene: &GpuScene) -> Result<Vec<[f32; 4]>, String> {
+        let (width, height) = (scene.width(), scene.height());
+        let pipeline = self.pipeline("render")?;
+        let pixels = self.output_buffer::<[f32; 4]>(width * height)?;
+        // Metal cannot make an empty buffer; an empty scene gets one unused
+        // sphere (sphere_count stays 0).
+        let spheres = if scene.spheres.is_empty() {
+            self.output_buffer::<GpuSphere>(1)?
+        } else {
+            self.input_buffer(&scene.spheres)?
+        };
+        self.submit(|encoder| {
+            encoder.setComputePipelineState(&pipeline);
+            // SAFETY: indices and types match the kernel's [[buffer(n)]]
+            // arguments; setBytes copies `info` before returning.
+            unsafe {
+                encoder.setBuffer_offset_atIndex(Some(&pixels), 0, 0);
+                encoder.setBytes_length_atIndex(
+                    NonNull::from(&scene.info).cast(),
+                    size_of_val(&scene.info),
+                    1,
+                );
+                encoder.setBuffer_offset_atIndex(Some(&spheres), 0, 2);
+            }
+            dispatch_2d(encoder, &pipeline, width, height);
         })?;
         Ok(read(&pixels, width * height))
     }
@@ -92,16 +111,7 @@ impl Gpu {
             return Ok(Vec::new());
         }
         let pipeline = self.pipeline(kernel)?;
-        // SAFETY: `input` is a live slice of exactly this many bytes; Metal
-        // copies it into the new buffer before returning.
-        let in_buf = unsafe {
-            self.device.newBufferWithBytes_length_options(
-                NonNull::from(input).cast(),
-                size_of_val(input),
-                MTLResourceOptions::StorageModeShared,
-            )
-        }
-        .ok_or("could not allocate input buffer")?;
+        let in_buf = self.input_buffer(input)?;
         let out_buf = self.output_buffer::<O>(input.len())?;
         self.submit(|encoder| {
             encoder.setComputePipelineState(&pipeline);
@@ -139,6 +149,20 @@ impl Gpu {
             .map_err(|e| format!("pipeline `{kernel}` failed: {}", e.localizedDescription()))
     }
 
+    /// A buffer holding a copy of `data`, which must not be empty.
+    fn input_buffer<T: Copy>(&self, data: &[T]) -> Result<Buffer, String> {
+        // SAFETY: `data` is a live slice of exactly this many bytes; Metal
+        // copies it into the new buffer before returning.
+        unsafe {
+            self.device.newBufferWithBytes_length_options(
+                NonNull::from(data).cast(),
+                size_of_val(data),
+                MTLResourceOptions::StorageModeShared,
+            )
+        }
+        .ok_or("could not allocate input buffer".to_string())
+    }
+
     /// Room for `count` values of `T`. Shared storage: CPU and GPU see the same
     /// memory (unified memory on Apple silicon), so reading back needs no copy.
     fn output_buffer<T>(&self, count: usize) -> Result<Buffer, String> {
@@ -168,6 +192,25 @@ impl Gpu {
         }
         Ok(())
     }
+}
+
+/// One thread per pixel. Threadgroup = one SIMD-group wide, as many rows as
+/// the pipeline allows; dispatchThreads trims the edge groups to the image.
+fn dispatch_2d(encoder: &Encoder, pipeline: &Pipeline, width: usize, height: usize) {
+    let group_w = pipeline.threadExecutionWidth();
+    let group_h = pipeline.maxTotalThreadsPerThreadgroup() / group_w;
+    encoder.dispatchThreads_threadsPerThreadgroup(
+        MTLSize {
+            width,
+            height,
+            depth: 1,
+        },
+        MTLSize {
+            width: group_w,
+            height: group_h,
+            depth: 1,
+        },
+    );
 }
 
 /// Copy `count` values of `T` out of a shared buffer the GPU has finished with.

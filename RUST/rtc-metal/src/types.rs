@@ -51,3 +51,58 @@ impl From<&Matrix4> for GpuMat4 {
 
 const _: () = assert!(size_of::<GpuRay>() == 32);
 const _: () = assert!(size_of::<GpuMat4>() == 64);
+
+/// MSL `Material`: the Phong subset of rtc-rust's `Material`.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuMaterial {
+    pub color: Float4,
+    pub ambient: f32,
+    pub diffuse: f32,
+    pub specular: f32,
+    pub shininess: f32,
+}
+
+/// MSL `Sphere`: a unit sphere seen through its world-to-object transform.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuSphere {
+    pub inverse: GpuMat4,
+    pub material: GpuMaterial,
+}
+
+/// MSL `Light`: a point light.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuLight {
+    pub position: Float4,
+    pub intensity: Float4,
+}
+
+/// MSL `Camera`: what `ray_for_pixel` needs.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuCamera {
+    pub inverse: GpuMat4,
+    pub half_width: f32,
+    pub half_height: f32,
+    pub pixel_size: f32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// MSL `SceneInfo`: the per-render constants, passed with `setBytes`.
+#[repr(C, align(16))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GpuSceneInfo {
+    pub camera: GpuCamera,
+    pub light: GpuLight,
+    pub sphere_count: u32,
+}
+
+const _: () = assert!(size_of::<GpuMaterial>() == 32);
+const _: () = assert!(size_of::<GpuSphere>() == 96);
+const _: () = assert!(size_of::<GpuLight>() == 32);
+// 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
+const _: () = assert!(size_of::<GpuCamera>() == 96);
+const _: () = assert!(size_of::<GpuSceneInfo>() == 144);
