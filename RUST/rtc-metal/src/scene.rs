@@ -4,9 +4,9 @@
 //! error rather than being silently dropped from the image.
 
 use crate::types::{
-    GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuSceneInfo, GpuShape, PATTERN_CHECKERS,
-    PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE, SHAPE_CONE, SHAPE_CUBE,
-    SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, float4,
+    GpuCamera, GpuLight, GpuMaterial, GpuSceneInfo, GpuShape, PATTERN_CHECKERS, PATTERN_GRADIENT,
+    PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE, SHAPE_CONE, SHAPE_CUBE, SHAPE_CYLINDER,
+    SHAPE_PLANE, SHAPE_SPHERE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -38,11 +38,10 @@ impl GpuScene {
             return Err("path tracing is not supported yet".into());
         }
         let light = world.light.as_ref().ok_or("scene has no light")?;
-        let shapes = world
-            .shapes
-            .iter()
-            .map(|s| gpu_shape(s.as_ref()))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut shapes = Vec::new();
+        for root in world.shapes.iter().filter(|s| s.data().parent.is_none()) {
+            flatten(world, root.as_ref(), &Matrix4::identity(), &mut shapes)?;
+        }
         Ok(Self {
             info: GpuSceneInfo {
                 camera: gpu_camera(camera)?,
@@ -139,7 +138,51 @@ fn gpu_pattern(pattern: &dyn Pattern) -> Result<(u32, Tuple, Tuple), String> {
     }
 }
 
+/// Book chapter 14 without the tree: append the leaves under `shape` to
+/// `out`, each carrying its whole world-to-object transform, so the shaders
+/// never see a group. `parent_inverse` maps world space to the space `shape`
+/// sits in. Composing in f64 here, rather than per level in f32 on the GPU,
+/// also keeps deep trees from accumulating rounding. Group bounds (and the
+/// BVH that `World::divide` builds) are dropped: every leaf is tested.
+fn flatten(
+    world: &World,
+    shape: &dyn Shape,
+    parent_inverse: &Matrix4,
+    out: &mut Vec<GpuShape>,
+) -> Result<(), String> {
+    // world_to_object applies the parent chain first, then the shape's own.
+    let inverse = *shape.transform_inv() * *parent_inverse;
+    match shape.children() {
+        None => out.push(gpu_leaf(shape, &inverse)?),
+        Some(_) if shape.csg_operation().is_some() => {
+            return Err(format!("shape {}: CSG is not supported yet", shape.id()));
+        }
+        Some(children) => {
+            if shape.data().motion.is_some() {
+                return Err(format!("shape {}: motion is not supported yet", shape.id()));
+            }
+            for &id in children {
+                // World ids are 1-based arena indices.
+                flatten(world, world.shapes[id - 1].as_ref(), &inverse, out)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A shape outside any group, as the probes upload it.
 pub fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
+    if shape.data().parent.is_some() {
+        return Err(format!(
+            "shape {}: a group child needs its parents' transforms; use GpuScene",
+            shape.id()
+        ));
+    }
+    gpu_leaf(shape, shape.transform_inv())
+}
+
+/// A primitive seen through `inverse`, its world-to-object transform.
+fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4) -> Result<GpuShape, String> {
     // Upcast to `&dyn Any` to learn the concrete type. This must be the
     // `&dyn Shape`, not the `Box`: a `&Box<dyn Shape>` would coerce to an
     // `Any` whose type is the Box itself, and `is::<Sphere>` would be false.
@@ -163,15 +206,11 @@ pub fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
         ));
     };
     let data = shape.data();
-    if data.parent.is_some() || data.motion.is_some() {
-        return Err(format!(
-            "shape {}: groups and motion are not supported yet",
-            shape.id()
-        ));
+    if data.motion.is_some() {
+        return Err(format!("shape {}: motion is not supported yet", shape.id()));
     }
-    let inverse: GpuMat4 = (&data.transform_inv).into();
     Ok(GpuShape {
-        inverse,
+        inverse: inverse.into(),
         material: gpu_material(&data.material)?,
         kind,
         minimum: minimum as f32,
@@ -183,7 +222,16 @@ pub fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{Float4, GpuMat4};
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
     use rtc_rust::shapes::group::Group;
+    use rtc_rust::shapes::torus::Torus;
+    use std::f64::consts::PI;
+
+    /// `m * v` with the f32 matrix the shader gets.
+    fn apply(m: &GpuMat4, v: Float4) -> Float4 {
+        [0, 1, 2, 3].map(|r| (0..4).map(|c| m.cols[c][r] * v[c]).sum())
+    }
 
     #[test]
     fn unsupported_shapes_are_rejected() {
@@ -197,10 +245,70 @@ mod tests {
         world.add_shape(Box::new(Cube::new()));
         world.add_shape(Box::new(Cylinder::new()));
         world.add_shape(Box::new(Cone::new()));
+        let g = world.add_shape(Box::new(Group::new()));
+        world.add_child(g, Box::new(Sphere::new()));
         assert!(GpuScene::from_world(&world, &Camera::default()).is_ok());
-        world.add_shape(Box::new(Group::new()));
+        let child = world.add_child(g, Box::new(Torus::new()));
         let err = GpuScene::from_world(&world, &Camera::default()).err();
         assert!(err.is_some_and(|e| e.contains("only spheres, planes")));
+        // Standalone upload would drop the group's transform.
+        let err = gpu_shape(world.shapes[child - 1].as_ref()).err();
+        assert!(err.is_some_and(|e| e.contains("use GpuScene")));
+
+        let mut world = World::new();
+        world.light = Some(Light::point_light(
+            Tuple::point(0.0, 0.0, 0.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        ));
+        let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+        world.add_child(c, Box::new(Sphere::new()));
+        world.add_child(c, Box::new(Cube::new()));
+        let err = GpuScene::from_world(&world, &Camera::default()).err();
+        assert!(err.is_some_and(|e| e.contains("CSG")));
+    }
+
+    #[test]
+    fn test_chap_14_flattened_transforms_match_book() {
+        // The book's nested groups: g1 rotates, g2 scales, s translates.
+        let mut world = World::new();
+        world.light = Some(Light::point_light(
+            Tuple::point(0.0, 0.0, 0.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        ));
+        let mut g1 = Group::new();
+        g1.set_transform(Matrix4::rotation_y(PI / 2.0));
+        let g1 = world.add_shape(Box::new(g1));
+        let mut g2 = Group::new();
+        g2.set_transform(Matrix4::scaling(1.0, 2.0, 3.0));
+        let g2 = world.add_child(g1, Box::new(g2));
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(5.0, 0.0, 0.0));
+        world.add_child(g2, Box::new(s));
+        let scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+        assert_eq!(scene.shapes.len(), 1, "only the leaf is uploaded");
+        let inverse = &scene.shapes[0].inverse;
+
+        // World to object space, as the shader transforms the ray: the
+        // book's point, with g2 scaling (1, 2, 3) from its normal test
+        // instead of 2: rotate (-2, 0, -10) to (10, 0, -2), scale to
+        // (10, 0, -2/3), translate to (5, 0, -2/3).
+        let p = apply(inverse, [-2.0, 0.0, -10.0, 1.0]);
+        let want = [5.0, 0.0, -2.0 / 3.0, 1.0];
+        assert!(
+            p.iter().zip(want).all(|(a, b)| (a - b).abs() < 1e-5),
+            "{p:?}"
+        );
+
+        // Object to world normal, as the shader does: transpose(inverse) * n.
+        // The non-uniform scaling makes a wrong composition order show.
+        let r = 3f32.sqrt() / 3.0;
+        let n = [0, 1, 2].map(|c| (0..3).map(|k| inverse.cols[c][k] * r).sum::<f32>());
+        let len = n.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let want = [0.2857, 0.4286, -0.8571];
+        assert!(
+            n.iter().zip(want).all(|(a, b)| (a / len - b).abs() < 1e-4),
+            "{n:?}"
+        );
     }
 
     #[test]
