@@ -37,19 +37,26 @@ kernel void probe_normal_at(device const NormalProbe *in [[buffer(0)]],
     out[i] = normal_at(in[i].shape, in[i].point);
 }
 
+// The ray is in object space; shape.inverse is unused.
 struct IntersectProbe {
+    Shape shape;
     Ray ray;
-    uint kind;
 };
+static_assert(sizeof(IntersectProbe) == 160, "IntersectProbe must match probes.rs");
 
-// out[i] = (t0, t1, hit count, unused)
+struct IntersectResult {
+    float4 ts;  // ascending; ts[count..] unspecified
+    uint count;
+};
+static_assert(sizeof(IntersectResult) == 32, "IntersectResult must match probes.rs");
+
 kernel void probe_local_intersect(device const IntersectProbe *in [[buffer(0)]],
-                                  device float4 *out              [[buffer(1)]],
+                                  device IntersectResult *out     [[buffer(1)]],
                                   uint i                          [[thread_position_in_grid]])
 {
-    float2 ts = float2(0.0);
-    uint count = local_intersect(in[i].kind, in[i].ray, ts);
-    out[i] = float4(ts, float(count), 0.0);
+    float4 ts = float4(0.0);
+    uint count = local_intersect(in[i].shape, in[i].ray, ts);
+    out[i] = IntersectResult{ts, count};
 }
 
 struct LightingProbe {
@@ -99,8 +106,8 @@ kernel void probe_refractive_indices(device const RefractiveProbe *in [[buffer(0
 {
     RefractiveProbe p = in[i];
     Shape s = shapes[p.hit_index];
-    float2 ts;
-    local_intersect(s.kind, ray_transform(s.inverse, p.ray), ts);
+    float4 ts;
+    intersect(s, p.ray, ts);
     Hit hit = Hit{ts[p.hit_root], p.hit_index, p.hit_root};
     out[i] = refractive_indices(p.ray, hit, shapes, p.shape_count);
 }
@@ -111,4 +118,42 @@ kernel void probe_schlick(device const float4 *in [[buffer(0)]],
                           uint i                  [[thread_position_in_grid]])
 {
     out[i] = schlick(in[i].x, in[i].y, in[i].z);
+}
+
+struct TraceProbe {
+    Ray ray;
+    float4 light_position;
+    uint shape_count;
+};
+static_assert(sizeof(TraceProbe) == 64, "TraceProbe must match probes.rs");
+
+struct TraceResult {
+    float4 normal;  // world-space, flipped toward the eye as in color_at
+    float t;
+    uint index;
+    uint root;
+    uint shadowed;
+};
+static_assert(sizeof(TraceResult) == 32, "TraceResult must match probes.rs");
+
+// The first steps of color_at for one ray: nearest hit, normal, shadow test.
+// index = shape_count on a miss.
+kernel void probe_trace(device const TraceProbe *in [[buffer(0)]],
+                        device TraceResult *out     [[buffer(1)]],
+                        device const Shape *shapes  [[buffer(2)]],
+                        uint i                      [[thread_position_in_grid]])
+{
+    TraceProbe p = in[i];
+    Hit hit;
+    if (!hit_shapes(p.ray, shapes, p.shape_count, hit)) {
+        out[i] = TraceResult{float4(0.0), INFINITY, p.shape_count, 0, 0};
+        return;
+    }
+    float4 point = p.ray.origin + p.ray.direction * hit.t;
+    float4 normalv = normal_at(shapes[hit.index], point);
+    if (dot(normalv, -p.ray.direction) < 0.0) {
+        normalv = -normalv;
+    }
+    bool shadowed = is_shadowed(p.light_position, point + normalv * EPSILON, shapes, p.shape_count);
+    out[i] = TraceResult{normalv, hit.t, hit.index, hit.root, shadowed ? 1u : 0u};
 }

@@ -2,7 +2,7 @@
 //! case, and compare with the rtc-rust CPU version of the same function.
 
 use crate::gpu::Gpu;
-use crate::scene::{gpu_camera, gpu_light, gpu_material};
+use crate::scene::{gpu_camera, gpu_light, gpu_material, gpu_shape};
 use crate::types::{
     Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_PLANE, SHAPE_SPHERE,
     float4,
@@ -13,6 +13,9 @@ use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
 use rtc_rust::ray::Ray;
 use rtc_rust::shape::Shape;
+use rtc_rust::shapes::cone::Cone;
+use rtc_rust::shapes::cube::Cube;
+use rtc_rust::shapes::cylinder::Cylinder;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
 use rtc_rust::tuple::Tuple;
@@ -137,6 +140,9 @@ fn probe_shape(kind: u32, m: &Matrix4) -> GpuShape {
         inverse: (&m.inverse().unwrap()).into(),
         material: gpu_material(&Material::new()).unwrap(),
         kind,
+        minimum: 0.0,
+        maximum: 0.0,
+        closed: 0,
     }
 }
 
@@ -370,12 +376,90 @@ fn test_chap_9_gpu_plane_normal_at() -> Result<(), String> {
     Ok(())
 }
 
-/// Input to `probe_local_intersect`.
-#[repr(C, align(16))]
+/// Input to `probe_local_intersect`: `ray` is in object space, so only
+/// the shape's kind and extent matter.
+#[repr(C)]
 #[derive(Clone, Copy)]
 struct IntersectProbe {
+    shape: GpuShape,
     ray: GpuRay,
-    kind: u32,
+}
+
+/// Output of `probe_local_intersect`.
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct IntersectResult {
+    ts: Float4, // ascending; ts[count..] unspecified
+    count: u32,
+}
+
+/// Intersect `rays` (object space) with `shape` on the GPU and compare every
+/// t with rtc-rust's `local_intersect`.
+fn check_local_intersect(shape: &dyn Shape, rays: &[Ray]) -> Result<(), String> {
+    let gpu_shape = gpu_shape(shape)?;
+    let input: Vec<IntersectProbe> = rays
+        .iter()
+        .map(|r| IntersectProbe {
+            shape: gpu_shape,
+            ray: r.into(),
+        })
+        .collect();
+
+    let out: Vec<IntersectResult> = Gpu::new()?.run("probe_local_intersect", &input)?;
+
+    for (i, (ray, got)) in rays.iter().zip(&out).enumerate() {
+        let xs = shape.local_intersect(ray);
+        if got.count as usize != xs.count() {
+            return Err(format!(
+                "ray {i}: gpu {} hits vs cpu {}",
+                got.count,
+                xs.count()
+            ));
+        }
+        for k in 0..xs.count() {
+            check_close(got.ts[k], xs[k].t, &format!("ray {i} t{k}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Object-space normals of `shape` (identity transform) at `points`, GPU
+/// against rtc-rust.
+fn check_local_normals(shape: &dyn Shape, points: &[Tuple]) -> Result<(), String> {
+    let gpu_shape = gpu_shape(shape)?;
+    let input: Vec<NormalProbe> = points
+        .iter()
+        .map(|p| NormalProbe {
+            shape: gpu_shape,
+            point: float4(*p),
+        })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run("probe_normal_at", &input)?;
+
+    for (i, (p, got)) in points.iter().zip(&out).enumerate() {
+        check_tuple(
+            *got,
+            shape.normal_at_no_intersect(*p),
+            &format!("point {i}"),
+        )?;
+    }
+    Ok(())
+}
+
+/// A 16x16 fan of unnormalized rays from z = -5 (plus `y_offset`) toward
+/// (0.3, -0.2, 0): hits and misses, direction lengths != 1.
+fn ray_fan(y_offset: f64) -> Vec<Ray> {
+    (0..256)
+        .map(|i| {
+            let origin = Tuple::point(
+                -3.0 + 6.0 * (i % 16) as f64 / 15.0,
+                -3.0 + 6.0 * (i / 16) as f64 / 15.0 + y_offset,
+                -5.0,
+            );
+            Ray::new(origin, Tuple::point(0.3, -0.2, 0.0) - origin)
+        })
+        .collect()
 }
 
 #[test]
@@ -387,32 +471,183 @@ fn test_chap_9_gpu_intersect_plane() -> Result<(), String> {
         Ray::new(Tuple::point(0.0, 1.0, 0.0), Tuple::vector(0.0, -1.0, 0.0)),
         Ray::new(Tuple::point(0.0, -1.0, 0.0), Tuple::vector(0.0, 1.0, 0.0)),
     ];
-    let input: Vec<IntersectProbe> = rays
+    check_local_intersect(&Plane::new(), &rays)
+}
+
+fn ray(origin: (f64, f64, f64), direction: (f64, f64, f64)) -> Ray {
+    Ray::new(
+        Tuple::point(origin.0, origin.1, origin.2),
+        Tuple::vector(direction.0, direction.1, direction.2),
+    )
+}
+
+#[test]
+fn test_chap_12_gpu_intersect_cube() -> Result<(), String> {
+    // The book's hits (each face, and from inside) and misses, then the fan.
+    let mut rays = vec![
+        ray((5.0, 0.5, 0.0), (-1.0, 0.0, 0.0)),
+        ray((-5.0, 0.5, 0.0), (1.0, 0.0, 0.0)),
+        ray((0.5, 5.0, 0.0), (0.0, -1.0, 0.0)),
+        ray((0.5, -5.0, 0.0), (0.0, 1.0, 0.0)),
+        ray((0.5, 0.0, 5.0), (0.0, 0.0, -1.0)),
+        ray((0.5, 0.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((0.0, 0.5, 0.0), (0.0, 0.0, 1.0)),
+        ray((-2.0, 0.0, 0.0), (0.2673, 0.5345, 0.8018)),
+        ray((0.0, -2.0, 0.0), (0.8018, 0.2673, 0.5345)),
+        ray((0.0, 0.0, -2.0), (0.5345, 0.8018, 0.2673)),
+        ray((2.0, 0.0, 2.0), (0.0, 0.0, -1.0)),
+        ray((0.0, 2.0, 2.0), (0.0, -1.0, 0.0)),
+        ray((2.0, 2.0, 0.0), (-1.0, 0.0, 0.0)),
+    ];
+    rays.extend(ray_fan(0.0));
+    check_local_intersect(&Cube::new(), &rays)
+}
+
+#[test]
+fn test_chap_12_gpu_cube_normal_at() -> Result<(), String> {
+    // The book's table: each face, and two corners.
+    let points = [
+        (1.0, 0.5, -0.8),
+        (-1.0, -0.2, 0.9),
+        (-0.4, 1.0, -0.1),
+        (0.3, -1.0, -0.7),
+        (-0.6, 0.3, 1.0),
+        (0.4, 0.4, -1.0),
+        (1.0, 1.0, 1.0),
+        (-1.0, -1.0, -1.0),
+    ]
+    .map(|(x, y, z)| Tuple::point(x, y, z));
+    check_local_normals(&Cube::new(), &points)
+}
+
+/// A cylinder or cone truncated to `minimum..maximum`.
+fn truncated<S: Shape + Default>(set: impl Fn(&mut S)) -> S {
+    let mut s = S::default();
+    set(&mut s);
+    s
+}
+
+#[test]
+fn test_chap_13_gpu_intersect_cylinder() -> Result<(), String> {
+    // The book's misses and hits on the infinite cylinder, then truncated
+    // and capped cases, then the fan against all three.
+    let book = [
+        ray((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ray((0.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
+        ray((0.0, 0.0, -5.0), (1.0, 1.0, 1.0)),
+        ray((1.0, 0.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((0.0, 0.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((0.5, 0.0, -5.0), (0.1, 1.0, 1.0)),
+    ];
+    let truncated_cases = [
+        ray((0.0, 1.5, 0.0), (0.1, 1.0, 0.0)),
+        ray((0.0, 3.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((0.0, 0.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((0.0, 2.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((0.0, 1.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((0.0, 1.5, -2.0), (0.0, 0.0, 1.0)),
+    ];
+    let capped_cases = [
+        ray((0.0, 3.0, 0.0), (0.0, -1.0, 0.0)),
+        ray((0.0, 3.0, -2.0), (0.0, -1.0, 2.0)),
+        ray((0.0, 4.0, -2.0), (0.0, -1.0, 1.0)),
+        ray((0.0, 0.0, -2.0), (0.0, 1.0, 2.0)),
+        ray((0.0, -1.0, -2.0), (0.0, 1.0, 1.0)),
+    ];
+    let infinite = Cylinder::new();
+    let open = truncated(|c: &mut Cylinder| (c.minimum, c.maximum) = (1.0, 2.0));
+    let closed = Cylinder {
+        closed: true,
+        ..open.clone()
+    };
+    check_local_intersect(&infinite, &[&book[..], &ray_fan(0.0)].concat())?;
+    check_local_intersect(&open, &[&truncated_cases[..], &ray_fan(1.5)].concat())?;
+    check_local_intersect(&closed, &[&capped_cases[..], &ray_fan(1.5)].concat())
+}
+
+#[test]
+fn test_chap_13_gpu_cylinder_normal_at() -> Result<(), String> {
+    // The book's wall and cap tables.
+    let wall = [
+        (1.0, 0.0, 0.0),
+        (0.0, 5.0, -1.0),
+        (0.0, -2.0, 1.0),
+        (-1.0, 1.0, 0.0),
+    ];
+    let caps = [
+        (0.0, 1.0, 0.0),
+        (0.5, 1.0, 0.0),
+        (0.0, 1.0, 0.5),
+        (0.0, 2.0, 0.0),
+        (0.5, 2.0, 0.0),
+        (0.0, 2.0, 0.5),
+    ];
+    let point = |&(x, y, z): &(f64, f64, f64)| Tuple::point(x, y, z);
+    check_local_normals(
+        &Cylinder::new(),
+        &wall.iter().map(point).collect::<Vec<_>>(),
+    )?;
+    let closed = truncated(|c: &mut Cylinder| {
+        (c.minimum, c.maximum, c.closed) = (1.0, 2.0, true);
+    });
+    check_local_normals(&closed, &caps.iter().map(point).collect::<Vec<_>>())
+}
+
+#[test]
+fn test_chap_13_gpu_intersect_cone() -> Result<(), String> {
+    // The book's wall hits, the ray parallel to one half, and the caps;
+    // then the fan against a closed double cone, where a ray can cross
+    // both halves and both caps: 4 roots.
+    let mut book: Vec<Ray> = [
+        ray((0.0, 0.0, -5.0), (0.0, 0.0, 1.0)),
+        ray((1.0, 1.0, -5.0), (-0.5, -1.0, 1.0)),
+        ray((0.0, 0.0, -1.0), (0.0, 1.0, 1.0)),
+    ]
+    .iter()
+    .map(|r| Ray::new(r.origin, r.direction.normalize()))
+    .collect();
+    // The book's tangent ray (one double root), left unnormalized: the
+    // normalized f32 direction makes the discriminant round to a tiny
+    // negative and the GPU misses. A ray exactly grazing a cone is a yes/no
+    // decision f32 cannot make reliably, as on shadow edges.
+    book.push(ray((0.0, 0.0, -5.0), (1.0, 1.0, 1.0)));
+    let caps = [
+        ray((0.0, 0.0, -5.0), (0.0, 1.0, 0.0)),
+        ray((0.0, 0.0, -0.25), (0.0, 1.0, 1.0)),
+        ray((0.0, 0.0, -0.25), (0.0, 1.0, 0.0)),
+    ];
+    let caps: Vec<Ray> = caps
         .iter()
-        .map(|r| IntersectProbe {
-            ray: r.into(),
-            kind: SHAPE_PLANE,
-        })
+        .map(|r| Ray::new(r.origin, r.direction.normalize()))
         .collect();
-
-    // Each result is (t0, t1, hit count, unused).
-    let out: Vec<Float4> = Gpu::new()?.run("probe_local_intersect", &input)?;
-
-    let plane = Plane::new();
-    for (i, (ray, got)) in rays.iter().zip(&out).enumerate() {
-        let xs = plane.local_intersect(ray);
-        if got[2] as usize != xs.count() {
-            return Err(format!(
-                "ray {i}: gpu {} hits vs cpu {}",
-                got[2],
-                xs.count()
-            ));
-        }
-        if !xs.is_empty() {
-            check_close(got[0], xs[0].t, &format!("ray {i} t"))?;
-        }
+    let half = truncated(|c: &mut Cone| {
+        (c.minimum, c.maximum, c.closed) = (-0.5, 0.5, true);
+    });
+    let double = truncated(|c: &mut Cone| {
+        (c.minimum, c.maximum, c.closed) = (-1.5, 1.0, true);
+    });
+    check_local_intersect(&Cone::new(), &[&book[..], &ray_fan(0.0)].concat())?;
+    check_local_intersect(&half, &caps)?;
+    // through the apex region: two wall roots, two cap roots
+    let four = ray((-0.5, -2.0, -0.1), (0.3, 3.0, 0.05));
+    if double.local_intersect(&four).count() != 4 {
+        return Err("cpu: expected 4 roots on the double cone".into());
     }
-    Ok(())
+    check_local_intersect(&double, &[&[four][..], &ray_fan(0.0)].concat())
+}
+
+#[test]
+fn test_chap_13_gpu_cone_normal_at() -> Result<(), String> {
+    // The book's wall table, then caps. Without the book's apex point: its
+    // local normal is (0, 0, 0), which normal_at normalizes to NaN on both.
+    let wall = [(1.0, 1.0, 1.0), (-1.0, -1.0, 0.0)];
+    let caps = [(0.3, 1.0, 0.2), (-0.2, -1.5, 0.4), (0.5, 0.2, -0.1)];
+    let point = |&(x, y, z): &(f64, f64, f64)| Tuple::point(x, y, z);
+    check_local_normals(&Cone::new(), &wall.iter().map(point).collect::<Vec<_>>())?;
+    let closed = truncated(|c: &mut Cone| {
+        (c.minimum, c.maximum, c.closed) = (-1.5, 1.0, true);
+    });
+    check_local_normals(&closed, &caps.iter().map(point).collect::<Vec<_>>())
 }
 
 /// Input to `probe_refractive_indices`: the hit is root `hit_root` (0 or 1,
@@ -519,6 +754,94 @@ fn test_chap_11_gpu_schlick() -> Result<(), String> {
 
     for (i, (c, got)) in comps.iter().zip(&out).enumerate() {
         check_close(*got, schlick(c), &format!("case {i}"))?;
+    }
+    Ok(())
+}
+
+/// Input to `probe_trace`.
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct TraceProbe {
+    ray: GpuRay,
+    light_position: Float4,
+    shape_count: u32,
+}
+
+/// Output of `probe_trace`.
+#[repr(C, align(16))]
+#[derive(Clone, Copy)]
+struct TraceResult {
+    normal: Float4,
+    t: f32,
+    index: u32,
+    root: u32,
+    shadowed: u32,
+}
+
+#[test]
+fn test_chap_13_gpu_cone_far_origin_no_acne() -> Result<(), String> {
+    // The chapter 13 scene's cone on its base is scaled 0.5 in x and z, so
+    // camera rays reach it from ~17 units out in object space. There the
+    // textbook discriminant b^2 - 4ac cancelled and put t off by ~3e-5,
+    // more than EPSILON: over_point landed inside the cone, which then
+    // shadowed itself (speckled acne). Every hit and shadow decision on a
+    // patch of its wall must match the CPU.
+    let mut desc =
+        rtc_rust::scene::SceneDescription::from_json(include_str!("../scenes/chapter13.json"))
+            .unwrap();
+    (desc.camera.width, desc.camera.height) = (400, 200);
+    let (world, camera) = desc.build(std::path::Path::new(".")).unwrap();
+    let shapes: Vec<GpuShape> = world
+        .shapes
+        .iter()
+        .map(|s| gpu_shape(s.as_ref()))
+        .collect::<Result<_, _>>()?;
+    let light = world.light.as_ref().unwrap().position;
+    let pixels: Vec<(usize, usize)> = (190..205)
+        .flat_map(|x| (78..90).map(move |y| (x, y)))
+        .collect();
+    let rays: Vec<Ray> = pixels
+        .iter()
+        .map(|&(x, y)| camera.ray_for_pixel(x, y))
+        .collect();
+    let input: Vec<TraceProbe> = rays
+        .iter()
+        .map(|r| TraceProbe {
+            ray: r.into(),
+            light_position: float4(light),
+            shape_count: shapes.len() as u32,
+        })
+        .collect();
+
+    let out: Vec<TraceResult> = Gpu::new()?.run_with_shapes("probe_trace", &input, &shapes)?;
+
+    let cone = 4; // index of the cone on its base in chapter13.json
+    let mut on_cone = 0;
+    for (((x, y), ray), got) in pixels.iter().zip(&rays).zip(&out) {
+        let xs = world.intersect(ray);
+        let hit = xs.hit().ok_or(format!("({x}, {y}): cpu miss"))?;
+        let comps = prepare_computations(hit, ray, &world.shapes, &xs);
+        let index = world
+            .shapes
+            .iter()
+            .position(|s| s.id() == hit.object_id)
+            .unwrap();
+        if got.index as usize != index || index != cone {
+            continue; // only the cone's wall is under test
+        }
+        on_cone += 1;
+        check_close(got.t, hit.t, &format!("({x}, {y}) t"))?;
+        check_tuple(got.normal, comps.normalv, &format!("({x}, {y}) normal"))?;
+        let shadowed = world.is_shadowed(comps.over_point, light);
+        if (got.shadowed != 0) != shadowed {
+            return Err(format!(
+                "({x}, {y}): gpu shadowed {} vs cpu {shadowed}",
+                got.shadowed != 0
+            ));
+        }
+    }
+    if on_cone < 50 {
+        return Err(format!("only {on_cone} pixels on the cone; patch moved?"));
     }
     Ok(())
 }

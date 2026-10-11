@@ -69,6 +69,9 @@ pub struct GpuMaterial {
 /// `GpuShape::kind` values; must match the `SHAPE_*` constants in rt.metal.
 pub const SHAPE_SPHERE: u32 = 0;
 pub const SHAPE_PLANE: u32 = 1;
+pub const SHAPE_CUBE: u32 = 2;
+pub const SHAPE_CYLINDER: u32 = 3;
+pub const SHAPE_CONE: u32 = 4;
 
 /// MSL `Shape`: a primitive (`kind`) seen through its world-to-object
 /// transform. One tagged array holds every kind, like rtc-rust's `shapes`.
@@ -78,6 +81,11 @@ pub struct GpuShape {
     pub inverse: GpuMat4,
     pub material: GpuMaterial,
     pub kind: u32,
+    /// Cylinder and cone: y extent (book chapter 13).
+    pub minimum: f32,
+    pub maximum: f32,
+    /// Cylinder and cone: nonzero for end caps.
+    pub closed: u32,
 }
 
 /// MSL `Light`: a point light.
@@ -111,7 +119,7 @@ pub struct GpuSceneInfo {
 
 // 16 + 7 * 4 = 44 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuMaterial>() == 48);
-// 64 + 48 + 4 = 116 bytes of fields, padded to the 16-byte alignment.
+// 64 + 48 + 4 * 4 = 128 bytes of fields.
 const _: () = assert!(size_of::<GpuShape>() == 128);
 const _: () = assert!(size_of::<GpuLight>() == 32);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.

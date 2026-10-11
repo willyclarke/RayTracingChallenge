@@ -4,13 +4,16 @@
 //! error rather than being silently dropped from the image.
 
 use crate::types::{
-    GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuSceneInfo, GpuShape, SHAPE_PLANE, SHAPE_SPHERE,
-    float4,
+    GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuSceneInfo, GpuShape, SHAPE_CONE, SHAPE_CUBE,
+    SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
 use rtc_rust::material::Material;
 use rtc_rust::shape::Shape;
+use rtc_rust::shapes::cone::Cone;
+use rtc_rust::shapes::cube::Cube;
+use rtc_rust::shapes::cylinder::Cylinder;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
 use rtc_rust::world::World;
@@ -95,18 +98,26 @@ pub fn gpu_material(m: &Material) -> Result<GpuMaterial, String> {
     })
 }
 
-fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
+pub fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
     // Upcast to `&dyn Any` to learn the concrete type. This must be the
     // `&dyn Shape`, not the `Box`: a `&Box<dyn Shape>` would coerce to an
     // `Any` whose type is the Box itself, and `is::<Sphere>` would be false.
     let any: &dyn Any = shape;
-    let kind = if any.is::<Sphere>() {
-        SHAPE_SPHERE
+    // (kind, minimum, maximum, closed); the extent only matters for
+    // cylinders and cones. f64 infinities stay infinite in f32.
+    let (kind, minimum, maximum, closed) = if any.is::<Sphere>() {
+        (SHAPE_SPHERE, 0.0, 0.0, false)
     } else if any.is::<Plane>() {
-        SHAPE_PLANE
+        (SHAPE_PLANE, 0.0, 0.0, false)
+    } else if any.is::<Cube>() {
+        (SHAPE_CUBE, 0.0, 0.0, false)
+    } else if let Some(c) = any.downcast_ref::<Cylinder>() {
+        (SHAPE_CYLINDER, c.minimum, c.maximum, c.closed)
+    } else if let Some(c) = any.downcast_ref::<Cone>() {
+        (SHAPE_CONE, c.minimum, c.maximum, c.closed)
     } else {
         return Err(format!(
-            "shape {}: only spheres and planes are supported so far",
+            "shape {}: only spheres, planes, cubes, cylinders and cones are supported so far",
             shape.id()
         ));
     };
@@ -122,13 +133,16 @@ fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
         inverse,
         material: gpu_material(&data.material)?,
         kind,
+        minimum: minimum as f32,
+        maximum: maximum as f32,
+        closed: closed as u32,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtc_rust::shapes::cube::Cube;
+    use rtc_rust::shapes::group::Group;
     use rtc_rust::tuple::Tuple;
 
     #[test]
@@ -140,9 +154,12 @@ mod tests {
         ));
         world.add_shape(Box::new(Sphere::new()));
         world.add_shape(Box::new(Plane::new()));
-        assert!(GpuScene::from_world(&world, &Camera::default()).is_ok());
         world.add_shape(Box::new(Cube::new()));
+        world.add_shape(Box::new(Cylinder::new()));
+        world.add_shape(Box::new(Cone::new()));
+        assert!(GpuScene::from_world(&world, &Camera::default()).is_ok());
+        world.add_shape(Box::new(Group::new()));
         let err = GpuScene::from_world(&world, &Camera::default()).err();
-        assert!(err.is_some_and(|e| e.contains("only spheres and planes")));
+        assert!(err.is_some_and(|e| e.contains("only spheres, planes")));
     }
 }
