@@ -245,8 +245,10 @@ inline void intersect_wall(Shape s, Ray r, bool cone, thread float4 &ts, thread 
 inline bool moller_trumbore(Shape s, Ray r, thread float3 &tuv) {
     float3 dir_cross_e2 = cross(r.direction.xyz, s.e2.xyz);
     float det = dot(s.e1.xyz, dir_cross_e2);
-    // rtc-rust's approx_eq(det, 0), and the guard for collinear vertices
-    if (abs(det) < 1e-9) {
+    // Only an exactly parallel ray (or collinear vertices) divides by zero.
+    // The u/v range checks reject near-parallel rays, and a fixed threshold
+    // would drop hits on tiny mesh triangles, whose det scales with |e1||e2|.
+    if (det == 0.0) {
         return false;
     }
     float f = 1.0 / det;
