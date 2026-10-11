@@ -4,18 +4,26 @@
 //! error rather than being silently dropped from the image.
 
 use crate::types::{
-    GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuSceneInfo, GpuShape, SHAPE_CONE, SHAPE_CUBE,
+    GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuSceneInfo, GpuShape, PATTERN_CHECKERS,
+    PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE, SHAPE_CONE, SHAPE_CUBE,
     SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
 use rtc_rust::material::Material;
+use rtc_rust::matrix::Matrix4;
+use rtc_rust::pattern::Pattern;
+use rtc_rust::patterns::checkerspattern::CheckersPattern;
+use rtc_rust::patterns::gradientpattern::GradientPattern;
+use rtc_rust::patterns::ringpattern::RingPattern;
+use rtc_rust::patterns::stripepattern::StripePattern;
 use rtc_rust::shape::Shape;
 use rtc_rust::shapes::cone::Cone;
 use rtc_rust::shapes::cube::Cube;
 use rtc_rust::shapes::cylinder::Cylinder;
 use rtc_rust::shapes::plane::Plane;
 use rtc_rust::shapes::sphere::Sphere;
+use rtc_rust::tuple::Tuple;
 use rtc_rust::world::World;
 use std::any::Any;
 
@@ -83,9 +91,21 @@ pub fn gpu_light(light: &Light) -> Result<GpuLight, String> {
 }
 
 pub fn gpu_material(m: &Material) -> Result<GpuMaterial, String> {
-    if m.pattern.is_some() || m.bump.is_some() {
-        return Err("patterns and bump maps are not supported yet".into());
+    if m.bump.is_some() {
+        return Err("bump maps are not supported yet".into());
     }
+    let (pattern, pattern_inverse, pattern_a, pattern_b) = match &m.pattern {
+        None => (
+            PATTERN_NONE,
+            Matrix4::identity(),
+            Tuple::color(0.0, 0.0, 0.0),
+            Tuple::color(0.0, 0.0, 0.0),
+        ),
+        Some(p) => {
+            let (kind, a, b) = gpu_pattern(p.as_ref())?;
+            (kind, *p.data().transform_inv(), a, b)
+        }
+    };
     Ok(GpuMaterial {
         color: float4(m.color),
         ambient: m.ambient as f32,
@@ -95,7 +115,28 @@ pub fn gpu_material(m: &Material) -> Result<GpuMaterial, String> {
         reflective: m.reflective as f32,
         transparency: m.transparency as f32,
         refractive_index: m.refractive_index as f32,
+        pattern,
+        pattern_inverse: (&pattern_inverse).into(),
+        pattern_a: float4(pattern_a),
+        pattern_b: float4(pattern_b),
     })
+}
+
+/// The `PATTERN_*` kind and two colors of one of the book's four patterns.
+fn gpu_pattern(pattern: &dyn Pattern) -> Result<(u32, Tuple, Tuple), String> {
+    // As in gpu_shape: upcast the `&dyn Pattern`, not the `Box`.
+    let any: &dyn Any = pattern;
+    if let Some(p) = any.downcast_ref::<StripePattern>() {
+        Ok((PATTERN_STRIPE, p.a, p.b))
+    } else if let Some(p) = any.downcast_ref::<GradientPattern>() {
+        Ok((PATTERN_GRADIENT, p.a, p.b))
+    } else if let Some(p) = any.downcast_ref::<RingPattern>() {
+        Ok((PATTERN_RING, p.a, p.b))
+    } else if let Some(p) = any.downcast_ref::<CheckersPattern>() {
+        Ok((PATTERN_CHECKERS, p.a, p.b))
+    } else {
+        Err("only stripe, gradient, ring and checkers patterns are supported so far".into())
+    }
 }
 
 pub fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
@@ -143,7 +184,6 @@ pub fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
 mod tests {
     use super::*;
     use rtc_rust::shapes::group::Group;
-    use rtc_rust::tuple::Tuple;
 
     #[test]
     fn unsupported_shapes_are_rejected() {
@@ -161,5 +201,20 @@ mod tests {
         world.add_shape(Box::new(Group::new()));
         let err = GpuScene::from_world(&world, &Camera::default()).err();
         assert!(err.is_some_and(|e| e.contains("only spheres, planes")));
+    }
+
+    #[test]
+    fn unsupported_patterns_are_rejected() {
+        use rtc_rust::patterns::nestedpattern::NestedPattern;
+        let (a, b) = (Tuple::color(1.0, 1.0, 1.0), Tuple::color(0.0, 0.0, 0.0));
+        let mut m = Material::new();
+        m.pattern = Some(Box::new(CheckersPattern::new(a, b)));
+        assert!(gpu_material(&m).is_ok());
+        m.pattern = Some(Box::new(NestedPattern::new(
+            Box::new(StripePattern::new(a, b)),
+            Box::new(RingPattern::new(a, b)),
+        )));
+        let err = gpu_material(&m).err();
+        assert!(err.is_some_and(|e| e.contains("only stripe, gradient, ring and checkers")));
     }
 }

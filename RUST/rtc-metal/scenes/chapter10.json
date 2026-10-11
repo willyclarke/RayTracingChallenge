@@ -1,0 +1,251 @@
+{
+  "comment": "Book chapter 10: chapter 9's scene with a pattern on every surface: checkered floor, striped wall, and ring, gradient and checkered balls. Pattern transforms are scaled, rotated and translated so object and pattern spaces both matter. The ring scale is 0.22, not 0.2: at 0.2 a ring boundary (radius 5) lies exactly on the ball's widest circle, and both renderers speckle there",
+  "camera": {
+    "width": 1600,
+    "height": 800,
+    "field_of_view": 1.0471975512,
+    "from": [
+      0,
+      1.5,
+      -5
+    ],
+    "to": [
+      0,
+      1,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "light": {
+    "type": "point",
+    "position": [
+      -10,
+      10,
+      -10
+    ],
+    "intensity": [
+      1,
+      1,
+      1
+    ]
+  },
+  "shapes": [
+    {
+      "type": "plane",
+      "comment": "floor: checkers",
+      "material": {
+        "specular": 0,
+        "pattern": {
+          "type": "checkers",
+          "a": [
+            1,
+            0.9,
+            0.9
+          ],
+          "b": [
+            0.35,
+            0.3,
+            0.3
+          ],
+          "transform": [
+            {
+              "rotate_y": 0.3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "plane",
+      "comment": "wall: stripes",
+      "transform": [
+        {
+          "rotate_x": 1.5707963268
+        },
+        {
+          "translate": [
+            0,
+            0,
+            5
+          ]
+        }
+      ],
+      "material": {
+        "specular": 0,
+        "pattern": {
+          "type": "stripe",
+          "a": [
+            0.9,
+            0.85,
+            0.6
+          ],
+          "b": [
+            0.6,
+            0.7,
+            0.9
+          ],
+          "transform": [
+            {
+              "scale": [
+                0.5,
+                0.5,
+                0.5
+              ]
+            },
+            {
+              "rotate_y": 0.7
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "sphere",
+      "comment": "middle: rings",
+      "transform": [
+        {
+          "translate": [
+            -0.5,
+            1,
+            0.5
+          ]
+        }
+      ],
+      "material": {
+        "diffuse": 0.7,
+        "specular": 0.3,
+        "pattern": {
+          "type": "ring",
+          "a": [
+            0.1,
+            1,
+            0.5
+          ],
+          "b": [
+            0.1,
+            0.4,
+            0.2
+          ],
+          "transform": [
+            {
+              "scale": [
+                0.22,
+                0.22,
+                0.22
+              ]
+            },
+            {
+              "rotate_x": 1.2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "sphere",
+      "comment": "right: gradient",
+      "transform": [
+        {
+          "scale": [
+            0.5,
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "translate": [
+            1.5,
+            0.5,
+            -0.5
+          ]
+        }
+      ],
+      "material": {
+        "diffuse": 0.7,
+        "specular": 0.3,
+        "pattern": {
+          "type": "gradient",
+          "a": [
+            1,
+            0.3,
+            0.1
+          ],
+          "b": [
+            0.2,
+            0.3,
+            1
+          ],
+          "transform": [
+            {
+              "translate": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "scale": [
+                2,
+                2,
+                2
+              ]
+            },
+            {
+              "rotate_z": 0.5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "sphere",
+      "comment": "left: checkers",
+      "transform": [
+        {
+          "scale": [
+            0.33,
+            0.33,
+            0.33
+          ]
+        },
+        {
+          "translate": [
+            -1.5,
+            0.33,
+            -0.75
+          ]
+        }
+      ],
+      "material": {
+        "diffuse": 0.7,
+        "specular": 0.3,
+        "pattern": {
+          "type": "checkers",
+          "a": [
+            1,
+            0.8,
+            0.1
+          ],
+          "b": [
+            0.3,
+            0.2,
+            0.05
+          ],
+          "transform": [
+            {
+              "scale": [
+                0.25,
+                0.25,
+                0.25
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

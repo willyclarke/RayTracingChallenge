@@ -11,6 +11,7 @@ use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
 use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
+use rtc_rust::pattern::Pattern;
 use rtc_rust::ray::Ray;
 use rtc_rust::shape::Shape;
 use rtc_rust::shapes::cone::Cone;
@@ -193,6 +194,7 @@ struct LightingProbe {
     material: GpuMaterial,
     light: GpuLight,
     point: Float4,
+    object_point: Float4,
     eyev: Float4,
     normalv: Float4,
     intensity: f32,
@@ -249,6 +251,7 @@ fn test_chap_6_gpu_lighting() -> Result<(), String> {
             material: gpu_material(&material).unwrap(),
             light: gpu_light(light).unwrap(),
             point: float4(point),
+            object_point: float4(point),
             eyev: float4(*eyev),
             normalv: float4(normalv),
             intensity: *intensity as f32,
@@ -842,6 +845,173 @@ fn test_chap_13_gpu_cone_far_origin_no_acne() -> Result<(), String> {
     }
     if on_cone < 50 {
         return Err(format!("only {on_cone} pixels on the cone; patch moved?"));
+    }
+    Ok(())
+}
+
+/// Input to `probe_pattern_at`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct PatternProbe {
+    shape: GpuShape,
+    point: Float4,
+}
+
+/// Pattern colors of `shape` at world `points`, GPU against rtc-rust's
+/// `color_at_shape` (shape transform, then pattern transform).
+fn check_pattern(shape: &dyn Shape, points: &[Tuple]) -> Result<(), String> {
+    let gpu_shape = gpu_shape(shape)?;
+    let input: Vec<PatternProbe> = points
+        .iter()
+        .map(|p| PatternProbe {
+            shape: gpu_shape,
+            point: float4(*p),
+        })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run("probe_pattern_at", &input)?;
+
+    let pattern = shape
+        .material()
+        .pattern
+        .as_ref()
+        .ok_or("shape has no pattern")?;
+    for (i, (p, got)) in points.iter().zip(&out).enumerate() {
+        let want = pattern.color_at_shape(shape, *p);
+        for (c, (g, w)) in got.iter().zip([want.x, want.y, want.z]).enumerate() {
+            check_close(*g, w, &format!("point {i} channel {c}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// A sphere with `pattern`, the book's object and pattern transforms
+/// optional: (object transform, pattern transform).
+fn patterned_sphere(mut pattern: Box<dyn Pattern>, transforms: (Matrix4, Matrix4)) -> Sphere {
+    pattern.set_transform(transforms.1);
+    let mut s = Sphere::new();
+    s.set_transform(transforms.0);
+    s.data.material.pattern = Some(pattern);
+    s
+}
+
+/// A grid of points off the integer lattice, so no point sits on a pattern
+/// boundary where f32 and f64 may floor differently, plus `extra`.
+fn pattern_points(extra: &[(f64, f64, f64)]) -> Vec<Tuple> {
+    let mut points: Vec<Tuple> = extra
+        .iter()
+        .map(|&(x, y, z)| Tuple::point(x, y, z))
+        .collect();
+    for i in 0..343 {
+        let c = |k: usize| -2.95 + 0.83 * k as f64;
+        points.push(Tuple::point(c(i % 7), c(i / 7 % 7), c(i / 49)));
+    }
+    points
+}
+
+#[test]
+fn test_chap_10_gpu_pattern_at() -> Result<(), String> {
+    use rtc_rust::patterns::checkerspattern::CheckersPattern;
+    use rtc_rust::patterns::gradientpattern::GradientPattern;
+    use rtc_rust::patterns::ringpattern::RingPattern;
+    use rtc_rust::patterns::stripepattern::StripePattern;
+    let (white, black) = (Tuple::color(1.0, 1.0, 1.0), Tuple::color(0.0, 0.0, 0.0));
+    // The book's tables: stripes constant in y and z and alternating in x,
+    // gradient, rings, checkers repeating in x, y and z.
+    let book = pattern_points(&[
+        (0.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+        (0.0, 2.0, 0.0),
+        (0.0, 0.0, 1.0),
+        (0.0, 0.0, 2.0),
+        (0.9, 0.0, 0.0),
+        (1.0, 0.0, 0.0),
+        (-0.1, 0.0, 0.0),
+        (-1.0, 0.0, 0.0),
+        (-1.1, 0.0, 0.0),
+        (0.25, 0.0, 0.0),
+        (0.5, 0.0, 0.0),
+        (0.75, 0.0, 0.0),
+        (0.708, 0.0, 0.708),
+        (0.99, 0.0, 0.0),
+        (1.01, 0.0, 0.0),
+        (0.0, 0.99, 0.0),
+        (0.0, 1.01, 0.0),
+        (0.0, 0.0, 0.99),
+        (0.0, 0.0, 1.01),
+    ]);
+    let identity = (Matrix4::identity(), Matrix4::identity());
+    type NewPattern = fn(Tuple, Tuple) -> Box<dyn Pattern>;
+    let patterns: [NewPattern; 4] = [
+        |a, b| Box::new(StripePattern::new(a, b)),
+        |a, b| Box::new(GradientPattern::new(a, b)),
+        |a, b| Box::new(RingPattern::new(a, b)),
+        |a, b| Box::new(CheckersPattern::new(a, b)),
+    ];
+    for (k, new) in patterns.iter().enumerate() {
+        check_pattern(&patterned_sphere(new(white, black), identity), &book)
+            .map_err(|e| format!("pattern {k}: {e}"))?;
+    }
+    // The book's object and pattern transformation cases, then both at once
+    // (non-uniform and rotated, so mixing up the order cannot pass).
+    let points = pattern_points(&[(1.5, 0.0, 0.0), (2.5, 0.0, 0.0), (3.5, 0.5, 1.0)]);
+    let transforms = [
+        (Matrix4::scaling(2.0, 2.0, 2.0), Matrix4::identity()),
+        (Matrix4::identity(), Matrix4::scaling(2.0, 2.0, 2.0)),
+        (
+            Matrix4::scaling(2.0, 2.0, 2.0),
+            Matrix4::translation(0.5, 0.0, 0.0),
+        ),
+        (
+            Matrix4::rotation_y(0.4) * Matrix4::scaling(1.5, 0.7, 1.0),
+            Matrix4::translation(0.3, -0.2, 0.1) * Matrix4::rotation_z(0.9),
+        ),
+    ];
+    let (red, blue) = (Tuple::color(0.9, 0.1, 0.2), Tuple::color(0.1, 0.3, 0.8));
+    for (k, new) in patterns.iter().enumerate() {
+        for (j, t) in transforms.iter().enumerate() {
+            check_pattern(&patterned_sphere(new(red, blue), *t), &points)
+                .map_err(|e| format!("pattern {k}, transforms {j}: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_10_gpu_lighting_with_pattern() -> Result<(), String> {
+    use rtc_rust::patterns::stripepattern::StripePattern;
+    // The book's case: only ambient, so the result is the stripe color.
+    let mut material = Material::new();
+    material.pattern = Some(Box::new(StripePattern::new(
+        Tuple::color(1.0, 1.0, 1.0),
+        Tuple::color(0.0, 0.0, 0.0),
+    )));
+    (material.ambient, material.diffuse, material.specular) = (1.0, 0.0, 0.0);
+    let light = Light::point_light(Tuple::point(0.0, 0.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
+    let points = [Tuple::point(0.9, 0.0, 0.0), Tuple::point(1.1, 0.0, 0.0)];
+    let (eyev, normalv) = (Tuple::vector(0.0, 0.0, -1.0), Tuple::vector(0.0, 0.0, -1.0));
+    let input: Vec<LightingProbe> = points
+        .iter()
+        .map(|p| LightingProbe {
+            material: gpu_material(&material).unwrap(),
+            light: gpu_light(&light).unwrap(),
+            point: float4(*p),
+            object_point: float4(*p),
+            eyev: float4(eyev),
+            normalv: float4(normalv),
+            intensity: 1.0,
+        })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run("probe_lighting", &input)?;
+
+    let mut sphere = Sphere::new();
+    sphere.set_material(material);
+    for (i, (p, got)) in points.iter().zip(&out).enumerate() {
+        let want = light.lighting(&sphere, *p, *p, eyev, normalv, 1.0);
+        for (c, (g, w)) in got.iter().zip([want.x, want.y, want.z]).enumerate() {
+            check_close(*g, w, &format!("point {i} channel {c}"))?;
+        }
     }
     Ok(())
 }

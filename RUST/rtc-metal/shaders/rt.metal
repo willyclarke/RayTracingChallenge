@@ -28,6 +28,14 @@ constant uint SHAPE_CONE = 4;
 // point (rtc-rust's 1e-9 is below f32 resolution there as well).
 constant float EPSILON = 1e-5;
 
+// Pattern kinds (book chapter 10); must match the PATTERN_* constants in
+// src/types.rs. PATTERN_NONE uses the material's plain color.
+constant uint PATTERN_NONE = 0;
+constant uint PATTERN_STRIPE = 1;
+constant uint PATTERN_GRADIENT = 2;
+constant uint PATTERN_RING = 3;
+constant uint PATTERN_CHECKERS = 4;
+
 struct Material {
     float4 color;
     float ambient;
@@ -37,8 +45,12 @@ struct Material {
     float reflective;       // chapter 11
     float transparency;
     float refractive_index;
+    uint pattern;           // chapter 10: PATTERN_*
+    float4x4 pattern_inverse; // object space to pattern space
+    float4 pattern_a;       // the pattern's two colors
+    float4 pattern_b;
 };
-static_assert(sizeof(Material) == 48, "Material must match GpuMaterial");
+static_assert(sizeof(Material) == 144, "Material must match GpuMaterial");
 
 // A primitive of `kind` seen through its world-to-object transform. One
 // tagged array holds every kind; functions switch on `kind`.
@@ -50,7 +62,7 @@ struct Shape {
     float maximum;
     uint closed;    // cylinder and cone: nonzero for end caps
 };
-static_assert(sizeof(Shape) == 128, "Shape must match GpuShape");
+static_assert(sizeof(Shape) == 224, "Shape must match GpuShape");
 
 struct Light {
     float4 position;
@@ -301,11 +313,40 @@ inline float4 normal_at(Shape s, float4 world_point) {
     return normalize(world_normal);
 }
 
+// ---- Chapter 10: patterns -------------------------------------------------
+
+// Parity of floor(x): rtc-rust's `floor() as i32 % 2 == 0`, where a negative
+// odd value leaves -1, not 0, so it is odd too.
+inline bool floor_is_even(float x) {
+    return (int(floor(x)) & 1) == 0;
+}
+
+// The pattern's color at a point in the shape's object space; rtc-rust's
+// Pattern::color_at_local.
+inline float3 pattern_at(Material m, float4 object_point) {
+    float4 p = m.pattern_inverse * object_point;
+    float3 a = m.pattern_a.rgb;
+    float3 b = m.pattern_b.rgb;
+    switch (m.pattern) {
+    case PATTERN_STRIPE:
+        return floor_is_even(p.x) ? a : b;
+    case PATTERN_GRADIENT:
+        return a + (b - a) * (p.x - floor(p.x));
+    case PATTERN_RING:
+        return floor_is_even(sqrt(p.x * p.x + p.z * p.z)) ? a : b;
+    case PATTERN_CHECKERS:
+        return floor_is_even(floor(p.x) + floor(p.y) + floor(p.z)) ? a : b;
+    default: // PATTERN_NONE
+        return m.color.rgb;
+    }
+}
+
 // Mirrors rtc-rust's Light::lighting for a point light (one sample point).
+// `object_point` is `point` in the shape's object space, for the pattern.
 // `intensity` is the fraction of the light reaching `point`: 0 in shadow.
-inline float3 lighting(Material m, Light light, float4 point, float4 eyev,
-                       float4 normalv, float intensity) {
-    float3 effective_color = m.color.rgb * light.intensity.rgb;
+inline float3 lighting(Material m, Light light, float4 point, float4 object_point,
+                       float4 eyev, float4 normalv, float intensity) {
+    float3 effective_color = pattern_at(m, object_point) * light.intensity.rgb;
     float3 ambient = effective_color * m.ambient;
     if (intensity <= 0.0) {
         return ambient;
@@ -504,7 +545,11 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         float4 over_point = point + normalv * EPSILON;
         float intensity =
             is_shadowed(scene.light.position, over_point, shapes, scene.shape_count) ? 0.0 : 1.0;
-        color += p.weight * lighting(m, scene.light, over_point, eyev, normalv, intensity);
+        // rtc-rust samples the pattern at over_point too: on a plane the raw
+        // hit's y is ~0 with either sign, and checkers would speckle
+        float4 object_point = s.inverse * over_point;
+        color += p.weight
+                 * lighting(m, scene.light, over_point, object_point, eyev, normalv, intensity);
 
         if (p.remaining <= 0) {
             continue;
