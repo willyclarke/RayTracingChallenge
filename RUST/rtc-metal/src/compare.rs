@@ -328,3 +328,10 @@ fn test_chap_15_gpu_render_matches_cpu() -> Result<(), String> {
     let (world, camera) = scene_file(include_str!("../scenes/chapter15.json"), 400, 200);
     check_matches_cpu(&world, camera)
 }
+
+#[test]
+fn test_bonus_soft_shadows_gpu_render_matches_cpu() -> Result<(), String> {
+    // A 10x10 area light: penumbrae under both balls and in their reflections.
+    let (world, camera) = scene_file(include_str!("../scenes/soft_shadows.json"), 200, 80);
+    check_matches_cpu(&world, camera)
+}

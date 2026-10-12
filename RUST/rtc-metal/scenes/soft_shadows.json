@@ -1,0 +1,24 @@
+{
+  "comment": "Bonus chapter 'Rendering soft shadows': two reflective balls on a plane under a 10x10 area light. The book's glowing light cube is left out: rtc-rust has no flag to stop it casting a shadow",
+  "camera": {
+    "width": 400, "height": 160, "field_of_view": 0.7854,
+    "from": [-3, 1, 2.5], "to": [0, 0.5, 0], "up": [0, 1, 0]
+  },
+  "light": {
+    "type": "area", "corner": [-1, 2, 4],
+    "uvec": [2, 0, 0], "usteps": 10, "vvec": [0, 2, 0], "vsteps": 10,
+    "intensity": [1.5, 1.5, 1.5]
+  },
+  "shapes": [
+    { "type": "plane", "comment": "floor",
+      "material": { "color": [1, 1, 1], "ambient": 0.025, "diffuse": 0.67, "specular": 0 } },
+    { "type": "sphere", "comment": "red ball",
+      "transform": [ { "scale": [0.5, 0.5, 0.5] }, { "translate": [0.5, 0.5, 0] } ],
+      "material": { "color": [1, 0, 0], "ambient": 0.1, "specular": 0, "diffuse": 0.6,
+                    "reflective": 0.3 } },
+    { "type": "sphere", "comment": "blue ball",
+      "transform": [ { "scale": [0.33, 0.33, 0.33] }, { "translate": [-0.25, 0.33, 0] } ],
+      "material": { "color": [0.5, 0.5, 1], "ambient": 0.1, "specular": 0, "diffuse": 0.6,
+                    "reflective": 0.3 } }
+  ]
+}

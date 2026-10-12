@@ -10,6 +10,8 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
     if (gid.x >= c.width || gid.y >= c.height) {
         return;
     }
+    uint pixel = gid.y * c.width + gid.x;
     Ray r = ray_for_pixel(c, gid.x, gid.y);
-    pixels[gid.y * c.width + gid.x] = float4(color_at(r, scene, shapes, nodes), 1.0);
+    Sampler s = Sampler{pixel, 0, 0, 0};  // deterministic: rtc-rust's cell centres
+    pixels[pixel] = float4(color_at(r, scene, shapes, nodes, s), 1.0);
 }

@@ -207,7 +207,13 @@ struct LightingProbe {
     eyev: Float4,
     normalv: Float4,
     intensity: f32,
+    /// The `Sampler`: `sampling` 0 is rtc-rust's deterministic grid.
+    pixel: u32,
+    frame: u32,
+    sampling: u32,
 }
+
+const _: () = assert!(size_of::<LightingProbe>() == 304);
 
 #[test]
 fn test_chap_6_gpu_lighting() -> Result<(), String> {
@@ -264,6 +270,9 @@ fn test_chap_6_gpu_lighting() -> Result<(), String> {
             eyev: float4(*eyev),
             normalv: float4(normalv),
             intensity: *intensity as f32,
+            pixel: 0,
+            frame: 0,
+            sampling: 0,
         })
         .collect();
 
@@ -996,6 +1005,9 @@ fn test_chap_10_gpu_lighting_with_pattern() -> Result<(), String> {
             eyev: float4(eyev),
             normalv: float4(normalv),
             intensity: 1.0,
+            pixel: 0,
+            frame: 0,
+            sampling: 0,
         })
         .collect();
 
@@ -1486,4 +1498,195 @@ fn test_bonus_soft_shadows_gpu_random_deterministic() -> Result<(), String> {
         return Err("two runs differ".to_string());
     }
     Ok(())
+}
+
+/// Input to `probe_point_on_light`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct PointOnLightProbe {
+    light: GpuLight,
+    u: u32,
+    v: u32,
+    ju: f32,
+    jv: f32,
+}
+
+const _: () = assert!(size_of::<PointOnLightProbe>() == 96);
+
+#[test]
+fn test_bonus_soft_shadows_gpu_point_on_light() -> Result<(), String> {
+    use rtc_rust::light::Sequence;
+    // rtc-rust's test_bonus_soft_shadows_4 (cell centres) and _7 (jitter
+    // 0.3, 0.7) light and cells.
+    let mut light = Light::area_light(
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::vector(2.0, 0.0, 0.0),
+        4,
+        Tuple::vector(0.0, 0.0, 1.0),
+        2,
+        Tuple::color(1.0, 1.0, 1.0),
+    );
+    let cells = [(0, 0), (1, 0), (0, 1), (2, 0), (3, 1)];
+    for (ju, jv) in [(0.5, 0.5), (0.3, 0.7)] {
+        light.jitter_by = Sequence::new(vec![ju, jv]);
+        let input: Vec<PointOnLightProbe> = cells
+            .iter()
+            .map(|&(u, v)| PointOnLightProbe {
+                light: gpu_light(&light).unwrap(),
+                u,
+                v,
+                ju: ju as f32,
+                jv: jv as f32,
+            })
+            .collect();
+        let out: Vec<Float4> = Gpu::new()?.run("probe_point_on_light", &input)?;
+        for (&(u, v), got) in cells.iter().zip(&out) {
+            let want = light.point_on_light(u as usize, v as usize);
+            check_tuple(*got, want, &format!("jitter ({ju}, {jv}) cell ({u}, {v})"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Input to `probe_intensity_at`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct IntensityProbe {
+    light: GpuLight,
+    point: Float4,
+    normalv: Float4,
+    pixel: u32,
+    frame: u32,
+    sampling: u32,
+}
+
+const _: () = assert!(size_of::<IntensityProbe>() == 128);
+
+#[test]
+fn test_bonus_soft_shadows_gpu_intensity_at() -> Result<(), String> {
+    let world = World::default_world();
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let white = Tuple::color(1.0, 1.0, 1.0);
+    let lights = [
+        // rtc-rust's test_bonus_soft_shadows_5: 2x2, with the corner rule.
+        Light::area_light(
+            Tuple::point(-0.5, -0.5, -5.0),
+            Tuple::vector(1.0, 0.0, 0.0),
+            2,
+            Tuple::vector(0.0, 1.0, 0.0),
+            2,
+            white,
+        ),
+        // 4x1: every cell is tested, no corner rule.
+        Light::area_light(
+            Tuple::point(-1.5, -0.5, -5.0),
+            Tuple::vector(3.0, 0.0, 0.0),
+            4,
+            Tuple::vector(0.0, 1.0, 0.0),
+            1,
+            white,
+        ),
+    ];
+    let points = [
+        Tuple::point(0.0, 0.0, 2.0),
+        Tuple::point(1.0, -1.0, 2.0),
+        Tuple::point(1.5, 0.0, 2.0),
+        Tuple::point(1.25, 1.25, 3.0),
+        Tuple::point(0.0, 0.0, -2.0),
+    ];
+    for (k, light) in lights.iter().enumerate() {
+        let input: Vec<IntensityProbe> = points
+            .iter()
+            .map(|p| IntensityProbe {
+                light: gpu_light(light).unwrap(),
+                point: float4(*p),
+                // Facing the light, as rtc-rust's intensity_at has no normal.
+                normalv: [0.0, 0.0, -1.0, 0.0],
+                pixel: 0,
+                frame: 0,
+                sampling: 0,
+            })
+            .collect();
+        let out: Vec<f32> = Gpu::new()?.run_with_scene("probe_intensity_at", &input, &scene)?;
+        for (p, got) in points.iter().zip(&out) {
+            let want = light.intensity_at(*p, &world);
+            check_close(*got, want, &format!("light {k} point {p}"))?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_bonus_soft_shadows_gpu_lighting() -> Result<(), String> {
+    use std::f64::consts::FRAC_1_SQRT_2 as H;
+    // rtc-rust's test_bonus_soft_shadows_9, then the same with the default
+    // (specular) material so the specular average is covered too.
+    let light = Light::area_light(
+        Tuple::point(-0.5, -0.5, -5.0),
+        Tuple::vector(1.0, 0.0, 0.0),
+        2,
+        Tuple::vector(0.0, 1.0, 0.0),
+        2,
+        Tuple::color(1.0, 1.0, 1.0),
+    );
+    let mut matte = Material::new();
+    (matte.ambient, matte.diffuse, matte.specular) = (0.1, 0.9, 0.0);
+    let eye = Tuple::point(0.0, 0.0, -5.0);
+    let points = [Tuple::point(0.0, 0.0, -1.0), Tuple::point(0.0, H, -H)];
+    for (k, material) in [matte, Material::new()].into_iter().enumerate() {
+        let input: Vec<LightingProbe> = points
+            .iter()
+            .map(|p| LightingProbe {
+                material: gpu_material(&material).unwrap(),
+                light: gpu_light(&light).unwrap(),
+                point: float4(*p),
+                object_point: float4(*p),
+                eyev: float4((eye - *p).normalize()),
+                normalv: float4(Tuple::vector(p.x, p.y, p.z)),
+                intensity: 1.0,
+                pixel: 0,
+                frame: 0,
+                sampling: 0,
+            })
+            .collect();
+        let out: Vec<Float4> = Gpu::new()?.run("probe_lighting", &input)?;
+        let mut sphere = Sphere::new();
+        sphere.set_material(material);
+        for (p, got) in points.iter().zip(&out) {
+            let (eyev, normalv) = ((eye - *p).normalize(), Tuple::vector(p.x, p.y, p.z));
+            let want = light.lighting(&sphere, *p, *p, eyev, normalv, 1.0);
+            for (c, (g, w)) in got.iter().zip([want.x, want.y, want.z]).enumerate() {
+                check_close(*g, w, &format!("material {k} point {p} channel {c}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_bonus_soft_shadows_gpu_intensity_at_terminator() -> Result<(), String> {
+    // A light 1e-3 rad below the tangent plane at the front of the default
+    // world's unit sphere. rtc-rust's shadow ray from its over_point, 1e-9
+    // off the surface, re-enters the sphere: shadowed. A shadow ray from the
+    // GPU's over_point, 1e-5 off, would miss the sphere below
+    // sqrt(2e-5) = 4.5e-3 rad; the GPU must still call it shadowed.
+    let world = World::default_world();
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let (point, normalv) = (Tuple::point(0.0, 0.0, -1.0), Tuple::vector(0.0, 0.0, -1.0));
+    let light = Light::point_light(Tuple::point(5.0, 0.0, -0.995), Tuple::color(1.0, 1.0, 1.0));
+    let input = [IntensityProbe {
+        light: gpu_light(&light).unwrap(),
+        point: float4(point + normalv * EPSILON),
+        normalv: float4(normalv),
+        pixel: 0,
+        frame: 0,
+        sampling: 0,
+    }];
+    let out: Vec<f32> = Gpu::new()?.run_with_scene("probe_intensity_at", &input, &scene)?;
+    let cpu_over_point = point + normalv * rtc_rust::math::EPSILON;
+    check_close(
+        out[0],
+        light.intensity_at(cpu_over_point, &world),
+        "terminator",
+    )
 }

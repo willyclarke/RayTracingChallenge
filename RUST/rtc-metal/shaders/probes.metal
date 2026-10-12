@@ -67,15 +67,60 @@ struct LightingProbe {
     float4 eyev;
     float4 normalv;
     float intensity;
+    uint pixel;  // the Sampler; sampling 0 is rtc-rust's deterministic grid
+    uint frame;
+    uint sampling;
 };
-static_assert(sizeof(LightingProbe) == 256, "LightingProbe must match probes.rs");
+static_assert(sizeof(LightingProbe) == 304, "LightingProbe must match probes.rs");
 
 kernel void probe_lighting(device const LightingProbe *in [[buffer(0)]],
                            device float4 *out             [[buffer(1)]],
                            uint i                         [[thread_position_in_grid]])
 {
     LightingProbe p = in[i];
-    out[i] = float4(lighting(p.material, p.light, p.point, p.object_point, p.eyev, p.normalv, p.intensity), 0.0);
+    Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
+    out[i] = float4(lighting(p.material, p.light, p.point, p.object_point, p.eyev, p.normalv,
+                             p.intensity, s),
+                    0.0);
+}
+
+struct PointOnLightProbe {
+    Light light;
+    uint u;
+    uint v;
+    float ju;
+    float jv;
+};
+static_assert(sizeof(PointOnLightProbe) == 96, "PointOnLightProbe must match probes.rs");
+
+kernel void probe_point_on_light(device const PointOnLightProbe *in [[buffer(0)]],
+                                 device float4 *out                 [[buffer(1)]],
+                                 uint i                             [[thread_position_in_grid]])
+{
+    PointOnLightProbe p = in[i];
+    out[i] = light_cell_point(p.light, p.u, p.v, p.ju, p.jv);
+}
+
+struct IntensityProbe {
+    Light light;
+    float4 point;
+    float4 normalv;
+    uint pixel;  // the Sampler
+    uint frame;
+    uint sampling;
+};
+static_assert(sizeof(IntensityProbe) == 128, "IntensityProbe must match probes.rs");
+
+kernel void probe_intensity_at(device const IntensityProbe *in [[buffer(0)]],
+                               device float *out               [[buffer(1)]],
+                               device const Shape *shapes      [[buffer(2)]],
+                               device const BvhNode *nodes     [[buffer(3)]],
+                               constant SceneCounts &counts    [[buffer(4)]],
+                               uint i                          [[thread_position_in_grid]])
+{
+    IntensityProbe p = in[i];
+    Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
+    out[i] = intensity_at(p.light, p.point, p.normalv, shapes, nodes, counts, s);
 }
 
 struct CameraProbe {
