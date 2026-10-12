@@ -623,11 +623,12 @@ inline bool bvh_next_leaf(device const BvhNode *nodes, Ray r, float tmin, float 
     return false;
 }
 
-// Ray through the centre of pixel (px, py). The camera looks toward -z with
-// the canvas at z = -1, so +x is to the left.
-inline Ray ray_for_pixel(Camera c, uint px, uint py) {
-    float world_x = c.half_width - (float(px) + 0.5) * c.pixel_size;
-    float world_y = c.half_height - (float(py) + 0.5) * c.pixel_size;
+// Ray through the point (jx, jy) of pixel (px, py), each in [0, 1): 0.5, 0.5
+// is the pixel centre, as rtc-rust. The camera looks toward -z with the
+// canvas at z = -1, so +x is to the left.
+inline Ray ray_for_pixel(Camera c, uint px, uint py, float jx, float jy) {
+    float world_x = c.half_width - (float(px) + jx) * c.pixel_size;
+    float world_y = c.half_height - (float(py) + jy) * c.pixel_size;
     float4 pixel = c.inverse * float4(world_x, world_y, -1.0, 1.0);
     float4 origin = c.inverse * float4(0.0, 0.0, 0.0, 1.0);
     return Ray{origin, normalize(pixel - origin)};

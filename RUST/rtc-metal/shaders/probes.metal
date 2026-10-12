@@ -123,6 +123,35 @@ kernel void probe_intensity_at(device const IntensityProbe *in [[buffer(0)]],
     out[i] = intensity_at(p.light, p.point, p.normalv, shapes, nodes, counts, s);
 }
 
+struct ShadeProbe {
+    Material material;
+    Light light;
+    float4 point;
+    float4 eyev;
+    float4 normalv;
+    uint pixel;  // the Sampler
+    uint frame;
+    uint sampling;
+};
+static_assert(sizeof(ShadeProbe) == 288, "ShadeProbe must match probes.rs");
+
+// One shading call as color_at makes it: intensity_at and lighting share the
+// Sampler, which keeps cell A (shadow) and cell B (diffuse) independent.
+kernel void probe_shade_point(device const ShadeProbe *in    [[buffer(0)]],
+                              device float4 *out             [[buffer(1)]],
+                              device const Shape *shapes     [[buffer(2)]],
+                              device const BvhNode *nodes    [[buffer(3)]],
+                              constant SceneCounts &counts   [[buffer(4)]],
+                              uint i                         [[thread_position_in_grid]])
+{
+    ShadeProbe p = in[i];
+    Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
+    float intensity = intensity_at(p.light, p.point, p.normalv, shapes, nodes, counts, s);
+    out[i] = float4(lighting(p.material, p.light, p.point, p.point, p.eyev, p.normalv,
+                             intensity, s),
+                    0.0);
+}
+
 struct CameraProbe {
     Camera camera;
     uint2 pixel;
@@ -133,7 +162,7 @@ kernel void probe_ray_for_pixel(device const CameraProbe *in [[buffer(0)]],
                                 device Ray *out              [[buffer(1)]],
                                 uint i                       [[thread_position_in_grid]])
 {
-    out[i] = ray_for_pixel(in[i].camera, in[i].pixel.x, in[i].pixel.y);
+    out[i] = ray_for_pixel(in[i].camera, in[i].pixel.x, in[i].pixel.y, 0.5, 0.5);
 }
 
 struct RefractiveProbe {

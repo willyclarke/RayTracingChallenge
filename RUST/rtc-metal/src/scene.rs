@@ -86,8 +86,9 @@ impl GpuScene {
     }
 }
 
-/// The camera's anti-aliasing sample count is ignored: the GPU renders one
-/// ray through each pixel centre.
+/// The camera's anti-aliasing sample count is ignored: a deterministic frame
+/// has one ray through each pixel centre, and sampled frames jitter that ray
+/// within the pixel instead, anti-aliasing as they accumulate.
 pub fn gpu_camera(camera: &Camera) -> Result<GpuCamera, String> {
     if camera.aperture > 0.0 || camera.motion_samples > 1 {
         return Err("focal blur and motion blur are not supported yet".into());

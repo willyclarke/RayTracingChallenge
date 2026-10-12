@@ -1690,3 +1690,68 @@ fn test_bonus_soft_shadows_gpu_intensity_at_terminator() -> Result<(), String> {
         "terminator",
     )
 }
+
+/// Input to `probe_shade_point`: `intensity_at` then `lighting`, one Sampler.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct ShadeProbe {
+    material: GpuMaterial,
+    light: GpuLight,
+    point: Float4,
+    eyev: Float4,
+    normalv: Float4,
+    pixel: u32,
+    frame: u32,
+    sampling: u32,
+}
+
+const _: () = assert!(size_of::<ShadeProbe>() == 288);
+
+#[test]
+fn test_bonus_soft_shadows_gpu_sampled_shading_converges() -> Result<(), String> {
+    // rtc-rust's test_bonus_soft_shadows_5 light; (1, -1, 2) is in the
+    // default world's penumbra. Sampling picks a uniform point on the whole
+    // light, so the mean of many frames approaches the integral over the
+    // light, not the 2x2 cell-centre estimate (intensity 0.25 there, while
+    // about 49% of the light's area is visible). The reference is the
+    // deterministic shading of the same light cut into 64x64 cells.
+    let world = World::default_world();
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let light = |steps| {
+        Light::area_light(
+            Tuple::point(-0.5, -0.5, -5.0),
+            Tuple::vector(1.0, 0.0, 0.0),
+            steps,
+            Tuple::vector(0.0, 1.0, 0.0),
+            steps,
+            Tuple::color(1.0, 1.0, 1.0),
+        )
+    };
+    let probe = |light: &Light, frame, sampling| ShadeProbe {
+        material: gpu_material(&Material::new()).unwrap(),
+        light: gpu_light(light).unwrap(),
+        point: [1.0, -1.0, 2.0, 1.0],
+        eyev: [0.0, 0.0, -1.0, 0.0],
+        normalv: [0.0, 0.0, -1.0, 0.0],
+        pixel: 0,
+        frame,
+        sampling,
+    };
+    let gpu = Gpu::new()?;
+    let want: Vec<Float4> =
+        gpu.run_with_scene("probe_shade_point", &[probe(&light(64), 0, 0)], &scene)?;
+    let coarse = light(2);
+    let input: Vec<ShadeProbe> = (0..4096).map(|f| probe(&coarse, f, 1)).collect();
+    let out: Vec<Float4> = gpu.run_with_scene("probe_shade_point", &input, &scene)?;
+    for c in 0..3 {
+        let mean = out.iter().map(|o| o[c] as f64).sum::<f64>() / out.len() as f64;
+        let want = want[0][c] as f64;
+        eprintln!("channel {c}: sampled mean {mean:.4}, 64x64 deterministic {want:.4}");
+        if (mean - want).abs() > 0.01 {
+            return Err(format!(
+                "channel {c}: sampled mean {mean} vs deterministic {want}"
+            ));
+        }
+    }
+    Ok(())
+}

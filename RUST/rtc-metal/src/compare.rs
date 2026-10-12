@@ -18,7 +18,7 @@ use std::f64::consts::PI;
 
 /// The book's chapter 7 "putting it together" scene: three spheres on a
 /// floor and two walls that are themselves flattened spheres.
-fn chapter_7_scene(width: usize, height: usize) -> (World, Camera) {
+pub(crate) fn chapter_7_scene(width: usize, height: usize) -> (World, Camera) {
     let mut world = World::new();
     world.light = Some(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
@@ -334,4 +334,77 @@ fn test_bonus_soft_shadows_gpu_render_matches_cpu() -> Result<(), String> {
     // A 10x10 area light: penumbrae under both balls and in their reflections.
     let (world, camera) = scene_file(include_str!("../scenes/soft_shadows.json"), 200, 80);
     check_matches_cpu(&world, camera)
+}
+
+/// Mean absolute difference per channel (RGB) between two row-major images;
+/// the worst channel.
+fn mean_abs_error(a: &[[f32; 4]], b: impl Fn(usize) -> [f64; 3]) -> f64 {
+    let mut sums = [0.0f64; 3];
+    for (i, p) in a.iter().enumerate() {
+        let q = b(i);
+        for c in 0..3 {
+            sums[c] += (p[c] as f64 - q[c]).abs();
+        }
+    }
+    sums.iter()
+        .fold(0.0, |m, s| f64::max(m, s / a.len() as f64))
+}
+
+#[test]
+fn test_bonus_soft_shadows_gpu_sampled_render_converges() -> Result<(), String> {
+    // Calibrated once: measured err_4 = 2.604e-2, err_256 = 4.586e-3;
+    // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. The error
+    // does not go to 0: the CPU reference uses cell centres and one ray per
+    // pixel centre, the sampled frames integrate over the whole light and
+    // pixel.
+    const THRESHOLD: f64 = 6.9e-3;
+    let (world, camera) = scene_file(include_str!("../scenes/soft_shadows.json"), 200, 80);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let cpu = world.render_parallel(camera);
+    let w = scene.width();
+    let cpu_at = |i: usize| {
+        let c = cpu.pixel_at(i % w, i / w);
+        [c.x, c.y, c.z]
+    };
+    let gpu = Gpu::new()?;
+    let mut acc = gpu.accumulator(&scene)?;
+    for _ in 0..4 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_4 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    for _ in 4..256 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_256 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    eprintln!("err_4 {err_4:.3e}, err_256 {err_256:.3e}");
+    if err_256 > 0.5 * err_4 {
+        return Err(format!("err_256 {err_256} not <= half of err_4 {err_4}"));
+    }
+    if err_256 >= THRESHOLD {
+        return Err(format!("err_256 {err_256} >= {THRESHOLD}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_7_gpu_sampled_render_stays_close() -> Result<(), String> {
+    // A point light: sampling only jitters the ray within the pixel, so 64
+    // frames are the deterministic image with anti-aliased edges.
+    let (world, camera) = chapter_7_scene(160, 80);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let gpu = Gpu::new()?;
+    let deterministic = gpu.render(&scene)?;
+    let mut acc = gpu.accumulator(&scene)?;
+    for _ in 0..64 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err = mean_abs_error(&acc.resolve(&gpu)?, |i| {
+        let [r, g, b, _] = deterministic[i];
+        [r as f64, g as f64, b as f64]
+    });
+    eprintln!("chapter 7 sampled vs deterministic: {err:.3e}");
+    if err >= 0.01 {
+        return Err(format!("mean absolute error {err} >= 0.01"));
+    }
+    Ok(())
 }
