@@ -7,18 +7,24 @@ done. rtc-rust (f64, CPU) stays the reference.
 
 Render on the GPU progressively: every frame adds one random sample per pixel
 (jittered sub-pixel ray, jittered area-light sample) to an accumulation
-buffer, and the running mean converges to the CPU image. Show it live in a
+buffer, and the running mean converges to the integral over the pixel area
+and the continuous area light. rtc-rust's `usteps × vsteps` cell centres and
+single pixel-centre ray approximate that integral, so the sampled image ends
+close to the CPU image but not on it (soft_shadows, 10×10 light: mean
+absolute error 4.6e-3 after 256 samples). Show it live in a
 native macOS window with an orbit camera, or accumulate N samples headless and
 write a PPM. Success: the deterministic path still matches every existing
 compare test pixel for pixel; area lights match the CPU exactly in
-deterministic mode; a sampled render converges to the CPU image (calibrated
-mean-error threshold); the window opens, converges, pauses, orbits and writes
-the PPM on close.
+deterministic mode; a sampled render converges to within a calibrated
+mean-error threshold of the CPU image; the window opens, converges, pauses,
+orbits and writes the PPM on close.
 
 ## Decisions
 
 - **Sampled features:** antialiasing (uniform sub-pixel jitter) and area
-  lights (the book's bonus chapter "Rendering soft shadows"). Focal blur,
+  lights (the book's bonus chapter "Rendering soft shadows"). Sampling
+  integrates over the continuous light and the pixel area; the CPU's cell
+  centres are an approximation of that, not the target. Focal blur,
   motion blur, path tracing and spot lights stay out and are rejected with
   "not supported so far".
 - **Window:** objc2 AppKit + MetalKit: an `MTKView` subclass and an
@@ -46,7 +52,9 @@ one cell per frame and using it for both factors would converge to the mean
 of the product, a slightly different image. So each sampled frame draws two
 **independent** cells: cell A for the shadow ray, cell B for diffuse and
 specular. Independence makes the expected product equal the product of the
-expectations, which is the CPU's formula.
+expectations, which is the CPU's formula. Both expectations are over the
+continuous light (a uniform point anywhere on it, from the jittered cell), so
+they equal the CPU's cell-centre means only in the limit of many cells.
 
 `GpuLight` / MSL `Light` grows from 32 to 80 bytes: `corner`, `uvec`, `vvec`
 (float4), `usteps`, `vsteps`, `samples` (uint) plus padding. A point light is
@@ -82,6 +90,14 @@ there is one lighting path. The `static_assert` sizes change with it.
 - The CPU's shadow test stops after the four corner cells when they agree,
   missing shadows that fall only on interior cells; the GPU's random cells do
   not.
+- Light cells behind the surface's tangent plane (`dot(cell - point,
+  normalv) < 0`) count as shadowed without a shadow ray. rtc-rust gets the
+  same result geometrically: from its 1e-9 `over_point` the shadow ray
+  re-enters the shape. From the GPU's 1e-5 `over_point` a ray dipping
+  slightly below the tangent plane can miss the shape, so the GPU decides
+  explicitly. The test uses the shading normal, so smooth triangles under an
+  area light can differ from the CPU near terminators, where the shading and
+  geometric normals disagree.
 
 ## CPU side
 
@@ -111,7 +127,10 @@ there is one lighting path. The `static_assert` sizes change with it.
 CPU-side f64, reusing rtc-rust. Holds `to`, `up` and `from` as spherical
 coordinates (radius, yaw, pitch) around `to`, initialised from the scene
 camera. Drag changes yaw/pitch (pitch clamped to ±89° so `up` never lines up
-with the view direction); scroll scales the radius (clamped > 0). Produces
+with the view direction); dragging "grabs the scene" (right orbits the
+camera left, down raises it); scroll scales the radius by exp(-0.1) per unit
+(trackpad deltas × 0.1), clamped to [1e-3, 1e3 × the initial radius].
+Zero-delta events do not restart accumulation. Produces
 `view_transform(from, to, up)` for `set_camera`.
 
 ### `src/window.rs` (new)
@@ -165,8 +184,11 @@ Test names follow the book: GPU soft-shadow tests are
   cell (ported from rtc-rust's bonus soft-shadow tests).
 - Deterministic area-light `lighting` matches rtc-rust `lighting()` with a
   2×2 light.
-- Sampled shading of one point averaged over many frames is within 0.01 of
-  the deterministic value (checks the two-independent-cells argument).
+- Sampled shading of one point in the default world's penumbra, under
+  rtc-rust's 2×2 soft-shadow test light: the mean of 4096 sampled frames is
+  within 0.01 of the deterministic shading of the same light subdivided
+  64×64 (the continuous-light reference; checks the two-independent-cells
+  argument).
 
 ### Whole-image compares (`src/compare.rs`)
 
@@ -174,16 +196,21 @@ Test names follow the book: GPU soft-shadow tests are
 - New `soft_shadows_scene()` (the book's soft-shadow scene, shrunk):
   deterministic GPU vs CPU pixel-exact within the existing budget.
 - Convergence: same scene, 256 sampled frames vs the CPU; mean absolute
-  error below a threshold calibrated once and documented in the test; and
+  error below a threshold calibrated once and documented in the test (it
+  does not go to 0: the CPU uses cell centres and pixel centres); and
   the 256-sample error is at most half the 4-sample error (a sampler that does
   not converge fails).
-- `Accumulator`: after `reset()` frame 0 overwrites stale data; resolving
-  after frames 0–3 equals the mean of the four individual sampled frames.
+- `Accumulator`: after `reset()` frame 0 overwrites stale data; when every
+  sample is the same colour (camera inside an ambient-only sphere), resolving
+  after 4 frames gives exactly that colour (catches an off-by-one divisor).
 
 ### Orbit (`src/orbit.rs`)
 
 Unit tests: spherical → `from` round-trips the scene camera's `from`; pitch
-clamps at ±89°; zero drag gives the original view transform.
+clamps at ±89°; zero drag gives the original view transform; dragging right
+by a quarter turn orbits the camera left; positive dy raises the camera; one
+zoom unit scales the radius by exp(-0.1); zooming far out stays finite and
+within 1e3 × the initial radius.
 
 ### Window (manual)
 
