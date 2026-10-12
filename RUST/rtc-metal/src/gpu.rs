@@ -112,6 +112,10 @@ impl Gpu {
         })
     }
 
+    pub fn device(&self) -> &ProtocolObject<dyn MTLDevice> {
+        &self.device
+    }
+
     pub fn queue(&self) -> &ProtocolObject<dyn MTLCommandQueue> {
         &self.queue
     }
@@ -319,6 +323,7 @@ impl Accumulator {
         encoder: &Encoder,
         texture: &ProtocolObject<dyn MTLTexture>,
     ) {
+        assert!(self.frames > 0, "no samples accumulated");
         let size_frames = self.size_frames();
         encoder.setComputePipelineState(&self.resolve_texture);
         // SAFETY: indices and types match the `resolve_texture` kernel's
