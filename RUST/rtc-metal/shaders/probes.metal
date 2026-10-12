@@ -247,6 +247,23 @@ kernel void probe_noise(device const NoiseProbe *in  [[buffer(0)]],
     out[i] = float4(perlin_noise(tables, in[i].table, p), perlin_vector(tables, in[i].table, p));
 }
 
+struct CsgInsideProbe {
+    uint program;
+    uint bits;
+};
+
+// Chapter 16: out[i] = csg_inside of the program at in[i].program.
+kernel void probe_csg_inside(device const CsgInsideProbe *in [[buffer(0)]],
+                             device uint *out                [[buffer(1)]],
+                             device const Shape *shapes      [[buffer(2)]],
+                             device const BvhNode *nodes     [[buffer(3)]],
+                             constant SceneCounts &counts    [[buffer(4)]],
+                             device const uint *tables       [[buffer(5)]],
+                             uint i                          [[thread_position_in_grid]])
+{
+    out[i] = csg_inside(tables, in[i].program, in[i].bits) ? 1 : 0;
+}
+
 struct TraceProbe {
     Ray ray;
     float4 light_position;

@@ -4,8 +4,8 @@
 use crate::gpu::Gpu;
 use crate::scene::{GpuScene, Tables, gpu_camera, gpu_light, gpu_material, gpu_shape};
 use crate::types::{
-    Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_PLANE, SHAPE_SPHERE,
-    float4,
+    Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_CSG, SHAPE_PLANE,
+    SHAPE_SPHERE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -1108,6 +1108,92 @@ fn test_chap_17_gpu_perturbed_pattern_matches_cpu() -> Result<(), String> {
         let want = color(*p);
         for (c, (g, w)) in got.iter().zip([want.x, want.y, want.z]).enumerate() {
             check_close(*g, w, &format!("point {i} channel {c}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Input to `probe_csg_inside`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CsgInsideProbe {
+    program: u32,
+    bits: u32,
+}
+
+/// Each `SHAPE_CSG` entry's program offset and its rtc-rust CSG id.
+fn csg_programs(scene: &GpuScene) -> Vec<(u32, usize)> {
+    (0..scene.info.counts.shape_count as usize)
+        .filter(|&i| scene.shapes[i].kind == SHAPE_CSG)
+        .map(|i| (scene.shapes[i].closed, scene.ids[i]))
+        .collect()
+}
+
+/// `csg_inside` for every (program, bits) pair.
+fn csg_inside(scene: &GpuScene, probes: &[(u32, u32)]) -> Result<Vec<bool>, String> {
+    let input: Vec<CsgInsideProbe> = probes
+        .iter()
+        .map(|&(program, bits)| CsgInsideProbe { program, bits })
+        .collect();
+    let out: Vec<u32> = Gpu::new()?.run_with_scene("probe_csg_inside", &input, scene)?;
+    Ok(out.iter().map(|&o| o != 0).collect())
+}
+
+#[test]
+fn test_chap_16_gpu_csg_rule_matches_cpu() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation, intersection_allowed};
+    let mut world = marble_world(&[]);
+    for op in [
+        CsgOperation::Union,
+        CsgOperation::Intersection,
+        CsgOperation::Difference,
+    ] {
+        let c = world.add_shape(Box::new(Csg::new(op)));
+        world.add_child(c, Box::new(Sphere::new()));
+        world.add_child(c, Box::new(Cube::new()));
+    }
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let programs = csg_programs(&scene);
+    if programs.len() != 3 {
+        return Err(format!("{} CSG programs, want 3", programs.len()));
+    }
+    for (program, id) in programs {
+        let op = world.shapes[id - 1].csg_operation().ok_or("not a CSG")?;
+        for row in 0..8u32 {
+            let (lhit, inl, inr) = (row & 1 != 0, row & 2 != 0, row & 4 != 0);
+            // bit 0 is the left leaf, bit 1 the right; the hit flips its side
+            let bits = inl as u32 | (inr as u32) << 1;
+            let flipped = bits ^ if lhit { 1 } else { 2 };
+            let got = csg_inside(&scene, &[(program, bits), (program, flipped)])?;
+            let changed = got[0] != got[1];
+            if changed != intersection_allowed(op, lhit, inl, inr) {
+                return Err(format!(
+                    "{op:?} lhit {lhit} inl {inl} inr {inr}: gpu keeps {changed}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_16_gpu_csg_inside_nested() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    // union(intersection(a, b), c): inside iff (a and b) or c
+    let mut world = marble_world(&[]);
+    let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+    let inner = world.add_child(c, Box::new(Csg::new(CsgOperation::Intersection)));
+    world.add_child(c, Box::new(Sphere::new()));
+    world.add_child(inner, Box::new(Sphere::new()));
+    world.add_child(inner, Box::new(Cube::new()));
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let program = csg_programs(&scene)[0].0;
+    let probes: Vec<(u32, u32)> = (0..8).map(|bits| (program, bits)).collect();
+    let got = csg_inside(&scene, &probes)?;
+    for (bits, inside) in (0..8u32).zip(got) {
+        let (a, b, c) = (bits & 1 != 0, bits & 2 != 0, bits & 4 != 0);
+        if inside != ((a && b) || c) {
+            return Err(format!("bits {bits:03b}: gpu inside {inside}"));
         }
     }
     Ok(())

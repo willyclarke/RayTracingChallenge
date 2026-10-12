@@ -45,6 +45,8 @@ constant uint SHAPE_CUBE = 2;
 constant uint SHAPE_CYLINDER = 3;
 constant uint SHAPE_CONE = 4;
 constant uint SHAPE_TRIANGLE = 5;
+// Chapter 16: a whole CSG tree; `closed` holds its program's offset in tables.
+constant uint SHAPE_CSG = 6;
 
 // rtc-rust uses 1e-9 in f64. In f32 a point ~10 units from the origin is
 // only resolved to ~1e-6, so the shadow-acne offset has to be much larger.
@@ -702,6 +704,38 @@ inline Ray ray_for_pixel(Camera c, uint px, uint py, float jx, float jy) {
 
 // The nearest non-negative hit: root `root` (0 to 3, of the ascending roots
 // local_intersect returns) of shapes[index], at distance t.
+// ---- Chapter 16: constructive solid geometry ------------------------------
+
+// A CSG program in tables[p..]: [n, leaf_base, n postfix instructions]. The
+// k-th CSG_LEAF is shape counts.shape_count + leaf_base + k and inside bit k.
+constant uint CSG_LEAF = 0;
+constant uint CSG_UNION = 1;
+constant uint CSG_INTERSECTION = 2;
+constant uint CSG_DIFFERENCE = 3;
+
+// Is a point inside the tree's solid, given whether it is inside each leaf
+// (bit k = leaf k)? Evaluates the postfix program on a stack of bits held in
+// one uint, top of stack in bit 0; a tree of <= 32 leaves never needs more.
+inline bool csg_inside(device const uint *tables, uint p, uint bits) {
+    uint n = tables[p];
+    uint stack = 0;
+    uint leaf = 0;
+    for (uint i = 0; i < n; i++) {
+        uint op = tables[p + 2 + i];
+        if (op == CSG_LEAF) {
+            stack = (stack << 1) | ((bits >> leaf++) & 1);
+            continue;
+        }
+        uint right = stack & 1;
+        uint left = (stack >> 1) & 1;
+        uint inside = op == CSG_UNION ? (left | right)
+                      : op == CSG_INTERSECTION ? (left & right)
+                                               : (left & ~right & 1); // CSG_DIFFERENCE
+        stack = ((stack >> 2) << 1) | inside;
+    }
+    return (stack & 1) != 0;
+}
+
 struct Hit {
     float t;
     uint index;
