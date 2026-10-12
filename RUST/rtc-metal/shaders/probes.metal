@@ -280,12 +280,12 @@ struct TraceResult {
 static_assert(sizeof(TraceResult) == 32, "TraceResult must match probes.rs");
 
 // The first steps of color_at for one ray: nearest hit, normal, shadow test.
-// index = counts.shape_count on a miss.
+// index = 0xffffffff on a miss (counts.shape_count is the first CSG leaf).
 inline TraceResult trace(TraceProbe p, device const Shape *shapes, device const BvhNode *nodes,
                          device const uint *tables, SceneCounts counts) {
     Hit hit;
     if (!hit_shapes(p.ray, shapes, nodes, tables, counts, hit)) {
-        return TraceResult{float4(0.0), INFINITY, counts.shape_count, 0, 0};
+        return TraceResult{float4(0.0), INFINITY, 0xffffffff, 0, 0};
     }
     float4 point = p.ray.origin + p.ray.direction * hit.t;
     Shape s = shapes[hit.index];

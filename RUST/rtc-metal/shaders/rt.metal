@@ -736,6 +736,58 @@ inline bool csg_inside(device const uint *tables, uint p, uint bits) {
     return (stack & 1) != 0;
 }
 
+// One root of a CSG leaf: `leaf` is its absolute shape index, `root` the
+// index into that leaf's ascending roots.
+struct CsgHit {
+    float t;
+    uint leaf;
+    uint root;
+};
+
+// The most roots a CSG may have; scene.rs rejects bigger trees.
+constant uint CSG_MAX_HITS = 64;
+
+// The roots of the CSG entry `s` on its solid's boundary, ascending, into
+// `out`; returns how many. Like rtc-rust's filter_intersections, it walks
+// every root, those behind the ray origin too, starting outside every leaf:
+// each root flips its leaf's inside bit, and survives iff that flips the
+// tree's inside. That is the book's rule table, for any nesting.
+inline uint intersect_csg(Shape s, Ray r, device const Shape *shapes, device const uint *tables,
+                          SceneCounts counts, thread CsgHit *out) {
+    uint p = s.closed;
+    uint first = counts.shape_count + tables[p + 1];
+    uint count = 0;
+    uint leaf = first;
+    for (uint i = 0; i < tables[p]; i++) {
+        if (tables[p + 2 + i] != CSG_LEAF) {
+            continue;
+        }
+        float4 ts;
+        uint n = intersect(shapes[leaf], r, ts);
+        for (uint k = 0; k < n; k++) {
+            uint j = count++;
+            while (j > 0 && out[j - 1].t > ts[k]) { // insertion sort
+                out[j] = out[j - 1];
+                j--;
+            }
+            out[j] = CsgHit{ts[k], leaf, k};
+        }
+        leaf++;
+    }
+    uint bits = 0;
+    uint kept = 0;
+    bool inside = false; // outside every leaf, so outside the tree
+    for (uint i = 0; i < count; i++) {
+        bits ^= 1u << (out[i].leaf - first);
+        bool now = csg_inside(tables, p, bits);
+        if (now != inside) {
+            out[kept++] = out[i];
+        }
+        inside = now;
+    }
+    return kept;
+}
+
 struct Hit {
     float t;
     uint index;
@@ -752,6 +804,18 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *
     BvhWalk w = bvh_walk(counts);
     do {
         for (uint i = first; i < first + count; i++) {
+            if (shapes[i].kind == SHAPE_CSG) {
+                CsgHit csg[CSG_MAX_HITS];
+                uint n = intersect_csg(shapes[i], r, shapes, tables, counts, csg);
+                uint k = 0;
+                while (k < n && csg[k].t < 0.0) {
+                    k++;
+                }
+                if (k < n && csg[k].t < hit.t) {
+                    hit = Hit{csg[k].t, csg[k].leaf, csg[k].root};
+                }
+                continue;
+            }
             float4 ts;
             uint n = intersect(shapes[i], r, ts);
             // ts is ascending, so the first non-negative one is this shape's hit
@@ -780,6 +844,16 @@ inline bool is_shadowed(float4 light_position, float4 point,
     BvhWalk w = bvh_walk(counts);
     do {
         for (uint i = first; i < first + count; i++) {
+            if (shapes[i].kind == SHAPE_CSG) {
+                CsgHit csg[CSG_MAX_HITS];
+                uint n = intersect_csg(shapes[i], r, shapes, tables, counts, csg);
+                for (uint k = 0; k < n; k++) {
+                    if (csg[k].t >= 0.0 && csg[k].t < distance) {
+                        return true;
+                    }
+                }
+                continue;
+            }
             float4 ts;
             uint n = intersect(shapes[i], r, ts);
             for (uint k = 0; k < n; k++) {
@@ -901,6 +975,12 @@ inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes,
     BvhWalk w = bvh_walk(counts);
     do {
         for (uint i = first; i < first + count; i++) {
+            // CSG leaves are opaque (scene.rs), so a CSG never holds the
+            // transparent hit; as an enclosing medium it is ignored, a
+            // divergence from rtc-rust only for glass inside a CSG.
+            if (shapes[i].kind == SHAPE_CSG) {
+                continue;
+            }
             float4 ts;
             uint n = intersect(shapes[i], r, ts);
             if (i == hit.index) {

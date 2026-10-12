@@ -1972,3 +1972,234 @@ fn test_bonus_soft_shadows_gpu_sampled_shading_converges() -> Result<(), String>
     }
     Ok(())
 }
+
+/// Trace `rays` on the GPU, through the BVH and linearly, and on the CPU,
+/// and compare hit shape, t, normal and shadow. The CPU hit's shape id per
+/// ray, None on a miss.
+fn check_traces(world: &World, rays: &[Ray], light: Tuple) -> Result<Vec<Option<usize>>, String> {
+    let scene = GpuScene::from_world(world, &Camera::default())?;
+    let gpu = Gpu::new()?;
+    let probes = trace_probes(rays, light);
+    let out: Vec<TraceResult> = gpu.run_with_scene("probe_trace", &probes, &scene)?;
+    let linear: Vec<TraceResult> = gpu.run_with_scene("probe_trace_linear", &probes, &scene)?;
+    let mut hits = Vec::new();
+    for (i, ((ray, got), lin)) in rays.iter().zip(&out).zip(&linear).enumerate() {
+        let key = |r: &TraceResult| (r.index, r.t.to_bits(), r.shadowed);
+        if key(got) != key(lin) {
+            return Err(format!(
+                "ray {i}: bvh {:?} vs linear {:?}",
+                key(got),
+                key(lin)
+            ));
+        }
+        let got_id = scene.ids.get(got.index as usize).copied(); // None on a miss
+        let xs = world.intersect(ray);
+        let Some(hit) = xs.hit() else {
+            if got_id.is_some() {
+                return Err(format!("ray {i}: gpu hit {got_id:?}, cpu miss"));
+            }
+            hits.push(None);
+            continue;
+        };
+        if got_id != Some(hit.object_id) {
+            return Err(format!(
+                "ray {i}: gpu shape {got_id:?} (t {}) vs cpu {} (t {})",
+                got.t, hit.object_id, hit.t
+            ));
+        }
+        let comps = prepare_computations(hit, ray, &world.shapes, &xs);
+        check_close(got.t, hit.t, &format!("ray {i} t"))?;
+        check_tuple(got.normal, comps.normalv, &format!("ray {i} normal"))?;
+        let shadowed = world.is_shadowed(light, comps.over_point);
+        if (got.shadowed != 0) != shadowed {
+            return Err(format!(
+                "ray {i}: gpu shadowed {} vs cpu {shadowed}",
+                got.shadowed != 0
+            ));
+        }
+        hits.push(Some(hit.object_id));
+    }
+    Ok(hits)
+}
+
+/// Rays through every pixel of `camera`.
+fn camera_rays(camera: &Camera) -> Vec<Ray> {
+    (0..camera.vsize)
+        .flat_map(|y| (0..camera.hsize).map(move |x| (x, y)))
+        .map(|(x, y)| camera.ray_for_pixel(x, y))
+        .collect()
+}
+
+#[test]
+fn test_chap_16_gpu_trace_book_scenarios() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    // A ray hits / misses a CSG object (book chapter 16).
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let mut world = marble_world(&[]);
+    let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+    let s1 = world.add_child(c, Box::new(Sphere::new()));
+    let mut s2 = Sphere::new();
+    s2.set_transform(Matrix4::translation(0.0, 0.0, 0.5));
+    world.add_child(c, Box::new(s2));
+    world.build_bounds();
+    let rays = [
+        Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0)),
+        Ray::new(Tuple::point(0.0, 2.0, -5.0), Tuple::vector(0.0, 0.0, 1.0)),
+    ];
+    let hits = check_traces(&world, &rays, light)?;
+    if hits != [Some(s1), None] {
+        return Err(format!("hits {hits:?}, want [Some({s1}), None]"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_16_gpu_trace_operations() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let camera = Camera::new(20, 20, PI / 3.0).with_transform(view_transform(
+        Tuple::point(0.0, 1.5, -5.0),
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    ));
+    for op in [
+        CsgOperation::Union,
+        CsgOperation::Intersection,
+        CsgOperation::Difference,
+    ] {
+        let mut world = marble_world(&[]);
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::translation(0.0, -1.5, 0.0));
+        world.add_shape(Box::new(floor));
+        let c = world.add_shape(Box::new(Csg::new(op)));
+        let mut sphere = Sphere::new();
+        sphere.set_transform(Matrix4::translation(0.3, 0.2, -0.3));
+        world.add_child(c, Box::new(sphere));
+        let mut cube = Cube::new();
+        cube.set_transform(Matrix4::rotation_y(0.5) * Matrix4::scaling(0.8, 0.8, 0.8));
+        world.add_child(c, Box::new(cube));
+        world.build_bounds();
+        let hits = check_traces(&world, &camera_rays(&camera), light)
+            .map_err(|e| format!("{op:?}: {e}"))?;
+        let on_csg = hits.iter().filter(|h| h.is_some_and(|id| id > c)).count();
+        if on_csg < 20 {
+            return Err(format!("{op:?}: only {on_csg} rays hit the CSG"));
+        }
+    }
+    Ok(())
+}
+
+/// rtc-rust's dice (scenes/dicelib.py): a cube with its corners trimmed by
+/// a sphere of radius 1.4, minus 21 pip spheres of radius 0.2, added as one
+/// CSG with `transform`. Returns the CSG's id and its pips' ids.
+fn add_die(world: &mut World, transform: Matrix4) -> (usize, Vec<usize>) {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    const O: f64 = 0.5;
+    let layout: [&[(f64, f64)]; 6] = [
+        &[(0.0, 0.0)],
+        &[(-O, -O), (O, O)],
+        &[(-O, -O), (0.0, 0.0), (O, O)],
+        &[(-O, -O), (-O, O), (O, -O), (O, O)],
+        &[(-O, -O), (-O, O), (0.0, 0.0), (O, -O), (O, O)],
+        &[(-O, -O), (-O, 0.0), (-O, O), (O, -O), (O, 0.0), (O, O)],
+    ];
+    // (value, axis, sign); opposite faces sum to 7
+    let faces = [
+        (1, 1, 1.0),
+        (6, 1, -1.0),
+        (3, 0, 1.0),
+        (4, 0, -1.0),
+        (2, 2, 1.0),
+        (5, 2, -1.0),
+    ];
+    let mut centers = Vec::new();
+    for (value, axis, sign) in faces {
+        for &(u, v) in layout[value - 1] {
+            centers.push(match axis {
+                0 => (sign, u, v),
+                1 => (u, sign, v),
+                _ => (u, v, sign),
+            });
+        }
+    }
+    let mut root = Csg::new(CsgOperation::Difference);
+    root.set_transform(transform);
+    let die = world.add_shape(Box::new(root));
+    // The last pip is the outermost difference's right operand.
+    let mut cur = die;
+    let mut pips = Vec::new();
+    for (k, &(x, y, z)) in centers.iter().enumerate().rev() {
+        let op = if k > 0 {
+            CsgOperation::Difference
+        } else {
+            CsgOperation::Intersection
+        };
+        let inner = world.add_child(cur, Box::new(Csg::new(op)));
+        let mut pip = Sphere::new();
+        pip.set_transform(Matrix4::translation(x, y, z) * Matrix4::scaling(0.2, 0.2, 0.2));
+        pips.push(world.add_child(cur, Box::new(pip)));
+        cur = inner;
+    }
+    world.add_child(cur, Box::new(Cube::new()));
+    let mut trim = Sphere::new();
+    trim.set_transform(Matrix4::scaling(1.4, 1.4, 1.4));
+    world.add_child(cur, Box::new(trim));
+    (die, pips)
+}
+
+#[test]
+fn test_chap_16_gpu_trace_die() -> Result<(), String> {
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let mut world = marble_world(&[]);
+    let (die, pips) = add_die(
+        &mut world,
+        Matrix4::rotation_y(0.6) * Matrix4::rotation_x(0.4),
+    );
+    world.build_bounds();
+    let camera = Camera::new(40, 40, PI / 3.0).with_transform(view_transform(
+        Tuple::point(0.0, 1.0, -4.0),
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    ));
+    let hits = check_traces(&world, &camera_rays(&camera), light)?;
+    let on_die = hits.iter().filter(|h| h.is_some_and(|id| id > die)).count();
+    let on_pips = hits
+        .iter()
+        .filter(|h| h.is_some_and(|id| pips.contains(&id)))
+        .count();
+    if on_die < 1600 / 5 || on_pips < 20 {
+        return Err(format!("{on_die} rays on the die, {on_pips} on pips"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_16_gpu_trace_ray_inside_csg() -> Result<(), String> {
+    // Rays from inside the die: roots behind the origin must still toggle
+    // the inside bits, or the far side looks like a boundary.
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let mut world = marble_world(&[]);
+    add_die(
+        &mut world,
+        Matrix4::rotation_y(0.6) * Matrix4::rotation_x(0.4),
+    );
+    world.build_bounds();
+    let mut rays = Vec::new();
+    for d in (0..27).filter(|&d| d != 13) {
+        let dir = Tuple::vector(
+            (d % 3) as f64 - 1.0,
+            (d / 3 % 3) as f64 - 1.0,
+            (d / 9) as f64 - 1.0,
+        );
+        let dir = Tuple::normalize(dir);
+        for depth in [0.0, 0.5, 0.9] {
+            rays.push(Ray::new(Tuple::point(0.0, 0.0, 0.0) + dir * depth, dir));
+            rays.push(Ray::new(Tuple::point(0.0, 0.0, 0.0) + dir * depth, -dir));
+        }
+    }
+    let hits = check_traces(&world, &rays, light)?;
+    if hits.iter().any(Option::is_none) {
+        return Err("a ray from inside the die missed it".into());
+    }
+    Ok(())
+}
