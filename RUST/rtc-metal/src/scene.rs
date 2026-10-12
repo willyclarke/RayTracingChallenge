@@ -5,9 +5,11 @@
 
 use crate::bvh::{self, Leaf};
 use crate::types::{
+    CSG_DIFFERENCE, CSG_INTERSECTION, CSG_LEAF, CSG_MAX_HITS, CSG_MAX_LEAVES, CSG_UNION,
     GpuBvhNode, GpuCamera, GpuLight, GpuMaterial, GpuSceneCounts, GpuSceneInfo, GpuShape,
     NOISE_NONE, PATTERN_CHECKERS, PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE,
-    SHAPE_CONE, SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE, float4,
+    SHAPE_CONE, SHAPE_CSG, SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE,
+    float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -22,6 +24,7 @@ use rtc_rust::patterns::ringpattern::RingPattern;
 use rtc_rust::patterns::stripepattern::StripePattern;
 use rtc_rust::shape::Shape;
 use rtc_rust::shapes::cone::Cone;
+use rtc_rust::shapes::csg::CsgOperation;
 use rtc_rust::shapes::cube::Cube;
 use rtc_rust::shapes::cylinder::Cylinder;
 use rtc_rust::shapes::plane::Plane;
@@ -78,25 +81,33 @@ impl GpuScene {
         }
         let light = world.light.as_ref().ok_or("scene has no light")?;
         let mut leaves = Vec::new();
+        let mut csg = CsgLeaves::default();
         let mut tables = Tables::default();
         let identity = Matrix4::identity();
         for root in world.shapes.iter().filter(|s| s.data().parent.is_none()) {
+            let root = root.as_ref();
             flatten(
                 world,
-                root.as_ref(),
+                root,
                 &identity,
                 &identity,
                 &mut leaves,
+                &mut csg,
                 &mut tables,
             )?;
         }
-        let bvh = bvh::build(leaves)?;
+        let mut bvh = bvh::build(leaves)?;
+        let shape_count = bvh.shapes.len() as u32;
+        // CSG leaves go behind the BVH-indexed shapes; programs address
+        // them from shape_count.
+        bvh.shapes.extend(csg.shapes);
+        bvh.ids.extend(csg.ids);
         Ok(Self {
             info: GpuSceneInfo {
                 camera: gpu_camera(camera)?,
                 light: gpu_light(light)?,
                 counts: GpuSceneCounts {
-                    shape_count: bvh.shapes.len() as u32,
+                    shape_count,
                     unbounded_count: bvh.unbounded_count,
                     node_count: bvh.nodes.len() as u32,
                 },
@@ -243,6 +254,7 @@ fn flatten(
     parent_transform: &Matrix4,
     parent_inverse: &Matrix4,
     out: &mut Vec<Leaf>,
+    csg: &mut CsgLeaves,
     tables: &mut Tables,
 ) -> Result<(), String> {
     // world_to_object applies the parent chain first, then the shape's own;
@@ -256,7 +268,44 @@ fn flatten(
             bounds: world_bounds(shape, full),
         }),
         Some(_) if shape.csg_operation().is_some() => {
-            return Err(format!("shape {}: CSG is not supported yet", shape.id()));
+            // Leaf materials may add noise tables, so the program is
+            // collected apart and appended whole.
+            let first = csg.shapes.len();
+            let mut ops = Vec::new();
+            compile_csg(
+                world,
+                shape,
+                parent_transform,
+                parent_inverse,
+                csg,
+                &mut ops,
+                tables,
+            )?;
+            let p = tables.words.len();
+            tables.words.extend([ops.len() as u32, first as u32]); // [n, leaf_base]
+            tables.words.extend(ops);
+            let leaves = &csg.shapes[first..];
+            if leaves.len() > CSG_MAX_LEAVES {
+                return Err(format!(
+                    "shape {}: a CSG with over {CSG_MAX_LEAVES} leaves is not supported yet",
+                    shape.id()
+                ));
+            }
+            if leaves.iter().map(|l| max_roots(l.kind)).sum::<usize>() > CSG_MAX_HITS {
+                return Err(format!(
+                    "shape {}: a CSG with over {CSG_MAX_HITS} intersections is not supported yet",
+                    shape.id()
+                ));
+            }
+            out.push(Leaf {
+                shape: GpuShape {
+                    kind: SHAPE_CSG,
+                    closed: p as u32,
+                    ..Default::default()
+                },
+                id: shape.id(),
+                bounds: world_bounds(shape, full),
+            });
         }
         Some(children) => {
             if shape.data().motion.is_some() {
@@ -264,17 +313,75 @@ fn flatten(
             }
             for &id in children {
                 // World ids are 1-based arena indices.
-                flatten(
-                    world,
-                    world.shapes[id - 1].as_ref(),
-                    &full,
-                    &inverse,
-                    out,
-                    tables,
-                )?;
+                let child = world.shapes[id - 1].as_ref();
+                flatten(world, child, &full, &inverse, out, csg, tables)?;
             }
         }
     }
+    Ok(())
+}
+
+/// Book chapter 16's CSG leaves, uploaded behind the BVH-indexed shapes in
+/// program order, and their rtc-rust ids.
+#[derive(Default)]
+struct CsgLeaves {
+    shapes: Vec<GpuShape>,
+    ids: Vec<usize>,
+}
+
+/// The most roots one leaf of `kind` gives a ray.
+fn max_roots(kind: u32) -> usize {
+    match kind {
+        SHAPE_CYLINDER | SHAPE_CONE => 4, // wall and two caps
+        SHAPE_PLANE | SHAPE_TRIANGLE => 1,
+        _ => 2,
+    }
+}
+
+/// Append `shape` (a CSG node or one of its leaves) to the postfix program
+/// `ops`: left, right, then the operation. Leaves go to `csg` with their whole world-to-object transform, as `flatten` does for
+/// groups; `parent_transform`/`parent_inverse` map the space `shape` sits in.
+fn compile_csg(
+    world: &World,
+    shape: &dyn Shape,
+    parent_transform: &Matrix4,
+    parent_inverse: &Matrix4,
+    csg: &mut CsgLeaves,
+    ops: &mut Vec<u32>,
+    tables: &mut Tables,
+) -> Result<(), String> {
+    let full = *parent_transform * *shape.transform();
+    let inverse = *shape.transform_inv() * *parent_inverse;
+    let Some(children) = shape.children() else {
+        if shape.material().transparency > 0.0 {
+            return Err(format!(
+                "shape {}: transparent CSG leaves are not supported yet",
+                shape.id()
+            ));
+        }
+        csg.shapes.push(gpu_leaf(shape, &inverse, tables)?);
+        csg.ids.push(shape.id());
+        ops.push(CSG_LEAF);
+        return Ok(());
+    };
+    let Some(op) = shape.csg_operation() else {
+        return Err(format!(
+            "shape {}: groups inside a CSG are not supported yet",
+            shape.id()
+        ));
+    };
+    if shape.data().motion.is_some() {
+        return Err(format!("shape {}: motion is not supported yet", shape.id()));
+    }
+    for &id in children {
+        let child = world.shapes[id - 1].as_ref();
+        compile_csg(world, child, &full, &inverse, csg, ops, tables)?;
+    }
+    ops.push(match op {
+        CsgOperation::Union => CSG_UNION,
+        CsgOperation::Intersection => CSG_INTERSECTION,
+        CsgOperation::Difference => CSG_DIFFERENCE,
+    });
     Ok(())
 }
 
@@ -371,7 +478,9 @@ fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4, tables: &mut Tables) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Float4, GpuMat4};
+    use crate::types::{
+        CSG_DIFFERENCE, CSG_INTERSECTION, CSG_LEAF, CSG_UNION, Float4, GpuMat4, SHAPE_CSG,
+    };
     use rtc_rust::noise::Perlin;
     use rtc_rust::patterns::perturbedpattern::PerturbedPattern;
     use rtc_rust::shapes::csg::{Csg, CsgOperation};
@@ -412,10 +521,180 @@ mod tests {
             Tuple::color(1.0, 1.0, 1.0),
         ));
         let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
-        world.add_child(c, Box::new(Sphere::new()));
+        world.add_child(c, Box::new(Group::new()));
         world.add_child(c, Box::new(Cube::new()));
         let err = GpuScene::from_world(&world, &Camera::default()).err();
-        assert!(err.is_some_and(|e| e.contains("CSG")));
+        assert!(err.is_some_and(|e| e.contains("groups inside a CSG are not supported yet")));
+    }
+
+    fn lit_world() -> World {
+        let mut world = World::new();
+        world.light = Some(Light::point_light(
+            Tuple::point(-10.0, 10.0, -10.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        ));
+        world
+    }
+
+    /// The program of every `SHAPE_CSG` entry, header included.
+    fn programs(scene: &GpuScene) -> Vec<&[u32]> {
+        scene.shapes[..scene.info.counts.shape_count as usize]
+            .iter()
+            .filter(|s| s.kind == SHAPE_CSG)
+            .map(|s| {
+                let p = s.closed as usize;
+                &scene.tables[p..p + 2 + scene.tables[p] as usize]
+            })
+            .collect()
+    }
+
+    /// The rtc-rust ids of the CSG leaves, in upload order.
+    fn leaf_ids(scene: &GpuScene) -> &[usize] {
+        &scene.ids[scene.info.counts.shape_count as usize..]
+    }
+
+    const L: u32 = CSG_LEAF;
+
+    #[test]
+    fn compile_csg_single_node() {
+        let mut world = lit_world();
+        let c = world.add_shape(Box::new(Csg::new(CsgOperation::Difference)));
+        let sphere = world.add_child(c, Box::new(Sphere::new()));
+        let cube = world.add_child(c, Box::new(Cube::new()));
+        world.build_bounds();
+        let scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+        assert_eq!(scene.info.counts.shape_count, 1);
+        assert_eq!(scene.shapes.len(), 3);
+        assert_eq!(scene.ids[0], c);
+        assert_eq!(programs(&scene), [&[3, 0, L, L, CSG_DIFFERENCE][..]]);
+        assert_eq!(leaf_ids(&scene), [sphere, cube]);
+    }
+
+    #[test]
+    fn compile_csg_nested() {
+        let mut world = lit_world();
+        let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+        let inner = world.add_child(c, Box::new(Csg::new(CsgOperation::Intersection)));
+        let cc = world.add_child(c, Box::new(Cylinder::new()));
+        let a = world.add_child(inner, Box::new(Sphere::new()));
+        let b = world.add_child(inner, Box::new(Cube::new()));
+        world.build_bounds();
+        let scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+        assert_eq!(
+            programs(&scene),
+            [&[5, 0, L, L, CSG_INTERSECTION, L, CSG_UNION][..]]
+        );
+        assert_eq!(leaf_ids(&scene), [a, b, cc]);
+    }
+
+    #[test]
+    fn compile_csg_composes_parent_transforms() {
+        let mut world = lit_world();
+        let mut group = Group::new();
+        group.set_transform(Matrix4::scaling(2.0, 2.0, 2.0));
+        let g = world.add_shape(Box::new(group));
+        let mut csg = Csg::new(CsgOperation::Union);
+        csg.set_transform(Matrix4::translation(1.0, 0.0, 0.0));
+        let c = world.add_child(g, Box::new(csg));
+        let mut sphere = Sphere::new();
+        sphere.set_transform(Matrix4::translation(0.0, 1.0, 0.0));
+        world.add_child(c, Box::new(sphere));
+        world.add_child(c, Box::new(Cube::new()));
+        world.build_bounds();
+        let scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+        let leaf = &scene.shapes[scene.info.counts.shape_count as usize];
+        let origin = apply(&leaf.inverse, [2.0, 2.0, 0.0, 1.0]);
+        for (got, want) in origin.iter().zip([0.0, 0.0, 0.0, 1.0]) {
+            assert!((got - want).abs() < 1e-6, "{origin:?}");
+        }
+    }
+
+    #[test]
+    fn compile_csg_two_roots_share_tables() {
+        let mut world = lit_world();
+        let mut firsts = Vec::new();
+        for x in [-2.0, 2.0] {
+            let mut csg = Csg::new(CsgOperation::Union);
+            csg.set_transform(Matrix4::translation(x, 0.0, 0.0));
+            let c = world.add_shape(Box::new(csg));
+            firsts.push(world.add_child(c, Box::new(Sphere::new())));
+            world.add_child(c, Box::new(Sphere::new()));
+        }
+        world.build_bounds();
+        let scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+        let mut bases: Vec<usize> = programs(&scene).iter().map(|p| p[1] as usize).collect();
+        bases.sort();
+        assert_eq!(bases, [0, 2]);
+        assert_eq!([leaf_ids(&scene)[0], leaf_ids(&scene)[2]], firsts[..]);
+    }
+
+    /// A chain of differences with `leaves` leaves made by `leaf`.
+    fn difference_chain(leaves: usize, leaf: fn() -> Box<dyn Shape>) -> World {
+        let mut world = lit_world();
+        let mut cur = world.add_shape(Box::new(Csg::new(CsgOperation::Difference)));
+        for _ in 0..leaves - 2 {
+            let inner = world.add_child(cur, Box::new(Csg::new(CsgOperation::Difference)));
+            world.add_child(cur, leaf());
+            cur = inner;
+        }
+        world.add_child(cur, leaf());
+        world.add_child(cur, leaf());
+        world.build_bounds();
+        world
+    }
+
+    #[test]
+    fn csg_limits_and_rejections() {
+        let upload = |world: &World| GpuScene::from_world(world, &Camera::default()).err();
+        let sphere = || Box::new(Sphere::new()) as Box<dyn Shape>;
+        assert!(upload(&difference_chain(32, sphere)).is_none());
+        let err = upload(&difference_chain(33, sphere));
+        assert!(err.is_some_and(|e| e.contains("a CSG with over 32 leaves is not supported yet")));
+        let cylinder = || Box::new(Cylinder::new()) as Box<dyn Shape>;
+        assert!(upload(&difference_chain(16, cylinder)).is_none());
+        let err = upload(&difference_chain(17, cylinder));
+        assert!(
+            err.is_some_and(|e| e.contains("a CSG with over 64 intersections is not supported yet"))
+        );
+
+        let mut world = lit_world();
+        let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+        let mut glass = Sphere::new();
+        glass.data.material.transparency = 0.5;
+        world.add_child(c, Box::new(glass));
+        world.add_child(c, Box::new(Cube::new()));
+        let err = upload(&world);
+        assert!(err.is_some_and(|e| e.contains("transparent CSG leaves are not supported yet")));
+
+        let mut world = lit_world();
+        let mut csg = Csg::new(CsgOperation::Union);
+        csg.set_motion(Tuple::vector(1.0, 0.0, 0.0));
+        let c = world.add_shape(Box::new(csg));
+        world.add_child(c, Box::new(Sphere::new()));
+        world.add_child(c, Box::new(Cube::new()));
+        let err = upload(&world);
+        assert!(
+            err.is_some_and(|e| e.contains(&format!("shape {c}: motion is not supported yet")))
+        );
+    }
+
+    #[test]
+    fn test_chap_16_gpu_dice_compiles() {
+        use rtc_rust::scene::SceneDescription;
+        let dir = std::path::Path::new("../rtc-rust/scenes");
+        let json = std::fs::read_to_string(dir.join("dice-light-area.json")).unwrap();
+        let (world, camera) = SceneDescription::from_json(&json)
+            .unwrap()
+            .build(dir)
+            .unwrap();
+        let scene = GpuScene::from_world(&world, &camera).unwrap();
+        let programs = programs(&scene);
+        assert_eq!(programs.len(), 3);
+        for p in programs {
+            assert_eq!(p[0], 45);
+            assert_eq!(p[2..].iter().filter(|&&op| op == CSG_LEAF).count(), 23);
+        }
+        assert_eq!(leaf_ids(&scene).len(), 3 * 23);
     }
 
     #[test]
