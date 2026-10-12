@@ -74,7 +74,7 @@ impl Gpu {
         let (width, height) = (scene.width(), scene.height());
         let pipeline = self.pipeline("render")?;
         let pixels = self.output_buffer::<[f32; 4]>(width * height)?;
-        let (shapes, nodes) = self.scene_buffers(scene)?;
+        let (shapes, nodes, tables) = self.scene_buffers(scene)?;
         self.submit(|encoder| {
             encoder.setComputePipelineState(&pipeline);
             // SAFETY: indices and types match the kernel's [[buffer(n)]]
@@ -88,6 +88,7 @@ impl Gpu {
                 );
                 encoder.setBuffer_offset_atIndex(Some(&shapes), 0, 2);
                 encoder.setBuffer_offset_atIndex(Some(&nodes), 0, 3);
+                encoder.setBuffer_offset_atIndex(Some(&tables), 0, 4);
             }
             dispatch_2d(encoder, &pipeline, width, height);
         })?;
@@ -98,11 +99,12 @@ impl Gpu {
     /// once and the pipelines compiled once, for any number of frames.
     pub fn accumulator(&self, scene: &GpuScene) -> Result<Accumulator, String> {
         let (width, height) = (scene.width(), scene.height());
-        let (shapes, nodes) = self.scene_buffers(scene)?;
+        let (shapes, nodes, tables) = self.scene_buffers(scene)?;
         Ok(Accumulator {
             accum: self.output_buffer::<[f32; 4]>(width * height)?,
             shapes,
             nodes,
+            tables,
             render: self.pipeline("render")?,
             resolve_buffer: self.pipeline("resolve_buffer")?,
             resolve_texture: self.pipeline("resolve_texture")?,
@@ -133,21 +135,22 @@ impl Gpu {
 
     /// `run` for kernels that also read the scene, as
     /// `device const Shape *shapes [[buffer(2)]], device const BvhNode *nodes
-    /// [[buffer(3)]], constant SceneCounts &counts [[buffer(4)]]`.
+    /// [[buffer(3)]], constant SceneCounts &counts [[buffer(4)]], device const
+    /// uint *tables [[buffer(5)]]`.
     pub fn run_with_scene<I: Copy, O: Copy>(
         &self,
         kernel: &str,
         input: &[I],
         scene: &GpuScene,
     ) -> Result<Vec<O>, String> {
-        let (shapes, nodes) = self.scene_buffers(scene)?;
-        self.run_1d(kernel, input, Some((&shapes, &nodes, scene)))
+        let buffers = self.scene_buffers(scene)?;
+        self.run_1d(kernel, input, Some((&buffers, scene)))
     }
 
-    /// The shape and BVH node buffers of `scene`. Metal cannot make an empty
-    /// buffer, so an empty array gets one unused element; the counts in
+    /// The shape, BVH node and table buffers of `scene`. Metal cannot make an
+    /// empty buffer, so an empty array gets one unused element; the counts in
     /// `scene.info` stay 0 and the shaders never read it.
-    fn scene_buffers(&self, scene: &GpuScene) -> Result<(Buffer, Buffer), String> {
+    fn scene_buffers(&self, scene: &GpuScene) -> Result<(Buffer, Buffer, Buffer), String> {
         let shapes = if scene.shapes.is_empty() {
             self.output_buffer::<GpuShape>(1)?
         } else {
@@ -158,14 +161,19 @@ impl Gpu {
         } else {
             self.input_buffer(&scene.nodes)?
         };
-        Ok((shapes, nodes))
+        let tables = if scene.tables.is_empty() {
+            self.output_buffer::<u32>(1)?
+        } else {
+            self.input_buffer(&scene.tables)?
+        };
+        Ok((shapes, nodes, tables))
     }
 
     fn run_1d<I: Copy, O: Copy>(
         &self,
         kernel: &str,
         input: &[I],
-        scene: Option<(&Buffer, &Buffer, &GpuScene)>,
+        scene: Option<(&(Buffer, Buffer, Buffer), &GpuScene)>,
     ) -> Result<Vec<O>, String> {
         if input.is_empty() {
             return Ok(Vec::new());
@@ -180,7 +188,7 @@ impl Gpu {
             unsafe {
                 encoder.setBuffer_offset_atIndex(Some(&in_buf), 0, 0);
                 encoder.setBuffer_offset_atIndex(Some(&out_buf), 0, 1);
-                if let Some((shapes, nodes, scene)) = scene {
+                if let Some(((shapes, nodes, tables), scene)) = scene {
                     let counts = &scene.info.counts;
                     encoder.setBuffer_offset_atIndex(Some(shapes), 0, 2);
                     encoder.setBuffer_offset_atIndex(Some(nodes), 0, 3);
@@ -189,6 +197,7 @@ impl Gpu {
                         size_of_val(counts),
                         4,
                     );
+                    encoder.setBuffer_offset_atIndex(Some(tables), 0, 5);
                 }
             }
             // The grid is exactly `input.len()` threads, so kernels need no
@@ -272,6 +281,7 @@ pub struct Accumulator {
     accum: Buffer,
     shapes: Buffer,
     nodes: Buffer,
+    tables: Buffer,
     render: Pipeline,
     resolve_buffer: Pipeline,
     resolve_texture: Pipeline,
@@ -314,6 +324,7 @@ impl Accumulator {
             encoder.setBytes_length_atIndex(NonNull::from(&info).cast(), size_of_val(&info), 1);
             encoder.setBuffer_offset_atIndex(Some(&self.shapes), 0, 2);
             encoder.setBuffer_offset_atIndex(Some(&self.nodes), 0, 3);
+            encoder.setBuffer_offset_atIndex(Some(&self.tables), 0, 4);
         }
         dispatch_2d(encoder, &self.render, self.width(), self.height());
         self.frames += 1;

@@ -80,7 +80,7 @@ kernel void probe_lighting(device const LightingProbe *in [[buffer(0)]],
     LightingProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
     out[i] = float4(lighting(p.material, p.light, p.point, p.object_point, p.eyev, p.normalv,
-                             p.intensity, s),
+                             p.intensity, s, nullptr),
                     0.0);
 }
 
@@ -116,11 +116,12 @@ kernel void probe_intensity_at(device const IntensityProbe *in [[buffer(0)]],
                                device const Shape *shapes      [[buffer(2)]],
                                device const BvhNode *nodes     [[buffer(3)]],
                                constant SceneCounts &counts    [[buffer(4)]],
+                               device const uint *tables       [[buffer(5)]],
                                uint i                          [[thread_position_in_grid]])
 {
     IntensityProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
-    out[i] = intensity_at(p.light, p.point, p.normalv, shapes, nodes, counts, s);
+    out[i] = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, counts, s);
 }
 
 struct ShadeProbe {
@@ -142,13 +143,14 @@ kernel void probe_shade_point(device const ShadeProbe *in    [[buffer(0)]],
                               device const Shape *shapes     [[buffer(2)]],
                               device const BvhNode *nodes    [[buffer(3)]],
                               constant SceneCounts &counts   [[buffer(4)]],
+                              device const uint *tables      [[buffer(5)]],
                               uint i                         [[thread_position_in_grid]])
 {
     ShadeProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
-    float intensity = intensity_at(p.light, p.point, p.normalv, shapes, nodes, counts, s);
+    float intensity = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, counts, s);
     out[i] = float4(lighting(p.material, p.light, p.point, p.point, p.eyev, p.normalv,
-                             intensity, s),
+                             intensity, s, tables),
                     0.0);
 }
 
@@ -178,6 +180,7 @@ kernel void probe_refractive_indices(device const RefractiveProbe *in [[buffer(0
                                      device const Shape *shapes       [[buffer(2)]],
                                      device const BvhNode *nodes      [[buffer(3)]],
                                      constant SceneCounts &counts     [[buffer(4)]],
+                                     device const uint *tables        [[buffer(5)]],
                                      uint i                           [[thread_position_in_grid]])
 {
     RefractiveProbe p = in[i];
@@ -185,7 +188,7 @@ kernel void probe_refractive_indices(device const RefractiveProbe *in [[buffer(0
     float4 ts;
     intersect(s, p.ray, ts);
     Hit hit = Hit{ts[p.hit_root], p.hit_index, p.hit_root};
-    out[i] = refractive_indices(p.ray, hit, shapes, nodes, counts);
+    out[i] = refractive_indices(p.ray, hit, shapes, nodes, tables, counts);
 }
 
 // in[i] = (cos_i, n1, n2, unused)
@@ -207,7 +210,7 @@ kernel void probe_pattern_at(device const PatternProbe *in [[buffer(0)]],
                              uint i                        [[thread_position_in_grid]])
 {
     Shape s = in[i].shape;
-    out[i] = float4(pattern_at(s.material, s.inverse * in[i].point), 0.0);
+    out[i] = float4(pattern_at(s.material, s.inverse * in[i].point, nullptr), 0.0);
 }
 
 struct TraceProbe {
@@ -228,9 +231,9 @@ static_assert(sizeof(TraceResult) == 32, "TraceResult must match probes.rs");
 // The first steps of color_at for one ray: nearest hit, normal, shadow test.
 // index = counts.shape_count on a miss.
 inline TraceResult trace(TraceProbe p, device const Shape *shapes, device const BvhNode *nodes,
-                         SceneCounts counts) {
+                         device const uint *tables, SceneCounts counts) {
     Hit hit;
-    if (!hit_shapes(p.ray, shapes, nodes, counts, hit)) {
+    if (!hit_shapes(p.ray, shapes, nodes, tables, counts, hit)) {
         return TraceResult{float4(0.0), INFINITY, counts.shape_count, 0, 0};
     }
     float4 point = p.ray.origin + p.ray.direction * hit.t;
@@ -241,7 +244,8 @@ inline TraceResult trace(TraceProbe p, device const Shape *shapes, device const 
     if (dot(normalv, -p.ray.direction) < 0.0) {
         normalv = -normalv;
     }
-    bool shadowed = is_shadowed(p.light_position, point + normalv * EPSILON, shapes, nodes, counts);
+    bool shadowed =
+        is_shadowed(p.light_position, point + normalv * EPSILON, shapes, nodes, tables, counts);
     return TraceResult{normalv, hit.t, hit.index, hit.root, shadowed ? 1u : 0u};
 }
 
@@ -250,9 +254,10 @@ kernel void probe_trace(device const TraceProbe *in  [[buffer(0)]],
                         device const Shape *shapes   [[buffer(2)]],
                         device const BvhNode *nodes  [[buffer(3)]],
                         constant SceneCounts &counts [[buffer(4)]],
+                        device const uint *tables    [[buffer(5)]],
                         uint i                       [[thread_position_in_grid]])
 {
-    out[i] = trace(in[i], shapes, nodes, counts);
+    out[i] = trace(in[i], shapes, nodes, tables, counts);
 }
 
 // probe_trace with the BVH switched off: every shape counts as unbounded,
@@ -262,12 +267,13 @@ kernel void probe_trace_linear(device const TraceProbe *in  [[buffer(0)]],
                                device const Shape *shapes   [[buffer(2)]],
                                device const BvhNode *nodes  [[buffer(3)]],
                                constant SceneCounts &counts [[buffer(4)]],
+                               device const uint *tables    [[buffer(5)]],
                                uint i                       [[thread_position_in_grid]])
 {
     SceneCounts linear = counts;
     linear.unbounded_count = counts.shape_count;
     linear.node_count = 0;
-    out[i] = trace(in[i], shapes, nodes, linear);
+    out[i] = trace(in[i], shapes, nodes, tables, linear);
 }
 
 struct TriangleProbe {

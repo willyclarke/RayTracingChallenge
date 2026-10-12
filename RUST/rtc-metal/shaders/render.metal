@@ -8,6 +8,7 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
                    constant SceneInfo &scene      [[buffer(1)]],
                    device const Shape *shapes     [[buffer(2)]],
                    device const BvhNode *nodes    [[buffer(3)]],
+                   device const uint *tables      [[buffer(4)]],
                    uint2 gid                      [[thread_position_in_grid]])
 {
     Camera c = scene.camera;
@@ -18,12 +19,12 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
     Sampler s = Sampler{pixel, scene.frame, scene.sampling, 0};
     if (s.on == 0) {
         Ray r = ray_for_pixel(c, gid.x, gid.y, 0.5, 0.5);
-        pixels[pixel] = float4(color_at(r, scene, shapes, nodes, s), 1.0);
+        pixels[pixel] = float4(color_at(r, scene, shapes, nodes, tables, s), 1.0);
         return;
     }
     Ray r = ray_for_pixel(c, gid.x, gid.y, random01(pixel, s.frame, 0),
                           random01(pixel, s.frame, 1));
-    float4 color = float4(color_at(r, scene, shapes, nodes, s), 1.0);
+    float4 color = float4(color_at(r, scene, shapes, nodes, tables, s), 1.0);
     pixels[pixel] = s.frame == 0 ? color : pixels[pixel] + color;
 }
 

@@ -39,6 +39,8 @@ pub struct GpuScene {
     pub nodes: Vec<GpuBvhNode>,
     /// rtc-rust shape id per entry of `shapes`.
     pub ids: Vec<usize>,
+    /// Lookup tables the shapes and materials refer to by word offset.
+    pub tables: Vec<u32>,
 }
 
 impl GpuScene {
@@ -68,6 +70,7 @@ impl GpuScene {
             shapes: bvh.shapes,
             nodes: bvh.nodes,
             ids: bvh.ids,
+            tables: Vec::new(),
         })
     }
 
