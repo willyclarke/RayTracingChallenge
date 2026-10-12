@@ -44,7 +44,7 @@ pub struct GpuScene {
 impl GpuScene {
     pub fn from_world(world: &World, camera: &Camera) -> Result<Self, String> {
         if world.gi_samples > 0 {
-            return Err("path tracing is not supported yet".into());
+            return Err("path tracing is not supported so far".into());
         }
         let light = world.light.as_ref().ok_or("scene has no light")?;
         let mut leaves = Vec::new();
@@ -62,11 +62,19 @@ impl GpuScene {
                     unbounded_count: bvh.unbounded_count,
                     node_count: bvh.nodes.len() as u32,
                 },
+                frame: 0,
+                sampling: 0,
             },
             shapes: bvh.shapes,
             nodes: bvh.nodes,
             ids: bvh.ids,
         })
+    }
+
+    /// Point the scene at `camera`, keeping the uploaded shapes and light.
+    pub fn set_camera(&mut self, camera: &Camera) -> Result<(), String> {
+        self.info.camera = gpu_camera(camera)?;
+        Ok(())
     }
 
     pub fn width(&self) -> usize {
@@ -78,9 +86,12 @@ impl GpuScene {
     }
 }
 
+/// The camera's anti-aliasing sample count is ignored: a deterministic frame
+/// has one ray through each pixel centre, and sampled frames jitter that ray
+/// within the pixel instead, anti-aliasing as they accumulate.
 pub fn gpu_camera(camera: &Camera) -> Result<GpuCamera, String> {
-    if camera.aa_samples > 1 || camera.aperture > 0.0 || camera.motion_samples > 1 {
-        return Err("anti-aliasing, focal blur and motion blur are not supported yet".into());
+    if camera.aperture > 0.0 || camera.motion_samples > 1 {
+        return Err("focal blur and motion blur are not supported so far".into());
     }
     let inverse = camera
         .transform()
@@ -96,13 +107,21 @@ pub fn gpu_camera(camera: &Camera) -> Result<GpuCamera, String> {
     })
 }
 
+/// rtc-rust's point light is already the 1x1 area light: `corner` is its
+/// position and the edges are zero.
 pub fn gpu_light(light: &Light) -> Result<GpuLight, String> {
-    if light.samples > 1 || light.spot.is_some() {
-        return Err("only point lights are supported so far".into());
+    if light.spot.is_some() {
+        return Err("spot lights are not supported so far".into());
     }
     Ok(GpuLight {
-        position: float4(light.position),
+        corner: float4(light.corner),
+        uvec: float4(light.uvec),
+        vvec: float4(light.vvec),
         intensity: float4(light.intensity),
+        usteps: light.usteps as u32,
+        vsteps: light.vsteps as u32,
+        samples: light.samples as u32,
+        _pad: 0,
     })
 }
 
@@ -466,5 +485,21 @@ mod tests {
         )));
         let err = gpu_material(&m).err();
         assert!(err.is_some_and(|e| e.contains("only stripe, gradient, ring and checkers")));
+    }
+
+    #[test]
+    fn set_camera_replaces_only_the_camera() {
+        let world = World::default_world();
+        let mut scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+        let (shapes, nodes, info) = (scene.shapes.clone(), scene.nodes.clone(), scene.info);
+        let mut camera = Camera::default();
+        camera.set_transform(&Matrix4::translation(1.0, 2.0, 3.0));
+        scene.set_camera(&camera).unwrap();
+        assert_ne!(scene.info.camera, info.camera);
+        assert_eq!(scene.info.camera, gpu_camera(&camera).unwrap());
+        assert_eq!(scene.shapes, shapes);
+        assert_eq!(scene.nodes, nodes);
+        assert_eq!(scene.info.light, info.light);
+        assert_eq!(scene.info.counts, info.counts);
     }
 }

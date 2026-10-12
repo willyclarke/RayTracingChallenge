@@ -113,12 +113,24 @@ pub struct GpuShape {
     pub n3: Float4,
 }
 
-/// MSL `Light`: a point light.
+/// MSL `Light`: rtc-rust's area light (bonus chapter "Rendering soft
+/// shadows"), `usteps` x `vsteps` cells of size `uvec` x `vvec` from
+/// `corner`. A point light is the 1x1 case with `corner` at its position and
+/// zero edges.
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpuLight {
-    pub position: Float4,
+    pub corner: Float4,
+    /// One cell's worth of the u edge, as rtc-rust's `Light::uvec`.
+    pub uvec: Float4,
+    /// One cell's worth of the v edge.
+    pub vvec: Float4,
     pub intensity: Float4,
+    pub usteps: u32,
+    pub vsteps: u32,
+    /// usteps * vsteps.
+    pub samples: u32,
+    pub _pad: u32,
 }
 
 /// MSL `Camera`: what `ray_for_pixel` needs.
@@ -140,6 +152,10 @@ pub struct GpuSceneInfo {
     pub camera: GpuCamera,
     pub light: GpuLight,
     pub counts: GpuSceneCounts,
+    /// Progressive render frame index, for the sampled random numbers.
+    pub frame: u32,
+    /// 0: rtc-rust's deterministic cell centres; 1: random samples.
+    pub sampling: u32,
 }
 
 /// MSL `SceneCounts`: the sizes of the scene buffers. `shapes` holds the
@@ -157,12 +173,13 @@ pub struct GpuSceneCounts {
 const _: () = assert!(size_of::<GpuMaterial>() == 144);
 // 64 + 144 + 4 * 4 + 6 * 16 = 320 bytes of fields.
 const _: () = assert!(size_of::<GpuShape>() == 320);
-const _: () = assert!(size_of::<GpuLight>() == 32);
+// 4 * 16 + 4 * 4 = 80 bytes of fields.
+const _: () = assert!(size_of::<GpuLight>() == 80);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);
 const _: () = assert!(size_of::<GpuSceneCounts>() == 12);
-// 96 + 32 + 12 = 140 bytes of fields, padded to the 16-byte alignment.
-const _: () = assert!(size_of::<GpuSceneInfo>() == 144);
+// 96 + 80 + 12 + 2 * 4 = 196 bytes of fields, padded to the 16-byte alignment.
+const _: () = assert!(size_of::<GpuSceneInfo>() == 208);
 
 /// MSL `BvhNode`. `count > 0` is a leaf over `shapes[start..start + count]`;
 /// otherwise the left child is the next node and `right` is the right child's

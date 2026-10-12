@@ -11,6 +11,33 @@ struct Ray {
 };
 static_assert(sizeof(Ray) == 32, "Ray must match GpuRay in types.rs");
 
+// Bonus: sampling. Stateless PCG hash random numbers, keyed by pixel, frame
+// and dimension so every sample is reproducible and independent.
+inline uint pcg_hash(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+// Top 24 bits give exactly representable floats in [0, 1).
+inline float random01(uint pixel, uint frame, uint dim) {
+    return float(pcg_hash(pixel ^ pcg_hash(frame ^ pcg_hash(dim))) >> 8) * 0x1p-24f;
+}
+
+// Sub-pixel jitter uses dims 0 and 1; shading call `call` owns dims
+// 2 + 6 * call + slot. Slots 0-2 are area light cell A (index, u, v) and
+// 3-5 cell B, so the two cells never share a random number.
+struct Sampler {
+    uint pixel;
+    uint frame;
+    uint on;    // 0 or 1
+    uint call;  // index of the current shading call in color_at
+};
+
+inline float sample(thread const Sampler &s, uint slot) {
+    return random01(s.pixel, s.frame, 2 + 6 * s.call + slot);
+}
+
 // Shape kinds; must match the SHAPE_* constants in src/types.rs.
 constant uint SHAPE_SPHERE = 0;
 constant uint SHAPE_PLANE = 1;
@@ -73,11 +100,25 @@ struct Shape {
 };
 static_assert(sizeof(Shape) == 320, "Shape must match GpuShape");
 
+// Bonus: soft shadows. rtc-rust's area light: usteps x vsteps cells of
+// size uvec x vvec from corner. A point light is the 1x1 case with zero
+// edges, so every light goes through the same code.
 struct Light {
-    float4 position;
+    float4 corner;
+    float4 uvec;  // one cell's worth of the u edge
+    float4 vvec;
     float4 intensity;
+    uint usteps;
+    uint vsteps;
+    uint samples;  // usteps * vsteps
+    uint pad;
 };
-static_assert(sizeof(Light) == 32, "Light must match GpuLight");
+static_assert(sizeof(Light) == 80, "Light must match GpuLight");
+
+// rtc-rust's Light::cell_point: the point at jitter (ju, jv) in cell (u, v).
+inline float4 light_cell_point(Light l, uint u, uint v, float ju, float jv) {
+    return l.corner + l.uvec * (float(u) + ju) + l.vvec * (float(v) + jv);
+}
 
 inline Ray ray_transform(float4x4 m, Ray r) {
     return Ray{m * r.origin, m * r.direction};
@@ -402,29 +443,52 @@ inline float3 pattern_at(Material m, float4 object_point) {
     }
 }
 
-// Mirrors rtc-rust's Light::lighting for a point light (one sample point).
-// `object_point` is `point` in the shape's object space, for the pattern.
-// `intensity` is the fraction of the light reaching `point`: 0 in shadow.
+// The diffuse and specular cosine factors of one light sample point.
+inline void add_light_sample(Material m, float4 light_point, float4 point, float4 eyev,
+                             float4 normalv, thread float &diffuse, thread float &specular) {
+    float4 to_light = light_point - point;
+    float light_dot_normal = dot(to_light, normalv) / length(to_light);
+    if (light_dot_normal >= 0.0) {
+        diffuse += light_dot_normal;
+        if (m.specular > 0.0) {
+            float4 reflectv = -reflect(normalize(to_light), normalv);
+            float reflect_dot_eye = dot(reflectv, eyev);
+            if (reflect_dot_eye > 0.0) {
+                specular += pow(reflect_dot_eye, m.shininess);
+            }
+        }
+    }
+}
+
+// Mirrors rtc-rust's Light::lighting. `object_point` is `point` in the
+// shape's object space, for the pattern. `intensity` is the fraction of the
+// light reaching `point` (intensity_at): 0 in shadow. Deterministic
+// (s.on == 0): diffuse and specular averaged over every cell centre, as
+// rtc-rust does; sampled: one random point in one random cell (cell B).
 inline float3 lighting(Material m, Light light, float4 point, float4 object_point,
-                       float4 eyev, float4 normalv, float intensity) {
+                       float4 eyev, float4 normalv, float intensity,
+                       thread const Sampler &s) {
     float3 effective_color = pattern_at(m, object_point) * light.intensity.rgb;
     float3 ambient = effective_color * m.ambient;
     if (intensity <= 0.0) {
         return ambient;
     }
-    float4 to_light = light.position - point;
-    float light_dot_normal = dot(to_light, normalv) / length(to_light);
     float diffuse = 0.0;
     float specular = 0.0;
-    if (light_dot_normal >= 0.0) {
-        diffuse = light_dot_normal;
-        if (m.specular > 0.0) {
-            float4 reflectv = -reflect(normalize(to_light), normalv);
-            float reflect_dot_eye = dot(reflectv, eyev);
-            if (reflect_dot_eye > 0.0) {
-                specular = pow(reflect_dot_eye, m.shininess);
+    if (s.on != 0) {
+        uint cell = min(uint(sample(s, 3) * light.samples), light.samples - 1);
+        float4 p = light_cell_point(light, cell % light.usteps, cell / light.usteps,
+                                    sample(s, 4), sample(s, 5));
+        add_light_sample(m, p, point, eyev, normalv, diffuse, specular);
+    } else {
+        for (uint v = 0; v < light.vsteps; v++) {
+            for (uint u = 0; u < light.usteps; u++) {
+                float4 p = light_cell_point(light, u, v, 0.5, 0.5);
+                add_light_sample(m, p, point, eyev, normalv, diffuse, specular);
             }
         }
+        diffuse /= float(light.samples);
+        specular /= float(light.samples);
     }
     return ambient + (effective_color * m.diffuse * diffuse
                       + light.intensity.rgb * m.specular * specular) * intensity;
@@ -467,8 +531,10 @@ struct SceneInfo {
     Camera camera;
     Light light;
     SceneCounts counts;
+    uint frame;     // progressive render frame index
+    uint sampling;  // 0: rtc-rust's cell centres; 1: random samples
 };
-static_assert(sizeof(SceneInfo) == 144, "SceneInfo must match GpuSceneInfo");
+static_assert(sizeof(SceneInfo) == 208, "SceneInfo must match GpuSceneInfo");
 
 // Does the ray, over t in [tmin, tmax], pass through the box? The slab
 // method again (book chapter 12's cube), on the box's own bounds.
@@ -557,11 +623,12 @@ inline bool bvh_next_leaf(device const BvhNode *nodes, Ray r, float tmin, float 
     return false;
 }
 
-// Ray through the centre of pixel (px, py). The camera looks toward -z with
-// the canvas at z = -1, so +x is to the left.
-inline Ray ray_for_pixel(Camera c, uint px, uint py) {
-    float world_x = c.half_width - (float(px) + 0.5) * c.pixel_size;
-    float world_y = c.half_height - (float(py) + 0.5) * c.pixel_size;
+// Ray through the point (jx, jy) of pixel (px, py), each in [0, 1): 0.5, 0.5
+// is the pixel centre, as rtc-rust. The camera looks toward -z with the
+// canvas at z = -1, so +x is to the left.
+inline Ray ray_for_pixel(Camera c, uint px, uint py, float jx, float jy) {
+    float world_x = c.half_width - (float(px) + jx) * c.pixel_size;
+    float world_y = c.half_height - (float(py) + jy) * c.pixel_size;
     float4 pixel = c.inverse * float4(world_x, world_y, -1.0, 1.0);
     float4 origin = c.inverse * float4(0.0, 0.0, 0.0, 1.0);
     return Ray{origin, normalize(pixel - origin)};
@@ -623,6 +690,76 @@ inline bool is_shadowed(float4 light_position, float4 point,
         }
     } while (bvh_next_leaf(nodes, r, 0.0, distance, w, first, count));
     return false;
+}
+
+// Does light from `light_point` reach `point` on a surface facing `normalv`?
+// A light point behind the surface's tangent plane counts as shadowed, as
+// rtc-rust's shadow ray decides: from its over_point (1e-9 off the surface)
+// that ray re-enters the shape. From ours, EPSILON = 1e-5 off a sphere of
+// radius r, a ray dipping less than ~sqrt(2 * EPSILON / r) below the
+// horizon (6e-3 rad at r = 0.5) misses the sphere. A point light there
+// adds no diffuse anyway, but an area light's lit fraction scales the
+// diffuse of its other cells, so the soft-shadow scene's terminators came
+// out brighter than rtc-rust's (2% of pixels off).
+inline bool light_reaches(float4 light_point, float4 point, float4 normalv,
+                          device const Shape *shapes, device const BvhNode *nodes,
+                          SceneCounts counts) {
+    return dot(light_point - point, normalv) >= 0.0
+           && !is_shadowed(light_point, point, shapes, nodes, counts);
+}
+
+inline bool cell_lit(Light l, uint u, uint v, float4 point, float4 normalv,
+                     device const Shape *shapes, device const BvhNode *nodes,
+                     SceneCounts counts) {
+    return light_reaches(light_cell_point(l, u, v, 0.5, 0.5), point, normalv, shapes, nodes,
+                         counts);
+}
+
+// Bonus: soft shadows. The fraction of the light reaching `point`, on a
+// surface facing `normalv` (see light_reaches).
+// Deterministic (s.on == 0): rtc-rust's Light::shadow_fraction over the cell
+// centres, including its shortcut: with both steps >= 2 the four corner
+// cells go first, and the rest only when they disagree. Sampled: one shadow
+// ray to a random point in a random cell (cell A), so 0 or 1.
+inline float intensity_at(Light l, float4 point, float4 normalv, device const Shape *shapes,
+                          device const BvhNode *nodes, SceneCounts counts,
+                          thread const Sampler &s) {
+    if (s.on != 0) {
+        uint cell = min(uint(sample(s, 0) * l.samples), l.samples - 1);
+        float4 p = light_cell_point(l, cell % l.usteps, cell / l.usteps, sample(s, 1),
+                                    sample(s, 2));
+        return light_reaches(p, point, normalv, shapes, nodes, counts) ? 1.0 : 0.0;
+    }
+    if (l.usteps < 2 || l.vsteps < 2) {
+        uint visible = 0;
+        for (uint v = 0; v < l.vsteps; v++) {
+            for (uint u = 0; u < l.usteps; u++) {
+                visible += cell_lit(l, u, v, point, normalv, shapes, nodes, counts) ? 1 : 0;
+            }
+        }
+        return float(visible) / float(l.samples);
+    }
+    uint umax = l.usteps - 1, vmax = l.vsteps - 1;
+    uint corners_lit = (cell_lit(l, 0, 0, point, normalv, shapes, nodes, counts) ? 1 : 0)
+                       + (cell_lit(l, umax, 0, point, normalv, shapes, nodes, counts) ? 1 : 0)
+                       + (cell_lit(l, 0, vmax, point, normalv, shapes, nodes, counts) ? 1 : 0)
+                       + (cell_lit(l, umax, vmax, point, normalv, shapes, nodes, counts) ? 1 : 0);
+    if (corners_lit == 0) {
+        return 0.0;
+    }
+    if (corners_lit == 4) {
+        return 1.0;
+    }
+    uint visible = corners_lit;
+    for (uint v = 0; v < l.vsteps; v++) {
+        for (uint u = 0; u < l.usteps; u++) {
+            bool corner = (u == 0 || u == umax) && (v == 0 || v == vmax);
+            if (!corner && cell_lit(l, u, v, point, normalv, shapes, nodes, counts)) {
+                visible++;
+            }
+        }
+    }
+    return float(visible) / float(l.samples);
 }
 
 // ---- Chapter 11: reflection and refraction -------------------------------
@@ -711,8 +848,9 @@ struct PendingRay {
 // rays go on a stack with their weights. A ray pushes at most two children
 // and only while remaining > 0, so the stack never holds more than
 // MAX_DEPTH + 1 rays (one pending sibling per level, plus the current one).
+// Each shaded hit advances sampler.call, so it draws its own random numbers.
 inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes,
-                       device const BvhNode *nodes) {
+                       device const BvhNode *nodes, thread Sampler &sampler) {
     PendingRay stack[MAX_DEPTH + 1];
     int top = 0;
     stack[top++] = PendingRay{camera_ray, float3(1.0), MAX_DEPTH};
@@ -736,12 +874,14 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         }
         float4 over_point = point + normalv * EPSILON;
         float intensity =
-            is_shadowed(scene.light.position, over_point, shapes, nodes, scene.counts) ? 0.0 : 1.0;
+            intensity_at(scene.light, over_point, normalv, shapes, nodes, scene.counts, sampler);
         // rtc-rust samples the pattern at over_point too: on a plane the raw
         // hit's y is ~0 with either sign, and checkers would speckle
         float4 object_point = s.inverse * over_point;
         color += p.weight
-                 * lighting(m, scene.light, over_point, object_point, eyev, normalv, intensity);
+                 * lighting(m, scene.light, over_point, object_point, eyev, normalv, intensity,
+                            sampler);
+        sampler.call++;
 
         if (p.remaining <= 0) {
             continue;
