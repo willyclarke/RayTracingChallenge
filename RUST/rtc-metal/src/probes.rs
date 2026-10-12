@@ -1416,3 +1416,74 @@ fn test_chap_15_gpu_intersect_box() -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Input to `probe_random`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct RandomProbe {
+    pixel: u32,
+    frame: u32,
+    dim: u32,
+}
+
+fn random_on_gpu(probes: &[RandomProbe]) -> Result<Vec<f32>, String> {
+    Gpu::new()?.run("probe_random", probes)
+}
+
+#[test]
+fn test_bonus_soft_shadows_gpu_random_in_unit_interval() -> Result<(), String> {
+    let input: Vec<RandomProbe> = (0..10_000)
+        .map(|pixel| RandomProbe {
+            pixel,
+            frame: 7,
+            dim: 3,
+        })
+        .collect();
+    let out = random_on_gpu(&input)?;
+    if let Some(bad) = out.iter().find(|v| !(0.0..1.0).contains(*v)) {
+        return Err(format!("{bad} is outside [0, 1)"));
+    }
+    let mean = out.iter().sum::<f32>() / out.len() as f32;
+    if (mean - 0.5).abs() > 0.01 {
+        return Err(format!("mean {mean} is not 0.5 +- 0.01"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_bonus_soft_shadows_gpu_random_decorrelated() -> Result<(), String> {
+    let probe = |pixel, frame, dim| RandomProbe { pixel, frame, dim };
+    let base: Vec<RandomProbe> = (0..1000).map(|i| probe(i, 0, 0)).collect();
+    let neighbours = [
+        (
+            "pixel",
+            (0..1000).map(|i| probe(i + 1, 0, 0)).collect::<Vec<_>>(),
+        ),
+        ("frame", (0..1000).map(|i| probe(i, 1, 0)).collect()),
+        ("dim", (0..1000).map(|i| probe(i, 0, 1)).collect()),
+    ];
+    let base_out = random_on_gpu(&base)?;
+    for (axis, input) in &neighbours {
+        let out = random_on_gpu(input)?;
+        let differing = base_out.iter().zip(&out).filter(|(a, b)| a != b).count();
+        if differing < 990 {
+            return Err(format!("{axis}: only {differing}/1000 values differ"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_bonus_soft_shadows_gpu_random_deterministic() -> Result<(), String> {
+    let input: Vec<RandomProbe> = (0..100)
+        .map(|i| RandomProbe {
+            pixel: i,
+            frame: i * 3,
+            dim: i % 8,
+        })
+        .collect();
+    if random_on_gpu(&input)? != random_on_gpu(&input)? {
+        return Err("two runs differ".to_string());
+    }
+    Ok(())
+}

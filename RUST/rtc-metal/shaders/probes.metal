@@ -249,3 +249,17 @@ kernel void probe_intersect_box(device const BoxProbe *in [[buffer(0)]],
     BoxProbe p = in[i];
     out[i] = intersect_box(p.min, p.max, p.ray, p.tmin, p.tmax) ? 1 : 0;
 }
+
+struct RandomProbe {
+    uint pixel;
+    uint frame;
+    uint dim;
+};
+static_assert(sizeof(RandomProbe) == 12, "RandomProbe must match probes.rs");
+
+kernel void probe_random(device const RandomProbe *in [[buffer(0)]],
+                         device float *out            [[buffer(1)]],
+                         uint i                       [[thread_position_in_grid]])
+{
+    out[i] = random01(in[i].pixel, in[i].frame, in[i].dim);
+}

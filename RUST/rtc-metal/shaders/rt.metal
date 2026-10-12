@@ -11,6 +11,33 @@ struct Ray {
 };
 static_assert(sizeof(Ray) == 32, "Ray must match GpuRay in types.rs");
 
+// Bonus: sampling. Stateless PCG hash random numbers, keyed by pixel, frame
+// and dimension so every sample is reproducible and independent.
+inline uint pcg_hash(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+// Top 24 bits give exactly representable floats in [0, 1).
+inline float random01(uint pixel, uint frame, uint dim) {
+    return float(pcg_hash(pixel ^ pcg_hash(frame ^ pcg_hash(dim))) >> 8) * 0x1p-24f;
+}
+
+// Sub-pixel jitter uses dims 0 and 1; shading call `call` owns dims
+// 2 + 6 * call + slot. Slots 0-2 are area light cell A (index, u, v) and
+// 3-5 cell B, so the two cells never share a random number.
+struct Sampler {
+    uint pixel;
+    uint frame;
+    uint on;    // 0 or 1
+    uint call;  // index of the current shading call in color_at
+};
+
+inline float sample(thread const Sampler &s, uint slot) {
+    return random01(s.pixel, s.frame, 2 + 6 * s.call + slot);
+}
+
 // Shape kinds; must match the SHAPE_* constants in src/types.rs.
 constant uint SHAPE_SPHERE = 0;
 constant uint SHAPE_PLANE = 1;
