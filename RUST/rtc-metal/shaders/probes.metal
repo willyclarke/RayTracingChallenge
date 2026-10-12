@@ -42,7 +42,7 @@ struct IntersectProbe {
     Shape shape;
     Ray ray;
 };
-static_assert(sizeof(IntersectProbe) == 352, "IntersectProbe must match probes.rs");
+static_assert(sizeof(IntersectProbe) == 432, "IntersectProbe must match probes.rs");
 
 struct IntersectResult {
     float4 ts;  // ascending; ts[count..] unspecified
@@ -71,7 +71,7 @@ struct LightingProbe {
     uint frame;
     uint sampling;
 };
-static_assert(sizeof(LightingProbe) == 304, "LightingProbe must match probes.rs");
+static_assert(sizeof(LightingProbe) == 384, "LightingProbe must match probes.rs");
 
 kernel void probe_lighting(device const LightingProbe *in [[buffer(0)]],
                            device float4 *out             [[buffer(1)]],
@@ -134,7 +134,7 @@ struct ShadeProbe {
     uint frame;
     uint sampling;
 };
-static_assert(sizeof(ShadeProbe) == 288, "ShadeProbe must match probes.rs");
+static_assert(sizeof(ShadeProbe) == 368, "ShadeProbe must match probes.rs");
 
 // One shading call as color_at makes it: intensity_at and lighting share the
 // Sampler, which keeps cell A (shadow) and cell B (diffuse) independent.
@@ -213,6 +213,40 @@ kernel void probe_pattern_at(device const PatternProbe *in [[buffer(0)]],
     out[i] = float4(pattern_at(s.material, s.inverse * in[i].point, nullptr), 0.0);
 }
 
+// probe_pattern_at for perturbed materials, which read the scene's tables.
+kernel void probe_pattern_at_scene(device const PatternProbe *in [[buffer(0)]],
+                                   device float4 *out            [[buffer(1)]],
+                                   device const Shape *shapes    [[buffer(2)]],
+                                   device const BvhNode *nodes   [[buffer(3)]],
+                                   constant SceneCounts &counts  [[buffer(4)]],
+                                   device const uint *tables     [[buffer(5)]],
+                                   uint i                        [[thread_position_in_grid]])
+{
+    Shape s = in[i].shape;
+    out[i] = float4(pattern_at(s.material, s.inverse * in[i].point, tables), 0.0);
+}
+
+struct NoiseProbe {
+    float4 point;
+    uint table;
+    uint pad[3];
+};
+static_assert(sizeof(NoiseProbe) == 32, "NoiseProbe must match probes.rs");
+
+// out[i] = (Perlin::noise, Perlin::vector) at in[i].point, with the
+// permutation at tables[in[i].table].
+kernel void probe_noise(device const NoiseProbe *in  [[buffer(0)]],
+                        device float4 *out           [[buffer(1)]],
+                        device const Shape *shapes   [[buffer(2)]],
+                        device const BvhNode *nodes  [[buffer(3)]],
+                        constant SceneCounts &counts [[buffer(4)]],
+                        device const uint *tables    [[buffer(5)]],
+                        uint i                       [[thread_position_in_grid]])
+{
+    float3 p = in[i].point.xyz;
+    out[i] = float4(perlin_noise(tables, in[i].table, p), perlin_vector(tables, in[i].table, p));
+}
+
 struct TraceProbe {
     Ray ray;
     float4 light_position;
@@ -280,7 +314,7 @@ struct TriangleProbe {
     Shape shape;
     Ray ray;  // world space
 };
-static_assert(sizeof(TriangleProbe) == 352, "TriangleProbe must match probes.rs");
+static_assert(sizeof(TriangleProbe) == 432, "TriangleProbe must match probes.rs");
 
 struct TriangleResult {
     float4 normal;  // world-space, flipped toward the eye as in color_at

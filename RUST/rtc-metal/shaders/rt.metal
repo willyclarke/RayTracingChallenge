@@ -77,8 +77,15 @@ struct Material {
     float4x4 pattern_inverse; // object space to pattern space
     float4 pattern_a;       // the pattern's two colors
     float4 pattern_b;
+    // rtc-rust's perturbed pattern: after pattern_inverse the point moves by
+    // Perlin noise, then base_inverse takes it to the base pattern's space.
+    float4x4 base_inverse;
+    uint noise_table;       // word offset in tables, NOISE_NONE if not perturbed
+    float noise_amplitude;
+    float noise_frequency;
+    uint pad;
 };
-static_assert(sizeof(Material) == 144, "Material must match GpuMaterial");
+static_assert(sizeof(Material) == 224, "Material must match GpuMaterial");
 
 // A primitive of `kind` seen through its world-to-object transform. One
 // tagged array holds every kind; functions switch on `kind`.
@@ -98,7 +105,7 @@ struct Shape {
     float4 n2;
     float4 n3;
 };
-static_assert(sizeof(Shape) == 320, "Shape must match GpuShape");
+static_assert(sizeof(Shape) == 400, "Shape must match GpuShape");
 
 // Bonus: soft shadows. rtc-rust's area light: usteps x vsteps cells of
 // size uvec x vvec from corner. A point light is the 1x1 case with zero
@@ -423,10 +430,69 @@ inline bool floor_is_even(float x) {
     return (int(floor(x)) & 1) == 0;
 }
 
+// ---- Perlin noise (rtc-rust's noise.rs) -----------------------------------
+
+constant uint NOISE_NONE = 0xffffffff;
+
+inline float noise_fade(float t) {
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+inline float noise_grad(uint hash, float x, float y, float z) {
+    uint h = hash & 15;
+    float u = h < 8 ? x : y;
+    float v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
+    return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+}
+
+// Perlin::noise with the permutation at tables[table]: 256 words, read as
+// perm[i & 255], which equals rtc-rust's 512-entry perm[i].
+inline float perlin_noise(device const uint *tables, uint table, float3 p) {
+    device const uint *perm = tables + table;
+    float3 f = floor(p);
+    // two's complement & 255 matches rtc-rust's `floor as i64 & 255`
+    uint xi = uint(int(f.x)) & 255, yi = uint(int(f.y)) & 255, zi = uint(int(f.z)) & 255;
+    float x = p.x - f.x, y = p.y - f.y, z = p.z - f.z;
+    float u = noise_fade(x), v = noise_fade(y), w = noise_fade(z);
+
+    uint a = perm[xi] + yi;
+    uint aa = perm[a & 255] + zi;
+    uint ab = perm[(a + 1) & 255] + zi;
+    uint b = perm[(xi + 1) & 255] + yi;
+    uint ba = perm[b & 255] + zi;
+    uint bb = perm[(b + 1) & 255] + zi;
+
+    return mix(mix(mix(noise_grad(perm[aa & 255], x, y, z),
+                       noise_grad(perm[ba & 255], x - 1.0, y, z), u),
+                   mix(noise_grad(perm[ab & 255], x, y - 1.0, z),
+                       noise_grad(perm[bb & 255], x - 1.0, y - 1.0, z), u),
+                   v),
+               mix(mix(noise_grad(perm[(aa + 1) & 255], x, y, z - 1.0),
+                       noise_grad(perm[(ba + 1) & 255], x - 1.0, y, z - 1.0), u),
+                   mix(noise_grad(perm[(ab + 1) & 255], x, y - 1.0, z - 1.0),
+                       noise_grad(perm[(bb + 1) & 255], x - 1.0, y - 1.0, z - 1.0), u),
+                   v),
+               w);
+}
+
+// Perlin::vector: three decorrelated noise samples.
+inline float3 perlin_vector(device const uint *tables, uint table, float3 p) {
+    return float3(perlin_noise(tables, table, p),
+                  perlin_noise(tables, table, p + float3(31.4, 15.9, 26.5)),
+                  perlin_noise(tables, table, p + float3(-27.1, 82.8, -18.2)));
+}
+
 // The pattern's color at a point in the shape's object space; rtc-rust's
-// Pattern::color_at_local.
+// Pattern::color_at_local. A perturbed pattern (rtc-rust's
+// PerturbedPattern) moves the point by noise in its own space, then hands it
+// to its base pattern's transform.
 inline float3 pattern_at(Material m, float4 object_point, device const uint *tables) {
     float4 p = m.pattern_inverse * object_point;
+    if (m.noise_table != NOISE_NONE) {
+        p.xyz += perlin_vector(tables, m.noise_table, p.xyz * m.noise_frequency)
+                 * m.noise_amplitude;
+        p = m.base_inverse * p;
+    }
     float3 a = m.pattern_a.rgb;
     float3 b = m.pattern_b.rgb;
     switch (m.pattern) {

@@ -72,7 +72,21 @@ pub struct GpuMaterial {
     /// The pattern's two colors.
     pub pattern_a: Float4,
     pub pattern_b: Float4,
+    /// rtc-rust's perturbed pattern: `pattern_inverse` takes object space to
+    /// the perturbed pattern's space, the point moves by Perlin noise, then
+    /// `base_inverse` takes it to the base (stripe, ...) pattern's space.
+    /// Identity when not perturbed.
+    pub base_inverse: GpuMat4,
+    /// Word offset of the Perlin permutation in the scene's tables, or
+    /// `NOISE_NONE` when the pattern is not perturbed.
+    pub noise_table: u32,
+    pub noise_amplitude: f32,
+    pub noise_frequency: f32,
+    pub _pad: u32,
 }
+
+/// `GpuMaterial::noise_table` of a material that is not perturbed.
+pub const NOISE_NONE: u32 = 0xffff_ffff;
 
 /// `GpuMaterial::pattern` values; must match the `PATTERN_*` constants in
 /// rt.metal.
@@ -169,10 +183,10 @@ pub struct GpuSceneCounts {
     pub node_count: u32,
 }
 
-// 16 + 8 * 4 + 64 + 2 * 16 = 144 bytes of fields.
-const _: () = assert!(size_of::<GpuMaterial>() == 144);
-// 64 + 144 + 4 * 4 + 6 * 16 = 320 bytes of fields.
-const _: () = assert!(size_of::<GpuShape>() == 320);
+// 16 + 8 * 4 + 64 + 2 * 16 + 64 + 4 * 4 = 224 bytes of fields.
+const _: () = assert!(size_of::<GpuMaterial>() == 224);
+// 64 + 224 + 4 * 4 + 6 * 16 = 400 bytes of fields.
+const _: () = assert!(size_of::<GpuShape>() == 400);
 // 4 * 16 + 4 * 4 = 80 bytes of fields.
 const _: () = assert!(size_of::<GpuLight>() == 80);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.

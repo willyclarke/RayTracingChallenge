@@ -2,7 +2,7 @@
 //! case, and compare with the rtc-rust CPU version of the same function.
 
 use crate::gpu::Gpu;
-use crate::scene::{GpuScene, gpu_camera, gpu_light, gpu_material, gpu_shape};
+use crate::scene::{GpuScene, Tables, gpu_camera, gpu_light, gpu_material, gpu_shape};
 use crate::types::{
     Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_PLANE, SHAPE_SPHERE,
     float4,
@@ -142,7 +142,7 @@ struct NormalProbe {
 fn probe_shape(kind: u32, m: &Matrix4) -> GpuShape {
     GpuShape {
         inverse: (&m.inverse().unwrap()).into(),
-        material: gpu_material(&Material::new()).unwrap(),
+        material: gpu_material(&Material::new(), &mut Tables::default()).unwrap(),
         kind,
         minimum: 0.0,
         maximum: 0.0,
@@ -213,7 +213,7 @@ struct LightingProbe {
     sampling: u32,
 }
 
-const _: () = assert!(size_of::<LightingProbe>() == 304);
+const _: () = assert!(size_of::<LightingProbe>() == 384);
 
 #[test]
 fn test_chap_6_gpu_lighting() -> Result<(), String> {
@@ -263,7 +263,7 @@ fn test_chap_6_gpu_lighting() -> Result<(), String> {
         .iter()
         .zip(&lights)
         .map(|((eyev, _, intensity), light)| LightingProbe {
-            material: gpu_material(&material).unwrap(),
+            material: gpu_material(&material, &mut Tables::default()).unwrap(),
             light: gpu_light(light).unwrap(),
             point: float4(point),
             object_point: float4(point),
@@ -417,7 +417,7 @@ struct IntersectResult {
 /// Intersect `rays` (object space) with `shape` on the GPU and compare every
 /// t with rtc-rust's `local_intersect`.
 fn check_local_intersect(shape: &dyn Shape, rays: &[Ray]) -> Result<(), String> {
-    let gpu_shape = gpu_shape(shape)?;
+    let gpu_shape = gpu_shape(shape, &mut Tables::default())?;
     let input: Vec<IntersectProbe> = rays
         .iter()
         .map(|r| IntersectProbe {
@@ -447,7 +447,7 @@ fn check_local_intersect(shape: &dyn Shape, rays: &[Ray]) -> Result<(), String> 
 /// Object-space normals of `shape` (identity transform) at `points`, GPU
 /// against rtc-rust.
 fn check_local_normals(shape: &dyn Shape, points: &[Tuple]) -> Result<(), String> {
-    let gpu_shape = gpu_shape(shape)?;
+    let gpu_shape = gpu_shape(shape, &mut Tables::default())?;
     let input: Vec<NormalProbe> = points
         .iter()
         .map(|p| NormalProbe {
@@ -865,7 +865,7 @@ struct PatternProbe {
 /// Pattern colors of `shape` at world `points`, GPU against rtc-rust's
 /// `color_at_shape` (shape transform, then pattern transform).
 fn check_pattern(shape: &dyn Shape, points: &[Tuple]) -> Result<(), String> {
-    let gpu_shape = gpu_shape(shape)?;
+    let gpu_shape = gpu_shape(shape, &mut Tables::default())?;
     let input: Vec<PatternProbe> = points
         .iter()
         .map(|p| PatternProbe {
@@ -982,6 +982,137 @@ fn test_chap_10_gpu_pattern_at() -> Result<(), String> {
     Ok(())
 }
 
+/// Input to `probe_noise`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NoiseProbe {
+    point: Float4,
+    table: u32,
+    pad: [u32; 3],
+}
+const _: () = assert!(size_of::<NoiseProbe>() == 32);
+
+/// A sphere whose material is the dice marble: perturbed stripes, the
+/// stripes with their own transform.
+fn marble_sphere(seed: u64) -> Sphere {
+    use rtc_rust::patterns::perturbedpattern::PerturbedPattern;
+    use rtc_rust::patterns::stripepattern::StripePattern;
+    let mut stripes = StripePattern::new(
+        Tuple::color(0.93, 0.08, 0.45),
+        Tuple::color(0.45, 0.02, 0.28),
+    );
+    stripes.set_transform(Matrix4::rotation_z(0.9) * Matrix4::scaling(0.35, 0.35, 0.35));
+    let mut s = Sphere::new();
+    s.data.material.pattern = Some(Box::new(
+        PerturbedPattern::new(Box::new(stripes), 1.1, 0.9).with_seed(seed),
+    ));
+    s
+}
+
+/// A world of marble spheres, one per seed, with a light so it uploads.
+fn marble_world(seeds: &[u64]) -> World {
+    let mut world = World::new();
+    world.light = Some(Light::point_light(
+        Tuple::point(-10.0, 10.0, -10.0),
+        Tuple::color(1.0, 1.0, 1.0),
+    ));
+    for &seed in seeds {
+        world.add_shape(Box::new(marble_sphere(seed)));
+    }
+    world
+}
+
+#[test]
+fn test_chap_17_gpu_perlin_noise_matches_cpu() -> Result<(), String> {
+    use rtc_rust::noise::Perlin;
+    let seeds = [0, 7, 11];
+    let world = marble_world(&seeds);
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    // Lattice points (noise 0) and a scatter over -20..20, negatives included.
+    let mut points: Vec<Tuple> = (-2..3)
+        .map(|k| Tuple::point(k as f64, -k as f64, 2.0 * k as f64))
+        .collect();
+    for i in 0..300 {
+        let c = |k: u32| ((i * 2654435761u32.wrapping_mul(k)) % 40000) as f64 / 1000.0 - 20.0;
+        points.push(Tuple::point(c(1), c(3), c(7)));
+    }
+    for (k, &seed) in seeds.iter().enumerate() {
+        // world shape ids are 1-based in add order
+        let index = scene
+            .ids
+            .iter()
+            .position(|&id| id == k + 1)
+            .ok_or("shape missing")?;
+        let table = scene.shapes[index].material.noise_table;
+        let input: Vec<NoiseProbe> = points
+            .iter()
+            .map(|p| NoiseProbe {
+                point: float4(*p),
+                table,
+                pad: [0; 3],
+            })
+            .collect();
+        let out: Vec<Float4> = Gpu::new()?.run_with_scene("probe_noise", &input, &scene)?;
+        let perlin = Perlin::new(seed);
+        for (i, (p, got)) in points.iter().zip(&out).enumerate() {
+            let v = perlin.vector(*p);
+            for (c, (g, w)) in got
+                .iter()
+                .zip([perlin.noise(*p), v.x, v.y, v.z])
+                .enumerate()
+            {
+                if (*g as f64 - w).abs() > 1e-4 {
+                    return Err(format!(
+                        "seed {seed} point {i} {p:?} slot {c}: gpu {g} cpu {w}"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_17_gpu_perturbed_pattern_matches_cpu() -> Result<(), String> {
+    let world = marble_world(&[11]);
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let shape = world.shapes[0].as_ref();
+    let pattern = shape.material().pattern.as_ref().ok_or("no pattern")?;
+    let color = |p: Tuple| pattern.color_at_shape(shape, p);
+    // Points on the unit sphere, skipping those within 1e-3 of a stripe
+    // edge, where f32 noise may land on the other side.
+    let points: Vec<Tuple> = (0..400)
+        .map(|i| {
+            let (theta, phi) = (i as f64 * 0.77, (i as f64 * 0.31).sin() * 1.5);
+            Tuple::point(theta.cos() * phi.cos(), phi.sin(), theta.sin() * phi.cos())
+        })
+        .filter(|&p| {
+            let d = Tuple::vector(1e-3, 0.0, 0.0);
+            color(p - d).approx_eq(color(p)) && color(p + d).approx_eq(color(p))
+        })
+        .collect();
+    if points.len() < 300 {
+        return Err(format!("only {} points off stripe edges", points.len()));
+    }
+    let input: Vec<PatternProbe> = points
+        .iter()
+        .map(|p| PatternProbe {
+            shape: scene.shapes[0],
+            point: float4(*p),
+        })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run_with_scene("probe_pattern_at_scene", &input, &scene)?;
+
+    for (i, (p, got)) in points.iter().zip(&out).enumerate() {
+        let want = color(*p);
+        for (c, (g, w)) in got.iter().zip([want.x, want.y, want.z]).enumerate() {
+            check_close(*g, w, &format!("point {i} channel {c}"))?;
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn test_chap_10_gpu_lighting_with_pattern() -> Result<(), String> {
     use rtc_rust::patterns::stripepattern::StripePattern;
@@ -998,7 +1129,7 @@ fn test_chap_10_gpu_lighting_with_pattern() -> Result<(), String> {
     let input: Vec<LightingProbe> = points
         .iter()
         .map(|p| LightingProbe {
-            material: gpu_material(&material).unwrap(),
+            material: gpu_material(&material, &mut Tables::default()).unwrap(),
             light: gpu_light(&light).unwrap(),
             point: float4(*p),
             object_point: float4(*p),
@@ -1048,7 +1179,7 @@ fn test_chap_15_gpu_intersect_triangle() -> Result<(), String> {
         ray((-1.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
     ];
     check_local_intersect(&degenerate, &rays)?;
-    let gpu = gpu_shape(&degenerate)?;
+    let gpu = gpu_shape(&degenerate, &mut Tables::default())?;
     let input: Vec<IntersectProbe> = rays
         .iter()
         .map(|r| IntersectProbe {
@@ -1101,7 +1232,7 @@ fn test_chap_15_gpu_triangle_uv_and_normal() -> Result<(), String> {
     let smooth = TriangleUV::new(p1, p2, p3, n1, n2, n3);
     let book_ray = ray((-0.2, 0.3, -2.0), (0.0, 0.0, 1.0));
     let input = [TriangleProbe {
-        shape: gpu_shape(&smooth)?,
+        shape: gpu_shape(&smooth, &mut Tables::default())?,
         ray: (&book_ray).into(),
     }];
     let out: Vec<TriangleResult> = Gpu::new()?.run("probe_triangle", &input)?;
@@ -1137,7 +1268,7 @@ fn test_chap_15_gpu_triangle_uv_and_normal() -> Result<(), String> {
     let mut flat = Triangle::new(p1, p2, p3);
     flat.set_transform(m);
     for shape in [Box::new(smooth) as Box<dyn Shape>, Box::new(flat)] {
-        let gpu = gpu_shape(shape.as_ref())?;
+        let gpu = gpu_shape(shape.as_ref(), &mut Tables::default())?;
         let mut world = World::new();
         world.add_shape(shape);
         // Aim a fan from a fixed eye at points around the triangle's
@@ -1637,7 +1768,7 @@ fn test_bonus_soft_shadows_gpu_lighting() -> Result<(), String> {
         let input: Vec<LightingProbe> = points
             .iter()
             .map(|p| LightingProbe {
-                material: gpu_material(&material).unwrap(),
+                material: gpu_material(&material, &mut Tables::default()).unwrap(),
                 light: gpu_light(&light).unwrap(),
                 point: float4(*p),
                 object_point: float4(*p),
@@ -1705,7 +1836,7 @@ struct ShadeProbe {
     sampling: u32,
 }
 
-const _: () = assert!(size_of::<ShadeProbe>() == 288);
+const _: () = assert!(size_of::<ShadeProbe>() == 368);
 
 #[test]
 fn test_bonus_soft_shadows_gpu_sampled_shading_converges() -> Result<(), String> {
@@ -1728,7 +1859,7 @@ fn test_bonus_soft_shadows_gpu_sampled_shading_converges() -> Result<(), String>
         )
     };
     let probe = |light: &Light, frame, sampling| ShadeProbe {
-        material: gpu_material(&Material::new()).unwrap(),
+        material: gpu_material(&Material::new(), &mut Tables::default()).unwrap(),
         light: gpu_light(light).unwrap(),
         point: [1.0, -1.0, 2.0, 1.0],
         eyev: [0.0, 0.0, -1.0, 0.0],

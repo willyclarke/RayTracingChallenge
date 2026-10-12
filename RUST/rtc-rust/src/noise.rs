@@ -37,6 +37,12 @@ impl Perlin {
         Self { perm }
     }
 
+    /// The 512-entry permutation table (the 256-entry shuffle, twice), for
+    /// renderers that evaluate the same noise elsewhere.
+    pub fn permutation(&self) -> &[u8] {
+        &self.perm[..]
+    }
+
     /// Noise value at `p`, in `[-1, 1]`; exactly 0 at integer lattice points.
     pub fn noise(&self, p: Tuple) -> f64 {
         let (xf, yf, zf) = (p.x.floor(), p.y.floor(), p.z.floor());

@@ -6,16 +6,18 @@
 use crate::bvh::{self, Leaf};
 use crate::types::{
     GpuBvhNode, GpuCamera, GpuLight, GpuMaterial, GpuSceneCounts, GpuSceneInfo, GpuShape,
-    PATTERN_CHECKERS, PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE, SHAPE_CONE,
-    SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE, float4,
+    NOISE_NONE, PATTERN_CHECKERS, PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE,
+    SHAPE_CONE, SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
 use rtc_rust::material::Material;
 use rtc_rust::matrix::Matrix4;
+use rtc_rust::noise::Perlin;
 use rtc_rust::pattern::Pattern;
 use rtc_rust::patterns::checkerspattern::CheckersPattern;
 use rtc_rust::patterns::gradientpattern::GradientPattern;
+use rtc_rust::patterns::perturbedpattern::PerturbedPattern;
 use rtc_rust::patterns::ringpattern::RingPattern;
 use rtc_rust::patterns::stripepattern::StripePattern;
 use rtc_rust::shape::Shape;
@@ -43,6 +45,32 @@ pub struct GpuScene {
     pub tables: Vec<u32>,
 }
 
+/// The scene's `tables` buffer while it is built: `u32` words that shapes and
+/// materials refer to by offset.
+#[derive(Default)]
+pub struct Tables {
+    pub words: Vec<u32>,
+    /// Each permutation added so far and its offset, so materials sharing a
+    /// seed share one table.
+    noise: Vec<(Vec<u8>, u32)>,
+}
+
+impl Tables {
+    /// The offset of `perlin`'s permutation, added on first use: 256 words,
+    /// `perm[0..256]`. rtc-rust's 512-entry table repeats them, so the
+    /// shader reads `perm[i & 255]`.
+    pub fn noise(&mut self, perlin: &Perlin) -> u32 {
+        let perm = &perlin.permutation()[..256];
+        if let Some((_, offset)) = self.noise.iter().find(|(p, _)| p == perm) {
+            return *offset;
+        }
+        let offset = self.words.len() as u32;
+        self.words.extend(perm.iter().map(|&p| p as u32));
+        self.noise.push((perm.to_vec(), offset));
+        offset
+    }
+}
+
 impl GpuScene {
     pub fn from_world(world: &World, camera: &Camera) -> Result<Self, String> {
         if world.gi_samples > 0 {
@@ -50,9 +78,17 @@ impl GpuScene {
         }
         let light = world.light.as_ref().ok_or("scene has no light")?;
         let mut leaves = Vec::new();
+        let mut tables = Tables::default();
         let identity = Matrix4::identity();
         for root in world.shapes.iter().filter(|s| s.data().parent.is_none()) {
-            flatten(world, root.as_ref(), &identity, &identity, &mut leaves)?;
+            flatten(
+                world,
+                root.as_ref(),
+                &identity,
+                &identity,
+                &mut leaves,
+                &mut tables,
+            )?;
         }
         let bvh = bvh::build(leaves)?;
         Ok(Self {
@@ -70,7 +106,7 @@ impl GpuScene {
             shapes: bvh.shapes,
             nodes: bvh.nodes,
             ids: bvh.ids,
-            tables: Vec::new(),
+            tables: tables.words,
         })
     }
 
@@ -128,19 +164,30 @@ pub fn gpu_light(light: &Light) -> Result<GpuLight, String> {
     })
 }
 
-pub fn gpu_material(m: &Material) -> Result<GpuMaterial, String> {
+pub fn gpu_material(m: &Material, tables: &mut Tables) -> Result<GpuMaterial, String> {
     if m.bump.is_some() {
         return Err("bump maps are not supported yet".into());
     }
+    let identity = Matrix4::identity();
+    let black = Tuple::color(0.0, 0.0, 0.0);
+    let mut base_inverse = identity;
+    let (mut noise_table, mut noise_amplitude, mut noise_frequency) = (NOISE_NONE, 0.0, 0.0);
     let (pattern, pattern_inverse, pattern_a, pattern_b) = match &m.pattern {
-        None => (
-            PATTERN_NONE,
-            Matrix4::identity(),
-            Tuple::color(0.0, 0.0, 0.0),
-            Tuple::color(0.0, 0.0, 0.0),
-        ),
+        None => (PATTERN_NONE, identity, black, black),
         Some(p) => {
-            let (kind, a, b) = gpu_pattern(p.as_ref())?;
+            // As in gpu_shape: upcast the `&dyn Pattern`, not the `Box`.
+            let any: &dyn Any = p.as_ref();
+            let base = match any.downcast_ref::<PerturbedPattern>() {
+                Some(perturbed) => {
+                    base_inverse = *perturbed.pattern.data().transform_inv();
+                    noise_table = tables.noise(&perturbed.noise);
+                    noise_amplitude = perturbed.amplitude as f32;
+                    noise_frequency = perturbed.frequency as f32;
+                    perturbed.pattern.as_ref()
+                }
+                None => p.as_ref(),
+            };
+            let (kind, a, b) = gpu_pattern(base)?;
             (kind, *p.data().transform_inv(), a, b)
         }
     };
@@ -157,6 +204,11 @@ pub fn gpu_material(m: &Material) -> Result<GpuMaterial, String> {
         pattern_inverse: (&pattern_inverse).into(),
         pattern_a: float4(pattern_a),
         pattern_b: float4(pattern_b),
+        base_inverse: (&base_inverse).into(),
+        noise_table,
+        noise_amplitude,
+        noise_frequency,
+        _pad: 0,
     })
 }
 
@@ -173,7 +225,7 @@ fn gpu_pattern(pattern: &dyn Pattern) -> Result<(u32, Tuple, Tuple), String> {
     } else if let Some(p) = any.downcast_ref::<CheckersPattern>() {
         Ok((PATTERN_CHECKERS, p.a, p.b))
     } else {
-        Err("only stripe, gradient, ring and checkers patterns are supported so far".into())
+        Err("only stripe, gradient, ring, checkers and perturbed (over one of those) patterns are supported so far".into())
     }
 }
 
@@ -191,6 +243,7 @@ fn flatten(
     parent_transform: &Matrix4,
     parent_inverse: &Matrix4,
     out: &mut Vec<Leaf>,
+    tables: &mut Tables,
 ) -> Result<(), String> {
     // world_to_object applies the parent chain first, then the shape's own;
     // object_to_world is the reverse.
@@ -198,7 +251,7 @@ fn flatten(
     let inverse = *shape.transform_inv() * *parent_inverse;
     match shape.children() {
         None => out.push(Leaf {
-            shape: gpu_leaf(shape, &inverse)?,
+            shape: gpu_leaf(shape, &inverse, tables)?,
             id: shape.id(),
             bounds: world_bounds(shape, full),
         }),
@@ -211,7 +264,14 @@ fn flatten(
             }
             for &id in children {
                 // World ids are 1-based arena indices.
-                flatten(world, world.shapes[id - 1].as_ref(), &full, &inverse, out)?;
+                flatten(
+                    world,
+                    world.shapes[id - 1].as_ref(),
+                    &full,
+                    &inverse,
+                    out,
+                    tables,
+                )?;
             }
         }
     }
@@ -246,18 +306,18 @@ fn world_bounds(shape: &dyn Shape, full: Matrix4) -> Option<([f32; 3], [f32; 3])
 }
 
 /// A shape outside any group, as the probes upload it.
-pub fn gpu_shape(shape: &dyn Shape) -> Result<GpuShape, String> {
+pub fn gpu_shape(shape: &dyn Shape, tables: &mut Tables) -> Result<GpuShape, String> {
     if shape.data().parent.is_some() {
         return Err(format!(
             "shape {}: a group child needs its parents' transforms; use GpuScene",
             shape.id()
         ));
     }
-    gpu_leaf(shape, shape.transform_inv())
+    gpu_leaf(shape, shape.transform_inv(), tables)
 }
 
 /// A primitive seen through `inverse`, its world-to-object transform.
-fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4) -> Result<GpuShape, String> {
+fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4, tables: &mut Tables) -> Result<GpuShape, String> {
     // Upcast to `&dyn Any` to learn the concrete type. This must be the
     // `&dyn Shape`, not the `Box`: a `&Box<dyn Shape>` would coerce to an
     // `Any` whose type is the Box itself, and `is::<Sphere>` would be false.
@@ -294,7 +354,7 @@ fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4) -> Result<GpuShape, String> {
     }
     Ok(GpuShape {
         inverse: inverse.into(),
-        material: gpu_material(&data.material)?,
+        material: gpu_material(&data.material, tables)?,
         kind,
         minimum: minimum as f32,
         maximum: maximum as f32,
@@ -312,6 +372,8 @@ fn gpu_leaf(shape: &dyn Shape, inverse: &Matrix4) -> Result<GpuShape, String> {
 mod tests {
     use super::*;
     use crate::types::{Float4, GpuMat4};
+    use rtc_rust::noise::Perlin;
+    use rtc_rust::patterns::perturbedpattern::PerturbedPattern;
     use rtc_rust::shapes::csg::{Csg, CsgOperation};
     use rtc_rust::shapes::group::Group;
     use rtc_rust::shapes::torus::Torus;
@@ -341,7 +403,7 @@ mod tests {
         let err = GpuScene::from_world(&world, &Camera::default()).err();
         assert!(err.is_some_and(|e| e.contains("only spheres, planes")));
         // Standalone upload would drop the group's transform.
-        let err = gpu_shape(world.shapes[child - 1].as_ref()).err();
+        let err = gpu_shape(world.shapes[child - 1].as_ref(), &mut Tables::default()).err();
         assert!(err.is_some_and(|e| e.contains("use GpuScene")));
 
         let mut world = World::new();
@@ -475,19 +537,74 @@ mod tests {
         }
     }
 
+    /// The dice body pattern: perturbed stripes with their own transform.
+    fn marble(seed: u64) -> PerturbedPattern {
+        let mut stripes = StripePattern::new(
+            Tuple::color(0.93, 0.08, 0.45),
+            Tuple::color(0.45, 0.02, 0.28),
+        );
+        stripes.set_transform(Matrix4::rotation_z(0.9) * Matrix4::scaling(0.35, 0.35, 0.35));
+        PerturbedPattern::new(Box::new(stripes), 1.1, 0.9).with_seed(seed)
+    }
+
+    #[test]
+    fn tables_intern_noise_by_permutation() {
+        let mut tables = Tables::default();
+        let a = tables.noise(&Perlin::new(11));
+        let b = tables.noise(&Perlin::new(11));
+        assert_eq!((a, b, tables.words.len()), (0, 0, 256));
+        assert_eq!(tables.noise(&Perlin::new(12)), 256);
+        let perm = Perlin::new(11);
+        let want: Vec<u32> = perm.permutation()[..256]
+            .iter()
+            .map(|&p| p as u32)
+            .collect();
+        assert_eq!(tables.words[..256], want[..]);
+    }
+
+    #[test]
+    fn perturbed_material_layout() {
+        let mut tables = Tables::default();
+        let mut m = Material::new();
+        let pattern = marble(11);
+        let base_inverse: GpuMat4 = pattern.pattern.data().transform_inv().into();
+        m.pattern = Some(Box::new(pattern));
+        let g = gpu_material(&m, &mut tables).unwrap();
+        assert_eq!(g.pattern, PATTERN_STRIPE);
+        assert_eq!(g.noise_table, 0);
+        assert_eq!((g.noise_amplitude, g.noise_frequency), (1.1, 0.9));
+        assert_eq!(g.base_inverse, base_inverse);
+
+        m.pattern = Some(Box::new(StripePattern::new(
+            Tuple::color(1.0, 1.0, 1.0),
+            Tuple::color(0.0, 0.0, 0.0),
+        )));
+        let g = gpu_material(&m, &mut tables).unwrap();
+        assert_eq!(g.noise_table, NOISE_NONE);
+        assert_eq!(g.base_inverse, (&Matrix4::identity()).into());
+
+        m.pattern = Some(Box::new(PerturbedPattern::new(
+            Box::new(marble(3)),
+            0.5,
+            1.0,
+        )));
+        let err = gpu_material(&m, &mut tables).err();
+        assert!(err.is_some_and(|e| e.contains("perturbed (over one of those)")));
+    }
+
     #[test]
     fn unsupported_patterns_are_rejected() {
         use rtc_rust::patterns::nestedpattern::NestedPattern;
         let (a, b) = (Tuple::color(1.0, 1.0, 1.0), Tuple::color(0.0, 0.0, 0.0));
         let mut m = Material::new();
         m.pattern = Some(Box::new(CheckersPattern::new(a, b)));
-        assert!(gpu_material(&m).is_ok());
+        assert!(gpu_material(&m, &mut Tables::default()).is_ok());
         m.pattern = Some(Box::new(NestedPattern::new(
             Box::new(StripePattern::new(a, b)),
             Box::new(RingPattern::new(a, b)),
         )));
-        let err = gpu_material(&m).err();
-        assert!(err.is_some_and(|e| e.contains("only stripe, gradient, ring and checkers")));
+        let err = gpu_material(&m, &mut Tables::default()).err();
+        assert!(err.is_some_and(|e| e.contains("only stripe, gradient, ring, checkers")));
     }
 
     #[test]
