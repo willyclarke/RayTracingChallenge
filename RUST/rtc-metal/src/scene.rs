@@ -44,7 +44,7 @@ pub struct GpuScene {
 impl GpuScene {
     pub fn from_world(world: &World, camera: &Camera) -> Result<Self, String> {
         if world.gi_samples > 0 {
-            return Err("path tracing is not supported yet".into());
+            return Err("path tracing is not supported so far".into());
         }
         let light = world.light.as_ref().ok_or("scene has no light")?;
         let mut leaves = Vec::new();
@@ -91,7 +91,7 @@ impl GpuScene {
 /// within the pixel instead, anti-aliasing as they accumulate.
 pub fn gpu_camera(camera: &Camera) -> Result<GpuCamera, String> {
     if camera.aperture > 0.0 || camera.motion_samples > 1 {
-        return Err("focal blur and motion blur are not supported yet".into());
+        return Err("focal blur and motion blur are not supported so far".into());
     }
     let inverse = camera
         .transform()

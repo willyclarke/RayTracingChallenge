@@ -1,6 +1,7 @@
 //! Live window (`--window`): an `MTKView` that adds one sampled frame per
 //! display refresh until `target` frames, showing the running mean. Dragging
-//! orbits the camera and scrolling zooms; both restart the accumulation.
+//! orbits the camera and scrolling zooms; both restart the accumulation
+//! (events with no movement leave it alone).
 //! Quitting hands the final image to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
@@ -59,6 +60,9 @@ define_class!(
     #[unsafe(super(MTKView, NSView, NSResponder, NSObject))]
     #[thread_kind = MainThreadOnly]
     #[ivars = Rc<RefCell<Renderer>>]
+    /// The image view. Dragging orbits the camera "grabbing the scene"
+    /// (dragging right orbits it left, dragging down raises it; the signs
+    /// live in `Orbit::drag`); scrolling zooms.
     struct RtcView;
 
     impl RtcView {
@@ -69,15 +73,31 @@ define_class!(
 
         #[unsafe(method(mouseDragged:))]
         fn mouse_dragged(&self, event: &NSEvent) {
-            // AppKit deltas are in points, +y = mouse down: dragging right
-            // moves the camera right, dragging down raises it (see `Orbit`).
+            // AppKit deltas are in points, +y = mouse down; `Orbit::drag`
+            // owns the sign convention ("grab the scene": dragging right
+            // orbits the camera left, dragging down raises it).
             let (dx, dy) = (event.deltaX(), event.deltaY());
+            if dx == 0.0 && dy == 0.0 {
+                return; // keep the converged image
+            }
             self.interact(|orbit| orbit.drag(dx, dy));
         }
 
         #[unsafe(method(scrollWheel:))]
         fn scroll_wheel(&self, event: &NSEvent) {
+            // Trackpad gesture begin/end, horizontal scrolls and tilt
+            // wheels send dy = 0: keep the converged image.
             let dy = event.scrollingDeltaY();
+            if dy == 0.0 {
+                return;
+            }
+            // Trackpads report precise deltas in points, many per gesture;
+            // wheels report whole lines.
+            let dy = if event.hasPreciseScrollingDeltas() {
+                dy * 0.1
+            } else {
+                dy
+            };
             self.interact(|orbit| orbit.zoom(dy));
         }
     }
@@ -291,7 +311,7 @@ pub fn run(
     window.center();
     window.makeKeyAndOrderFront(None);
     window.makeFirstResponder(Some(&view));
-    app.activate();
+    app.activate(); // needs macOS 14+ (older: activateIgnoringOtherApps)
     app.run();
     std::process::exit(0);
 }

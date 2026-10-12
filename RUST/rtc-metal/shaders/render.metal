@@ -46,7 +46,8 @@ kernel void resolve_texture(device const float4 *accum               [[buffer(0)
                             constant uint3 &size_frames              [[buffer(2)]],
                             uint2 gid                                [[thread_position_in_grid]])
 {
-    if (gid.x >= size_frames.x || gid.y >= size_frames.y) {
+    if (gid.x >= size_frames.x || gid.y >= size_frames.y ||
+        gid.x >= out.get_width() || gid.y >= out.get_height()) {
         return;
     }
     uint i = gid.y * size_frames.x + gid.x;

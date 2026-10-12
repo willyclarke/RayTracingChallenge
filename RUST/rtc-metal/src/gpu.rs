@@ -266,7 +266,8 @@ impl Gpu {
 }
 
 /// Sums sampled frames of one scene (`render` with `sampling = 1`) in a GPU
-/// buffer; the image is the sum divided by the frame count.
+/// buffer; the image is the sum divided by the frame count. The f32 sum
+/// loses precision at very high sample counts (~0.3% bias at 65k frames).
 pub struct Accumulator {
     accum: Buffer,
     shapes: Buffer,
@@ -293,6 +294,8 @@ impl Accumulator {
     /// Record one sampled frame of `info`'s camera and light, with frame
     /// index `frames()` (frame 0 overwrites the buffer). The camera must keep
     /// the accumulator's size: the kernel writes one pixel per camera pixel.
+    /// `info` must come from the scene the accumulator was built from: the
+    /// accumulator holds that scene's shape and BVH buffers.
     pub fn encode_frame(&mut self, encoder: &Encoder, info: &GpuSceneInfo) {
         assert!(
             (info.camera.width, info.camera.height) == (self.width, self.height),
@@ -461,6 +464,57 @@ mod accumulator_tests {
         let mut fresh = gpu.accumulator(&scene)?;
         fresh.add_frame(&gpu, &scene.info)?;
         assert!(acc.resolve(&gpu)? == fresh.resolve(&gpu)?);
+        Ok(())
+    }
+
+    /// Every sample of every pixel is the same colour, so the mean of 4
+    /// frames must be that colour exactly: catches an off-by-one divisor.
+    #[test]
+    fn accumulator_resolve_is_mean_of_frames() -> Result<(), String> {
+        use rtc_rust::light::Light;
+        use rtc_rust::material::Material;
+        use rtc_rust::matrix::Matrix4;
+        use rtc_rust::shape::Shape;
+        use rtc_rust::shapes::sphere::Sphere;
+        use rtc_rust::tuple::Tuple;
+        use rtc_rust::world::{World, view_transform};
+
+        let (r, g, b) = (0.5, 0.25, 0.75);
+        let mut world = World::new();
+        world.light = Some(Light::point_light(
+            Tuple::point(1.0, 2.0, -3.0),
+            Tuple::color(1.0, 1.0, 1.0),
+        ));
+        let mut m = Material::new();
+        m.color = Tuple::color(r, g, b);
+        (m.ambient, m.diffuse, m.specular) = (1.0, 0.0, 0.0);
+        (m.reflective, m.transparency) = (0.0, 0.0);
+        let mut sky = Sphere::new();
+        sky.set_transform(Matrix4::scaling(100.0, 100.0, 100.0));
+        sky.set_material(m);
+        world.add_shape(Box::new(sky));
+        let camera = rtc_rust::camera::Camera::new(8, 6, std::f64::consts::PI / 3.0)
+            .with_transform(view_transform(
+                Tuple::point(0.0, 0.0, 0.0),
+                Tuple::point(0.0, 0.0, 1.0),
+                Tuple::vector(0.0, 1.0, 0.0),
+            ));
+        let scene = GpuScene::from_world(&world, &camera)?;
+
+        let gpu = Gpu::new()?;
+        let mut acc = gpu.accumulator(&scene)?;
+        for _ in 0..4 {
+            acc.add_frame(&gpu, &scene.info)?;
+        }
+        let expected = [r as f32, g as f32, b as f32, 1.0];
+        for (i, pixel) in acc.resolve(&gpu)?.iter().enumerate() {
+            for c in 0..4 {
+                assert!(
+                    (pixel[c] - expected[c]).abs() <= 1e-6,
+                    "pixel {i}: {pixel:?} != {expected:?}"
+                );
+            }
+        }
         Ok(())
     }
 
