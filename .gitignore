@@ -31,3 +31,5 @@ __pycache__/
 /RUST/rtc-rust/screensaver/build/
 /RUST/rtc-metal/target
 /RUST/rtc-metal/*.ppm
+# graphify knowledge graphs
+graphify-out/
