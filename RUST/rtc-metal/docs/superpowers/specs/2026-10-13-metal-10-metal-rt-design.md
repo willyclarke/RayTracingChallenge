@@ -188,8 +188,8 @@ Full-size headless renders, release build, median of 3, `GPU render` line:
 | `../rtc-rust/scenes/cover.json` | 3456×2234 | 184.1 ms | 168.7 ms |
 
 Measured 2026-10-13 on the M2 Max (no ray tracing hardware). Metal's
-software traversal beats the BVH walk by 8–23%, most on the dice, where
-its tighter tree culls pip spheres the median split does not. The images
+software traversal beats the BVH walk by 8–23%, most on the dice. The
+images
 agree: 3 of 1.28M teapot pixels differ by more than 1/255 between the two
 traversals, none on the dice or cover.
 
