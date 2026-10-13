@@ -213,7 +213,8 @@ pub(crate) fn scene_file(json: &str, width: usize, height: usize) -> (World, Cam
 }
 
 /// Render on both GPU and CPU and compare. A pixel is "off" when a channel
-/// differs by more than `1e-3`; at most 0.05% of pixels may be off.
+/// differs by more than `1e-3` (plus `0.05 / lens_samples` with focal blur,
+/// below); at most 0.05% of pixels may be off.
 ///
 /// Why any at all: a pixel on a hard shadow edge is a yes/no decision on a
 /// shadow ray grazing an occluder (discriminant ~ 0), and f32 rounds some of
@@ -222,6 +223,14 @@ pub(crate) fn scene_file(json: &str, width: usize, height: usize) -> (World, Cam
 /// the chapter 11 scene has 290 such pixels, nearly all where the CPU image
 /// itself changes sharply between neighbours. Real bugs are far over budget
 /// (the chapter 7 wall acne was 14% of pixels).
+///
+/// Focal blur averages `lens_samples` rays per pixel, so one ray flipping
+/// the same way moves its pixel by 1/n of the flip, but the flips land on
+/// many more pixels. Measured on the chapter 17 scene (200x125, 32 rays): 292
+/// pixels off by > 1e-3, 277 of them by ~1.1e-3 = one ray flipping a floor
+/// checker in shade (0.1 ambient x 0.35 / 32) near the horizon, the rest up
+/// to 1.3e-2 = one ray flipping a lit checker. `0.05 / n` admits about four
+/// lit flips per pixel; the pinhole render of that scene had 14160 off.
 fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     let mut scene = GpuScene::from_world(world, &camera)?;
     let start = std::time::Instant::now();
@@ -229,6 +238,12 @@ fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
     let cpu_secs = start.elapsed().as_secs_f64();
     // Compiling the MSL library is setup, not render time.
     let gpu = Gpu::new()?;
+    let lens = &scene.info.camera;
+    let tolerance = if lens.aperture > 0.0 {
+        1e-3 + 0.05 / lens.lens_samples as f64
+    } else {
+        1e-3
+    };
     // Milestone 10: both traversals must give the CPU's image.
     for (traversal, name) in [(TRAVERSAL_BVH, "bvh"), (TRAVERSAL_METAL, "metal")] {
         scene.info.counts.traversal = traversal;
@@ -251,14 +266,14 @@ fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
                 if diff > worst.0 {
                     worst = (diff, x, y);
                 }
-                if diff > 1e-3 {
+                if diff > tolerance {
                     off += 1;
                 }
             }
         }
         let budget = w * h / 2000;
         eprintln!(
-            "{name}: worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget}); gpu {gpu_secs:.2} s, cpu {cpu_secs:.2} s",
+            "{name}: worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > {tolerance:.1e} (budget {budget}); gpu {gpu_secs:.2} s, cpu {cpu_secs:.2} s",
             worst.0,
             worst.1,
             worst.2,
@@ -266,7 +281,7 @@ fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
         );
         if off > budget {
             return Err(format!(
-                "{name}: {off} pixels off by > 1e-3 (budget {budget}); worst {:.2e} at ({}, {})",
+                "{name}: {off} pixels off by > {tolerance:.1e} (budget {budget}); worst {:.2e} at ({}, {})",
                 worst.0, worst.1, worst.2
             ));
         }
@@ -338,6 +353,14 @@ fn test_chap_15_gpu_render_matches_cpu() -> Result<(), String> {
 fn test_chap_16_gpu_render_matches_cpu() -> Result<(), String> {
     // Two CSG dice (23 leaves each) with perturbed marble bodies.
     let (world, camera) = scene_file(include_str!("../scenes/chapter16.json"), 400, 250);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_17_focal_blur_gpu_render_matches_cpu() -> Result<(), String> {
+    // Every pixel averages 32 lens rays (rtc-rust's World::distributed).
+    let (world, camera) =
+        scene_file(include_str!("../scenes/chapter17_focal_blur.json"), 200, 125);
     check_matches_cpu(&world, camera)
 }
 

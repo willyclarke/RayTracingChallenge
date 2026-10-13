@@ -1,7 +1,8 @@
 
 // One thread per pixel: camera ray -> color_at -> row-major RGBA output.
 // scene.sampling == 0: rtc-rust's image, one ray through each pixel centre,
-// written to `pixels`. scene.sampling == 1: a random point in the pixel and
+// written to `pixels`; with a lens (focal blur) each pixel averages
+// rtc-rust's lens_samples rays instead. scene.sampling == 1: a random point in the pixel and
 // random light samples, added into `pixels` as an accumulation buffer
 // (frame 0 overwrites it); resolve_* divide by the frame count.
 kernel void render(device float4 *pixels          [[buffer(0)]],
@@ -26,15 +27,28 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
     }
     uint pixel = gid.y * c.width + gid.x;
     Sampler s = Sampler{pixel, scene.frame, scene.sampling, 0};
-    if (s.on == 0) {
-        Ray r = ray_for_pixel(c, gid.x, gid.y, 0.5, 0.5);
-        pixels[pixel] = float4(color_at(r, scene, shapes, nodes, tables, rt, s), 1.0);
-        return;
+    // Deterministic with a lens: rtc-rust's lens_samples rays per pixel.
+    // Otherwise one ray, through the centre or a random point of the pixel.
+    // Keep color_at to this one call site: with three inlined copies the
+    // METAL_RT pipeline returned garbage (values ~4e9) while the BVH one
+    // was right (milestone 11).
+    uint n = (s.on == 0 && c.aperture > 0.0) ? c.lens_samples : 1;
+    float3 sum = 0.0;
+    for (uint i = 0; i < n; i++) {
+        Ray r;
+        if (s.on == 0 && c.aperture > 0.0) {
+            float4 l = lens_sample(gid.x, gid.y, i, n);
+            r = ray_for_lens(c, gid.x, gid.y, l.z, l.w, l.x, l.y);
+        } else if (s.on == 0) {
+            r = ray_for_pixel(c, gid.x, gid.y, 0.5, 0.5);
+        } else {
+            r = ray_for_pixel(c, gid.x, gid.y, random01(pixel, s.frame, 0),
+                              random01(pixel, s.frame, 1));
+        }
+        sum += color_at(r, scene, shapes, nodes, tables, rt, s);
     }
-    Ray r = ray_for_pixel(c, gid.x, gid.y, random01(pixel, s.frame, 0),
-                          random01(pixel, s.frame, 1));
-    float4 color = float4(color_at(r, scene, shapes, nodes, tables, rt, s), 1.0);
-    pixels[pixel] = s.frame == 0 ? color : pixels[pixel] + color;
+    float4 color = float4(sum / float(n), 1.0);
+    pixels[pixel] = (s.on == 0 || s.frame == 0) ? color : pixels[pixel] + color;
 }
 
 // size_frames = (width, height, frames accumulated); frames > 0.
