@@ -13,6 +13,9 @@ pub struct Leaf {
     pub shape: GpuShape,
     pub id: usize,
     pub bounds: Option<([f32; 3], [f32; 3])>,
+    /// World-space vertices of a triangle leaf, for Metal's triangle
+    /// geometry; None for every other shape.
+    pub vertices: Option<[[f32; 3]; 3]>,
 }
 
 pub struct Bvh {
@@ -24,6 +27,10 @@ pub struct Bvh {
     /// Depth-first; empty when nothing is bounded.
     pub nodes: Vec<GpuBvhNode>,
     pub unbounded_count: u32,
+    /// Per bounded entry, `shapes[unbounded_count + k]`: its world box and,
+    /// for triangles, its world vertices.
+    pub bounds: Vec<Bounds>,
+    pub vertices: Vec<Option<[[f32; 3]; 3]>>,
 }
 
 type Bounds = ([f32; 3], [f32; 3]);
@@ -110,15 +117,21 @@ pub fn build(leaves: Vec<Leaf>) -> Result<Bvh, String> {
     if !bounded.is_empty() {
         node(&mut bounded, unbounded_count, 0, &mut nodes)?;
     }
-    for (leaf, _) in bounded {
+    let mut bounds = Vec::new();
+    let mut vertices = Vec::new();
+    for (leaf, b) in bounded {
         shapes.push(leaf.shape);
         ids.push(leaf.id);
+        bounds.push(b);
+        vertices.push(leaf.vertices);
     }
     Ok(Bvh {
         shapes,
         ids,
         nodes,
         unbounded_count: unbounded_count as u32,
+        bounds,
+        vertices,
     })
 }
 
@@ -131,6 +144,7 @@ mod tests {
             shape: unsafe { std::mem::zeroed() },
             id: i,
             bounds,
+            vertices: None,
         }
     }
 

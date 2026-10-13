@@ -46,6 +46,15 @@ pub struct GpuScene {
     pub ids: Vec<usize>,
     /// Lookup tables the shapes and materials refer to by word offset.
     pub tables: Vec<u32>,
+    /// Metal ray tracing inputs: the vertices of every bounded triangle
+    /// (3 each, world space), then the world box of every other bounded
+    /// entry, in `rt_ids` order. `rt_ids` maps a primitive back to its
+    /// `shapes` index: the `rt_triangle_count` triangles first, then the
+    /// boxes, each in `shapes` order.
+    pub rt_vertices: Vec<[f32; 3]>,
+    pub rt_boxes: Vec<([f32; 3], [f32; 3])>,
+    pub rt_ids: Vec<u32>,
+    pub rt_triangle_count: u32,
 }
 
 /// The scene's `tables` buffer while it is built: `u32` words that shapes and
@@ -98,6 +107,24 @@ impl GpuScene {
         }
         let mut bvh = bvh::build(leaves)?;
         let shape_count = bvh.shapes.len() as u32;
+        let (mut rt_vertices, mut rt_boxes) = (Vec::new(), Vec::new());
+        let (mut triangle_ids, mut box_ids) = (Vec::new(), Vec::new());
+        for (k, (bounds, vertices)) in bvh.bounds.iter().zip(&bvh.vertices).enumerate() {
+            let index = bvh.unbounded_count + k as u32;
+            match vertices {
+                Some(v) => {
+                    rt_vertices.extend(v);
+                    triangle_ids.push(index);
+                }
+                None => {
+                    rt_boxes.push(*bounds);
+                    box_ids.push(index);
+                }
+            }
+        }
+        let rt_triangle_count = triangle_ids.len() as u32;
+        let mut rt_ids = triangle_ids;
+        rt_ids.extend(box_ids);
         // CSG leaves go behind the BVH-indexed shapes; programs address
         // them from shape_count.
         bvh.shapes.extend(csg.shapes);
@@ -118,6 +145,10 @@ impl GpuScene {
             nodes: bvh.nodes,
             ids: bvh.ids,
             tables: tables.words,
+            rt_vertices,
+            rt_boxes,
+            rt_ids,
+            rt_triangle_count,
         })
     }
 
@@ -266,6 +297,7 @@ fn flatten(
             shape: gpu_leaf(shape, &inverse, tables)?,
             id: shape.id(),
             bounds: world_bounds(shape, full),
+            vertices: world_vertices(shape, &full),
         }),
         Some(_) if shape.csg_operation().is_some() => {
             // Leaf materials may add noise tables, so the program is
@@ -305,6 +337,7 @@ fn flatten(
                 },
                 id: shape.id(),
                 bounds: world_bounds(shape, full),
+                vertices: None,
             });
         }
         Some(children) => {
@@ -319,6 +352,23 @@ fn flatten(
         }
     }
     Ok(())
+}
+
+/// A triangle's corners in world space (`full` is its object-to-world
+/// transform), composed in f64 and rounded once; None for other shapes.
+fn world_vertices(shape: &dyn Shape, full: &Matrix4) -> Option<[[f32; 3]; 3]> {
+    let any = shape as &dyn Any;
+    let points = if let Some(t) = any.downcast_ref::<Triangle>() {
+        [t.p1, t.p2, t.p3]
+    } else if let Some(t) = any.downcast_ref::<TriangleUV>() {
+        [t.p1, t.p2, t.p3]
+    } else {
+        return None;
+    };
+    Some(points.map(|p| {
+        let w = *full * p;
+        [w.x as f32, w.y as f32, w.z as f32]
+    }))
 }
 
 /// Book chapter 16's CSG leaves, uploaded behind the BVH-indexed shapes in
@@ -900,5 +950,64 @@ mod tests {
         assert_eq!(scene.nodes, nodes);
         assert_eq!(scene.info.light, info.light);
         assert_eq!(scene.info.counts, info.counts);
+    }
+
+    #[test]
+    fn test_chap_15_rt_inputs() {
+        // Metal's acceleration structure gets the bounded entries: triangles
+        // as world-space vertices, everything else as its BVH box. Planes
+        // and CSG leaves stay out.
+        let mut world = lit_world();
+        world.add_shape(Box::new(Plane::new()));
+        let mut sphere = Sphere::new();
+        sphere.set_transform(Matrix4::translation(3.0, 0.0, 0.0));
+        world.add_shape(Box::new(sphere));
+        let mut group = Group::new();
+        group.set_transform(Matrix4::translation(0.0, 1.0, 0.0) * Matrix4::scaling(2.0, 2.0, 2.0));
+        let g = world.add_shape(Box::new(group));
+        world.add_child(
+            g,
+            Box::new(Triangle::new(
+                Tuple::point(0.0, 1.0, 0.0),
+                Tuple::point(-1.0, 0.0, 0.0),
+                Tuple::point(1.0, 0.0, 0.0),
+            )),
+        );
+        let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+        world.add_child(c, Box::new(Sphere::new()));
+        world.add_child(c, Box::new(Sphere::new()));
+        world.build_bounds();
+        let scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
+
+        assert_eq!(scene.rt_triangle_count, 1);
+        let kinds: Vec<u32> = scene
+            .rt_ids
+            .iter()
+            .map(|&i| scene.shapes[i as usize].kind)
+            .collect();
+        assert_eq!(kinds[0], SHAPE_TRIANGLE);
+        let mut rest = kinds[1..].to_vec();
+        rest.sort();
+        assert_eq!(rest, [SHAPE_SPHERE, SHAPE_CSG]);
+        // boxes keep `shapes` order
+        assert!(scene.rt_ids[1] < scene.rt_ids[2]);
+        assert_eq!(
+            scene.rt_vertices,
+            [[0.0, 3.0, 0.0], [-2.0, 1.0, 0.0], [2.0, 1.0, 0.0]]
+        );
+        let counts = scene.info.counts;
+        assert!(
+            scene
+                .rt_ids
+                .iter()
+                .all(|&i| i >= counts.unbounded_count && i < counts.shape_count)
+        );
+        assert_eq!(scene.rt_boxes.len(), 2);
+        let k = kinds[1..].iter().position(|&k| k == SHAPE_SPHERE).unwrap();
+        let (lo, hi) = scene.rt_boxes[k];
+        for a in 0..3 {
+            assert!(lo[a] <= [2.0, -1.0, -1.0][a] && hi[a] >= [4.0, 1.0, 1.0][a]);
+            assert!(lo[a] > [2.0, -1.0, -1.0][a] - 1e-3 && hi[a] < [4.0, 1.0, 1.0][a] + 1e-3);
+        }
     }
 }
