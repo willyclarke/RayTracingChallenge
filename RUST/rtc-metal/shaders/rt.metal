@@ -755,6 +755,20 @@ inline float4 lens_sample(uint px, uint py, uint i, uint n) {
                   lens_hash(px, py, i, 3), lens_hash(px, py, i, 4));
 }
 
+// rtc-rust's Camera::ray_for_lens: from (lx, ly) * aperture on the lens (the
+// camera's z = 0 plane) through the point where the sub-pixel's pinhole ray
+// is in focus. Without an aperture, the pinhole ray.
+inline Ray ray_for_lens(Camera c, uint px, uint py, float dx, float dy,
+                        float lx, float ly) {
+    Ray pinhole = ray_for_pixel(c, px, py, dx, dy);
+    if (c.aperture == 0.0) {
+        return pinhole;
+    }
+    float4 focal_point = pinhole.origin + pinhole.direction * c.focal_distance;
+    float4 origin = c.inverse * float4(lx * c.aperture, ly * c.aperture, 0.0, 1.0);
+    return Ray{origin, normalize(focal_point - origin)};
+}
+
 // The nearest non-negative hit: root `root` (0 to 3, of the ascending roots
 // local_intersect returns) of shapes[index], at distance t.
 // ---- Chapter 16: constructive solid geometry ------------------------------
