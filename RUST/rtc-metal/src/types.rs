@@ -172,6 +172,12 @@ pub struct GpuCamera {
     pub pixel_size: f32,
     pub width: u32,
     pub height: u32,
+    /// Lens radius in world units; 0 = pinhole.
+    pub aperture: f32,
+    /// Distance at which the lens is in focus.
+    pub focal_distance: f32,
+    /// rtc-rust's `dof_samples`: lens rays per deterministic pixel.
+    pub lens_samples: u32,
 }
 
 /// MSL `SceneInfo`: the per-render constants, passed with `setBytes`.
@@ -214,7 +220,7 @@ const _: () = assert!(size_of::<GpuMaterial>() == 224);
 const _: () = assert!(size_of::<GpuShape>() == 400);
 // 4 * 16 + 4 * 4 = 80 bytes of fields.
 const _: () = assert!(size_of::<GpuLight>() == 80);
-// 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
+// 64 + 8 * 4 = 96 bytes of fields.
 const _: () = assert!(size_of::<GpuCamera>() == 96);
 const _: () = assert!(size_of::<GpuSceneCounts>() == 24);
 // 96 + 80 + 24 + 2 * 4 = 208 bytes of fields.

@@ -572,6 +572,9 @@ struct Camera {
     float pixel_size;
     uint width;
     uint height;
+    float aperture;        // lens radius; 0 = pinhole
+    float focal_distance;
+    uint lens_samples;     // lens rays per deterministic pixel
 };
 static_assert(sizeof(Camera) == 96, "Camera must match GpuCamera");
 
