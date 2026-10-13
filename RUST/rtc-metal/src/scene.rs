@@ -360,10 +360,9 @@ fn world_vertices(shape: &dyn Shape, full: &Matrix4) -> Option<[[f32; 3]; 3]> {
     let any = shape as &dyn Any;
     let points = if let Some(t) = any.downcast_ref::<Triangle>() {
         [t.p1, t.p2, t.p3]
-    } else if let Some(t) = any.downcast_ref::<TriangleUV>() {
-        [t.p1, t.p2, t.p3]
     } else {
-        return None;
+        let t = any.downcast_ref::<TriangleUV>()?;
+        [t.p1, t.p2, t.p3]
     };
     Some(points.map(|p| {
         let w = *full * p;
