@@ -217,7 +217,7 @@ const _: () = assert!(size_of::<GpuLight>() == 80);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);
 const _: () = assert!(size_of::<GpuSceneCounts>() == 24);
-// 96 + 80 + 24 + 2 * 4 = 208 bytes of fields, padded to the 16-byte alignment.
+// 96 + 80 + 24 + 2 * 4 = 208 bytes of fields.
 const _: () = assert!(size_of::<GpuSceneInfo>() == 208);
 
 /// MSL `BvhNode`. `count > 0` is a leaf over `shapes[start..start + count]`;

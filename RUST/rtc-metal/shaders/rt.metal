@@ -812,6 +812,97 @@ struct Hit {
     uint root;
 };
 
+// ---- Milestone 10: Metal's ray tracing API --------------------------------
+//
+// TRAVERSAL_METAL searches the bounded shapes with inline intersection
+// queries, one per acceleration structure (a primitive structure holds one
+// geometry type): Metal intersects the opaque triangles itself, and offers
+// each box whose bounds the ray crosses as a candidate for our own code.
+
+inline raytracing::ray metal_ray(Ray r, float tmax) {
+    return raytracing::ray(r.origin.xyz, r.direction.xyz, 0.0, tmax);
+}
+
+// The nearest root of shapes[i] (a bounded entry, CSG included) with
+// 0 <= t < tmax, as the Hit it makes. Roots are ascending, so the first
+// non-negative one decides.
+inline bool nearest_root(uint i, Ray r, device const Shape *shapes, device const uint *tables,
+                         SceneCounts counts, float tmax, thread Hit &out) {
+    if (shapes[i].kind == SHAPE_CSG) {
+        CsgHit csg[CSG_MAX_HITS];
+        uint n = intersect_csg(shapes[i], r, shapes, tables, counts, csg);
+        for (uint k = 0; k < n; k++) {
+            if (csg[k].t >= 0.0) {
+                out = Hit{csg[k].t, csg[k].leaf, csg[k].root};
+                return csg[k].t < tmax;
+            }
+        }
+        return false;
+    }
+    float4 ts;
+    uint n = intersect(shapes[i], r, ts);
+    for (uint k = 0; k < n; k++) {
+        if (ts[k] >= 0.0) {
+            out = Hit{ts[k], i, k};
+            return ts[k] < tmax;
+        }
+    }
+    return false;
+}
+
+// Lower `hit` to the nearest bounded hit closer than hit.t, if any.
+inline void query_nearest(Ray r, device const Shape *shapes, device const uint *tables,
+                          RtScene rt, SceneCounts counts, thread Hit &hit) {
+    raytracing::intersection_params params;
+    if (counts.triangle_count > 0) {
+        raytracing::intersection_query<> q(metal_ray(r, hit.t), rt.triangles, params);
+        while (q.next()) {
+            // opaque triangles are committed inside next(); no candidates
+        }
+        if (q.get_committed_intersection_type() == raytracing::intersection_type::triangle) {
+            hit = Hit{q.get_committed_distance(), rt.rt_ids[q.get_committed_primitive_id()], 0};
+        }
+    }
+    if (counts.box_count > 0) {
+        raytracing::intersection_query<> q(metal_ray(r, hit.t), rt.boxes, params);
+        while (q.next()) {
+            uint i = rt.rt_ids[counts.triangle_count + q.get_candidate_primitive_id()];
+            Hit h;
+            // committing beyond the nearest committed hit is not allowed
+            if (nearest_root(i, r, shapes, tables, counts, hit.t, h)) {
+                hit = h;
+                q.commit_bounding_box_intersection(h.t);
+            }
+        }
+    }
+}
+
+// Is any bounded shape hit at 0 <= t < distance?
+inline bool query_any(Ray r, float distance, device const Shape *shapes,
+                      device const uint *tables, RtScene rt, SceneCounts counts) {
+    raytracing::intersection_params params;
+    params.accept_any_intersection(true);
+    if (counts.triangle_count > 0) {
+        raytracing::intersection_query<> q(metal_ray(r, distance), rt.triangles, params);
+        while (q.next()) {
+        }
+        if (q.get_committed_intersection_type() == raytracing::intersection_type::triangle) {
+            return true;
+        }
+    }
+    if (counts.box_count > 0) {
+        raytracing::intersection_query<> q(metal_ray(r, distance), rt.boxes, params);
+        while (q.next()) {
+            uint i = rt.rt_ids[counts.triangle_count + q.get_candidate_primitive_id()];
+            Hit h;
+            if (nearest_root(i, r, shapes, tables, counts, distance, h)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // Nearest non-negative hit over all shapes. Returns false on a miss. A box
 // entered beyond the nearest hit so far cannot hold a nearer one, so the
 // walk's interval shrinks to [0, hit.t] as hits are found.
@@ -819,8 +910,12 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *
                        device const uint *tables, RtScene rt, SceneCounts counts,
                        thread Hit &hit) {
     hit.t = INFINITY;
+    bool metal = counts.traversal == TRAVERSAL_METAL;
     uint first = 0, count = counts.unbounded_count;
     BvhWalk w = bvh_walk(counts);
+    if (metal) {
+        w.next = BVH_DONE; // the unbounded shapes only; the queries do the rest
+    }
     do {
         for (uint i = first; i < first + count; i++) {
             if (shapes[i].kind == SHAPE_CSG) {
@@ -847,6 +942,9 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *
             }
         }
     } while (bvh_next_leaf(nodes, r, 0.0, hit.t, w, first, count));
+    if (metal) {
+        query_nearest(r, shapes, tables, rt, counts, hit);
+    }
     return hit.t < INFINITY;
 }
 
@@ -859,8 +957,12 @@ inline bool is_shadowed(float4 light_position, float4 point,
     float4 v = light_position - point;
     float distance = length(v);
     Ray r = Ray{point, v / distance};
+    bool metal = counts.traversal == TRAVERSAL_METAL;
     uint first = 0, count = counts.unbounded_count;
     BvhWalk w = bvh_walk(counts);
+    if (metal) {
+        w.next = BVH_DONE;
+    }
     do {
         for (uint i = first; i < first + count; i++) {
             if (shapes[i].kind == SHAPE_CSG) {
@@ -882,7 +984,7 @@ inline bool is_shadowed(float4 light_position, float4 point,
             }
         }
     } while (bvh_next_leaf(nodes, r, 0.0, distance, w, first, count));
-    return false;
+    return metal && query_any(r, distance, shapes, tables, rt, counts);
 }
 
 // Does light from `light_point` reach `point` on a surface facing `normalv`?

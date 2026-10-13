@@ -1,11 +1,12 @@
 //! Probe tests: run single `rt.metal` functions on the GPU, one thread per
 //! case, and compare with the rtc-rust CPU version of the same function.
 
+use crate::compare::scene_file;
 use crate::gpu::Gpu;
 use crate::scene::{GpuScene, Tables, gpu_camera, gpu_light, gpu_material, gpu_shape};
 use crate::types::{
     Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_CSG, SHAPE_PLANE,
-    SHAPE_SPHERE, float4,
+    SHAPE_SPHERE, SHAPE_TRIANGLE, TRAVERSAL_BVH, TRAVERSAL_METAL, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -785,7 +786,7 @@ struct TraceProbe {
 
 /// Output of `probe_trace`.
 #[repr(C, align(16))]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct TraceResult {
     normal: Float4,
     t: f32,
@@ -2209,12 +2210,184 @@ fn test_chap_7_traversal_flag_reaches_shader() -> Result<(), String> {
     // The traversal switch and the structure sizes reach a scene kernel.
     let (world, camera) = crate::compare::chapter_7_scene(20, 10);
     let mut scene = GpuScene::from_world(&world, &camera)?;
-    scene.info.counts.traversal = crate::types::TRAVERSAL_METAL;
+    scene.info.counts.traversal = TRAVERSAL_METAL;
     let out: Vec<[u32; 4]> = Gpu::new()?.run_with_scene("probe_counts", &[0u32], &scene)?;
     // traversal, triangle_count, box_count: chapter 7 is six spheres
-    if out[0][..3] != [crate::types::TRAVERSAL_METAL, 0, 6] {
+    if out[0][..3] != [TRAVERSAL_METAL, 0, 6] {
         eprintln!("probe_counts: {:?}", out[0]);
         return Err("probe_counts reads traversal, triangle_count, box_count".into());
+    }
+    Ok(())
+}
+
+// ---- Milestone 10: Metal's ray tracing API --------------------------------
+
+const MISS: u32 = 0xffffffff;
+
+/// `probe_trace` of `rays` on the given traversal.
+fn trace_on(
+    scene: &mut GpuScene,
+    rays: &[Ray],
+    light: Tuple,
+    traversal: u32,
+) -> Result<Vec<TraceResult>, String> {
+    scene.info.counts.traversal = traversal;
+    Gpu::new()?.run_with_scene("probe_trace", &trace_probes(rays, light), scene)
+}
+
+/// Every camera ray traced on both traversals: same hit or miss and shadow,
+/// same shape and root except between triangles (a ray down a shared edge
+/// may land on either neighbour; at most 1 in 1000 rays), same t to f32
+/// precision.
+fn traces_agree(world: &World, camera: &Camera) -> Result<(), String> {
+    let light = world.light.as_ref().ok_or("no light")?.position;
+    let mut scene = GpuScene::from_world(world, camera)?;
+    let (w, h) = (scene.width(), scene.height());
+    let rays: Vec<Ray> = (0..h)
+        .flat_map(|y| (0..w).map(move |x| (x, y)))
+        .map(|(x, y)| camera.ray_for_pixel(x, y))
+        .collect();
+    let bvh = trace_on(&mut scene, &rays, light, TRAVERSAL_BVH)?;
+    let metal = trace_on(&mut scene, &rays, light, TRAVERSAL_METAL)?;
+    let triangle = |r: &TraceResult| scene.shapes[r.index as usize].kind == SHAPE_TRIANGLE;
+    let mut edges = 0;
+    for (i, (b, m)) in bvh.iter().zip(&metal).enumerate() {
+        let (x, y) = (i % w, i / w);
+        if (b.index == MISS) != (m.index == MISS) || b.shadowed != m.shadowed {
+            return Err(format!("pixel ({x}, {y}): bvh {b:?}, metal {m:?}"));
+        }
+        if b.index == MISS {
+            continue;
+        }
+        if (b.index, b.root) != (m.index, m.root) {
+            if !(triangle(b) && triangle(m)) {
+                return Err(format!("pixel ({x}, {y}): bvh {b:?}, metal {m:?}"));
+            }
+            edges += 1;
+        }
+        if (m.t - b.t).abs() > 1e-4 * b.t.max(1.0) {
+            return Err(format!("pixel ({x}, {y}): t bvh {} metal {}", b.t, m.t));
+        }
+    }
+    eprintln!("{edges} triangle-edge disagreements in {} rays", rays.len());
+    if edges * 1000 > rays.len() {
+        return Err(format!(
+            "{edges} triangle-edge disagreements in {} rays",
+            rays.len()
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_15_metal_traversal_matches_bvh() -> Result<(), String> {
+    let (world, camera) = scene_file(include_str!("../scenes/chapter15.json"), 160, 80);
+    traces_agree(&world, &camera)
+}
+
+#[test]
+fn test_chap_16_metal_traversal_matches_bvh() -> Result<(), String> {
+    let (world, camera) = scene_file(include_str!("../scenes/chapter16.json"), 160, 100);
+    traces_agree(&world, &camera)
+}
+
+#[test]
+fn test_chap_12_metal_traversal_matches_bvh() -> Result<(), String> {
+    let (world, camera) = scene_file(include_str!("../scenes/chapter12.json"), 160, 80);
+    traces_agree(&world, &camera)
+}
+
+#[test]
+fn test_chap_13_metal_traversal_matches_bvh() -> Result<(), String> {
+    let (world, camera) = scene_file(include_str!("../scenes/chapter13.json"), 160, 80);
+    traces_agree(&world, &camera)
+}
+
+#[test]
+fn test_chap_9_metal_traversal_planes_only() -> Result<(), String> {
+    // No acceleration structure content: both queries are skipped.
+    let mut world = World::new();
+    world.light = Some(Light::point_light(
+        Tuple::point(-10.0, 10.0, -10.0),
+        Tuple::color(1.0, 1.0, 1.0),
+    ));
+    world.add_shape(Box::new(Plane::new()));
+    let camera = Camera::new(20, 20, PI / 3.0).with_transform(view_transform(
+        Tuple::point(0.0, 1.5, -5.0),
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    ));
+    traces_agree(&world, &camera)
+}
+
+#[test]
+fn test_chap_8_metal_shadow_occluders() -> Result<(), String> {
+    // A ray straight down onto a floor at the origin, the light at (0, 10, 0)
+    // and one occluder: a sphere (a box primitive) or a triangle between, or
+    // a sphere beyond the light.
+    let light = Tuple::point(0.0, 10.0, 0.0);
+    let down = Ray::new(Tuple::point(0.0, 1.0, 0.0), Tuple::vector(0.0, -1.0, 0.0));
+    let sphere_at = |y: f64| -> Box<dyn Shape> {
+        let mut s = Sphere::new();
+        s.set_transform(Matrix4::translation(0.0, y, 0.0));
+        Box::new(s)
+    };
+    let triangle: Box<dyn Shape> = Box::new(Triangle::new(
+        Tuple::point(-1.0, 5.0, -1.0),
+        Tuple::point(1.0, 5.0, -1.0),
+        Tuple::point(0.0, 5.0, 1.0),
+    ));
+    for (occluder, want) in [(sphere_at(5.0), 1), (triangle, 1), (sphere_at(12.0), 0)] {
+        let mut world = World::new();
+        world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+        let floor = world.add_shape(Box::new(Plane::new()));
+        world.add_shape(occluder);
+        world.build_bounds();
+        let mut scene = GpuScene::from_world(&world, &Camera::default())?;
+        let out = trace_on(&mut scene, &[down], light, TRAVERSAL_METAL)?;
+        let r = &out[0];
+        if r.index == MISS || scene.ids[r.index as usize] != floor || r.shadowed != want {
+            return Err(format!("{r:?}: want the floor, shadowed {want}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_15_metal_nearer_triangle_wins() -> Result<(), String> {
+    // The sphere's box is a candidate, but its root lies beyond the triangle.
+    let mut world = World::new();
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+    world.add_shape(Box::new(Sphere::new()));
+    let t = world.add_shape(Box::new(Triangle::new(
+        Tuple::point(-1.0, -1.0, -2.0),
+        Tuple::point(1.0, -1.0, -2.0),
+        Tuple::point(0.0, 1.0, -2.0),
+    )));
+    world.build_bounds();
+    let mut scene = GpuScene::from_world(&world, &Camera::default())?;
+    let ray = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+    let r = trace_on(&mut scene, &[ray], light, TRAVERSAL_METAL)?[0];
+    if r.index == MISS || scene.ids[r.index as usize] != t || (r.t - 3.0).abs() > 1e-5 {
+        return Err(format!("{r:?}: want the triangle at t = 3"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_11_metal_ray_from_inside_sphere() -> Result<(), String> {
+    // The ray starts inside the sphere's box: the exit root still counts.
+    let mut world = World::new();
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+    world.add_shape(Box::new(Sphere::new()));
+    world.build_bounds();
+    let mut scene = GpuScene::from_world(&world, &Camera::default())?;
+    let ray = Ray::new(Tuple::point(0.0, 0.0, 0.0), Tuple::vector(0.0, 0.0, 1.0));
+    let r = trace_on(&mut scene, &[ray], light, TRAVERSAL_METAL)?[0];
+    if r.index == MISS || (r.t - 1.0).abs() > 1e-5 || r.root != 1 {
+        return Err(format!("{r:?}: want t = 1 at root 1"));
     }
     Ok(())
 }
