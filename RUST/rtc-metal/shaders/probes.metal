@@ -181,6 +181,20 @@ kernel void probe_ray_for_pixel(device const CameraProbe *in [[buffer(0)]],
     out[i] = ray_for_pixel(in[i].camera, in[i].pixel.x, in[i].pixel.y, 0.5, 0.5);
 }
 
+struct LensProbe {
+    uint2 pixel;
+    uint i;
+    uint n;
+};
+static_assert(sizeof(LensProbe) == 16, "LensProbe must match probes.rs");
+
+kernel void probe_lens_sample(device const LensProbe *in [[buffer(0)]],
+                              device float4 *out         [[buffer(1)]],
+                              uint i                     [[thread_position_in_grid]])
+{
+    out[i] = lens_sample(in[i].pixel.x, in[i].pixel.y, in[i].i, in[i].n);
+}
+
 struct RefractiveProbe {
     Ray ray;
     uint hit_index;

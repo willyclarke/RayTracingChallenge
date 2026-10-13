@@ -729,6 +729,32 @@ inline Ray ray_for_pixel(Camera c, uint px, uint py, float jx, float jy) {
     return Ray{origin, normalize(pixel - origin)};
 }
 
+// ---- Chapter 17: focal blur ------------------------------------------------
+
+// h(k) of rtc-rust's Camera::lens_sample for sample i of pixel (px, py). The
+// ulong products wrap like Rust's wrapping_mul, and (x & 0xFFFFFF) / 2^24 is
+// exact in f32, so this is bit for bit the CPU's value.
+inline float lens_hash(uint px, uint py, uint i, ulong k) {
+    ulong x = ulong(px) * 0x9E3779B9ul ^ ulong(py) * 0x85EBCA6Bul
+            ^ ulong(i) * 0xC2B2AE35ul ^ k * 0x27D4EB2Ful;
+    x ^= x >> 15;
+    x *= 0x2C1B3C6Dul;
+    x ^= x >> 12;
+    x *= 0x297A2D39ul;
+    x ^= x >> 15;
+    return float(x & 0xFFFFFFul) * 0x1p-24f;
+}
+
+// rtc-rust's Camera::lens_sample(px, py, i, n) without the shutter time:
+// (lx, ly) in the unit disk, radius stratified over the n samples, and the
+// sub-pixel jitter (dx, dy).
+inline float4 lens_sample(uint px, uint py, uint i, uint n) {
+    float r = sqrt((float(i) + lens_hash(px, py, i, 1)) / float(n));
+    float theta = 2.0 * M_PI_F * lens_hash(px, py, i, 2);
+    return float4(r * cos(theta), r * sin(theta),
+                  lens_hash(px, py, i, 3), lens_hash(px, py, i, 4));
+}
+
 // The nearest non-negative hit: root `root` (0 to 3, of the ascending roots
 // local_intersect returns) of shapes[index], at distance t.
 // ---- Chapter 16: constructive solid geometry ------------------------------
