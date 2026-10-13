@@ -39,6 +39,11 @@ impl Orbit {
         self.to + Tuple::vector(cp * sy, sp, -cp * cy) * self.radius
     }
 
+    /// Distance from the camera to the point it orbits.
+    pub fn radius(&self) -> f64 {
+        self.radius
+    }
+
     /// `dx`, `dy` in points with +y = down (AppKit's mouse deltas); 0.01 rad
     /// per point. `Orbit` owns the sign convention, "grab the scene" (the
     /// surface follows the cursor, as in Blender or three.js OrbitControls):
@@ -133,6 +138,18 @@ mod tests {
         o.zoom(1.0);
         let zoomed = (o.from() - to).magnitude();
         assert!((zoomed - radius * (-0.1f64).exp()).abs() < 1e-12);
+    }
+
+    #[test]
+    fn radius_reports_the_clamped_zoom() {
+        // The window scales the focal distance by the actual radius ratio,
+        // which is 1 once zoom is clamped.
+        let mut o = Orbit::new(p(0.0, 0.0, -5.0), p(0.0, 0.0, 0.0), up());
+        assert!((o.radius() - 5.0).abs() < 1e-12);
+        o.zoom(-1e6);
+        let r = o.radius();
+        o.zoom(-1.0);
+        assert_eq!(o.radius(), r);
     }
 
     #[test]
