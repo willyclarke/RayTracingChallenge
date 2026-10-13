@@ -32,7 +32,10 @@ Success:
   function tables: the kernel loops over candidates itself and calls the
   existing `intersect`/`intersect_csg`, so no linked functions, function
   tables or pipeline changes.
-- **One primitive acceleration structure per scene, two geometries:**
+- **Two primitive acceleration structures per scene** (a primitive
+  structure holds one geometry type only; found in Task 2, where mixing
+  them throws inside `accelerationStructureSizesWithDescriptor`). The
+  shader runs one query per structure:
   - triangle geometry: every triangle's world-space vertices, opaque;
   - bounding-box geometry: every other bounded `shapes` entry (sphere,
     cube, cylinder, cone, each CSG root) with its world box from the BVH

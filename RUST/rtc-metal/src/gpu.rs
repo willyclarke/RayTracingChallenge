@@ -230,7 +230,7 @@ impl Gpu {
     }
 
     /// A buffer holding a copy of `data`, which must not be empty.
-    fn input_buffer<T: Copy>(&self, data: &[T]) -> Result<Buffer, String> {
+    pub(crate) fn input_buffer<T: Copy>(&self, data: &[T]) -> Result<Buffer, String> {
         // SAFETY: `data` is a live slice of exactly this many bytes; Metal
         // copies it into the new buffer before returning.
         unsafe {
@@ -245,7 +245,7 @@ impl Gpu {
 
     /// Room for `count` values of `T`. Shared storage: CPU and GPU see the same
     /// memory (unified memory on Apple silicon), so reading back needs no copy.
-    fn output_buffer<T>(&self, count: usize) -> Result<Buffer, String> {
+    pub(crate) fn output_buffer<T>(&self, count: usize) -> Result<Buffer, String> {
         self.device
             .newBufferWithLength_options(
                 count * size_of::<T>(),
@@ -262,6 +262,13 @@ impl Gpu {
             .ok_or("no compute encoder")?;
         encode(&encoder);
         encoder.endEncoding();
+        finish(&commands)
+    }
+}
+
+/// Commit `commands`, wait for the GPU and report a failed command buffer.
+pub(crate) fn finish(commands: &ProtocolObject<dyn MTLCommandBuffer>) -> Result<(), String> {
+    {
         commands.commit();
         commands.waitUntilCompleted();
         if commands.status() == MTLCommandBufferStatus::Error {

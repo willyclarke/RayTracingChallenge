@@ -1,3 +1,4 @@
+pub mod accel;
 pub mod bvh;
 pub mod gpu;
 pub mod orbit;
