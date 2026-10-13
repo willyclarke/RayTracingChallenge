@@ -2,14 +2,14 @@
 
 use crate::accel::{self, Accel};
 use crate::scene::GpuScene;
-use crate::types::{GpuBvhNode, GpuSceneInfo, GpuShape};
+use crate::types::{GpuBvhNode, GpuSceneInfo, GpuShape, TRAVERSAL_METAL};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
     MTLBuffer, MTLCommandBuffer, MTLCommandBufferStatus, MTLCommandEncoder, MTLCommandQueue,
-    MTLComputeCommandEncoder, MTLComputePipelineState, MTLCreateSystemDefaultDevice, MTLDevice,
-    MTLLibrary, MTLResourceOptions, MTLSize, MTLTexture,
+    MTLComputeCommandEncoder, MTLComputePipelineState, MTLCreateSystemDefaultDevice, MTLDataType,
+    MTLDevice, MTLFunctionConstantValues, MTLLibrary, MTLResourceOptions, MTLSize, MTLTexture,
 };
 use std::ptr::NonNull;
 
@@ -52,7 +52,7 @@ impl Gpu {
     /// Run the `gradient` kernel: pixel (x, y) = (x / (w-1), y / (h-1), 0.25, 1).
     /// Row-major, `width * height` RGBA pixels.
     pub fn gradient(&self, width: usize, height: usize) -> Result<Vec<[f32; 4]>, String> {
-        let pipeline = self.pipeline("gradient")?;
+        let pipeline = self.pipeline("gradient", false)?;
         let pixels = self.output_buffer::<[f32; 4]>(width * height)?;
         // Matches `uint2` in the shader: two packed u32, 8 bytes.
         let size = [width as u32, height as u32];
@@ -73,7 +73,7 @@ impl Gpu {
     /// GPU thread each.
     pub fn render(&self, scene: &GpuScene) -> Result<Vec<[f32; 4]>, String> {
         let (width, height) = (scene.width(), scene.height());
-        let pipeline = self.pipeline("render")?;
+        let pipeline = self.pipeline("render", metal_rt(scene))?;
         let pixels = self.output_buffer::<[f32; 4]>(width * height)?;
         let buffers = self.scene_buffers(scene)?;
         self.submit(|encoder| {
@@ -101,9 +101,10 @@ impl Gpu {
         Ok(Accumulator {
             accum: self.output_buffer::<[f32; 4]>(width * height)?,
             scene: self.scene_buffers(scene)?,
-            render: self.pipeline("render")?,
-            resolve_buffer: self.pipeline("resolve_buffer")?,
-            resolve_texture: self.pipeline("resolve_texture")?,
+            traversal: scene.info.counts.traversal,
+            render: self.pipeline("render", metal_rt(scene))?,
+            resolve_buffer: self.pipeline("resolve_buffer", false)?,
+            resolve_texture: self.pipeline("resolve_texture", false)?,
             width: width as u32,
             height: height as u32,
             frames: 0,
@@ -169,7 +170,13 @@ impl Gpu {
             shapes,
             nodes,
             tables,
-            accel: accel::build(self, scene)?,
+            // The first build in a process costs ~25 ms of Metal setup;
+            // the BVH traversal never reads the structures, so it skips them.
+            accel: if metal_rt(scene) {
+                Some(accel::build(self, scene)?)
+            } else {
+                None
+            },
         })
     }
 
@@ -182,7 +189,7 @@ impl Gpu {
         if input.is_empty() {
             return Ok(Vec::new());
         }
-        let pipeline = self.pipeline(kernel)?;
+        let pipeline = self.pipeline(kernel, scene.is_some_and(|(_, s)| metal_rt(s)))?;
         let in_buf = self.input_buffer(input)?;
         let out_buf = self.output_buffer::<O>(input.len())?;
         self.submit(|encoder| {
@@ -223,12 +230,24 @@ impl Gpu {
         Ok(read(&out_buf, input.len()))
     }
 
-    /// Compile `kernel` from the library into a compute pipeline.
-    fn pipeline(&self, kernel: &str) -> Result<Pipeline, String> {
+    /// Compile `kernel` from the library into a compute pipeline, with the
+    /// `METAL_RT` function constant: true for `TRAVERSAL_METAL` scenes (the
+    /// kernel then takes the acceleration structures), false otherwise.
+    fn pipeline(&self, kernel: &str, metal_rt: bool) -> Result<Pipeline, String> {
+        let constants = MTLFunctionConstantValues::new();
+        // SAFETY: a bool, read during the call, for MSL's `constant bool
+        // METAL_RT [[function_constant(0)]]`.
+        unsafe {
+            constants.setConstantValue_type_atIndex(
+                NonNull::from(&metal_rt).cast(),
+                MTLDataType::Bool,
+                0,
+            );
+        }
         let function = self
             .library
-            .newFunctionWithName(&NSString::from_str(kernel))
-            .ok_or(format!("kernel `{kernel}` not found in library"))?;
+            .newFunctionWithName_constantValues_error(&NSString::from_str(kernel), &constants)
+            .map_err(|e| format!("kernel `{kernel}`: {}", e.localizedDescription()))?;
         self.device
             .newComputePipelineStateWithFunction_error(&function)
             .map_err(|e| format!("pipeline `{kernel}` failed: {}", e.localizedDescription()))
@@ -271,6 +290,11 @@ impl Gpu {
     }
 }
 
+/// Does `scene` search with Metal's ray tracing API?
+fn metal_rt(scene: &GpuScene) -> bool {
+    scene.info.counts.traversal == TRAVERSAL_METAL
+}
+
 /// Commit `commands`, wait for the GPU and report a failed command buffer.
 pub(crate) fn finish(commands: &ProtocolObject<dyn MTLCommandBuffer>) -> Result<(), String> {
     {
@@ -291,7 +315,8 @@ struct SceneBuffers {
     shapes: Buffer,
     nodes: Buffer,
     tables: Buffer,
-    accel: Accel,
+    /// None unless built for `TRAVERSAL_METAL`.
+    accel: Option<Accel>,
 }
 
 impl SceneBuffers {
@@ -307,15 +332,17 @@ impl SceneBuffers {
         self.bind_accel(encoder, 5);
     }
 
-    /// `rt_ids` at `first`, then the triangle and box structures.
+    /// `rt_ids` at `first`, then the triangle and box structures; nothing
+    /// (nil) on the BVH traversal, whose shader path never reads them.
     fn bind_accel(&self, encoder: &Encoder, first: usize) {
+        let accel = self.accel.as_ref();
         // SAFETY: the kernels take `device const uint *rt_ids` at `first` and
         // two primitive_acceleration_structures after it; `self` keeps the
         // structures alive for as long as the encoder can use them.
         unsafe {
-            encoder.setBuffer_offset_atIndex(Some(&self.accel.rt_ids), 0, first);
-            encoder.setAccelerationStructure_atBufferIndex(Some(&self.accel.triangles), first + 1);
-            encoder.setAccelerationStructure_atBufferIndex(Some(&self.accel.boxes), first + 2);
+            encoder.setBuffer_offset_atIndex(accel.map(|a| &*a.rt_ids), 0, first);
+            encoder.setAccelerationStructure_atBufferIndex(accel.map(|a| &*a.triangles), first + 1);
+            encoder.setAccelerationStructure_atBufferIndex(accel.map(|a| &*a.boxes), first + 2);
         }
     }
 }
@@ -326,6 +353,9 @@ impl SceneBuffers {
 pub struct Accumulator {
     accum: Buffer,
     scene: SceneBuffers,
+    /// The traversal the buffers were built for: the BVH path has no
+    /// acceleration structures to search.
+    traversal: u32,
     render: Pipeline,
     resolve_buffer: Pipeline,
     resolve_texture: Pipeline,
@@ -354,6 +384,10 @@ impl Accumulator {
         assert!(
             (info.camera.width, info.camera.height) == (self.width, self.height),
             "camera size differs from the accumulator's"
+        );
+        assert_eq!(
+            info.counts.traversal, self.traversal,
+            "traversal differs from the accumulator's"
         );
         let info = GpuSceneInfo {
             frame: self.frames,
@@ -399,6 +433,10 @@ impl Accumulator {
 
     /// Render one more sampled frame and wait for it.
     pub fn add_frame(&mut self, gpu: &Gpu, info: &GpuSceneInfo) -> Result<(), String> {
+        // Checked before an encoder is open: a panic inside one aborts.
+        if info.counts.traversal != self.traversal {
+            return Err("traversal differs from the accumulator's".into());
+        }
         gpu.submit(|encoder| self.encode_frame(encoder, info))
     }
 
@@ -504,6 +542,22 @@ mod accumulator_tests {
     }
 
     #[test]
+    fn test_chap_7_bvh_traversal_skips_accel_build() -> Result<(), String> {
+        // Only TRAVERSAL_METAL reads the acceleration structures; the BVH
+        // path builds none (a process's first build costs ~25 ms).
+        let gpu = Gpu::new()?;
+        let mut scene = chapter_7();
+        if gpu.scene_buffers(&scene)?.accel.is_some() {
+            return Err("BVH traversal built acceleration structures".into());
+        }
+        scene.info.counts.traversal = crate::types::TRAVERSAL_METAL;
+        if gpu.scene_buffers(&scene)?.accel.is_none() {
+            return Err("METAL traversal must build them".into());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn accumulator_reset_overwrites() -> Result<(), String> {
         let (gpu, scene) = (Gpu::new()?, chapter_7());
         let mut acc = gpu.accumulator(&scene)?;
@@ -569,6 +623,19 @@ mod accumulator_tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn accumulator_rejects_another_traversal() -> Result<(), String> {
+        // Built for the BVH, it holds no acceleration structures to search.
+        let gpu = Gpu::new()?;
+        let mut scene = chapter_7();
+        let mut acc = gpu.accumulator(&scene)?;
+        scene.info.counts.traversal = crate::types::TRAVERSAL_METAL;
+        match acc.add_frame(&gpu, &scene.info) {
+            Err(e) if e.contains("traversal differs") => Ok(()),
+            other => Err(format!("want a traversal error, got {other:?}")),
+        }
     }
 
     #[test]

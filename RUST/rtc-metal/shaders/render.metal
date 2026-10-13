@@ -9,12 +9,17 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
                    device const Shape *shapes     [[buffer(2)]],
                    device const BvhNode *nodes    [[buffer(3)]],
                    device const uint *tables      [[buffer(4)]],
-                   device const uint *rt_ids      [[buffer(5)]],
-                   raytracing::primitive_acceleration_structure triangles [[buffer(6)]],
-                   raytracing::primitive_acceleration_structure boxes     [[buffer(7)]],
+                   device const uint *rt_ids      [[buffer(5), function_constant(METAL_RT)]],
+                   raytracing::primitive_acceleration_structure triangles
+                                                  [[buffer(6), function_constant(METAL_RT)]],
+                   raytracing::primitive_acceleration_structure boxes
+                                                  [[buffer(7), function_constant(METAL_RT)]],
                    uint2 gid                      [[thread_position_in_grid]])
 {
-    RtScene rt = RtScene{rt_ids, triangles, boxes};
+    RtScene rt;
+    if (METAL_RT) {
+        rt = RtScene{rt_ids, triangles, boxes};
+    }
     Camera c = scene.camera;
     if (gid.x >= c.width || gid.y >= c.height) {
         return;

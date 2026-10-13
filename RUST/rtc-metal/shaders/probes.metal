@@ -117,12 +117,15 @@ kernel void probe_intensity_at(device const IntensityProbe *in [[buffer(0)]],
                                device const BvhNode *nodes     [[buffer(3)]],
                                constant SceneCounts &counts    [[buffer(4)]],
                                device const uint *tables       [[buffer(5)]],
-                               device const uint *rt_ids [[buffer(6)]],
-                               raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
-                               raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
+                               device const uint *rt_ids [[buffer(6), function_constant(METAL_RT)]],
+                               raytracing::primitive_acceleration_structure triangles [[buffer(7), function_constant(METAL_RT)]],
+                               raytracing::primitive_acceleration_structure boxes [[buffer(8), function_constant(METAL_RT)]],
                                uint i                          [[thread_position_in_grid]])
 {
-    RtScene rt = RtScene{rt_ids, triangles, boxes};
+    RtScene rt;
+    if (METAL_RT) {
+        rt = RtScene{rt_ids, triangles, boxes};
+    }
     IntensityProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
     out[i] = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, rt, counts, s);
@@ -148,12 +151,15 @@ kernel void probe_shade_point(device const ShadeProbe *in    [[buffer(0)]],
                               device const BvhNode *nodes    [[buffer(3)]],
                               constant SceneCounts &counts   [[buffer(4)]],
                               device const uint *tables      [[buffer(5)]],
-                              device const uint *rt_ids [[buffer(6)]],
-                              raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
-                              raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
+                              device const uint *rt_ids [[buffer(6), function_constant(METAL_RT)]],
+                              raytracing::primitive_acceleration_structure triangles [[buffer(7), function_constant(METAL_RT)]],
+                              raytracing::primitive_acceleration_structure boxes [[buffer(8), function_constant(METAL_RT)]],
                               uint i                         [[thread_position_in_grid]])
 {
-    RtScene rt = RtScene{rt_ids, triangles, boxes};
+    RtScene rt;
+    if (METAL_RT) {
+        rt = RtScene{rt_ids, triangles, boxes};
+    }
     ShadeProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
     float intensity = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, rt, counts, s);
@@ -314,12 +320,15 @@ kernel void probe_trace(device const TraceProbe *in  [[buffer(0)]],
                         device const BvhNode *nodes  [[buffer(3)]],
                         constant SceneCounts &counts [[buffer(4)]],
                         device const uint *tables    [[buffer(5)]],
-                        device const uint *rt_ids [[buffer(6)]],
-                        raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
-                        raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
+                        device const uint *rt_ids [[buffer(6), function_constant(METAL_RT)]],
+                        raytracing::primitive_acceleration_structure triangles [[buffer(7), function_constant(METAL_RT)]],
+                        raytracing::primitive_acceleration_structure boxes [[buffer(8), function_constant(METAL_RT)]],
                         uint i                       [[thread_position_in_grid]])
 {
-    RtScene rt = RtScene{rt_ids, triangles, boxes};
+    RtScene rt;
+    if (METAL_RT) {
+        rt = RtScene{rt_ids, triangles, boxes};
+    }
     out[i] = trace(in[i], shapes, nodes, tables, rt, counts);
 }
 
@@ -331,12 +340,15 @@ kernel void probe_trace_linear(device const TraceProbe *in  [[buffer(0)]],
                                device const BvhNode *nodes  [[buffer(3)]],
                                constant SceneCounts &counts [[buffer(4)]],
                                device const uint *tables    [[buffer(5)]],
-                               device const uint *rt_ids [[buffer(6)]],
-                               raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
-                               raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
+                               device const uint *rt_ids [[buffer(6), function_constant(METAL_RT)]],
+                               raytracing::primitive_acceleration_structure triangles [[buffer(7), function_constant(METAL_RT)]],
+                               raytracing::primitive_acceleration_structure boxes [[buffer(8), function_constant(METAL_RT)]],
                                uint i                       [[thread_position_in_grid]])
 {
-    RtScene rt = RtScene{rt_ids, triangles, boxes};
+    RtScene rt;
+    if (METAL_RT) {
+        rt = RtScene{rt_ids, triangles, boxes};
+    }
     SceneCounts linear = counts;
     linear.unbounded_count = counts.shape_count;
     linear.node_count = 0;

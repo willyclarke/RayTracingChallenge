@@ -592,6 +592,12 @@ static_assert(sizeof(SceneCounts) == 24, "SceneCounts must match GpuSceneCounts"
 constant uint TRAVERSAL_BVH = 0;    // the BVH walk below
 constant uint TRAVERSAL_METAL = 1;  // Metal's intersection queries
 
+// Pipelines for TRAVERSAL_METAL are specialized with METAL_RT = true. The
+// others compile the queries out and take no acceleration-structure
+// arguments, so the BVH path needs none built (a process's first build costs
+// ~25 ms) and nothing is left unbound.
+constant bool METAL_RT [[function_constant(0)]];
+
 // Milestone 10: Metal's acceleration structures over the bounded shapes.
 // rt_ids maps a triangle primitive_id to its shapes index, and a box one
 // at rt_ids[triangle_count + primitive_id].
@@ -910,7 +916,7 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *
                        device const uint *tables, RtScene rt, SceneCounts counts,
                        thread Hit &hit) {
     hit.t = INFINITY;
-    bool metal = counts.traversal == TRAVERSAL_METAL;
+    bool metal = METAL_RT && counts.traversal == TRAVERSAL_METAL;
     uint first = 0, count = counts.unbounded_count;
     BvhWalk w = bvh_walk(counts);
     if (metal) {
@@ -957,7 +963,7 @@ inline bool is_shadowed(float4 light_position, float4 point,
     float4 v = light_position - point;
     float distance = length(v);
     Ray r = Ray{point, v / distance};
-    bool metal = counts.traversal == TRAVERSAL_METAL;
+    bool metal = METAL_RT && counts.traversal == TRAVERSAL_METAL;
     uint first = 0, count = counts.unbounded_count;
     BvhWalk w = bvh_walk(counts);
     if (metal) {

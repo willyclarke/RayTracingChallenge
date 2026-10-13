@@ -179,19 +179,34 @@ Test names follow the chapter of the scene they use.
 
 ## Timing (filled in at the end)
 
-Full-size headless renders, release build, median of 3, `GPU render` line:
+Release build on the M2 Max (no ray tracing hardware), 2026-10-13.
 
-| scene | size | bvh | metal |
-|---|---|---|---|
-| `scenes/chapter15.json` | 1600×800 | 73.1 ms | 63.0 ms |
-| `../rtc-rust/scenes/dice-light-area.json` | 3456×2234 | 319.7 ms | 245.4 ms |
-| `../rtc-rust/scenes/cover.json` | 3456×2234 | 184.1 ms | 168.7 ms |
+**One CLI render** (`GPU render` line, median of 3): includes pipeline
+specialization and, for metal, the acceleration-structure builds and
+Metal's one-time ray tracing setup (~25 ms for a process's first build).
 
-Measured 2026-10-13 on the M2 Max (no ray tracing hardware). Metal's
-software traversal beats the BVH walk by 8–23%, most on the dice. The
-images
-agree: 3 of 1.28M teapot pixels differ by more than 1/255 between the two
-traversals, none on the dice or cover.
+| scene | size | develop | bvh | metal |
+|---|---|---|---|---|
+| `scenes/chapter7.json` | 1600×800 | 23.0 ms | 20.3 ms | 35.4 ms |
+| `scenes/chapter15.json` | 1600×800 | 42.2 ms | 39.7 ms | 56.1 ms |
+| `../rtc-rust/scenes/dice-light-area.json` | 3456×2234 | 296.8 ms | 292.4 ms | 236.6 ms |
+| `../rtc-rust/scenes/cover.json` | 3456×2234 | 149.7 ms | 153.8 ms | 172.5 ms |
+
+**Steady state** (the same scene rendered again in one process, median of
+renders 2–4): the traversals themselves.
+
+| scene | bvh | metal |
+|---|---|---|
+| `scenes/chapter15.json` | 16.0 ms | 12.6 ms |
+| `../rtc-rust/scenes/dice-light-area.json` | 282.3 ms | 225.6 ms |
+| `../rtc-rust/scenes/cover.json` | 138.0 ms | 157.5 ms |
+
+Metal's software traversal is ~20% faster on the teapot and the dice and
+~14% slower on the cover scene; for a single small render its setup costs
+more than it saves. The BVH path matches develop: its pipelines are
+specialized with `METAL_RT = false`, so it builds and binds no
+acceleration structures. The images agree: 3 of 1.28M teapot pixels differ
+by more than 1/255 between the two traversals, none on the dice or cover.
 
 ## Order of work
 
