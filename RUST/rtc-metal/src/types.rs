@@ -35,7 +35,7 @@ impl From<&Ray> for GpuRay {
 /// rtc-rust's `Matrix4` is indexed `(row, col)`, so conversion transposes the
 /// storage order (not the matrix).
 #[repr(C, align(16))]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct GpuMat4 {
     pub cols: [Float4; 4],
 }
@@ -55,7 +55,7 @@ const _: () = assert!(size_of::<GpuMat4>() == 64);
 /// MSL `Material`: rtc-rust's `Material` with the book's four patterns
 /// inline, and without bump maps.
 #[repr(C, align(16))]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct GpuMaterial {
     pub color: Float4,
     pub ambient: f32,
@@ -72,7 +72,21 @@ pub struct GpuMaterial {
     /// The pattern's two colors.
     pub pattern_a: Float4,
     pub pattern_b: Float4,
+    /// rtc-rust's perturbed pattern: `pattern_inverse` takes object space to
+    /// the perturbed pattern's space, the point moves by Perlin noise, then
+    /// `base_inverse` takes it to the base (stripe, ...) pattern's space.
+    /// Identity when not perturbed.
+    pub base_inverse: GpuMat4,
+    /// Word offset of the Perlin permutation in the scene's tables, or
+    /// `NOISE_NONE` when the pattern is not perturbed.
+    pub noise_table: u32,
+    pub noise_amplitude: f32,
+    pub noise_frequency: f32,
+    pub _pad: u32,
 }
+
+/// `GpuMaterial::noise_table` of a material that is not perturbed.
+pub const NOISE_NONE: u32 = 0xffff_ffff;
 
 /// `GpuMaterial::pattern` values; must match the `PATTERN_*` constants in
 /// rt.metal.
@@ -89,11 +103,26 @@ pub const SHAPE_CUBE: u32 = 2;
 pub const SHAPE_CYLINDER: u32 = 3;
 pub const SHAPE_CONE: u32 = 4;
 pub const SHAPE_TRIANGLE: u32 = 5;
+/// Book chapter 16: a whole CSG tree. Its leaves follow the BVH-indexed
+/// shapes; `closed` holds the word offset of its program in the tables.
+pub const SHAPE_CSG: u32 = 6;
+
+/// CSG program instructions (postfix); must match rt.metal. A program is
+/// `[n, leaf_base, n instructions]`: the k-th `CSG_LEAF` is shape
+/// `shape_count + leaf_base + k` and inside bit k.
+pub const CSG_LEAF: u32 = 0;
+pub const CSG_UNION: u32 = 1;
+pub const CSG_INTERSECTION: u32 = 2;
+pub const CSG_DIFFERENCE: u32 = 3;
+/// A CSG tree's limits: one `uint` of inside bits, and the shader's
+/// fixed-size array of intersections.
+pub const CSG_MAX_LEAVES: usize = 32;
+pub const CSG_MAX_HITS: usize = 64;
 
 /// MSL `Shape`: a primitive (`kind`) seen through its world-to-object
 /// transform. One tagged array holds every kind, like rtc-rust's `shapes`.
 #[repr(C, align(16))]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct GpuShape {
     pub inverse: GpuMat4,
     pub material: GpuMaterial,
@@ -169,10 +198,10 @@ pub struct GpuSceneCounts {
     pub node_count: u32,
 }
 
-// 16 + 8 * 4 + 64 + 2 * 16 = 144 bytes of fields.
-const _: () = assert!(size_of::<GpuMaterial>() == 144);
-// 64 + 144 + 4 * 4 + 6 * 16 = 320 bytes of fields.
-const _: () = assert!(size_of::<GpuShape>() == 320);
+// 16 + 8 * 4 + 64 + 2 * 16 + 64 + 4 * 4 = 224 bytes of fields.
+const _: () = assert!(size_of::<GpuMaterial>() == 224);
+// 64 + 224 + 4 * 4 + 6 * 16 = 400 bytes of fields.
+const _: () = assert!(size_of::<GpuShape>() == 400);
 // 4 * 16 + 4 * 4 = 80 bytes of fields.
 const _: () = assert!(size_of::<GpuLight>() == 80);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.

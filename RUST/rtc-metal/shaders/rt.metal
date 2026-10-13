@@ -45,6 +45,8 @@ constant uint SHAPE_CUBE = 2;
 constant uint SHAPE_CYLINDER = 3;
 constant uint SHAPE_CONE = 4;
 constant uint SHAPE_TRIANGLE = 5;
+// Chapter 16: a whole CSG tree; `closed` holds its program's offset in tables.
+constant uint SHAPE_CSG = 6;
 
 // rtc-rust uses 1e-9 in f64. In f32 a point ~10 units from the origin is
 // only resolved to ~1e-6, so the shadow-acne offset has to be much larger.
@@ -77,8 +79,15 @@ struct Material {
     float4x4 pattern_inverse; // object space to pattern space
     float4 pattern_a;       // the pattern's two colors
     float4 pattern_b;
+    // rtc-rust's perturbed pattern: after pattern_inverse the point moves by
+    // Perlin noise, then base_inverse takes it to the base pattern's space.
+    float4x4 base_inverse;
+    uint noise_table;       // word offset in tables, NOISE_NONE if not perturbed
+    float noise_amplitude;
+    float noise_frequency;
+    uint pad;
 };
-static_assert(sizeof(Material) == 144, "Material must match GpuMaterial");
+static_assert(sizeof(Material) == 224, "Material must match GpuMaterial");
 
 // A primitive of `kind` seen through its world-to-object transform. One
 // tagged array holds every kind; functions switch on `kind`.
@@ -98,7 +107,7 @@ struct Shape {
     float4 n2;
     float4 n3;
 };
-static_assert(sizeof(Shape) == 320, "Shape must match GpuShape");
+static_assert(sizeof(Shape) == 400, "Shape must match GpuShape");
 
 // Bonus: soft shadows. rtc-rust's area light: usteps x vsteps cells of
 // size uvec x vvec from corner. A point light is the 1x1 case with zero
@@ -423,10 +432,69 @@ inline bool floor_is_even(float x) {
     return (int(floor(x)) & 1) == 0;
 }
 
+// ---- Perlin noise (rtc-rust's noise.rs) -----------------------------------
+
+constant uint NOISE_NONE = 0xffffffff;
+
+inline float noise_fade(float t) {
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+inline float noise_grad(uint hash, float x, float y, float z) {
+    uint h = hash & 15;
+    float u = h < 8 ? x : y;
+    float v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
+    return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+}
+
+// Perlin::noise with the permutation at tables[table]: 256 words, read as
+// perm[i & 255], which equals rtc-rust's 512-entry perm[i].
+inline float perlin_noise(device const uint *tables, uint table, float3 p) {
+    device const uint *perm = tables + table;
+    float3 f = floor(p);
+    // two's complement & 255 matches rtc-rust's `floor as i64 & 255`
+    uint xi = uint(int(f.x)) & 255, yi = uint(int(f.y)) & 255, zi = uint(int(f.z)) & 255;
+    float x = p.x - f.x, y = p.y - f.y, z = p.z - f.z;
+    float u = noise_fade(x), v = noise_fade(y), w = noise_fade(z);
+
+    uint a = perm[xi] + yi;
+    uint aa = perm[a & 255] + zi;
+    uint ab = perm[(a + 1) & 255] + zi;
+    uint b = perm[(xi + 1) & 255] + yi;
+    uint ba = perm[b & 255] + zi;
+    uint bb = perm[(b + 1) & 255] + zi;
+
+    return mix(mix(mix(noise_grad(perm[aa & 255], x, y, z),
+                       noise_grad(perm[ba & 255], x - 1.0, y, z), u),
+                   mix(noise_grad(perm[ab & 255], x, y - 1.0, z),
+                       noise_grad(perm[bb & 255], x - 1.0, y - 1.0, z), u),
+                   v),
+               mix(mix(noise_grad(perm[(aa + 1) & 255], x, y, z - 1.0),
+                       noise_grad(perm[(ba + 1) & 255], x - 1.0, y, z - 1.0), u),
+                   mix(noise_grad(perm[(ab + 1) & 255], x, y - 1.0, z - 1.0),
+                       noise_grad(perm[(bb + 1) & 255], x - 1.0, y - 1.0, z - 1.0), u),
+                   v),
+               w);
+}
+
+// Perlin::vector: three decorrelated noise samples.
+inline float3 perlin_vector(device const uint *tables, uint table, float3 p) {
+    return float3(perlin_noise(tables, table, p),
+                  perlin_noise(tables, table, p + float3(31.4, 15.9, 26.5)),
+                  perlin_noise(tables, table, p + float3(-27.1, 82.8, -18.2)));
+}
+
 // The pattern's color at a point in the shape's object space; rtc-rust's
-// Pattern::color_at_local.
-inline float3 pattern_at(Material m, float4 object_point) {
+// Pattern::color_at_local. A perturbed pattern (rtc-rust's
+// PerturbedPattern) moves the point by noise in its own space, then hands it
+// to its base pattern's transform.
+inline float3 pattern_at(Material m, float4 object_point, device const uint *tables) {
     float4 p = m.pattern_inverse * object_point;
+    if (m.noise_table != NOISE_NONE) {
+        p.xyz += perlin_vector(tables, m.noise_table, p.xyz * m.noise_frequency)
+                 * m.noise_amplitude;
+        p = m.base_inverse * p;
+    }
     float3 a = m.pattern_a.rgb;
     float3 b = m.pattern_b.rgb;
     switch (m.pattern) {
@@ -467,8 +535,8 @@ inline void add_light_sample(Material m, float4 light_point, float4 point, float
 // rtc-rust does; sampled: one random point in one random cell (cell B).
 inline float3 lighting(Material m, Light light, float4 point, float4 object_point,
                        float4 eyev, float4 normalv, float intensity,
-                       thread const Sampler &s) {
-    float3 effective_color = pattern_at(m, object_point) * light.intensity.rgb;
+                       thread const Sampler &s, device const uint *tables) {
+    float3 effective_color = pattern_at(m, object_point, tables) * light.intensity.rgb;
     float3 ambient = effective_color * m.ambient;
     if (intensity <= 0.0) {
         return ambient;
@@ -636,6 +704,90 @@ inline Ray ray_for_pixel(Camera c, uint px, uint py, float jx, float jy) {
 
 // The nearest non-negative hit: root `root` (0 to 3, of the ascending roots
 // local_intersect returns) of shapes[index], at distance t.
+// ---- Chapter 16: constructive solid geometry ------------------------------
+
+// A CSG program in tables[p..]: [n, leaf_base, n postfix instructions]. The
+// k-th CSG_LEAF is shape counts.shape_count + leaf_base + k and inside bit k.
+constant uint CSG_LEAF = 0;
+constant uint CSG_UNION = 1;
+constant uint CSG_INTERSECTION = 2;
+constant uint CSG_DIFFERENCE = 3;
+
+// Is a point inside the tree's solid, given whether it is inside each leaf
+// (bit k = leaf k)? Evaluates the postfix program on a stack of bits held in
+// one uint, top of stack in bit 0; a tree of <= 32 leaves never needs more.
+inline bool csg_inside(device const uint *tables, uint p, uint bits) {
+    uint n = tables[p];
+    uint stack = 0;
+    uint leaf = 0;
+    for (uint i = 0; i < n; i++) {
+        uint op = tables[p + 2 + i];
+        if (op == CSG_LEAF) {
+            stack = (stack << 1) | ((bits >> leaf++) & 1);
+            continue;
+        }
+        uint right = stack & 1;
+        uint left = (stack >> 1) & 1;
+        uint inside = op == CSG_UNION ? (left | right)
+                      : op == CSG_INTERSECTION ? (left & right)
+                                               : (left & ~right & 1); // CSG_DIFFERENCE
+        stack = ((stack >> 2) << 1) | inside;
+    }
+    return (stack & 1) != 0;
+}
+
+// One root of a CSG leaf: `leaf` is its absolute shape index, `root` the
+// index into that leaf's ascending roots.
+struct CsgHit {
+    float t;
+    uint leaf;
+    uint root;
+};
+
+// The most roots a CSG may have; scene.rs rejects bigger trees.
+constant uint CSG_MAX_HITS = 64;
+
+// The roots of the CSG entry `s` on its solid's boundary, ascending, into
+// `out`; returns how many. Like rtc-rust's filter_intersections, it walks
+// every root, those behind the ray origin too, starting outside every leaf:
+// each root flips its leaf's inside bit, and survives iff that flips the
+// tree's inside. That is the book's rule table, for any nesting.
+inline uint intersect_csg(Shape s, Ray r, device const Shape *shapes, device const uint *tables,
+                          SceneCounts counts, thread CsgHit *out) {
+    uint p = s.closed;
+    uint first = counts.shape_count + tables[p + 1];
+    uint count = 0;
+    uint leaf = first;
+    for (uint i = 0; i < tables[p]; i++) {
+        if (tables[p + 2 + i] != CSG_LEAF) {
+            continue;
+        }
+        float4 ts;
+        uint n = intersect(shapes[leaf], r, ts);
+        for (uint k = 0; k < n; k++) {
+            uint j = count++;
+            while (j > 0 && out[j - 1].t > ts[k]) { // insertion sort
+                out[j] = out[j - 1];
+                j--;
+            }
+            out[j] = CsgHit{ts[k], leaf, k};
+        }
+        leaf++;
+    }
+    uint bits = 0;
+    uint kept = 0;
+    bool inside = false; // outside every leaf, so outside the tree
+    for (uint i = 0; i < count; i++) {
+        bits ^= 1u << (out[i].leaf - first);
+        bool now = csg_inside(tables, p, bits);
+        if (now != inside) {
+            out[kept++] = out[i];
+        }
+        inside = now;
+    }
+    return kept;
+}
+
 struct Hit {
     float t;
     uint index;
@@ -646,12 +798,24 @@ struct Hit {
 // entered beyond the nearest hit so far cannot hold a nearer one, so the
 // walk's interval shrinks to [0, hit.t] as hits are found.
 inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *nodes,
-                       SceneCounts counts, thread Hit &hit) {
+                       device const uint *tables, SceneCounts counts, thread Hit &hit) {
     hit.t = INFINITY;
     uint first = 0, count = counts.unbounded_count;
     BvhWalk w = bvh_walk(counts);
     do {
         for (uint i = first; i < first + count; i++) {
+            if (shapes[i].kind == SHAPE_CSG) {
+                CsgHit csg[CSG_MAX_HITS];
+                uint n = intersect_csg(shapes[i], r, shapes, tables, counts, csg);
+                uint k = 0;
+                while (k < n && csg[k].t < 0.0) {
+                    k++;
+                }
+                if (k < n && csg[k].t < hit.t) {
+                    hit = Hit{csg[k].t, csg[k].leaf, csg[k].root};
+                }
+                continue;
+            }
             float4 ts;
             uint n = intersect(shapes[i], r, ts);
             // ts is ascending, so the first non-negative one is this shape's hit
@@ -672,7 +836,7 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *
 // Any-hit test: is anything between `point` and the light?
 inline bool is_shadowed(float4 light_position, float4 point,
                         device const Shape *shapes, device const BvhNode *nodes,
-                        SceneCounts counts) {
+                        device const uint *tables, SceneCounts counts) {
     float4 v = light_position - point;
     float distance = length(v);
     Ray r = Ray{point, v / distance};
@@ -680,6 +844,16 @@ inline bool is_shadowed(float4 light_position, float4 point,
     BvhWalk w = bvh_walk(counts);
     do {
         for (uint i = first; i < first + count; i++) {
+            if (shapes[i].kind == SHAPE_CSG) {
+                CsgHit csg[CSG_MAX_HITS];
+                uint n = intersect_csg(shapes[i], r, shapes, tables, counts, csg);
+                for (uint k = 0; k < n; k++) {
+                    if (csg[k].t >= 0.0 && csg[k].t < distance) {
+                        return true;
+                    }
+                }
+                continue;
+            }
             float4 ts;
             uint n = intersect(shapes[i], r, ts);
             for (uint k = 0; k < n; k++) {
@@ -703,15 +877,15 @@ inline bool is_shadowed(float4 light_position, float4 point,
 // out brighter than rtc-rust's (2% of pixels off).
 inline bool light_reaches(float4 light_point, float4 point, float4 normalv,
                           device const Shape *shapes, device const BvhNode *nodes,
-                          SceneCounts counts) {
+                          device const uint *tables, SceneCounts counts) {
     return dot(light_point - point, normalv) >= 0.0
-           && !is_shadowed(light_point, point, shapes, nodes, counts);
+           && !is_shadowed(light_point, point, shapes, nodes, tables, counts);
 }
 
 inline bool cell_lit(Light l, uint u, uint v, float4 point, float4 normalv,
                      device const Shape *shapes, device const BvhNode *nodes,
-                     SceneCounts counts) {
-    return light_reaches(light_cell_point(l, u, v, 0.5, 0.5), point, normalv, shapes, nodes,
+                     device const uint *tables, SceneCounts counts) {
+    return light_reaches(light_cell_point(l, u, v, 0.5, 0.5), point, normalv, shapes, nodes, tables,
                          counts);
 }
 
@@ -722,28 +896,28 @@ inline bool cell_lit(Light l, uint u, uint v, float4 point, float4 normalv,
 // cells go first, and the rest only when they disagree. Sampled: one shadow
 // ray to a random point in a random cell (cell A), so 0 or 1.
 inline float intensity_at(Light l, float4 point, float4 normalv, device const Shape *shapes,
-                          device const BvhNode *nodes, SceneCounts counts,
-                          thread const Sampler &s) {
+                          device const BvhNode *nodes, device const uint *tables,
+                          SceneCounts counts, thread const Sampler &s) {
     if (s.on != 0) {
         uint cell = min(uint(sample(s, 0) * l.samples), l.samples - 1);
         float4 p = light_cell_point(l, cell % l.usteps, cell / l.usteps, sample(s, 1),
                                     sample(s, 2));
-        return light_reaches(p, point, normalv, shapes, nodes, counts) ? 1.0 : 0.0;
+        return light_reaches(p, point, normalv, shapes, nodes, tables, counts) ? 1.0 : 0.0;
     }
     if (l.usteps < 2 || l.vsteps < 2) {
         uint visible = 0;
         for (uint v = 0; v < l.vsteps; v++) {
             for (uint u = 0; u < l.usteps; u++) {
-                visible += cell_lit(l, u, v, point, normalv, shapes, nodes, counts) ? 1 : 0;
+                visible += cell_lit(l, u, v, point, normalv, shapes, nodes, tables, counts) ? 1 : 0;
             }
         }
         return float(visible) / float(l.samples);
     }
     uint umax = l.usteps - 1, vmax = l.vsteps - 1;
-    uint corners_lit = (cell_lit(l, 0, 0, point, normalv, shapes, nodes, counts) ? 1 : 0)
-                       + (cell_lit(l, umax, 0, point, normalv, shapes, nodes, counts) ? 1 : 0)
-                       + (cell_lit(l, 0, vmax, point, normalv, shapes, nodes, counts) ? 1 : 0)
-                       + (cell_lit(l, umax, vmax, point, normalv, shapes, nodes, counts) ? 1 : 0);
+    auto lit = [&](uint u, uint v) {
+        return cell_lit(l, u, v, point, normalv, shapes, nodes, tables, counts) ? 1u : 0u;
+    };
+    uint corners_lit = lit(0, 0) + lit(umax, 0) + lit(0, vmax) + lit(umax, vmax);
     if (corners_lit == 0) {
         return 0.0;
     }
@@ -754,7 +928,7 @@ inline float intensity_at(Light l, float4 point, float4 normalv, device const Sh
     for (uint v = 0; v < l.vsteps; v++) {
         for (uint u = 0; u < l.usteps; u++) {
             bool corner = (u == 0 || u == umax) && (v == 0 || v == vmax);
-            if (!corner && cell_lit(l, u, v, point, normalv, shapes, nodes, counts)) {
+            if (!corner && cell_lit(l, u, v, point, normalv, shapes, nodes, tables, counts)) {
                 visible++;
             }
         }
@@ -790,7 +964,8 @@ inline float schlick(float cos_i, float n1, float n2) {
 // odd number of its roots (negative ones too) come first, and among those
 // the innermost - the end of rtc-rust's list - is the one entered last.
 inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes,
-                                 device const BvhNode *nodes, SceneCounts counts) {
+                                 device const BvhNode *nodes, device const uint *tables,
+                                 SceneCounts counts) {
     float inner_t = -INFINITY;  // entry t of the innermost other medium
     float inner_n = 1.0;        // its refractive index; vacuum when none
     float hit_entry_t = -INFINITY;
@@ -800,6 +975,12 @@ inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes,
     BvhWalk w = bvh_walk(counts);
     do {
         for (uint i = first; i < first + count; i++) {
+            // CSG leaves are opaque (scene.rs), so a CSG never holds the
+            // transparent hit; as an enclosing medium it is ignored, a
+            // divergence from rtc-rust only for glass inside a CSG.
+            if (shapes[i].kind == SHAPE_CSG) {
+                continue;
+            }
             float4 ts;
             uint n = intersect(shapes[i], r, ts);
             if (i == hit.index) {
@@ -850,7 +1031,8 @@ struct PendingRay {
 // MAX_DEPTH + 1 rays (one pending sibling per level, plus the current one).
 // Each shaded hit advances sampler.call, so it draws its own random numbers.
 inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes,
-                       device const BvhNode *nodes, thread Sampler &sampler) {
+                       device const BvhNode *nodes, device const uint *tables,
+                       thread Sampler &sampler) {
     PendingRay stack[MAX_DEPTH + 1];
     int top = 0;
     stack[top++] = PendingRay{camera_ray, float3(1.0), MAX_DEPTH};
@@ -858,7 +1040,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
     while (top > 0) {
         PendingRay p = stack[--top];
         Hit hit;
-        if (!hit_shapes(p.ray, shapes, nodes, scene.counts, hit)) {
+        if (!hit_shapes(p.ray, shapes, nodes, tables, scene.counts, hit)) {
             continue;
         }
         Shape s = shapes[hit.index];
@@ -873,14 +1055,14 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
             normalv = -normalv; // hit from inside
         }
         float4 over_point = point + normalv * EPSILON;
-        float intensity =
-            intensity_at(scene.light, over_point, normalv, shapes, nodes, scene.counts, sampler);
+        float intensity = intensity_at(scene.light, over_point, normalv, shapes, nodes, tables,
+                                       scene.counts, sampler);
         // rtc-rust samples the pattern at over_point too: on a plane the raw
         // hit's y is ~0 with either sign, and checkers would speckle
         float4 object_point = s.inverse * over_point;
         color += p.weight
                  * lighting(m, scene.light, over_point, object_point, eyev, normalv, intensity,
-                            sampler);
+                            sampler, tables);
         sampler.call++;
 
         if (p.remaining <= 0) {
@@ -888,7 +1070,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         }
         float reflected = m.reflective;
         if (m.transparency > 0.0) {
-            float2 n = refractive_indices(p.ray, hit, shapes, nodes, scene.counts);
+            float2 n = refractive_indices(p.ray, hit, shapes, nodes, tables, scene.counts);
             float cos_i = dot(eyev, normalv);
             float refracted = m.transparency;
             if (m.reflective > 0.0) {

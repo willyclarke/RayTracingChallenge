@@ -330,6 +330,13 @@ fn test_chap_15_gpu_render_matches_cpu() -> Result<(), String> {
 }
 
 #[test]
+fn test_chap_16_gpu_render_matches_cpu() -> Result<(), String> {
+    // Two CSG dice (23 leaves each) with perturbed marble bodies.
+    let (world, camera) = scene_file(include_str!("../scenes/chapter16.json"), 400, 250);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
 fn test_bonus_soft_shadows_gpu_render_matches_cpu() -> Result<(), String> {
     // A 10x10 area light: penumbrae under both balls and in their reflections.
     let (world, camera) = scene_file(include_str!("../scenes/soft_shadows.json"), 200, 80);

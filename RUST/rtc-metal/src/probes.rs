@@ -2,10 +2,10 @@
 //! case, and compare with the rtc-rust CPU version of the same function.
 
 use crate::gpu::Gpu;
-use crate::scene::{GpuScene, gpu_camera, gpu_light, gpu_material, gpu_shape};
+use crate::scene::{GpuScene, Tables, gpu_camera, gpu_light, gpu_material, gpu_shape};
 use crate::types::{
-    Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_PLANE, SHAPE_SPHERE,
-    float4,
+    Float4, GpuCamera, GpuLight, GpuMat4, GpuMaterial, GpuRay, GpuShape, SHAPE_CSG, SHAPE_PLANE,
+    SHAPE_SPHERE, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -142,7 +142,7 @@ struct NormalProbe {
 fn probe_shape(kind: u32, m: &Matrix4) -> GpuShape {
     GpuShape {
         inverse: (&m.inverse().unwrap()).into(),
-        material: gpu_material(&Material::new()).unwrap(),
+        material: gpu_material(&Material::new(), &mut Tables::default()).unwrap(),
         kind,
         minimum: 0.0,
         maximum: 0.0,
@@ -213,7 +213,7 @@ struct LightingProbe {
     sampling: u32,
 }
 
-const _: () = assert!(size_of::<LightingProbe>() == 304);
+const _: () = assert!(size_of::<LightingProbe>() == 384);
 
 #[test]
 fn test_chap_6_gpu_lighting() -> Result<(), String> {
@@ -263,7 +263,7 @@ fn test_chap_6_gpu_lighting() -> Result<(), String> {
         .iter()
         .zip(&lights)
         .map(|((eyev, _, intensity), light)| LightingProbe {
-            material: gpu_material(&material).unwrap(),
+            material: gpu_material(&material, &mut Tables::default()).unwrap(),
             light: gpu_light(light).unwrap(),
             point: float4(point),
             object_point: float4(point),
@@ -417,7 +417,7 @@ struct IntersectResult {
 /// Intersect `rays` (object space) with `shape` on the GPU and compare every
 /// t with rtc-rust's `local_intersect`.
 fn check_local_intersect(shape: &dyn Shape, rays: &[Ray]) -> Result<(), String> {
-    let gpu_shape = gpu_shape(shape)?;
+    let gpu_shape = gpu_shape(shape, &mut Tables::default())?;
     let input: Vec<IntersectProbe> = rays
         .iter()
         .map(|r| IntersectProbe {
@@ -447,7 +447,7 @@ fn check_local_intersect(shape: &dyn Shape, rays: &[Ray]) -> Result<(), String> 
 /// Object-space normals of `shape` (identity transform) at `points`, GPU
 /// against rtc-rust.
 fn check_local_normals(shape: &dyn Shape, points: &[Tuple]) -> Result<(), String> {
-    let gpu_shape = gpu_shape(shape)?;
+    let gpu_shape = gpu_shape(shape, &mut Tables::default())?;
     let input: Vec<NormalProbe> = points
         .iter()
         .map(|p| NormalProbe {
@@ -865,7 +865,7 @@ struct PatternProbe {
 /// Pattern colors of `shape` at world `points`, GPU against rtc-rust's
 /// `color_at_shape` (shape transform, then pattern transform).
 fn check_pattern(shape: &dyn Shape, points: &[Tuple]) -> Result<(), String> {
-    let gpu_shape = gpu_shape(shape)?;
+    let gpu_shape = gpu_shape(shape, &mut Tables::default())?;
     let input: Vec<PatternProbe> = points
         .iter()
         .map(|p| PatternProbe {
@@ -982,6 +982,223 @@ fn test_chap_10_gpu_pattern_at() -> Result<(), String> {
     Ok(())
 }
 
+/// Input to `probe_noise`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NoiseProbe {
+    point: Float4,
+    table: u32,
+    pad: [u32; 3],
+}
+const _: () = assert!(size_of::<NoiseProbe>() == 32);
+
+/// A sphere whose material is the dice marble: perturbed stripes, the
+/// stripes with their own transform.
+fn marble_sphere(seed: u64) -> Sphere {
+    use rtc_rust::patterns::perturbedpattern::PerturbedPattern;
+    use rtc_rust::patterns::stripepattern::StripePattern;
+    let mut stripes = StripePattern::new(
+        Tuple::color(0.93, 0.08, 0.45),
+        Tuple::color(0.45, 0.02, 0.28),
+    );
+    stripes.set_transform(Matrix4::rotation_z(0.9) * Matrix4::scaling(0.35, 0.35, 0.35));
+    let mut s = Sphere::new();
+    s.data.material.pattern = Some(Box::new(
+        PerturbedPattern::new(Box::new(stripes), 1.1, 0.9).with_seed(seed),
+    ));
+    s
+}
+
+/// A world of marble spheres, one per seed, with a light so it uploads.
+fn marble_world(seeds: &[u64]) -> World {
+    let mut world = World::new();
+    world.light = Some(Light::point_light(
+        Tuple::point(-10.0, 10.0, -10.0),
+        Tuple::color(1.0, 1.0, 1.0),
+    ));
+    for &seed in seeds {
+        world.add_shape(Box::new(marble_sphere(seed)));
+    }
+    world
+}
+
+#[test]
+fn test_chap_17_gpu_perlin_noise_matches_cpu() -> Result<(), String> {
+    use rtc_rust::noise::Perlin;
+    let seeds = [0, 7, 11];
+    let world = marble_world(&seeds);
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    // Lattice points (noise 0) and a scatter over -20..20, negatives included.
+    let mut points: Vec<Tuple> = (-2..3)
+        .map(|k| Tuple::point(k as f64, -k as f64, 2.0 * k as f64))
+        .collect();
+    for i in 0..300 {
+        let c = |k: u32| ((i * 2654435761u32.wrapping_mul(k)) % 40000) as f64 / 1000.0 - 20.0;
+        points.push(Tuple::point(c(1), c(3), c(7)));
+    }
+    for (k, &seed) in seeds.iter().enumerate() {
+        // world shape ids are 1-based in add order
+        let index = scene
+            .ids
+            .iter()
+            .position(|&id| id == k + 1)
+            .ok_or("shape missing")?;
+        let table = scene.shapes[index].material.noise_table;
+        let input: Vec<NoiseProbe> = points
+            .iter()
+            .map(|p| NoiseProbe {
+                point: float4(*p),
+                table,
+                pad: [0; 3],
+            })
+            .collect();
+        let out: Vec<Float4> = Gpu::new()?.run_with_scene("probe_noise", &input, &scene)?;
+        let perlin = Perlin::new(seed);
+        for (i, (p, got)) in points.iter().zip(&out).enumerate() {
+            let v = perlin.vector(*p);
+            for (c, (g, w)) in got
+                .iter()
+                .zip([perlin.noise(*p), v.x, v.y, v.z])
+                .enumerate()
+            {
+                if (*g as f64 - w).abs() > 1e-4 {
+                    return Err(format!(
+                        "seed {seed} point {i} {p:?} slot {c}: gpu {g} cpu {w}"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_17_gpu_perturbed_pattern_matches_cpu() -> Result<(), String> {
+    let world = marble_world(&[11]);
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let shape = world.shapes[0].as_ref();
+    let pattern = shape.material().pattern.as_ref().ok_or("no pattern")?;
+    let color = |p: Tuple| pattern.color_at_shape(shape, p);
+    // Points on the unit sphere, skipping those within 1e-3 of a stripe
+    // edge, where f32 noise may land on the other side.
+    let points: Vec<Tuple> = (0..400)
+        .map(|i| {
+            let (theta, phi) = (i as f64 * 0.77, (i as f64 * 0.31).sin() * 1.5);
+            Tuple::point(theta.cos() * phi.cos(), phi.sin(), theta.sin() * phi.cos())
+        })
+        .filter(|&p| {
+            let d = Tuple::vector(1e-3, 0.0, 0.0);
+            color(p - d).approx_eq(color(p)) && color(p + d).approx_eq(color(p))
+        })
+        .collect();
+    if points.len() < 300 {
+        return Err(format!("only {} points off stripe edges", points.len()));
+    }
+    let input: Vec<PatternProbe> = points
+        .iter()
+        .map(|p| PatternProbe {
+            shape: scene.shapes[0],
+            point: float4(*p),
+        })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run_with_scene("probe_pattern_at_scene", &input, &scene)?;
+
+    for (i, (p, got)) in points.iter().zip(&out).enumerate() {
+        let want = color(*p);
+        for (c, (g, w)) in got.iter().zip([want.x, want.y, want.z]).enumerate() {
+            check_close(*g, w, &format!("point {i} channel {c}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// Input to `probe_csg_inside`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CsgInsideProbe {
+    program: u32,
+    bits: u32,
+}
+
+/// Each `SHAPE_CSG` entry's program offset and its rtc-rust CSG id.
+fn csg_programs(scene: &GpuScene) -> Vec<(u32, usize)> {
+    (0..scene.info.counts.shape_count as usize)
+        .filter(|&i| scene.shapes[i].kind == SHAPE_CSG)
+        .map(|i| (scene.shapes[i].closed, scene.ids[i]))
+        .collect()
+}
+
+/// `csg_inside` for every (program, bits) pair.
+fn csg_inside(scene: &GpuScene, probes: &[(u32, u32)]) -> Result<Vec<bool>, String> {
+    let input: Vec<CsgInsideProbe> = probes
+        .iter()
+        .map(|&(program, bits)| CsgInsideProbe { program, bits })
+        .collect();
+    let out: Vec<u32> = Gpu::new()?.run_with_scene("probe_csg_inside", &input, scene)?;
+    Ok(out.iter().map(|&o| o != 0).collect())
+}
+
+#[test]
+fn test_chap_16_gpu_csg_rule_matches_cpu() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation, intersection_allowed};
+    let mut world = marble_world(&[]);
+    for op in [
+        CsgOperation::Union,
+        CsgOperation::Intersection,
+        CsgOperation::Difference,
+    ] {
+        let c = world.add_shape(Box::new(Csg::new(op)));
+        world.add_child(c, Box::new(Sphere::new()));
+        world.add_child(c, Box::new(Cube::new()));
+    }
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let programs = csg_programs(&scene);
+    if programs.len() != 3 {
+        return Err(format!("{} CSG programs, want 3", programs.len()));
+    }
+    for (program, id) in programs {
+        let op = world.shapes[id - 1].csg_operation().ok_or("not a CSG")?;
+        for row in 0..8u32 {
+            let (lhit, inl, inr) = (row & 1 != 0, row & 2 != 0, row & 4 != 0);
+            // bit 0 is the left leaf, bit 1 the right; the hit flips its side
+            let bits = inl as u32 | (inr as u32) << 1;
+            let flipped = bits ^ if lhit { 1 } else { 2 };
+            let got = csg_inside(&scene, &[(program, bits), (program, flipped)])?;
+            let changed = got[0] != got[1];
+            if changed != intersection_allowed(op, lhit, inl, inr) {
+                return Err(format!(
+                    "{op:?} lhit {lhit} inl {inl} inr {inr}: gpu keeps {changed}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_16_gpu_csg_inside_nested() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    // union(intersection(a, b), c): inside iff (a and b) or c
+    let mut world = marble_world(&[]);
+    let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+    let inner = world.add_child(c, Box::new(Csg::new(CsgOperation::Intersection)));
+    world.add_child(c, Box::new(Sphere::new()));
+    world.add_child(inner, Box::new(Sphere::new()));
+    world.add_child(inner, Box::new(Cube::new()));
+    let scene = GpuScene::from_world(&world, &Camera::default())?;
+    let program = csg_programs(&scene)[0].0;
+    let probes: Vec<(u32, u32)> = (0..8).map(|bits| (program, bits)).collect();
+    let got = csg_inside(&scene, &probes)?;
+    for (bits, inside) in (0..8u32).zip(got) {
+        let (a, b, c) = (bits & 1 != 0, bits & 2 != 0, bits & 4 != 0);
+        if inside != ((a && b) || c) {
+            return Err(format!("bits {bits:03b}: gpu inside {inside}"));
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn test_chap_10_gpu_lighting_with_pattern() -> Result<(), String> {
     use rtc_rust::patterns::stripepattern::StripePattern;
@@ -998,7 +1215,7 @@ fn test_chap_10_gpu_lighting_with_pattern() -> Result<(), String> {
     let input: Vec<LightingProbe> = points
         .iter()
         .map(|p| LightingProbe {
-            material: gpu_material(&material).unwrap(),
+            material: gpu_material(&material, &mut Tables::default()).unwrap(),
             light: gpu_light(&light).unwrap(),
             point: float4(*p),
             object_point: float4(*p),
@@ -1048,7 +1265,7 @@ fn test_chap_15_gpu_intersect_triangle() -> Result<(), String> {
         ray((-1.0, 0.0, 0.0), (1.0, 0.0, 0.0)),
     ];
     check_local_intersect(&degenerate, &rays)?;
-    let gpu = gpu_shape(&degenerate)?;
+    let gpu = gpu_shape(&degenerate, &mut Tables::default())?;
     let input: Vec<IntersectProbe> = rays
         .iter()
         .map(|r| IntersectProbe {
@@ -1101,7 +1318,7 @@ fn test_chap_15_gpu_triangle_uv_and_normal() -> Result<(), String> {
     let smooth = TriangleUV::new(p1, p2, p3, n1, n2, n3);
     let book_ray = ray((-0.2, 0.3, -2.0), (0.0, 0.0, 1.0));
     let input = [TriangleProbe {
-        shape: gpu_shape(&smooth)?,
+        shape: gpu_shape(&smooth, &mut Tables::default())?,
         ray: (&book_ray).into(),
     }];
     let out: Vec<TriangleResult> = Gpu::new()?.run("probe_triangle", &input)?;
@@ -1137,7 +1354,7 @@ fn test_chap_15_gpu_triangle_uv_and_normal() -> Result<(), String> {
     let mut flat = Triangle::new(p1, p2, p3);
     flat.set_transform(m);
     for shape in [Box::new(smooth) as Box<dyn Shape>, Box::new(flat)] {
-        let gpu = gpu_shape(shape.as_ref())?;
+        let gpu = gpu_shape(shape.as_ref(), &mut Tables::default())?;
         let mut world = World::new();
         world.add_shape(shape);
         // Aim a fan from a fixed eye at points around the triangle's
@@ -1637,7 +1854,7 @@ fn test_bonus_soft_shadows_gpu_lighting() -> Result<(), String> {
         let input: Vec<LightingProbe> = points
             .iter()
             .map(|p| LightingProbe {
-                material: gpu_material(&material).unwrap(),
+                material: gpu_material(&material, &mut Tables::default()).unwrap(),
                 light: gpu_light(&light).unwrap(),
                 point: float4(*p),
                 object_point: float4(*p),
@@ -1705,7 +1922,7 @@ struct ShadeProbe {
     sampling: u32,
 }
 
-const _: () = assert!(size_of::<ShadeProbe>() == 288);
+const _: () = assert!(size_of::<ShadeProbe>() == 368);
 
 #[test]
 fn test_bonus_soft_shadows_gpu_sampled_shading_converges() -> Result<(), String> {
@@ -1728,7 +1945,7 @@ fn test_bonus_soft_shadows_gpu_sampled_shading_converges() -> Result<(), String>
         )
     };
     let probe = |light: &Light, frame, sampling| ShadeProbe {
-        material: gpu_material(&Material::new()).unwrap(),
+        material: gpu_material(&Material::new(), &mut Tables::default()).unwrap(),
         light: gpu_light(light).unwrap(),
         point: [1.0, -1.0, 2.0, 1.0],
         eyev: [0.0, 0.0, -1.0, 0.0],
@@ -1752,6 +1969,237 @@ fn test_bonus_soft_shadows_gpu_sampled_shading_converges() -> Result<(), String>
                 "channel {c}: sampled mean {mean} vs deterministic {want}"
             ));
         }
+    }
+    Ok(())
+}
+
+/// Trace `rays` on the GPU, through the BVH and linearly, and on the CPU,
+/// and compare hit shape, t, normal and shadow. The CPU hit's shape id per
+/// ray, None on a miss.
+fn check_traces(world: &World, rays: &[Ray], light: Tuple) -> Result<Vec<Option<usize>>, String> {
+    let scene = GpuScene::from_world(world, &Camera::default())?;
+    let gpu = Gpu::new()?;
+    let probes = trace_probes(rays, light);
+    let out: Vec<TraceResult> = gpu.run_with_scene("probe_trace", &probes, &scene)?;
+    let linear: Vec<TraceResult> = gpu.run_with_scene("probe_trace_linear", &probes, &scene)?;
+    let mut hits = Vec::new();
+    for (i, ((ray, got), lin)) in rays.iter().zip(&out).zip(&linear).enumerate() {
+        let key = |r: &TraceResult| (r.index, r.t.to_bits(), r.shadowed);
+        if key(got) != key(lin) {
+            return Err(format!(
+                "ray {i}: bvh {:?} vs linear {:?}",
+                key(got),
+                key(lin)
+            ));
+        }
+        let got_id = scene.ids.get(got.index as usize).copied(); // None on a miss
+        let xs = world.intersect(ray);
+        let Some(hit) = xs.hit() else {
+            if got_id.is_some() {
+                return Err(format!("ray {i}: gpu hit {got_id:?}, cpu miss"));
+            }
+            hits.push(None);
+            continue;
+        };
+        if got_id != Some(hit.object_id) {
+            return Err(format!(
+                "ray {i}: gpu shape {got_id:?} (t {}) vs cpu {} (t {})",
+                got.t, hit.object_id, hit.t
+            ));
+        }
+        let comps = prepare_computations(hit, ray, &world.shapes, &xs);
+        check_close(got.t, hit.t, &format!("ray {i} t"))?;
+        check_tuple(got.normal, comps.normalv, &format!("ray {i} normal"))?;
+        let shadowed = world.is_shadowed(light, comps.over_point);
+        if (got.shadowed != 0) != shadowed {
+            return Err(format!(
+                "ray {i}: gpu shadowed {} vs cpu {shadowed}",
+                got.shadowed != 0
+            ));
+        }
+        hits.push(Some(hit.object_id));
+    }
+    Ok(hits)
+}
+
+/// Rays through every pixel of `camera`.
+fn camera_rays(camera: &Camera) -> Vec<Ray> {
+    (0..camera.vsize)
+        .flat_map(|y| (0..camera.hsize).map(move |x| (x, y)))
+        .map(|(x, y)| camera.ray_for_pixel(x, y))
+        .collect()
+}
+
+#[test]
+fn test_chap_16_gpu_trace_book_scenarios() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    // A ray hits / misses a CSG object (book chapter 16).
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let mut world = marble_world(&[]);
+    let c = world.add_shape(Box::new(Csg::new(CsgOperation::Union)));
+    let s1 = world.add_child(c, Box::new(Sphere::new()));
+    let mut s2 = Sphere::new();
+    s2.set_transform(Matrix4::translation(0.0, 0.0, 0.5));
+    world.add_child(c, Box::new(s2));
+    world.build_bounds();
+    let rays = [
+        Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0)),
+        Ray::new(Tuple::point(0.0, 2.0, -5.0), Tuple::vector(0.0, 0.0, 1.0)),
+    ];
+    let hits = check_traces(&world, &rays, light)?;
+    if hits != [Some(s1), None] {
+        return Err(format!("hits {hits:?}, want [Some({s1}), None]"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_16_gpu_trace_operations() -> Result<(), String> {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let camera = Camera::new(20, 20, PI / 3.0).with_transform(view_transform(
+        Tuple::point(0.0, 1.5, -5.0),
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    ));
+    for op in [
+        CsgOperation::Union,
+        CsgOperation::Intersection,
+        CsgOperation::Difference,
+    ] {
+        let mut world = marble_world(&[]);
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::translation(0.0, -1.5, 0.0));
+        world.add_shape(Box::new(floor));
+        let c = world.add_shape(Box::new(Csg::new(op)));
+        let mut sphere = Sphere::new();
+        sphere.set_transform(Matrix4::translation(0.3, 0.2, -0.3));
+        world.add_child(c, Box::new(sphere));
+        let mut cube = Cube::new();
+        cube.set_transform(Matrix4::rotation_y(0.5) * Matrix4::scaling(0.8, 0.8, 0.8));
+        world.add_child(c, Box::new(cube));
+        world.build_bounds();
+        let hits = check_traces(&world, &camera_rays(&camera), light)
+            .map_err(|e| format!("{op:?}: {e}"))?;
+        let on_csg = hits.iter().filter(|h| h.is_some_and(|id| id > c)).count();
+        if on_csg < 20 {
+            return Err(format!("{op:?}: only {on_csg} rays hit the CSG"));
+        }
+    }
+    Ok(())
+}
+
+/// rtc-rust's dice (scenes/dicelib.py): a cube with its corners trimmed by
+/// a sphere of radius 1.4, minus 21 pip spheres of radius 0.2, added as one
+/// CSG with `transform`. Returns the CSG's id and its pips' ids.
+fn add_die(world: &mut World, transform: Matrix4) -> (usize, Vec<usize>) {
+    use rtc_rust::shapes::csg::{Csg, CsgOperation};
+    const O: f64 = 0.5;
+    let layout: [&[(f64, f64)]; 6] = [
+        &[(0.0, 0.0)],
+        &[(-O, -O), (O, O)],
+        &[(-O, -O), (0.0, 0.0), (O, O)],
+        &[(-O, -O), (-O, O), (O, -O), (O, O)],
+        &[(-O, -O), (-O, O), (0.0, 0.0), (O, -O), (O, O)],
+        &[(-O, -O), (-O, 0.0), (-O, O), (O, -O), (O, 0.0), (O, O)],
+    ];
+    // (value, axis, sign); opposite faces sum to 7
+    let faces = [
+        (1, 1, 1.0),
+        (6, 1, -1.0),
+        (3, 0, 1.0),
+        (4, 0, -1.0),
+        (2, 2, 1.0),
+        (5, 2, -1.0),
+    ];
+    let mut centers = Vec::new();
+    for (value, axis, sign) in faces {
+        for &(u, v) in layout[value - 1] {
+            centers.push(match axis {
+                0 => (sign, u, v),
+                1 => (u, sign, v),
+                _ => (u, v, sign),
+            });
+        }
+    }
+    let mut root = Csg::new(CsgOperation::Difference);
+    root.set_transform(transform);
+    let die = world.add_shape(Box::new(root));
+    // The last pip is the outermost difference's right operand.
+    let mut cur = die;
+    let mut pips = Vec::new();
+    for (k, &(x, y, z)) in centers.iter().enumerate().rev() {
+        let op = if k > 0 {
+            CsgOperation::Difference
+        } else {
+            CsgOperation::Intersection
+        };
+        let inner = world.add_child(cur, Box::new(Csg::new(op)));
+        let mut pip = Sphere::new();
+        pip.set_transform(Matrix4::translation(x, y, z) * Matrix4::scaling(0.2, 0.2, 0.2));
+        pips.push(world.add_child(cur, Box::new(pip)));
+        cur = inner;
+    }
+    world.add_child(cur, Box::new(Cube::new()));
+    let mut trim = Sphere::new();
+    trim.set_transform(Matrix4::scaling(1.4, 1.4, 1.4));
+    world.add_child(cur, Box::new(trim));
+    (die, pips)
+}
+
+#[test]
+fn test_chap_16_gpu_trace_die() -> Result<(), String> {
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let mut world = marble_world(&[]);
+    let (die, pips) = add_die(
+        &mut world,
+        Matrix4::rotation_y(0.6) * Matrix4::rotation_x(0.4),
+    );
+    world.build_bounds();
+    let camera = Camera::new(40, 40, PI / 3.0).with_transform(view_transform(
+        Tuple::point(0.0, 1.0, -4.0),
+        Tuple::point(0.0, 0.0, 0.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    ));
+    let hits = check_traces(&world, &camera_rays(&camera), light)?;
+    let on_die = hits.iter().filter(|h| h.is_some_and(|id| id > die)).count();
+    let on_pips = hits
+        .iter()
+        .filter(|h| h.is_some_and(|id| pips.contains(&id)))
+        .count();
+    if on_die < 1600 / 5 || on_pips < 20 {
+        return Err(format!("{on_die} rays on the die, {on_pips} on pips"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_16_gpu_trace_ray_inside_csg() -> Result<(), String> {
+    // Rays from inside the die: roots behind the origin must still toggle
+    // the inside bits, or the far side looks like a boundary.
+    let light = Tuple::point(-10.0, 10.0, -10.0);
+    let mut world = marble_world(&[]);
+    add_die(
+        &mut world,
+        Matrix4::rotation_y(0.6) * Matrix4::rotation_x(0.4),
+    );
+    world.build_bounds();
+    let mut rays = Vec::new();
+    for d in (0..27).filter(|&d| d != 13) {
+        let dir = Tuple::vector(
+            (d % 3) as f64 - 1.0,
+            (d / 3 % 3) as f64 - 1.0,
+            (d / 9) as f64 - 1.0,
+        );
+        let dir = Tuple::normalize(dir);
+        for depth in [0.0, 0.5, 0.9] {
+            rays.push(Ray::new(Tuple::point(0.0, 0.0, 0.0) + dir * depth, dir));
+            rays.push(Ray::new(Tuple::point(0.0, 0.0, 0.0) + dir * depth, -dir));
+        }
+    }
+    let hits = check_traces(&world, &rays, light)?;
+    if hits.iter().any(Option::is_none) {
+        return Err("a ray from inside the die missed it".into());
     }
     Ok(())
 }
