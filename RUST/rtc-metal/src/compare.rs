@@ -3,6 +3,7 @@
 
 use crate::gpu::Gpu;
 use crate::scene::GpuScene;
+use crate::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
 use rtc_rust::material::Material;
@@ -205,7 +206,7 @@ pub(crate) fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
 
 /// A scene from `scenes/`, at `width` x `height` instead of its own size.
 /// Model paths resolve relative to `scenes/`, as the CLI does for a scene file.
-fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
+pub(crate) fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
     let mut desc = SceneDescription::from_json(json).unwrap();
     (desc.camera.width, desc.camera.height) = (width, height);
     desc.build(std::path::Path::new("scenes")).unwrap()
@@ -222,49 +223,53 @@ fn scene_file(json: &str, width: usize, height: usize) -> (World, Camera) {
 /// itself changes sharply between neighbours. Real bugs are far over budget
 /// (the chapter 7 wall acne was 14% of pixels).
 fn check_matches_cpu(world: &World, camera: Camera) -> Result<(), String> {
-    let scene = GpuScene::from_world(world, &camera)?;
-    // Compiling the MSL library is setup, not render time.
-    let gpu = Gpu::new()?;
-    let start = std::time::Instant::now();
-    let gpu = gpu.render(&scene)?;
-    let gpu_secs = start.elapsed().as_secs_f64();
+    let mut scene = GpuScene::from_world(world, &camera)?;
     let start = std::time::Instant::now();
     let cpu = world.render_parallel(camera);
     let cpu_secs = start.elapsed().as_secs_f64();
+    // Compiling the MSL library is setup, not render time.
+    let gpu = Gpu::new()?;
+    // Milestone 10: both traversals must give the CPU's image.
+    for (traversal, name) in [(TRAVERSAL_BVH, "bvh"), (TRAVERSAL_METAL, "metal")] {
+        scene.info.counts.traversal = traversal;
+        let start = std::time::Instant::now();
+        let pixels = gpu.render(&scene)?;
+        let gpu_secs = start.elapsed().as_secs_f64();
 
-    let (w, h) = (scene.width(), scene.height());
-    let mut worst = (0.0f64, 0, 0);
-    let mut off = 0;
-    for y in 0..h {
-        for x in 0..w {
-            let c = cpu.pixel_at(x, y);
-            let g = gpu[y * w + x];
-            let diff = [c.x, c.y, c.z]
-                .iter()
-                .zip(g)
-                .map(|(c, g)| (c - g as f64).abs())
-                .fold(0.0, f64::max);
-            if diff > worst.0 {
-                worst = (diff, x, y);
-            }
-            if diff > 1e-3 {
-                off += 1;
+        let (w, h) = (scene.width(), scene.height());
+        let mut worst = (0.0f64, 0, 0);
+        let mut off = 0;
+        for y in 0..h {
+            for x in 0..w {
+                let c = cpu.pixel_at(x, y);
+                let g = pixels[y * w + x];
+                let diff = [c.x, c.y, c.z]
+                    .iter()
+                    .zip(g)
+                    .map(|(c, g)| (c - g as f64).abs())
+                    .fold(0.0, f64::max);
+                if diff > worst.0 {
+                    worst = (diff, x, y);
+                }
+                if diff > 1e-3 {
+                    off += 1;
+                }
             }
         }
-    }
-    let budget = w * h / 2000;
-    eprintln!(
-        "worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget}); gpu {gpu_secs:.2} s, cpu {cpu_secs:.2} s",
-        worst.0,
-        worst.1,
-        worst.2,
-        w * h
-    );
-    if off > budget {
-        return Err(format!(
-            "{off} pixels off by > 1e-3 (budget {budget}); worst {:.2e} at ({}, {})",
-            worst.0, worst.1, worst.2
-        ));
+        let budget = w * h / 2000;
+        eprintln!(
+            "{name}: worst pixel diff {:.2e} at ({}, {}); {off} of {} pixels off by > 1e-3 (budget {budget}); gpu {gpu_secs:.2} s, cpu {cpu_secs:.2} s",
+            worst.0,
+            worst.1,
+            worst.2,
+            w * h
+        );
+        if off > budget {
+            return Err(format!(
+                "{name}: {off} pixels off by > 1e-3 (budget {budget}); worst {:.2e} at ({}, {})",
+                worst.0, worst.1, worst.2
+            ));
+        }
     }
     Ok(())
 }
@@ -412,6 +417,35 @@ fn test_chap_7_gpu_sampled_render_stays_close() -> Result<(), String> {
     eprintln!("chapter 7 sampled vs deterministic: {err:.3e}");
     if err >= 0.01 {
         return Err(format!("mean absolute error {err} >= 0.01"));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_7_gpu_sampled_metal_matches_bvh() -> Result<(), String> {
+    // The window's path: sampled frames through the Accumulator, which must
+    // bind the acceleration structures too. Same random numbers per pixel
+    // and frame on both traversals, so the images agree.
+    let (world, camera) = chapter_7_scene(160, 80);
+    let mut scene = GpuScene::from_world(&world, &camera)?;
+    let gpu = Gpu::new()?;
+    let mut images = Vec::new();
+    for traversal in [TRAVERSAL_BVH, TRAVERSAL_METAL] {
+        scene.info.counts.traversal = traversal;
+        let mut acc = gpu.accumulator(&scene)?;
+        for _ in 0..16 {
+            acc.add_frame(&gpu, &scene.info)?;
+        }
+        images.push(acc.resolve(&gpu)?);
+    }
+    let off = images[0]
+        .iter()
+        .zip(&images[1])
+        .filter(|(b, m)| (0..3).any(|c| (b[c] - m[c]).abs() > 1e-3))
+        .count();
+    eprintln!("{off} of {} pixels differ by > 1e-3", images[0].len());
+    if off * 1000 > images[0].len() {
+        return Err(format!("{off} pixels differ by > 1e-3"));
     }
     Ok(())
 }
