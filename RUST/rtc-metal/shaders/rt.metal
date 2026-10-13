@@ -27,7 +27,10 @@ inline float random01(uint pixel, uint frame, uint dim) {
 
 // Sub-pixel jitter uses dims 0 and 1; shading call `call` owns dims
 // 2 + 6 * call + slot. Slots 0-2 are area light cell A (index, u, v) and
-// 3-5 cell B, so the two cells never share a random number.
+// 3-5 cell B, so the two cells never share a random number. A lens (focal
+// blur) takes dims LENS_DIM and LENS_DIM + 1, far above any shading call's.
+constant uint LENS_DIM = 0x80000000u;
+
 struct Sampler {
     uint pixel;
     uint frame;

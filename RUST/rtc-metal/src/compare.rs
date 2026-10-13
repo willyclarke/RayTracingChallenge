@@ -422,6 +422,43 @@ fn test_bonus_soft_shadows_gpu_sampled_render_converges() -> Result<(), String> 
 }
 
 #[test]
+fn test_chap_17_focal_blur_gpu_sampled_render_converges() -> Result<(), String> {
+    // Calibrated once: measured err_4 = 1.556e-2, err_256 = 5.421e-3;
+    // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. The error
+    // does not go to 0: the CPU reference averages 32 stratified lens points
+    // per pixel, the sampled frames integrate over the whole lens and pixel.
+    // With pinhole frames (before the lens was sampled) err_256 was 1.502e-2.
+    const THRESHOLD: f64 = 8.2e-3;
+    let (world, camera) =
+        scene_file(include_str!("../scenes/chapter17_focal_blur.json"), 200, 125);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let cpu = world.render_parallel(camera);
+    let w = scene.width();
+    let cpu_at = |i: usize| {
+        let c = cpu.pixel_at(i % w, i / w);
+        [c.x, c.y, c.z]
+    };
+    let gpu = Gpu::new()?;
+    let mut acc = gpu.accumulator(&scene)?;
+    for _ in 0..4 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_4 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    for _ in 4..256 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_256 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    eprintln!("err_4 {err_4:.3e}, err_256 {err_256:.3e}");
+    if err_256 > 0.5 * err_4 {
+        return Err(format!("err_256 {err_256} not <= half of err_4 {err_4}"));
+    }
+    if err_256 >= THRESHOLD {
+        return Err(format!("err_256 {err_256} >= {THRESHOLD}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn test_chap_7_gpu_sampled_render_stays_close() -> Result<(), String> {
     // A point light: sampling only jitters the ray within the pixel, so 64
     // frames are the deterministic image with anti-aliased edges.

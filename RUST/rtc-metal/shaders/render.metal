@@ -28,7 +28,8 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
     uint pixel = gid.y * c.width + gid.x;
     Sampler s = Sampler{pixel, scene.frame, scene.sampling, 0};
     // Deterministic with a lens: rtc-rust's lens_samples rays per pixel.
-    // Otherwise one ray, through the centre or a random point of the pixel.
+    // Otherwise one ray, through the centre or a random point of the pixel
+// (and of the lens).
     // Keep color_at to this one call site: with three inlined copies the
     // METAL_RT pipeline returned garbage (values ~4e9) while the BVH one
     // was right (milestone 11).
@@ -42,8 +43,14 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
         } else if (s.on == 0) {
             r = ray_for_pixel(c, gid.x, gid.y, 0.5, 0.5);
         } else {
-            r = ray_for_pixel(c, gid.x, gid.y, random01(pixel, s.frame, 0),
-                              random01(pixel, s.frame, 1));
+            // A random point in the pixel and, with a lens, on the lens
+            // (rtc-rust's sqrt-radius disk); ray_for_lens is the pinhole
+            // ray without one.
+            float r_lens = sqrt(random01(pixel, s.frame, LENS_DIM));
+            float theta = 2.0 * M_PI_F * random01(pixel, s.frame, LENS_DIM + 1);
+            r = ray_for_lens(c, gid.x, gid.y, random01(pixel, s.frame, 0),
+                             random01(pixel, s.frame, 1),
+                             r_lens * cos(theta), r_lens * sin(theta));
         }
         sum += color_at(r, scene, shapes, nodes, tables, rt, s);
     }
