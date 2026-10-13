@@ -1,17 +1,21 @@
 //! rtc-metal: render on the GPU via Metal, write PPM through rtc-rust's Canvas.
 //!
 //! Usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window]
+//!                  [--traversal bvh|metal]
 //!
 //! With a scene, renders it (scene format: rtc-rust's README); without one,
 //! writes the milestone 1 test gradient. `--samples N` averages N sampled
 //! frames (random light samples, jittered pixels) instead of rendering
 //! rtc-rust's deterministic image. `--window` shows the sampled frames
 //! refining live (default 256, or `--samples N`); drag to orbit the camera,
-//! scroll to zoom, and the image is written on quit.
+//! scroll to zoom, and the image is written on quit. `--traversal metal`
+//! searches the bounded shapes with Metal's ray tracing API instead of the
+//! BVH walk (milestone 10).
 
 use rtc_metal::gpu::Gpu;
 use rtc_metal::orbit::Orbit;
 use rtc_metal::scene::GpuScene;
+use rtc_metal::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
 use rtc_rust::canvas::Canvas;
 use rtc_rust::scene::SceneDescription;
 use rtc_rust::tuple::Tuple;
@@ -29,6 +33,7 @@ fn main() {
     let mut scene_path = None;
     let mut samples = None;
     let mut window = false;
+    let mut traversal = TRAVERSAL_BVH;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -42,6 +47,14 @@ fn main() {
                 i += 1;
             }
             "--window" => window = true,
+            "--traversal" => {
+                traversal = match args.get(i + 1).map(String::as_str) {
+                    Some("bvh") => TRAVERSAL_BVH,
+                    Some("metal") => TRAVERSAL_METAL,
+                    _ => usage(),
+                };
+                i += 1;
+            }
             a if a.starts_with('-') => usage(),
             a => scene_path = Some(a.to_string()),
         }
@@ -59,19 +72,34 @@ fn main() {
     let gpu = Gpu::new().unwrap_or_else(|e| fail(&e));
     if window {
         let path = scene_path.unwrap_or_else(|| usage());
-        open_window(gpu, &path, samples.unwrap_or(WINDOW_SAMPLES), out);
+        open_window(
+            gpu,
+            &path,
+            samples.unwrap_or(WINDOW_SAMPLES),
+            traversal,
+            out,
+        );
     }
     let (pixels, width, height) = match &scene_path {
         Some(path) => {
             let (world, camera) =
                 rtc_rust::scene::load(path).unwrap_or_else(|e| fail(&e.to_string()));
-            let scene = GpuScene::from_world(&world, &camera).unwrap_or_else(|e| fail(&e));
+            let mut scene = GpuScene::from_world(&world, &camera).unwrap_or_else(|e| fail(&e));
+            scene.info.counts.traversal = traversal;
             let start = Instant::now();
             let pixels = match samples {
                 Some(n) => accumulate(&gpu, &scene, n).unwrap_or_else(|e| fail(&e)),
                 None => gpu.render(&scene).unwrap_or_else(|e| fail(&e)),
             };
-            eprintln!("GPU render: {:.1} ms", start.elapsed().as_secs_f64() * 1e3);
+            eprintln!(
+                "GPU render: {:.1} ms ({})",
+                start.elapsed().as_secs_f64() * 1e3,
+                if traversal == TRAVERSAL_METAL {
+                    "metal"
+                } else {
+                    "bvh"
+                }
+            );
             (pixels, scene.width(), scene.height())
         }
         None if samples.is_some() => usage(),
@@ -87,13 +115,14 @@ fn main() {
 
 /// Show the scene at `path` refining live until `samples` frames; write the
 /// image to `out` on quit.
-fn open_window(gpu: Gpu, path: &str, samples: u32, out: String) -> ! {
+fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, out: String) -> ! {
     let path = Path::new(path);
     let desc = SceneDescription::from_path(path).unwrap_or_else(|e| fail(&e.to_string()));
     let (world, camera) = desc
         .build(path.parent().unwrap_or(Path::new(".")))
         .unwrap_or_else(|e| fail(&e.to_string()));
-    let scene = GpuScene::from_world(&world, &camera).unwrap_or_else(|e| fail(&e));
+    let mut scene = GpuScene::from_world(&world, &camera).unwrap_or_else(|e| fail(&e));
+    scene.info.counts.traversal = traversal;
     let c = &desc.camera;
     let orbit = Orbit::new(
         Tuple::point(c.from[0], c.from[1], c.from[2]),
@@ -146,11 +175,14 @@ fn write_ppm(pixels: Vec<[f32; 4]>, width: usize, height: usize, out: &str) {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window]");
+    eprintln!(
+        "usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window] [--traversal bvh|metal]"
+    );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
         "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms, quit writes the image"
     );
+    eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
     eprintln!("  the scene's antialias.n is ignored on the GPU");
     std::process::exit(2);
 }
