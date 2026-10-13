@@ -27,7 +27,10 @@ inline float random01(uint pixel, uint frame, uint dim) {
 
 // Sub-pixel jitter uses dims 0 and 1; shading call `call` owns dims
 // 2 + 6 * call + slot. Slots 0-2 are area light cell A (index, u, v) and
-// 3-5 cell B, so the two cells never share a random number.
+// 3-5 cell B, so the two cells never share a random number. A lens (focal
+// blur) takes dims LENS_DIM and LENS_DIM + 1, far above any shading call's.
+constant uint LENS_DIM = 0x80000000u;
+
 struct Sampler {
     uint pixel;
     uint frame;
@@ -572,6 +575,9 @@ struct Camera {
     float pixel_size;
     uint width;
     uint height;
+    float aperture;        // lens radius; 0 = pinhole
+    float focal_distance;
+    uint lens_samples;     // lens rays per deterministic pixel
 };
 static_assert(sizeof(Camera) == 96, "Camera must match GpuCamera");
 
@@ -724,6 +730,46 @@ inline Ray ray_for_pixel(Camera c, uint px, uint py, float jx, float jy) {
     float4 pixel = c.inverse * float4(world_x, world_y, -1.0, 1.0);
     float4 origin = c.inverse * float4(0.0, 0.0, 0.0, 1.0);
     return Ray{origin, normalize(pixel - origin)};
+}
+
+// ---- Chapter 17: focal blur ------------------------------------------------
+
+// h(k) of rtc-rust's Camera::lens_sample for sample i of pixel (px, py). The
+// ulong products wrap like Rust's wrapping_mul, and (x & 0xFFFFFF) / 2^24 is
+// exact in f32, so this is bit for bit the CPU's value.
+inline float lens_hash(uint px, uint py, uint i, ulong k) {
+    ulong x = ulong(px) * 0x9E3779B9ul ^ ulong(py) * 0x85EBCA6Bul
+            ^ ulong(i) * 0xC2B2AE35ul ^ k * 0x27D4EB2Ful;
+    x ^= x >> 15;
+    x *= 0x2C1B3C6Dul;
+    x ^= x >> 12;
+    x *= 0x297A2D39ul;
+    x ^= x >> 15;
+    return float(x & 0xFFFFFFul) * 0x1p-24f;
+}
+
+// rtc-rust's Camera::lens_sample(px, py, i, n) without the shutter time:
+// (lx, ly) in the unit disk, radius stratified over the n samples, and the
+// sub-pixel jitter (dx, dy).
+inline float4 lens_sample(uint px, uint py, uint i, uint n) {
+    float r = sqrt((float(i) + lens_hash(px, py, i, 1)) / float(n));
+    float theta = 2.0 * M_PI_F * lens_hash(px, py, i, 2);
+    return float4(r * cos(theta), r * sin(theta),
+                  lens_hash(px, py, i, 3), lens_hash(px, py, i, 4));
+}
+
+// rtc-rust's Camera::ray_for_lens: from (lx, ly) * aperture on the lens (the
+// camera's z = 0 plane) through the point where the sub-pixel's pinhole ray
+// is in focus. Without an aperture, the pinhole ray.
+inline Ray ray_for_lens(Camera c, uint px, uint py, float dx, float dy,
+                        float lx, float ly) {
+    Ray pinhole = ray_for_pixel(c, px, py, dx, dy);
+    if (c.aperture == 0.0) {
+        return pinhole;
+    }
+    float4 focal_point = pinhole.origin + pinhole.direction * c.focal_distance;
+    float4 origin = c.inverse * float4(lx * c.aperture, ly * c.aperture, 0.0, 1.0);
+    return Ray{origin, normalize(focal_point - origin)};
 }
 
 // The nearest non-negative hit: root `root` (0 to 3, of the ascending roots

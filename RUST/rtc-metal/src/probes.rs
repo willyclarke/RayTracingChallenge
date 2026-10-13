@@ -327,6 +327,99 @@ fn test_chap_7_gpu_ray_for_pixel() -> Result<(), String> {
     Ok(())
 }
 
+/// Input to `probe_lens_sample`: rtc-rust's `Camera::lens_sample` arguments.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct LensProbe {
+    pixel: [u32; 2],
+    i: u32,
+    n: u32,
+}
+const _: () = assert!(size_of::<LensProbe>() == 16);
+
+#[test]
+fn test_chap_17_gpu_lens_sample() -> Result<(), String> {
+    // (0, 0, 0, 1): a single lens sample is not the lens centre.
+    let cases = [
+        (0, 0, 0, 1),
+        (0, 0, 0, 32),
+        (199, 124, 31, 32),
+        (57, 3, 7, 32),
+        (400, 250, 15, 16),
+        (1, 1, 0, 1),
+    ];
+    let input: Vec<LensProbe> = cases
+        .iter()
+        .map(|&(x, y, i, n)| LensProbe { pixel: [x, y], i, n })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run("probe_lens_sample", &input)?;
+
+    for (&(x, y, i, n), got) in cases.iter().zip(&out) {
+        let (lx, ly, dx, dy, _) = Camera::lens_sample(x as usize, y as usize, i as usize, n as usize);
+        let what = format!("lens_sample({x}, {y}, {i}, {n})");
+        check_close(got[0], lx, &format!("{what} lx"))?;
+        check_close(got[1], ly, &format!("{what} ly"))?;
+        // The jitter is a hash value / 2^24, exact in f32: equality proves
+        // the GPU's 64-bit hash is rtc-rust's.
+        if [got[2], got[3]] != [dx as f32, dy as f32] {
+            return Err(format!("{what} jitter: gpu {:?} vs cpu {:?}", [got[2], got[3]], [dx, dy]));
+        }
+    }
+    Ok(())
+}
+
+/// Input to `probe_ray_for_lens`; `offsets` = (dx, dy, lx, ly).
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct LensRayProbe {
+    camera: GpuCamera,
+    pixel: [u32; 2],
+    /// MSL aligns `float4` to 16 bytes.
+    _pad: [u32; 2],
+    offsets: [f32; 4],
+}
+const _: () = assert!(std::mem::offset_of!(LensRayProbe, offsets) == 112);
+const _: () = assert!(size_of::<LensRayProbe>() == 128);
+
+#[test]
+fn test_chap_17_gpu_ray_for_lens() -> Result<(), String> {
+    // rtc-rust's chapter 17 focal blur view, with and without the lens.
+    let view = view_transform(
+        Tuple::point(0.0, 2.2, -6.0),
+        Tuple::point(-0.5, 1.0, 2.0),
+        Tuple::vector(0.0, 1.0, 0.0),
+    );
+    let pinhole = Camera::new(400, 250, PI / 3.5).with_transform(view);
+    let lens = pinhole.with_focal_blur(0.25, 8.616989, 32);
+    let mut cases = vec![];
+    for (x, y) in [(200, 125), (0, 0), (399, 249)] {
+        for offsets in [[0.5, 0.5, 0.0, 0.0], [0.3, 0.6, 0.7, -0.2], [0.9, 0.1, -0.5, 0.5]] {
+            cases.push((&lens, x, y, offsets));
+        }
+    }
+    // Without an aperture the lens ray is the sub-pixel ray.
+    cases.push((&pinhole, 200, 125, [0.3, 0.6, 0.7, -0.2]));
+    let input: Vec<LensRayProbe> = cases
+        .iter()
+        .map(|(camera, x, y, offsets)| LensRayProbe {
+            camera: gpu_camera(camera).unwrap(),
+            pixel: [*x as u32, *y as u32],
+            _pad: [0; 2],
+            offsets: offsets.map(|o| o as f32),
+        })
+        .collect();
+
+    let out: Vec<GpuRay> = Gpu::new()?.run("probe_ray_for_lens", &input)?;
+
+    for (i, ((camera, x, y, [dx, dy, lx, ly]), got)) in cases.iter().zip(&out).enumerate() {
+        let want = camera.ray_for_lens(*x, *y, *dx, *dy, *lx, *ly);
+        check_tuple(got.origin, want.origin, &format!("case {i} origin"))?;
+        check_tuple(got.direction, want.direction, &format!("case {i} direction"))?;
+    }
+    Ok(())
+}
+
 #[test]
 fn test_chap_5_gpu_intersect_sphere_far_origin() -> Result<(), String> {
     use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2};

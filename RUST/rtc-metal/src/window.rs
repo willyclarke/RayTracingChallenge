@@ -120,7 +120,10 @@ impl RtcView {
     fn interact(&self, change: impl FnOnce(&mut Orbit)) {
         {
             let mut r = self.ivars().borrow_mut();
+            let before = r.orbit.radius();
             change(&mut r.orbit);
+            // Zooming keeps the lens focused on what it was focused on.
+            r.camera.focal_distance *= r.orbit.radius() / before;
             r.restart();
         }
         self.setPaused(false);

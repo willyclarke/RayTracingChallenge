@@ -172,11 +172,15 @@ impl GpuScene {
 
 /// The camera's anti-aliasing sample count is ignored: a deterministic frame
 /// has one ray through each pixel centre, and sampled frames jitter that ray
-/// within the pixel instead, anti-aliasing as they accumulate.
+/// within the pixel instead, anti-aliasing as they accumulate. Focal blur
+/// keeps rtc-rust's lens: a deterministic frame averages its `dof_samples`
+/// lens rays per pixel. Without a positive aperture rtc-rust renders a
+/// pinhole, and so does the GPU.
 pub fn gpu_camera(camera: &Camera) -> Result<GpuCamera, String> {
-    if camera.aperture > 0.0 || camera.motion_samples > 1 {
-        return Err("focal blur and motion blur are not supported so far".into());
+    if camera.motion_samples > 1 {
+        return Err("motion blur is not supported so far".into());
     }
+    let aperture = camera.aperture.max(0.0);
     let inverse = camera
         .transform()
         .inverse()
@@ -188,6 +192,13 @@ pub fn gpu_camera(camera: &Camera) -> Result<GpuCamera, String> {
         pixel_size: camera.pixel_size as f32,
         width: camera.hsize as u32,
         height: camera.vsize as u32,
+        aperture: aperture as f32,
+        focal_distance: camera.focal_distance as f32,
+        lens_samples: if aperture > 0.0 {
+            camera.dof_samples as u32
+        } else {
+            1
+        },
     })
 }
 
@@ -952,6 +963,46 @@ mod tests {
         assert_eq!(scene.nodes, nodes);
         assert_eq!(scene.info.light, info.light);
         assert_eq!(scene.info.counts, info.counts);
+    }
+
+    #[test]
+    fn gpu_camera_takes_focal_blur() {
+        let camera = Camera::new(4, 2, PI / 2.0).with_focal_blur(0.25, 8.5, 32);
+        let c = gpu_camera(&camera).unwrap();
+        assert_eq!((c.aperture, c.focal_distance, c.lens_samples), (0.25, 8.5, 32));
+    }
+
+    #[test]
+    fn gpu_camera_without_aperture_is_a_pinhole() {
+        // rtc-rust renders these with one ray through each pixel centre.
+        for aperture in [0.0, -0.1] {
+            let camera = Camera::new(4, 2, PI / 2.0).with_focal_blur(aperture, 8.5, 32);
+            let c = gpu_camera(&camera).unwrap();
+            assert_eq!((c.aperture, c.lens_samples), (0.0, 1));
+        }
+    }
+
+    #[test]
+    fn gpu_camera_rejects_motion_blur() {
+        let camera = Camera::new(4, 2, PI / 2.0).with_motion_blur(4);
+        assert!(gpu_camera(&camera).unwrap_err().contains("motion blur"));
+    }
+
+    #[test]
+    fn json_focal_blur_reaches_the_gpu_camera() {
+        let json = r#"{
+          "camera": { "width": 4, "height": 2, "field_of_view": 1.0,
+                      "from": [0, 0, -5], "to": [0, 0, 0], "up": [0, 1, 0],
+                      "focal_blur": { "aperture": 0.25, "focal_distance": 8.5, "samples": 16 } },
+          "light": { "type": "point", "position": [-10, 10, -10], "intensity": [1, 1, 1] },
+          "shapes": [ { "type": "sphere" } ]
+        }"#;
+        let (world, camera) = rtc_rust::scene::SceneDescription::from_json(json)
+            .unwrap()
+            .build(std::path::Path::new("."))
+            .unwrap();
+        let c = GpuScene::from_world(&world, &camera).unwrap().info.camera;
+        assert_eq!((c.aperture, c.focal_distance, c.lens_samples), (0.25, 8.5, 16));
     }
 
     #[test]
