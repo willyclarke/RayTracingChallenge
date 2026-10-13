@@ -1,4 +1,5 @@
 #include <metal_stdlib>
+#include <metal_raytracing>
 using namespace metal;
 
 // Ray-tracer core shared by every kernel. Structs mirror src/types.rs.
@@ -576,12 +577,29 @@ static_assert(sizeof(Camera) == 96, "Camera must match GpuCamera");
 
 // Book chapter 15: GpuScene orders `shapes` as the unbounded_count shapes
 // with no finite box first, then the bounded ones in BVH leaf order.
+// triangle_count and box_count size the two acceleration structures (one
+// geometry type each); traversal picks how the bounded shapes are searched.
 struct SceneCounts {
     uint shape_count;
     uint unbounded_count;
     uint node_count;  // 0 when nothing is bounded
+    uint triangle_count;
+    uint box_count;
+    uint traversal;
 };
-static_assert(sizeof(SceneCounts) == 12, "SceneCounts must match GpuSceneCounts");
+static_assert(sizeof(SceneCounts) == 24, "SceneCounts must match GpuSceneCounts");
+
+constant uint TRAVERSAL_BVH = 0;    // the BVH walk below
+constant uint TRAVERSAL_METAL = 1;  // Metal's intersection queries
+
+// Milestone 10: Metal's acceleration structures over the bounded shapes.
+// rt_ids maps a triangle primitive_id to its shapes index, and a box one
+// at rt_ids[triangle_count + primitive_id].
+struct RtScene {
+    device const uint *rt_ids;
+    raytracing::primitive_acceleration_structure triangles;
+    raytracing::primitive_acceleration_structure boxes;
+};
 
 // count > 0: a leaf over shapes[start .. start + count]. Otherwise an
 // interior node: the left child is the next node, the right one is `right`.
@@ -798,7 +816,8 @@ struct Hit {
 // entered beyond the nearest hit so far cannot hold a nearer one, so the
 // walk's interval shrinks to [0, hit.t] as hits are found.
 inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *nodes,
-                       device const uint *tables, SceneCounts counts, thread Hit &hit) {
+                       device const uint *tables, RtScene rt, SceneCounts counts,
+                       thread Hit &hit) {
     hit.t = INFINITY;
     uint first = 0, count = counts.unbounded_count;
     BvhWalk w = bvh_walk(counts);
@@ -836,7 +855,7 @@ inline bool hit_shapes(Ray r, device const Shape *shapes, device const BvhNode *
 // Any-hit test: is anything between `point` and the light?
 inline bool is_shadowed(float4 light_position, float4 point,
                         device const Shape *shapes, device const BvhNode *nodes,
-                        device const uint *tables, SceneCounts counts) {
+                        device const uint *tables, RtScene rt, SceneCounts counts) {
     float4 v = light_position - point;
     float distance = length(v);
     Ray r = Ray{point, v / distance};
@@ -877,16 +896,16 @@ inline bool is_shadowed(float4 light_position, float4 point,
 // out brighter than rtc-rust's (2% of pixels off).
 inline bool light_reaches(float4 light_point, float4 point, float4 normalv,
                           device const Shape *shapes, device const BvhNode *nodes,
-                          device const uint *tables, SceneCounts counts) {
+                          device const uint *tables, RtScene rt, SceneCounts counts) {
     return dot(light_point - point, normalv) >= 0.0
-           && !is_shadowed(light_point, point, shapes, nodes, tables, counts);
+           && !is_shadowed(light_point, point, shapes, nodes, tables, rt, counts);
 }
 
 inline bool cell_lit(Light l, uint u, uint v, float4 point, float4 normalv,
                      device const Shape *shapes, device const BvhNode *nodes,
-                     device const uint *tables, SceneCounts counts) {
+                     device const uint *tables, RtScene rt, SceneCounts counts) {
     return light_reaches(light_cell_point(l, u, v, 0.5, 0.5), point, normalv, shapes, nodes, tables,
-                         counts);
+                         rt, counts);
 }
 
 // Bonus: soft shadows. The fraction of the light reaching `point`, on a
@@ -896,26 +915,26 @@ inline bool cell_lit(Light l, uint u, uint v, float4 point, float4 normalv,
 // cells go first, and the rest only when they disagree. Sampled: one shadow
 // ray to a random point in a random cell (cell A), so 0 or 1.
 inline float intensity_at(Light l, float4 point, float4 normalv, device const Shape *shapes,
-                          device const BvhNode *nodes, device const uint *tables,
+                          device const BvhNode *nodes, device const uint *tables, RtScene rt,
                           SceneCounts counts, thread const Sampler &s) {
     if (s.on != 0) {
         uint cell = min(uint(sample(s, 0) * l.samples), l.samples - 1);
         float4 p = light_cell_point(l, cell % l.usteps, cell / l.usteps, sample(s, 1),
                                     sample(s, 2));
-        return light_reaches(p, point, normalv, shapes, nodes, tables, counts) ? 1.0 : 0.0;
+        return light_reaches(p, point, normalv, shapes, nodes, tables, rt, counts) ? 1.0 : 0.0;
     }
     if (l.usteps < 2 || l.vsteps < 2) {
         uint visible = 0;
         for (uint v = 0; v < l.vsteps; v++) {
             for (uint u = 0; u < l.usteps; u++) {
-                visible += cell_lit(l, u, v, point, normalv, shapes, nodes, tables, counts) ? 1 : 0;
+                visible += cell_lit(l, u, v, point, normalv, shapes, nodes, tables, rt, counts) ? 1 : 0;
             }
         }
         return float(visible) / float(l.samples);
     }
     uint umax = l.usteps - 1, vmax = l.vsteps - 1;
     auto lit = [&](uint u, uint v) {
-        return cell_lit(l, u, v, point, normalv, shapes, nodes, tables, counts) ? 1u : 0u;
+        return cell_lit(l, u, v, point, normalv, shapes, nodes, tables, rt, counts) ? 1u : 0u;
     };
     uint corners_lit = lit(0, 0) + lit(umax, 0) + lit(0, vmax) + lit(umax, vmax);
     if (corners_lit == 0) {
@@ -928,7 +947,7 @@ inline float intensity_at(Light l, float4 point, float4 normalv, device const Sh
     for (uint v = 0; v < l.vsteps; v++) {
         for (uint u = 0; u < l.usteps; u++) {
             bool corner = (u == 0 || u == umax) && (v == 0 || v == vmax);
-            if (!corner && cell_lit(l, u, v, point, normalv, shapes, nodes, tables, counts)) {
+            if (!corner && cell_lit(l, u, v, point, normalv, shapes, nodes, tables, rt, counts)) {
                 visible++;
             }
         }
@@ -1031,7 +1050,7 @@ struct PendingRay {
 // MAX_DEPTH + 1 rays (one pending sibling per level, plus the current one).
 // Each shaded hit advances sampler.call, so it draws its own random numbers.
 inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes,
-                       device const BvhNode *nodes, device const uint *tables,
+                       device const BvhNode *nodes, device const uint *tables, RtScene rt,
                        thread Sampler &sampler) {
     PendingRay stack[MAX_DEPTH + 1];
     int top = 0;
@@ -1040,7 +1059,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
     while (top > 0) {
         PendingRay p = stack[--top];
         Hit hit;
-        if (!hit_shapes(p.ray, shapes, nodes, tables, scene.counts, hit)) {
+        if (!hit_shapes(p.ray, shapes, nodes, tables, rt, scene.counts, hit)) {
             continue;
         }
         Shape s = shapes[hit.index];
@@ -1056,7 +1075,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         }
         float4 over_point = point + normalv * EPSILON;
         float intensity = intensity_at(scene.light, over_point, normalv, shapes, nodes, tables,
-                                       scene.counts, sampler);
+                                       rt, scene.counts, sampler);
         // rtc-rust samples the pattern at over_point too: on a plane the raw
         // hit's y is ~0 with either sign, and checkers would speckle
         float4 object_point = s.inverse * over_point;

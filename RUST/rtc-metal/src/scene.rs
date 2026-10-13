@@ -9,7 +9,7 @@ use crate::types::{
     GpuBvhNode, GpuCamera, GpuLight, GpuMaterial, GpuSceneCounts, GpuSceneInfo, GpuShape,
     NOISE_NONE, PATTERN_CHECKERS, PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE,
     SHAPE_CONE, SHAPE_CSG, SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE,
-    float4,
+    TRAVERSAL_BVH, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -137,6 +137,9 @@ impl GpuScene {
                     shape_count,
                     unbounded_count: bvh.unbounded_count,
                     node_count: bvh.nodes.len() as u32,
+                    triangle_count: rt_triangle_count,
+                    box_count: rt_boxes.len() as u32,
+                    traversal: TRAVERSAL_BVH,
                 },
                 frame: 0,
                 sampling: 0,

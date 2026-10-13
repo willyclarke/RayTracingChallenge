@@ -117,11 +117,15 @@ kernel void probe_intensity_at(device const IntensityProbe *in [[buffer(0)]],
                                device const BvhNode *nodes     [[buffer(3)]],
                                constant SceneCounts &counts    [[buffer(4)]],
                                device const uint *tables       [[buffer(5)]],
+                               device const uint *rt_ids [[buffer(6)]],
+                               raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
+                               raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
                                uint i                          [[thread_position_in_grid]])
 {
+    RtScene rt = RtScene{rt_ids, triangles, boxes};
     IntensityProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
-    out[i] = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, counts, s);
+    out[i] = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, rt, counts, s);
 }
 
 struct ShadeProbe {
@@ -144,11 +148,15 @@ kernel void probe_shade_point(device const ShadeProbe *in    [[buffer(0)]],
                               device const BvhNode *nodes    [[buffer(3)]],
                               constant SceneCounts &counts   [[buffer(4)]],
                               device const uint *tables      [[buffer(5)]],
+                              device const uint *rt_ids [[buffer(6)]],
+                              raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
+                              raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
                               uint i                         [[thread_position_in_grid]])
 {
+    RtScene rt = RtScene{rt_ids, triangles, boxes};
     ShadeProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
-    float intensity = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, counts, s);
+    float intensity = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, rt, counts, s);
     out[i] = float4(lighting(p.material, p.light, p.point, p.point, p.eyev, p.normalv,
                              intensity, s, tables),
                     0.0);
@@ -282,9 +290,9 @@ static_assert(sizeof(TraceResult) == 32, "TraceResult must match probes.rs");
 // The first steps of color_at for one ray: nearest hit, normal, shadow test.
 // index = 0xffffffff on a miss (counts.shape_count is the first CSG leaf).
 inline TraceResult trace(TraceProbe p, device const Shape *shapes, device const BvhNode *nodes,
-                         device const uint *tables, SceneCounts counts) {
+                         device const uint *tables, RtScene rt, SceneCounts counts) {
     Hit hit;
-    if (!hit_shapes(p.ray, shapes, nodes, tables, counts, hit)) {
+    if (!hit_shapes(p.ray, shapes, nodes, tables, rt, counts, hit)) {
         return TraceResult{float4(0.0), INFINITY, 0xffffffff, 0, 0};
     }
     float4 point = p.ray.origin + p.ray.direction * hit.t;
@@ -296,7 +304,7 @@ inline TraceResult trace(TraceProbe p, device const Shape *shapes, device const 
         normalv = -normalv;
     }
     bool shadowed =
-        is_shadowed(p.light_position, point + normalv * EPSILON, shapes, nodes, tables, counts);
+        is_shadowed(p.light_position, point + normalv * EPSILON, shapes, nodes, tables, rt, counts);
     return TraceResult{normalv, hit.t, hit.index, hit.root, shadowed ? 1u : 0u};
 }
 
@@ -306,9 +314,13 @@ kernel void probe_trace(device const TraceProbe *in  [[buffer(0)]],
                         device const BvhNode *nodes  [[buffer(3)]],
                         constant SceneCounts &counts [[buffer(4)]],
                         device const uint *tables    [[buffer(5)]],
+                        device const uint *rt_ids [[buffer(6)]],
+                        raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
+                        raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
                         uint i                       [[thread_position_in_grid]])
 {
-    out[i] = trace(in[i], shapes, nodes, tables, counts);
+    RtScene rt = RtScene{rt_ids, triangles, boxes};
+    out[i] = trace(in[i], shapes, nodes, tables, rt, counts);
 }
 
 // probe_trace with the BVH switched off: every shape counts as unbounded,
@@ -319,12 +331,17 @@ kernel void probe_trace_linear(device const TraceProbe *in  [[buffer(0)]],
                                device const BvhNode *nodes  [[buffer(3)]],
                                constant SceneCounts &counts [[buffer(4)]],
                                device const uint *tables    [[buffer(5)]],
+                               device const uint *rt_ids [[buffer(6)]],
+                               raytracing::primitive_acceleration_structure triangles [[buffer(7)]],
+                               raytracing::primitive_acceleration_structure boxes [[buffer(8)]],
                                uint i                       [[thread_position_in_grid]])
 {
+    RtScene rt = RtScene{rt_ids, triangles, boxes};
     SceneCounts linear = counts;
     linear.unbounded_count = counts.shape_count;
     linear.node_count = 0;
-    out[i] = trace(in[i], shapes, nodes, tables, linear);
+    linear.traversal = TRAVERSAL_BVH;
+    out[i] = trace(in[i], shapes, nodes, tables, rt, linear);
 }
 
 struct TriangleProbe {
@@ -393,4 +410,13 @@ kernel void probe_random(device const RandomProbe *in [[buffer(0)]],
                          uint i                       [[thread_position_in_grid]])
 {
     out[i] = random01(in[i].pixel, in[i].frame, in[i].dim);
+}
+
+// Milestone 10: the scene counts as a scene kernel sees them.
+kernel void probe_counts(device const uint *in         [[buffer(0)]],
+                         device uint4 *out             [[buffer(1)]],
+                         constant SceneCounts &counts  [[buffer(4)]],
+                         uint i                        [[thread_position_in_grid]])
+{
+    out[i] = uint4(counts.traversal, counts.triangle_count, counts.box_count, 0);
 }

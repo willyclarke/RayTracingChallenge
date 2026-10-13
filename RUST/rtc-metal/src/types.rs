@@ -189,14 +189,24 @@ pub struct GpuSceneInfo {
 
 /// MSL `SceneCounts`: the sizes of the scene buffers. `shapes` holds the
 /// `unbounded_count` shapes the BVH skips first, then the bounded ones;
-/// `node_count` is 0 when nothing is bounded.
+/// `node_count` is 0 when nothing is bounded. `triangle_count` and
+/// `box_count` size the two acceleration structures (`accel.rs`), and
+/// `traversal` picks how the bounded shapes are searched.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpuSceneCounts {
     pub shape_count: u32,
     pub unbounded_count: u32,
     pub node_count: u32,
+    pub triangle_count: u32,
+    pub box_count: u32,
+    pub traversal: u32,
 }
+
+/// `GpuSceneCounts::traversal`: the BVH walk (book chapter 15)...
+pub const TRAVERSAL_BVH: u32 = 0;
+/// ...or Metal's intersection queries over the acceleration structures.
+pub const TRAVERSAL_METAL: u32 = 1;
 
 // 16 + 8 * 4 + 64 + 2 * 16 + 64 + 4 * 4 = 224 bytes of fields.
 const _: () = assert!(size_of::<GpuMaterial>() == 224);
@@ -206,8 +216,8 @@ const _: () = assert!(size_of::<GpuShape>() == 400);
 const _: () = assert!(size_of::<GpuLight>() == 80);
 // 64 + 5 * 4 = 84 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuCamera>() == 96);
-const _: () = assert!(size_of::<GpuSceneCounts>() == 12);
-// 96 + 80 + 12 + 2 * 4 = 196 bytes of fields, padded to the 16-byte alignment.
+const _: () = assert!(size_of::<GpuSceneCounts>() == 24);
+// 96 + 80 + 24 + 2 * 4 = 208 bytes of fields, padded to the 16-byte alignment.
 const _: () = assert!(size_of::<GpuSceneInfo>() == 208);
 
 /// MSL `BvhNode`. `count > 0` is a leaf over `shapes[start..start + count]`;

@@ -2203,3 +2203,18 @@ fn test_chap_16_gpu_trace_ray_inside_csg() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn test_chap_7_traversal_flag_reaches_shader() -> Result<(), String> {
+    // The traversal switch and the structure sizes reach a scene kernel.
+    let (world, camera) = crate::compare::chapter_7_scene(20, 10);
+    let mut scene = GpuScene::from_world(&world, &camera)?;
+    scene.info.counts.traversal = crate::types::TRAVERSAL_METAL;
+    let out: Vec<[u32; 4]> = Gpu::new()?.run_with_scene("probe_counts", &[0u32], &scene)?;
+    // traversal, triangle_count, box_count: chapter 7 is six spheres
+    if out[0][..3] != [crate::types::TRAVERSAL_METAL, 0, 6] {
+        eprintln!("probe_counts: {:?}", out[0]);
+        return Err("probe_counts reads traversal, triangle_count, box_count".into());
+    }
+    Ok(())
+}
