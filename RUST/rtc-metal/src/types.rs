@@ -191,6 +191,12 @@ pub struct GpuSceneInfo {
     pub frame: u32,
     /// 0: rtc-rust's deterministic cell centres; 1: random samples.
     pub sampling: u32,
+    /// rtc-rust's `World::gi_samples`: paths per deterministic pixel;
+    /// 0 = path tracing off (ambient on).
+    pub gi_samples: u32,
+    /// rtc-rust's `World::gi_depth`: diffuse bounces after the first hit.
+    pub gi_depth: u32,
+    pub _pad: [u32; 2],
 }
 
 /// MSL `SceneCounts`: the sizes of the scene buffers. `shapes` holds the
@@ -223,8 +229,8 @@ const _: () = assert!(size_of::<GpuLight>() == 80);
 // 64 + 8 * 4 = 96 bytes of fields.
 const _: () = assert!(size_of::<GpuCamera>() == 96);
 const _: () = assert!(size_of::<GpuSceneCounts>() == 24);
-// 96 + 80 + 24 + 2 * 4 = 208 bytes of fields.
-const _: () = assert!(size_of::<GpuSceneInfo>() == 208);
+// 96 + 80 + 24 + 6 * 4 = 224 bytes of fields.
+const _: () = assert!(size_of::<GpuSceneInfo>() == 224);
 
 /// MSL `BvhNode`. `count > 0` is a leaf over `shapes[start..start + count]`;
 /// otherwise the left child is the next node and `right` is the right child's

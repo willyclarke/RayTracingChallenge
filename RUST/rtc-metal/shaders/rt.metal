@@ -631,8 +631,11 @@ struct SceneInfo {
     SceneCounts counts;
     uint frame;     // progressive render frame index
     uint sampling;  // 0: rtc-rust's cell centres; 1: random samples
+    uint gi_samples; // path tracing: paths per deterministic pixel; 0 = off
+    uint gi_depth;   // diffuse bounces after the first hit
+    uint pad[2];
 };
-static_assert(sizeof(SceneInfo) == 208, "SceneInfo must match GpuSceneInfo");
+static_assert(sizeof(SceneInfo) == 224, "SceneInfo must match GpuSceneInfo");
 
 // Does the ray, over t in [tmin, tmax], pass through the box? The slab
 // method again (book chapter 12's cube), on the box's own bounds.
