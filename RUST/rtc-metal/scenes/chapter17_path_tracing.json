@@ -1,8 +1,8 @@
 {
-  "comment": "Book chapter 17 bonus, path tracing: rtc-rust's test_chap_17_path_tracing_putting_it_together as a scene file. The Cornell box (cornell_box in rtc-rust's world.rs): a 2x2x2 room with a red left and green right wall, open at the front, a tall and a short block, lit by a point light; 16 hemisphere paths per pixel, 2 diffuse bounces",
+  "comment": "Book chapter 17 bonus, path tracing: rtc-rust's test_chap_17_path_tracing_putting_it_together Cornell box (cornell_box in rtc-rust's world.rs), with the five wall planes replaced by 0.02-thick boxes so the room is closed and can be orbited in --window. Inner faces are where rtc-rust's planes are: a 2x2x2 room with a red left and green right wall, open at the front, a tall and a short block, lit by a point light; 16 hemisphere paths per pixel, 2 diffuse bounces",
   "camera": {
-    "width": 150,
-    "height": 150,
+    "width": 3456,
+    "height": 2234,
     "field_of_view": 0.6806784082777885,
     "from": [
       0,
@@ -41,8 +41,24 @@
   },
   "shapes": [
     {
-      "type": "plane",
+      "type": "cube",
       "comment": "floor",
+      "transform": [
+        {
+          "scale": [
+            1.0,
+            0.01,
+            1.0
+          ]
+        },
+        {
+          "translate": [
+            0.0,
+            -0.01,
+            0.0
+          ]
+        }
+      ],
       "material": {
         "color": [
           0.73,
@@ -53,14 +69,21 @@
       }
     },
     {
-      "type": "plane",
+      "type": "cube",
       "comment": "ceiling",
       "transform": [
         {
+          "scale": [
+            1.0,
+            0.01,
+            1.0
+          ]
+        },
+        {
           "translate": [
-            0,
-            2,
-            0
+            0.0,
+            2.01,
+            0.0
           ]
         }
       ],
@@ -74,17 +97,21 @@
       }
     },
     {
-      "type": "plane",
+      "type": "cube",
       "comment": "back wall",
       "transform": [
         {
-          "rotate_x": 1.5707963267948966
+          "scale": [
+            1.02,
+            1.02,
+            0.01
+          ]
         },
         {
           "translate": [
-            0,
-            0,
-            1
+            0.0,
+            1.0,
+            1.01
           ]
         }
       ],
@@ -98,17 +125,21 @@
       }
     },
     {
-      "type": "plane",
+      "type": "cube",
       "comment": "left wall",
       "transform": [
         {
-          "rotate_z": 1.5707963267948966
+          "scale": [
+            0.01,
+            1.02,
+            1.0
+          ]
         },
         {
           "translate": [
-            -1,
-            0,
-            0
+            -1.01,
+            1.0,
+            0.0
           ]
         }
       ],
@@ -122,17 +153,21 @@
       }
     },
     {
-      "type": "plane",
+      "type": "cube",
       "comment": "right wall",
       "transform": [
         {
-          "rotate_z": 1.5707963267948966
+          "scale": [
+            0.01,
+            1.02,
+            1.0
+          ]
         },
         {
           "translate": [
-            1,
-            0,
-            0
+            1.01,
+            1.0,
+            0.0
           ]
         }
       ],

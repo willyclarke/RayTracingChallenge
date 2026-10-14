@@ -586,15 +586,15 @@ fn test_chap_17_path_tracing_without_bounces_gpu_render_matches_cpu() -> Result<
 
 #[test]
 fn test_chap_17_path_tracing_gpu_render_matches_cpu() -> Result<(), String> {
-    // Calibrated once (both traversals alike): mean abs error 3.894e-2,
-    // mean signed error 2.730e-4; thresholds 1.5x, rounded up to 2
-    // significant digits. The abs error is the two images' independent
-    // 16-path noise. Against a 256-sample CPU render a 64-path GPU render's
-    // signed error was <= 1.5e-4 per channel: no bias. 150x149, not 150x150:
+    // Calibrated once (both traversals alike), with box walls: mean abs
+    // error 4.187e-2, mean signed error 1.402e-4; thresholds 1.5x, rounded
+    // up to 2 significant digits. The abs error is the two images'
+    // independent 16-path noise. Against a 256-sample CPU render a 64-path
+    // GPU render's signed error was 1.693e-4: no bias. 150x149, not 150x150:
     // in a square image the room's edges run exactly through pixel centres
-    // on the diagonals, where f32 and f64 pick different planes at a tie.
-    const MAX_ABS: f64 = 5.9e-2;
-    const MAX_SIGNED: f64 = 4.1e-4;
+    // on the diagonals, where f32 and f64 pick different walls at a tie.
+    const MAX_ABS: f64 = 6.3e-2;
+    const MAX_SIGNED: f64 = 2.2e-4;
     let (world, camera) = scene_file(
         include_str!("../scenes/chapter17_path_tracing.json"),
         150,
@@ -638,11 +638,12 @@ fn test_chap_17_path_tracing_focal_blur_gpu_render_matches_cpu() -> Result<(), S
 
 #[test]
 fn test_chap_17_path_tracing_gpu_sampled_render_converges() -> Result<(), String> {
-    // Calibrated once: measured err_4 = 5.864e-2, err_256 = 1.812e-2;
-    // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. Most of
-    // err_256 is the CPU reference's own 64-path noise (its 16-path image
-    // is 3.9e-2 off the GPU's, and noise falls as 1/sqrt(paths)).
-    const THRESHOLD: f64 = 2.8e-2;
+    // Calibrated once, with box walls: measured err_4 = 6.325e-2,
+    // err_256 = 1.907e-2; THRESHOLD = 1.5x err_256, rounded up to 2
+    // significant digits. Most of err_256 is the CPU reference's own 64-path
+    // noise (its 16-path image is 4.2e-2 off the GPU's, and noise falls as
+    // 1/sqrt(paths)).
+    const THRESHOLD: f64 = 2.9e-2;
     // 64 CPU paths per pixel for a less noisy reference; sampled GPU frames
     // trace one path each whatever gi_samples is.
     let (mut world, camera) = scene_file(
