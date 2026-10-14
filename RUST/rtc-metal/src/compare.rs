@@ -359,8 +359,11 @@ fn test_chap_16_gpu_render_matches_cpu() -> Result<(), String> {
 #[test]
 fn test_chap_17_focal_blur_gpu_render_matches_cpu() -> Result<(), String> {
     // Every pixel averages 32 lens rays (rtc-rust's World::distributed).
-    let (world, camera) =
-        scene_file(include_str!("../scenes/chapter17_focal_blur.json"), 200, 125);
+    let (world, camera) = scene_file(
+        include_str!("../scenes/chapter17_focal_blur.json"),
+        200,
+        125,
+    );
     check_matches_cpu(&world, camera)
 }
 
@@ -429,8 +432,11 @@ fn test_chap_17_focal_blur_gpu_sampled_render_converges() -> Result<(), String> 
     // per pixel, the sampled frames integrate over the whole lens and pixel.
     // With pinhole frames (before the lens was sampled) err_256 was 1.502e-2.
     const THRESHOLD: f64 = 8.2e-3;
-    let (world, camera) =
-        scene_file(include_str!("../scenes/chapter17_focal_blur.json"), 200, 125);
+    let (world, camera) = scene_file(
+        include_str!("../scenes/chapter17_focal_blur.json"),
+        200,
+        125,
+    );
     let scene = GpuScene::from_world(&world, &camera)?;
     let cpu = world.render_parallel(camera);
     let w = scene.width();
@@ -506,6 +512,169 @@ fn test_chap_7_gpu_sampled_metal_matches_bvh() -> Result<(), String> {
     eprintln!("{off} of {} pixels differ by > 1e-3", images[0].len());
     if off * 1000 > images[0].len() {
         return Err(format!("{off} pixels differ by > 1e-3"));
+    }
+    Ok(())
+}
+
+/// The largest per-channel mean of `a - b`: a bias that independent noise in
+/// the two images averages away.
+fn mean_signed_error(a: &[[f32; 4]], b: impl Fn(usize) -> [f64; 3]) -> f64 {
+    let mut sums = [0.0f64; 3];
+    for (i, p) in a.iter().enumerate() {
+        let q = b(i);
+        for c in 0..3 {
+            sums[c] += p[c] as f64 - q[c];
+        }
+    }
+    sums.iter()
+        .fold(0.0, |m, s| f64::max(m, (s / a.len() as f64).abs()))
+}
+
+/// Path tracing (milestone 12): rtc-rust picks hemisphere directions by
+/// hashing the f64 hit point, which f32 can't reproduce, so the GPU's
+/// deterministic image is a different estimate of the same expected value.
+/// Compare on both traversals by mean absolute error (noise) and mean signed
+/// error (bias: a missing bounce, ambient left on, a wrong weight).
+/// `reference` is the CPU's world: `world` with more paths makes a less
+/// noisy reference, so a smaller bias shows.
+fn check_converges_to_cpu(
+    world: &World,
+    reference: &World,
+    camera: Camera,
+    max_abs: f64,
+    max_signed: f64,
+) -> Result<(), String> {
+    let mut scene = GpuScene::from_world(world, &camera)?;
+    let cpu = reference.render_parallel(camera);
+    let w = scene.width();
+    let cpu_at = |i: usize| {
+        let c = cpu.pixel_at(i % w, i / w);
+        [c.x, c.y, c.z]
+    };
+    let gpu = Gpu::new()?;
+    for (traversal, name) in [(TRAVERSAL_BVH, "bvh"), (TRAVERSAL_METAL, "metal")] {
+        scene.info.counts.traversal = traversal;
+        let start = std::time::Instant::now();
+        let pixels = gpu.render(&scene)?;
+        let gpu_secs = start.elapsed().as_secs_f64();
+        let abs = mean_abs_error(&pixels, cpu_at);
+        let signed = mean_signed_error(&pixels, cpu_at);
+        eprintln!(
+            "{name}: mean abs error {abs:.3e}, mean signed error {signed:.3e}; gpu {gpu_secs:.3} s"
+        );
+        if abs >= max_abs || signed >= max_signed {
+            return Err(format!(
+                "{name}: mean abs error {abs:.3e} (max {max_abs:.1e}), \
+                 mean signed error {signed:.3e} (max {max_signed:.1e})"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_chap_17_path_tracing_without_bounces_gpu_render_matches_cpu() -> Result<(), String> {
+    // Depth 0: ambient off, no indirect light, nothing random — pixel exact.
+    let (mut world, camera) = scene_file(
+        include_str!("../scenes/chapter17_path_tracing.json"),
+        150,
+        149,
+    );
+    world.set_path_tracing(4, 0);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_chap_17_path_tracing_gpu_render_matches_cpu() -> Result<(), String> {
+    // Calibrated once (both traversals alike), with box walls: mean abs
+    // error 4.187e-2, mean signed error 1.402e-4; thresholds 1.5x, rounded
+    // up to 2 significant digits. The abs error is the two images'
+    // independent 16-path noise. Against a 256-sample CPU render a 64-path
+    // GPU render's signed error was 1.693e-4: no bias. 150x149, not 150x150:
+    // in a square image the room's edges run exactly through pixel centres
+    // on the diagonals, where f32 and f64 pick different walls at a tie.
+    const MAX_ABS: f64 = 6.3e-2;
+    const MAX_SIGNED: f64 = 2.2e-4;
+    let (world, camera) = scene_file(
+        include_str!("../scenes/chapter17_path_tracing.json"),
+        150,
+        149,
+    );
+    check_converges_to_cpu(&world, &world, camera, MAX_ABS, MAX_SIGNED)
+}
+
+#[test]
+fn test_chap_17_path_tracing_reflection_gpu_render_matches_cpu() -> Result<(), String> {
+    // Mirrors and glass keep the path's diffuse bounces. Calibrated once
+    // (both traversals alike): mean abs error 4.914e-2, mean signed error
+    // 1.205e-3 against a 256-path CPU reference; thresholds 1.5x, rounded up
+    // to 2 significant digits. With depth 2 and that reference, resetting
+    // gi_depth on mirror rays measured signed 1.202e-2 and zeroing it fails
+    // too; at 4 paths, depth 1 and a 4-path reference a reset hid in noise.
+    const MAX_ABS: f64 = 7.4e-2;
+    const MAX_SIGNED: f64 = 1.9e-3;
+    let (mut world, camera) = scene_file(include_str!("../scenes/chapter11.json"), 100, 50);
+    let mut reference = scene_file(include_str!("../scenes/chapter11.json"), 100, 50).0;
+    world.set_path_tracing(32, 2);
+    reference.set_path_tracing(256, 2);
+    check_converges_to_cpu(&world, &reference, camera, MAX_ABS, MAX_SIGNED)
+}
+
+#[test]
+fn test_chap_17_path_tracing_focal_blur_gpu_render_matches_cpu() -> Result<(), String> {
+    // Every lens ray of every path-tracing frame gets its own path index.
+    // Calibrated once (both traversals alike): mean abs error 4.052e-3,
+    // mean signed error 8.678e-5; thresholds 1.5x, rounded up.
+    const MAX_ABS: f64 = 6.1e-3;
+    const MAX_SIGNED: f64 = 1.4e-4;
+    let (mut world, camera) = scene_file(
+        include_str!("../scenes/chapter17_focal_blur.json"),
+        160,
+        100,
+    );
+    world.set_path_tracing(2, 1);
+    check_converges_to_cpu(&world, &world, camera, MAX_ABS, MAX_SIGNED)
+}
+
+#[test]
+fn test_chap_17_path_tracing_gpu_sampled_render_converges() -> Result<(), String> {
+    // Calibrated once, with box walls: measured err_4 = 6.325e-2,
+    // err_256 = 1.907e-2; THRESHOLD = 1.5x err_256, rounded up to 2
+    // significant digits. Most of err_256 is the CPU reference's own 64-path
+    // noise (its 16-path image is 4.2e-2 off the GPU's, and noise falls as
+    // 1/sqrt(paths)).
+    const THRESHOLD: f64 = 2.9e-2;
+    // 64 CPU paths per pixel for a less noisy reference; sampled GPU frames
+    // trace one path each whatever gi_samples is.
+    let (mut world, camera) = scene_file(
+        include_str!("../scenes/chapter17_path_tracing.json"),
+        150,
+        149,
+    );
+    world.set_path_tracing(64, 2);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let cpu = world.render_parallel(camera);
+    let w = scene.width();
+    let cpu_at = |i: usize| {
+        let c = cpu.pixel_at(i % w, i / w);
+        [c.x, c.y, c.z]
+    };
+    let gpu = Gpu::new()?;
+    let mut acc = gpu.accumulator(&scene)?;
+    for _ in 0..4 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_4 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    for _ in 4..256 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_256 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    eprintln!("err_4 {err_4:.3e}, err_256 {err_256:.3e}");
+    if err_256 > 0.5 * err_4 {
+        return Err(format!("err_256 {err_256} not <= half of err_4 {err_4}"));
+    }
+    if err_256 >= THRESHOLD {
+        return Err(format!("err_256 {err_256} >= {THRESHOLD}"));
     }
     Ok(())
 }

@@ -70,28 +70,44 @@ impl Gpu {
     }
 
     /// Render `scene` with the `render` kernel: row-major RGBA pixels, one
-    /// GPU thread each.
+    /// GPU thread each. With path tracing, the mean of `gi_samples` frames
+    /// of one path each, every frame its own command buffer: one long
+    /// dispatch tracing all the paths trips macOS's GPU watchdog ("Impacting
+    /// Interactivity") on scenes with glass.
     pub fn render(&self, scene: &GpuScene) -> Result<Vec<[f32; 4]>, String> {
         let (width, height) = (scene.width(), scene.height());
         let pipeline = self.pipeline("render", metal_rt(scene))?;
         let pixels = self.output_buffer::<[f32; 4]>(width * height)?;
         let buffers = self.scene_buffers(scene)?;
-        self.submit(|encoder| {
-            encoder.setComputePipelineState(&pipeline);
-            // SAFETY: indices and types match the kernel's [[buffer(n)]]
-            // arguments; setBytes copies `info` before returning.
-            unsafe {
-                encoder.setBuffer_offset_atIndex(Some(&pixels), 0, 0);
-                encoder.setBytes_length_atIndex(
-                    NonNull::from(&scene.info).cast(),
-                    size_of_val(&scene.info),
-                    1,
-                );
+        let paths = scene.info.gi_samples.max(1);
+        for path in 0..paths {
+            let info = GpuSceneInfo {
+                frame: path,
+                ..scene.info
+            };
+            self.submit(|encoder| {
+                encoder.setComputePipelineState(&pipeline);
+                // SAFETY: indices and types match the kernel's [[buffer(n)]]
+                // arguments; setBytes copies `info` before returning.
+                unsafe {
+                    encoder.setBuffer_offset_atIndex(Some(&pixels), 0, 0);
+                    encoder.setBytes_length_atIndex(
+                        NonNull::from(&info).cast(),
+                        size_of_val(&info),
+                        1,
+                    );
+                }
+                buffers.bind_render(encoder);
+                dispatch_2d(encoder, &pipeline, width, height);
+            })?;
+        }
+        let mut out: Vec<[f32; 4]> = read(&pixels, width * height);
+        if paths > 1 {
+            for p in &mut out {
+                *p = p.map(|c| c / paths as f32);
             }
-            buffers.bind_render(encoder);
-            dispatch_2d(encoder, &pipeline, width, height);
-        })?;
-        Ok(read(&pixels, width * height))
+        }
+        Ok(out)
     }
 
     /// A progressive renderer for `scene`: its shapes and BVH are uploaded

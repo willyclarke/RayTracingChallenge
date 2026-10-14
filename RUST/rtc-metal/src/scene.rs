@@ -85,9 +85,6 @@ impl Tables {
 
 impl GpuScene {
     pub fn from_world(world: &World, camera: &Camera) -> Result<Self, String> {
-        if world.gi_samples > 0 {
-            return Err("path tracing is not supported so far".into());
-        }
         let light = world.light.as_ref().ok_or("scene has no light")?;
         let mut leaves = Vec::new();
         let mut csg = CsgLeaves::default();
@@ -143,6 +140,9 @@ impl GpuScene {
                 },
                 frame: 0,
                 sampling: 0,
+                gi_samples: world.gi_samples as u32,
+                gi_depth: world.gi_depth.max(0) as u32,
+                _pad: [0; 2],
             },
             shapes: bvh.shapes,
             nodes: bvh.nodes,
@@ -969,7 +969,10 @@ mod tests {
     fn gpu_camera_takes_focal_blur() {
         let camera = Camera::new(4, 2, PI / 2.0).with_focal_blur(0.25, 8.5, 32);
         let c = gpu_camera(&camera).unwrap();
-        assert_eq!((c.aperture, c.focal_distance, c.lens_samples), (0.25, 8.5, 32));
+        assert_eq!(
+            (c.aperture, c.focal_distance, c.lens_samples),
+            (0.25, 8.5, 32)
+        );
     }
 
     #[test]
@@ -989,6 +992,36 @@ mod tests {
     }
 
     #[test]
+    fn test_chap_17_path_tracing_settings() {
+        let scene = |settings: &str| {
+            let json = format!(
+                r#"{{
+                  "camera": {{ "width": 4, "height": 2, "field_of_view": 1.0,
+                              "from": [0, 0, -5], "to": [0, 0, 0], "up": [0, 1, 0] }},
+                  "light": {{ "type": "point", "position": [-10, 10, -10], "intensity": [1, 1, 1] }},
+                  "shapes": [ {{ "type": "sphere" }} ]{settings}
+                }}"#
+            );
+            let (world, camera) = rtc_rust::scene::SceneDescription::from_json(&json)
+                .unwrap()
+                .build(std::path::Path::new("."))
+                .unwrap();
+            let info = GpuScene::from_world(&world, &camera).unwrap().info;
+            (info.gi_samples, info.gi_depth)
+        };
+        assert_eq!(scene(""), (0, 0));
+        assert_eq!(
+            scene(r#", "settings": { "path_tracing": { "samples": 16, "depth": 2 } }"#),
+            (16, 2)
+        );
+        // rtc-rust treats depth <= 0 as no bounces.
+        assert_eq!(
+            scene(r#", "settings": { "path_tracing": { "samples": 4, "depth": -3 } }"#),
+            (4, 0)
+        );
+    }
+
+    #[test]
     fn json_focal_blur_reaches_the_gpu_camera() {
         let json = r#"{
           "camera": { "width": 4, "height": 2, "field_of_view": 1.0,
@@ -1002,7 +1035,10 @@ mod tests {
             .build(std::path::Path::new("."))
             .unwrap();
         let c = GpuScene::from_world(&world, &camera).unwrap().info.camera;
-        assert_eq!((c.aperture, c.focal_distance, c.lens_samples), (0.25, 8.5, 16));
+        assert_eq!(
+            (c.aperture, c.focal_distance, c.lens_samples),
+            (0.25, 8.5, 16)
+        );
     }
 
     #[test]
