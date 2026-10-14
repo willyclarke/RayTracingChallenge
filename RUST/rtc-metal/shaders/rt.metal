@@ -29,7 +29,10 @@ inline float random01(uint pixel, uint frame, uint dim) {
 // 2 + 6 * call + slot. Slots 0-2 are area light cell A (index, u, v) and
 // 3-5 cell B, so the two cells never share a random number. A lens (focal
 // blur) takes dims LENS_DIM and LENS_DIM + 1, far above any shading call's.
+// Path tracing's b-th diffuse bounce takes GI_DIM + 2b and GI_DIM + 2b + 1,
+// with the path index as the frame, between the two.
 constant uint LENS_DIM = 0x80000000u;
+constant uint GI_DIM = 0x40000000u;
 
 struct Sampler {
     uint pixel;
@@ -534,14 +537,15 @@ inline void add_light_sample(Material m, float4 light_point, float4 point, float
 
 // Mirrors rtc-rust's Light::lighting. `object_point` is `point` in the
 // shape's object space, for the pattern. `intensity` is the fraction of the
-// light reaching `point` (intensity_at): 0 in shadow. Deterministic
+// light reaching `point` (intensity_at): 0 in shadow. Path tracing passes
+// ambient_scale 0: the gathered indirect light replaces it. Deterministic
 // (s.on == 0): diffuse and specular averaged over every cell centre, as
 // rtc-rust does; sampled: one random point in one random cell (cell B).
 inline float3 lighting(Material m, Light light, float4 point, float4 object_point,
-                       float4 eyev, float4 normalv, float intensity,
+                       float4 eyev, float4 normalv, float intensity, float ambient_scale,
                        thread const Sampler &s, device const uint *tables) {
     float3 effective_color = pattern_at(m, object_point, tables) * light.intensity.rgb;
-    float3 ambient = effective_color * m.ambient;
+    float3 ambient = effective_color * m.ambient * ambient_scale;
     if (intensity <= 0.0) {
         return ambient;
     }
@@ -1210,25 +1214,37 @@ inline float2 refractive_indices(Ray r, Hit hit, device const Shape *shapes,
 constant int MAX_DEPTH = 10;
 
 // A ray still to be traced, and how much its color counts in the pixel.
+// gi_depth: diffuse bounces the path may still take; bounce: how many it
+// has taken, which picks its random numbers.
 struct PendingRay {
     Ray ray;
     float3 weight;
     int remaining;
+    int gi_depth;
+    uint bounce;
 };
 
 // rtc-rust's recursive color_at / shade_hit / reflected_color /
 // refracted_color, as a loop: MSL has no recursion. The pixel is a sum over
 // the tree of rays, each hit adding weight * its surface color, so pending
-// rays go on a stack with their weights. A ray pushes at most two children
-// and only while remaining > 0, so the stack never holds more than
-// MAX_DEPTH + 1 rays (one pending sibling per level, plus the current one).
+// rays go on a stack with their weights. A ray pushes at most three
+// children (refracted, reflected, diffuse bounce) and only while
+// remaining > 0, so the stack never holds more than 2 * MAX_DEPTH + 1 rays
+// (two pending siblings per level, plus the current one).
 // Each shaded hit advances sampler.call, so it draws its own random numbers.
+//
+// Path tracing (chapter 17) traces one unbranched path: where rtc-rust's
+// first diffuse hit gathers gi_samples hemisphere rays, a hit here pushes one
+// cosine-weighted bounce with weight albedo, and render() averages
+// gi_samples paths. `path` picks the bounce's random numbers.
 inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const Shape *shapes,
                        device const BvhNode *nodes, device const uint *tables, RtScene rt,
-                       thread Sampler &sampler) {
-    PendingRay stack[MAX_DEPTH + 1];
+                       thread Sampler &sampler, uint path) {
+    PendingRay stack[2 * MAX_DEPTH + 1];
     int top = 0;
-    stack[top++] = PendingRay{camera_ray, float3(1.0), MAX_DEPTH};
+    bool tracing = scene.gi_samples > 0;
+    stack[top++] = PendingRay{camera_ray, float3(1.0), MAX_DEPTH,
+                              tracing ? int(scene.gi_depth) : 0, 0};
     float3 color = float3(0.0);
     while (top > 0) {
         PendingRay p = stack[--top];
@@ -1255,7 +1271,7 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
         float4 object_point = s.inverse * over_point;
         color += p.weight
                  * lighting(m, scene.light, over_point, object_point, eyev, normalv, intensity,
-                            sampler, tables);
+                            tracing ? 0.0 : 1.0, sampler, tables);
         sampler.call++;
 
         if (p.remaining <= 0) {
@@ -1279,12 +1295,21 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
                 float4 direction = normalv * (n_ratio * cos_i - cos_t) - eyev * n_ratio;
                 float4 under_point = point - normalv * EPSILON;
                 stack[top++] = PendingRay{Ray{under_point, direction}, p.weight * refracted,
-                                          p.remaining - 1};
+                                          p.remaining - 1, p.gi_depth, p.bounce};
             }
         }
         if (m.reflective > 0.0) {
             Ray reflect_ray = Ray{over_point, reflect(p.ray.direction, normalv)};
-            stack[top++] = PendingRay{reflect_ray, p.weight * reflected, p.remaining - 1};
+            stack[top++] = PendingRay{reflect_ray, p.weight * reflected, p.remaining - 1,
+                                      p.gi_depth, p.bounce};
+        }
+        if (p.gi_depth > 0 && m.diffuse != 0.0) {
+            uint dim = GI_DIM + 2 * p.bounce;
+            float4 direction = cosine_direction(normalv, random01(sampler.pixel, path, dim),
+                                                random01(sampler.pixel, path, dim + 1));
+            float3 albedo = pattern_at(m, object_point, tables) * m.diffuse;
+            stack[top++] = PendingRay{Ray{over_point, direction}, p.weight * albedo,
+                                      p.remaining - 1, p.gi_depth - 1, p.bounce + 1};
         }
     }
     return color;

@@ -75,19 +75,22 @@ value; tests compare them statistically.
   bounces is the CPU's mean of `gi_samples` bounces. A mirror seen first
   then a diffuse hit also matches, because the CPU keeps branching
   `gi_samples` there too.
-- **The deterministic kernel loops paths like it loops lens samples.**
-  `n = lens_n · gi_n` iterations, with `lens_n = lens_samples` when there is
-  a lens (else 1) and `gi_n = gi_samples` when path tracing is on (else 1).
-  Iteration `i` uses lens sample `i / gi_n` and path index `i`. Without
-  path tracing `n` is unchanged, so every existing deterministic image is
-  bit-identical. `color_at` keeps **one call site** (milestone 11's open
-  debt).
+- **A deterministic path-traced render is `gi_samples` frames,** one path
+  per pixel each, every frame its own command buffer; `Gpu::render` adds
+  them and divides. (Amended during implementation: the first version
+  looped all paths inside one dispatch, as for lens samples, and the
+  chapter 11 glass scene's long kernel tripped macOS's GPU watchdog,
+  "Impacting Interactivity", killing other tests' command buffers too.)
+  Without path tracing it stays one frame, so every existing deterministic
+  image is bit-identical. `color_at` keeps **one call site** (milestone
+  11's open debt).
 - **Sampled mode traces one path per frame**; frames do the averaging and
   `gi_samples` only switches the feature on.
 - **Hemisphere numbers come from a new `random01` range,**
   `GI_DIM = 0x4000_0000`: the `b`-th diffuse bounce of a path draws
-  `random01(pixel, path, GI_DIM + 2b)` and `GI_DIM + 2b + 1`, where `path`
-  is the frame in sampled mode and `i` in deterministic mode. That range is
+  `random01(pixel, path, GI_DIM + 2b)` and `GI_DIM + 2b + 1`, where
+  `path = frame · n + i` for lens ray `i` of the frame's `n` (so each lens
+  ray of a focal-blur frame bounces its own way). That range is
   far above the light sampler's `2 + 6·call + slot` and below `LENS_DIM`, so
   every existing sampled sequence is untouched.
 - **`cosine_direction` is ported exactly** (same basis choice, same
@@ -140,8 +143,8 @@ depth becomes 0).
   `p.weight · pattern_at(...) · m.diffuse`, `remaining - 1`,
   `gi_depth - 1`, `bounce + 1`. Reflected and refracted rays copy
   `gi_depth` and `bounce`.
-- `render` computes `n = lens_n · gi_n` and passes `i` (deterministic) or
-  `scene.frame` (sampled) as the path index.
+- `render` passes `scene.frame · n + i` as the path index; frame 0
+  overwrites `pixels`, later frames add to it, in both modes.
 
 ## Scenes
 

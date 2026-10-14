@@ -2,9 +2,11 @@
 // One thread per pixel: camera ray -> color_at -> row-major RGBA output.
 // scene.sampling == 0: rtc-rust's image, one ray through each pixel centre,
 // written to `pixels`; with a lens (focal blur) each pixel averages
-// rtc-rust's lens_samples rays instead. scene.sampling == 1: a random point in the pixel and
-// random light samples, added into `pixels` as an accumulation buffer
-// (frame 0 overwrites it); resolve_* divide by the frame count.
+// rtc-rust's lens_samples rays instead; with path tracing, Gpu::render adds
+// gi_samples such frames, one path each. scene.sampling == 1: a random point
+// in the pixel and random light samples, added into `pixels` as an
+// accumulation buffer; resolve_* divide by the frame count. Frame 0
+// overwrites `pixels` in both modes.
 kernel void render(device float4 *pixels          [[buffer(0)]],
                    constant SceneInfo &scene      [[buffer(1)]],
                    device const Shape *shapes     [[buffer(2)]],
@@ -52,10 +54,13 @@ kernel void render(device float4 *pixels          [[buffer(0)]],
                              random01(pixel, s.frame, 1),
                              r_lens * cos(theta), r_lens * sin(theta));
         }
-        sum += color_at(r, scene, shapes, nodes, tables, rt, s);
+        // Every ray gets its own path index: Gpu::render traces a
+        // deterministic path-traced image as gi_samples frames, and each of
+        // a frame's lens rays needs its own bounce directions.
+        sum += color_at(r, scene, shapes, nodes, tables, rt, s, s.frame * n + i);
     }
     float4 color = float4(sum / float(n), 1.0);
-    pixels[pixel] = (s.on == 0 || s.frame == 0) ? color : pixels[pixel] + color;
+    pixels[pixel] = s.frame == 0 ? color : pixels[pixel] + color;
 }
 
 // size_frames = (width, height, frames accumulated); frames > 0.

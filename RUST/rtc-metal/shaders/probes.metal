@@ -80,7 +80,7 @@ kernel void probe_lighting(device const LightingProbe *in [[buffer(0)]],
     LightingProbe p = in[i];
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
     out[i] = float4(lighting(p.material, p.light, p.point, p.object_point, p.eyev, p.normalv,
-                             p.intensity, s, nullptr),
+                             p.intensity, 1.0, s, nullptr),
                     0.0);
 }
 
@@ -164,7 +164,7 @@ kernel void probe_shade_point(device const ShadeProbe *in    [[buffer(0)]],
     Sampler s = Sampler{p.pixel, p.frame, p.sampling, 0};
     float intensity = intensity_at(p.light, p.point, p.normalv, shapes, nodes, tables, rt, counts, s);
     out[i] = float4(lighting(p.material, p.light, p.point, p.point, p.eyev, p.normalv,
-                             intensity, s, tables),
+                             intensity, 1.0, s, tables),
                     0.0);
 }
 
