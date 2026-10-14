@@ -1303,11 +1303,14 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
             stack[top++] = PendingRay{reflect_ray, p.weight * reflected, p.remaining - 1,
                                       p.gi_depth, p.bounce};
         }
-        if (p.gi_depth > 0 && m.diffuse != 0.0) {
+        float3 albedo = pattern_at(m, object_point, tables) * m.diffuse;
+        // A black surface (chapter 11's glass) gathers nothing: skipping its
+        // bounce changes no pixel, and its subtree of glass rays would
+        // keep a GPU lane busy long enough to trip the watchdog.
+        if (p.gi_depth > 0 && any(albedo != 0.0)) {
             uint dim = GI_DIM + 2 * p.bounce;
             float4 direction = cosine_direction(normalv, random01(sampler.pixel, path, dim),
                                                 random01(sampler.pixel, path, dim + 1));
-            float3 albedo = pattern_at(m, object_point, tables) * m.diffuse;
             stack[top++] = PendingRay{Ray{over_point, direction}, p.weight * albedo,
                                       p.remaining - 1, p.gi_depth - 1, p.bounce + 1};
         }
