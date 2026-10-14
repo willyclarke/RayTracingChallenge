@@ -629,3 +629,45 @@ fn test_chap_17_path_tracing_focal_blur_gpu_render_matches_cpu() -> Result<(), S
     world.set_path_tracing(2, 1);
     check_converges_to_cpu(&world, camera, MAX_ABS, MAX_SIGNED)
 }
+
+#[test]
+fn test_chap_17_path_tracing_gpu_sampled_render_converges() -> Result<(), String> {
+    // Calibrated once: measured err_4 = 5.864e-2, err_256 = 1.812e-2;
+    // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. Most of
+    // err_256 is the CPU reference's own 64-path noise (its 16-path image
+    // is 3.9e-2 off the GPU's, and noise falls as 1/sqrt(paths)).
+    const THRESHOLD: f64 = 2.8e-2;
+    // 64 CPU paths per pixel for a less noisy reference; sampled GPU frames
+    // trace one path each whatever gi_samples is.
+    let (mut world, camera) = scene_file(
+        include_str!("../scenes/chapter17_path_tracing.json"),
+        150,
+        149,
+    );
+    world.set_path_tracing(64, 2);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let cpu = world.render_parallel(camera);
+    let w = scene.width();
+    let cpu_at = |i: usize| {
+        let c = cpu.pixel_at(i % w, i / w);
+        [c.x, c.y, c.z]
+    };
+    let gpu = Gpu::new()?;
+    let mut acc = gpu.accumulator(&scene)?;
+    for _ in 0..4 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_4 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    for _ in 4..256 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_256 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    eprintln!("err_4 {err_4:.3e}, err_256 {err_256:.3e}");
+    if err_256 > 0.5 * err_4 {
+        return Err(format!("err_256 {err_256} not <= half of err_4 {err_4}"));
+    }
+    if err_256 >= THRESHOLD {
+        return Err(format!("err_256 {err_256} >= {THRESHOLD}"));
+    }
+    Ok(())
+}
