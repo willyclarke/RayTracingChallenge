@@ -566,6 +566,23 @@ inline float3 lighting(Material m, Light light, float4 point, float4 object_poin
                       + light.intensity.rgb * m.specular * specular) * intensity;
 }
 
+// ---- Chapter 17: path tracing ---------------------------------------------
+
+// rtc-rust's cosine_direction: a direction in the hemisphere around the unit
+// `normal`, more likely near it in proportion to the cosine, from two
+// uniform numbers in [0, 1). r2 = 0 yields the normal itself.
+inline float4 cosine_direction(float4 normal, float r1, float r2) {
+    float3 n = normal.xyz;
+    float3 axis = fabs(n.x) > 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    float3 tangent = normalize(cross(n, axis));
+    float3 bitangent = cross(n, tangent);
+    float phi = 2.0 * M_PI_F * r1;
+    float r = sqrt(r2);
+    return float4(normalize(tangent * (r * cos(phi)) + bitangent * (r * sin(phi))
+                            + n * sqrt(1.0 - r2)),
+                  0.0);
+}
+
 // ---- Chapter 7: camera and world ------------------------------------------
 
 struct Camera {

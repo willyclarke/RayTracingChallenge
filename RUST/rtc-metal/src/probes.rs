@@ -350,20 +350,84 @@ fn test_chap_17_gpu_lens_sample() -> Result<(), String> {
     ];
     let input: Vec<LensProbe> = cases
         .iter()
-        .map(|&(x, y, i, n)| LensProbe { pixel: [x, y], i, n })
+        .map(|&(x, y, i, n)| LensProbe {
+            pixel: [x, y],
+            i,
+            n,
+        })
         .collect();
 
     let out: Vec<Float4> = Gpu::new()?.run("probe_lens_sample", &input)?;
 
     for (&(x, y, i, n), got) in cases.iter().zip(&out) {
-        let (lx, ly, dx, dy, _) = Camera::lens_sample(x as usize, y as usize, i as usize, n as usize);
+        let (lx, ly, dx, dy, _) =
+            Camera::lens_sample(x as usize, y as usize, i as usize, n as usize);
         let what = format!("lens_sample({x}, {y}, {i}, {n})");
         check_close(got[0], lx, &format!("{what} lx"))?;
         check_close(got[1], ly, &format!("{what} ly"))?;
         // The jitter is a hash value / 2^24, exact in f32: equality proves
         // the GPU's 64-bit hash is rtc-rust's.
         if [got[2], got[3]] != [dx as f32, dy as f32] {
-            return Err(format!("{what} jitter: gpu {:?} vs cpu {:?}", [got[2], got[3]], [dx, dy]));
+            return Err(format!(
+                "{what} jitter: gpu {:?} vs cpu {:?}",
+                [got[2], got[3]],
+                [dx, dy]
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Input to `probe_cosine_direction`: rtc-rust's `cosine_direction`
+/// arguments.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CosineProbe {
+    normal: Float4,
+    r: [f32; 2],
+    _pad: [u32; 2],
+}
+const _: () = assert!(size_of::<CosineProbe>() == 32);
+
+#[test]
+fn test_chap_17_gpu_cosine_direction() -> Result<(), String> {
+    // (-0.95, 0.312, 0) has |x| > 0.9, so the basis starts from y, not x.
+    let normals = [
+        Tuple::vector(0.0, 1.0, 0.0),
+        Tuple::vector(1.0, 0.0, 0.0),
+        Tuple::vector(-0.95, 0.312, 0.0).normalize(),
+        Tuple::vector(0.0, 0.0, -1.0),
+        Tuple::vector(1.0, 2.0, 3.0).normalize(),
+    ];
+    let rs: [(f32, f32); 5] = [
+        (0.0, 0.0),
+        (0.3, 0.7),
+        (0.99, 0.01),
+        (0.5, 0.999),
+        (0.123, 0.456),
+    ];
+    let cases: Vec<(Tuple, f32, f32)> = normals
+        .iter()
+        .flat_map(|&n| rs.iter().map(move |&(r1, r2)| (n, r1, r2)))
+        .collect();
+    let input: Vec<CosineProbe> = cases
+        .iter()
+        .map(|&(n, r1, r2)| CosineProbe {
+            normal: float4(n),
+            r: [r1, r2],
+            _pad: [0; 2],
+        })
+        .collect();
+
+    let out: Vec<Float4> = Gpu::new()?.run("probe_cosine_direction", &input)?;
+
+    for (&(n, r1, r2), got) in cases.iter().zip(&out) {
+        let cpu = rtc_rust::world::cosine_direction(n, r1 as f64, r2 as f64);
+        let what = format!("cosine_direction({n:?}, {r1}, {r2})");
+        check_tuple(*got, cpu, &what)?;
+        let dot = got[0] * n.x as f32 + got[1] * n.y as f32 + got[2] * n.z as f32;
+        if dot < -1e-6 {
+            return Err(format!("{what}: below the surface, dot {dot}"));
         }
     }
     Ok(())
@@ -394,7 +458,11 @@ fn test_chap_17_gpu_ray_for_lens() -> Result<(), String> {
     let lens = pinhole.with_focal_blur(0.25, 8.616989, 32);
     let mut cases = vec![];
     for (x, y) in [(200, 125), (0, 0), (399, 249)] {
-        for offsets in [[0.5, 0.5, 0.0, 0.0], [0.3, 0.6, 0.7, -0.2], [0.9, 0.1, -0.5, 0.5]] {
+        for offsets in [
+            [0.5, 0.5, 0.0, 0.0],
+            [0.3, 0.6, 0.7, -0.2],
+            [0.9, 0.1, -0.5, 0.5],
+        ] {
             cases.push((&lens, x, y, offsets));
         }
     }
@@ -415,7 +483,11 @@ fn test_chap_17_gpu_ray_for_lens() -> Result<(), String> {
     for (i, ((camera, x, y, [dx, dy, lx, ly]), got)) in cases.iter().zip(&out).enumerate() {
         let want = camera.ray_for_lens(*x, *y, *dx, *dy, *lx, *ly);
         check_tuple(got.origin, want.origin, &format!("case {i} origin"))?;
-        check_tuple(got.direction, want.direction, &format!("case {i} direction"))?;
+        check_tuple(
+            got.direction,
+            want.direction,
+            &format!("case {i} direction"),
+        )?;
     }
     Ok(())
 }

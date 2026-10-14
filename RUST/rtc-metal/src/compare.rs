@@ -359,8 +359,11 @@ fn test_chap_16_gpu_render_matches_cpu() -> Result<(), String> {
 #[test]
 fn test_chap_17_focal_blur_gpu_render_matches_cpu() -> Result<(), String> {
     // Every pixel averages 32 lens rays (rtc-rust's World::distributed).
-    let (world, camera) =
-        scene_file(include_str!("../scenes/chapter17_focal_blur.json"), 200, 125);
+    let (world, camera) = scene_file(
+        include_str!("../scenes/chapter17_focal_blur.json"),
+        200,
+        125,
+    );
     check_matches_cpu(&world, camera)
 }
 
@@ -429,8 +432,11 @@ fn test_chap_17_focal_blur_gpu_sampled_render_converges() -> Result<(), String> 
     // per pixel, the sampled frames integrate over the whole lens and pixel.
     // With pinhole frames (before the lens was sampled) err_256 was 1.502e-2.
     const THRESHOLD: f64 = 8.2e-3;
-    let (world, camera) =
-        scene_file(include_str!("../scenes/chapter17_focal_blur.json"), 200, 125);
+    let (world, camera) = scene_file(
+        include_str!("../scenes/chapter17_focal_blur.json"),
+        200,
+        125,
+    );
     let scene = GpuScene::from_world(&world, &camera)?;
     let cpu = world.render_parallel(camera);
     let w = scene.width();

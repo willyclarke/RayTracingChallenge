@@ -969,7 +969,10 @@ mod tests {
     fn gpu_camera_takes_focal_blur() {
         let camera = Camera::new(4, 2, PI / 2.0).with_focal_blur(0.25, 8.5, 32);
         let c = gpu_camera(&camera).unwrap();
-        assert_eq!((c.aperture, c.focal_distance, c.lens_samples), (0.25, 8.5, 32));
+        assert_eq!(
+            (c.aperture, c.focal_distance, c.lens_samples),
+            (0.25, 8.5, 32)
+        );
     }
 
     #[test]
@@ -1032,7 +1035,10 @@ mod tests {
             .build(std::path::Path::new("."))
             .unwrap();
         let c = GpuScene::from_world(&world, &camera).unwrap().info.camera;
-        assert_eq!((c.aperture, c.focal_distance, c.lens_samples), (0.25, 8.5, 16));
+        assert_eq!(
+            (c.aperture, c.focal_distance, c.lens_samples),
+            (0.25, 8.5, 16)
+        );
     }
 
     #[test]

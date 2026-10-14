@@ -210,6 +210,20 @@ kernel void probe_lens_sample(device const LensProbe *in [[buffer(0)]],
     out[i] = lens_sample(in[i].pixel.x, in[i].pixel.y, in[i].i, in[i].n);
 }
 
+struct CosineProbe {
+    float4 normal;
+    float2 r;
+    uint2 pad;
+};
+static_assert(sizeof(CosineProbe) == 32, "CosineProbe must match probes.rs");
+
+kernel void probe_cosine_direction(device const CosineProbe *in [[buffer(0)]],
+                                   device float4 *out           [[buffer(1)]],
+                                   uint i                       [[thread_position_in_grid]])
+{
+    out[i] = cosine_direction(in[i].normal, in[i].r.x, in[i].r.y);
+}
+
 struct RefractiveProbe {
     Ray ray;
     uint hit_index;
