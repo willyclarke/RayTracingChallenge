@@ -535,14 +535,17 @@ fn mean_signed_error(a: &[[f32; 4]], b: impl Fn(usize) -> [f64; 3]) -> f64 {
 /// deterministic image is a different estimate of the same expected value.
 /// Compare on both traversals by mean absolute error (noise) and mean signed
 /// error (bias: a missing bounce, ambient left on, a wrong weight).
+/// `reference` is the CPU's world: `world` with more paths makes a less
+/// noisy reference, so a smaller bias shows.
 fn check_converges_to_cpu(
     world: &World,
+    reference: &World,
     camera: Camera,
     max_abs: f64,
     max_signed: f64,
 ) -> Result<(), String> {
     let mut scene = GpuScene::from_world(world, &camera)?;
-    let cpu = world.render_parallel(camera);
+    let cpu = reference.render_parallel(camera);
     let w = scene.width();
     let cpu_at = |i: usize| {
         let c = cpu.pixel_at(i % w, i / w);
@@ -597,21 +600,24 @@ fn test_chap_17_path_tracing_gpu_render_matches_cpu() -> Result<(), String> {
         150,
         149,
     );
-    check_converges_to_cpu(&world, camera, MAX_ABS, MAX_SIGNED)
+    check_converges_to_cpu(&world, &world, camera, MAX_ABS, MAX_SIGNED)
 }
 
 #[test]
 fn test_chap_17_path_tracing_reflection_gpu_render_matches_cpu() -> Result<(), String> {
-    // Mirrors and glass keep the path's diffuse bounces.
-    // Calibrated once (both traversals alike): mean abs error 1.225e-1,
-    // mean signed error 4.202e-3, thresholds 1.5x rounded up. Both are 4-path
-    // noise: a 64-path GPU render against a 512-sample CPU one had signed
-    // error <= 1.4e-4 per channel.
-    const MAX_ABS: f64 = 0.19;
-    const MAX_SIGNED: f64 = 6.4e-3;
+    // Mirrors and glass keep the path's diffuse bounces. Calibrated once
+    // (both traversals alike): mean abs error 4.914e-2, mean signed error
+    // 1.205e-3 against a 256-path CPU reference; thresholds 1.5x, rounded up
+    // to 2 significant digits. With depth 2 and that reference, resetting
+    // gi_depth on mirror rays measured signed 1.202e-2 and zeroing it fails
+    // too; at 4 paths, depth 1 and a 4-path reference a reset hid in noise.
+    const MAX_ABS: f64 = 7.4e-2;
+    const MAX_SIGNED: f64 = 1.9e-3;
     let (mut world, camera) = scene_file(include_str!("../scenes/chapter11.json"), 100, 50);
-    world.set_path_tracing(4, 1);
-    check_converges_to_cpu(&world, camera, MAX_ABS, MAX_SIGNED)
+    let mut reference = scene_file(include_str!("../scenes/chapter11.json"), 100, 50).0;
+    world.set_path_tracing(32, 2);
+    reference.set_path_tracing(256, 2);
+    check_converges_to_cpu(&world, &reference, camera, MAX_ABS, MAX_SIGNED)
 }
 
 #[test]
@@ -627,7 +633,7 @@ fn test_chap_17_path_tracing_focal_blur_gpu_render_matches_cpu() -> Result<(), S
         100,
     );
     world.set_path_tracing(2, 1);
-    check_converges_to_cpu(&world, camera, MAX_ABS, MAX_SIGNED)
+    check_converges_to_cpu(&world, &world, camera, MAX_ABS, MAX_SIGNED)
 }
 
 #[test]
