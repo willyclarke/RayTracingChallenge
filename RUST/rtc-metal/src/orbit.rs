@@ -8,6 +8,7 @@ use rtc_rust::world::view_transform;
 /// `to`, pitch is the elevation above the xz-plane through `to`. The scene's
 /// `up` is only passed on to `view_transform`, so a tilted `up` (e.g.
 /// rtc-rust/scenes/cover.json's (-0.45, 1, 0)) is kept as a camera roll.
+#[derive(Clone)]
 pub struct Orbit {
     to: Tuple,
     up: Tuple,
@@ -161,5 +162,18 @@ mod tests {
         let zoomed = (o.from() - to).magnitude();
         assert!(zoomed.is_finite());
         assert!(zoomed <= 1e3 * radius * (1.0 + 1e-12));
+    }
+
+    #[test]
+    fn a_copy_keeps_the_starting_view() {
+        let (from, to) = (p(-3.0, 1.0, 2.5), p(0.0, 0.5, 0.0));
+        let mut o = Orbit::new(from, to, up());
+        let home = o.clone();
+        o.drag(40.0, -25.0);
+        o.zoom(3.0);
+        assert!(!o.from().approx_eq(from));
+        assert!(home.from().approx_eq(from));
+        assert_eq!(home.radius(), (from - to).magnitude());
+        assert!(home.transform().approx_eq(view_transform(from, to, up())));
     }
 }

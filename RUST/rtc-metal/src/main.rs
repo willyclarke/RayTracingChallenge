@@ -8,7 +8,8 @@
 //! frames (random light samples, jittered pixels) instead of rendering
 //! rtc-rust's deterministic image. `--window` shows the sampled frames
 //! refining live (default 256, or `--samples N`); drag to orbit the camera,
-//! scroll to zoom, and the image is written on quit. `--traversal metal`
+//! scroll to zoom, space to return to the scene's view, and the image is
+//! written on quit. `--traversal metal`
 //! searches the bounded shapes with Metal's ray tracing API instead of the
 //! BVH walk (milestone 10).
 
@@ -180,7 +181,7 @@ fn usage() -> ! {
     );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
-        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms, quit writes the image"
+        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view, quit writes the image"
     );
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
     eprintln!("  the scene's antialias.n is ignored on the GPU");
