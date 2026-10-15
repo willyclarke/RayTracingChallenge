@@ -853,7 +853,7 @@ fn test_chap_11_gpu_refractive_indices() -> Result<(), String> {
     // along z) overlapping, so the ray crosses six boundaries. The real
     // geometry puts them at the book's t = 2, 2.75, 3.25, 4.75, 5.25, 6.
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
@@ -974,7 +974,7 @@ fn test_chap_13_gpu_cone_far_origin_no_acne() -> Result<(), String> {
     (desc.camera.width, desc.camera.height) = (400, 200);
     let (world, camera) = desc.build(std::path::Path::new(".")).unwrap();
     let scene = GpuScene::from_world(&world, &camera)?;
-    let light = world.light.as_ref().unwrap().position;
+    let light = world.lights[0].position;
     let pixels: Vec<(usize, usize)> = (190..205)
         .flat_map(|x| (78..90).map(move |y| (x, y)))
         .collect();
@@ -1178,7 +1178,7 @@ fn marble_sphere(seed: u64) -> Sphere {
 /// A world of marble spheres, one per seed, with a light so it uploads.
 fn marble_world(seeds: &[u64]) -> World {
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
@@ -1587,7 +1587,7 @@ fn test_chap_15_gpu_trace_through_bvh() -> Result<(), String> {
     // reorders a hit (book chapter 15).
     let mut world = World::new();
     let light = Tuple::point(-10.0, 10.0, -10.0);
-    world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+    world.set_light(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
     let mut floor = Plane::new();
     floor.set_transform(Matrix4::translation(0.0, -2.0, 0.0));
     let floor = world.add_shape(Box::new(floor));
@@ -1659,7 +1659,7 @@ fn test_chap_15_gpu_bvh_shared_edge_has_no_crack() -> Result<(), String> {
     // quad's leaf likely holds a sphere too, so its box is larger; on-face
     // cases are covered by test_chap_15_gpu_intersect_box.
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
@@ -1692,7 +1692,7 @@ fn test_chap_15_gpu_bvh_shared_edge_has_no_crack() -> Result<(), String> {
             ray((s, 1.0, s), (0.0, -1.0, 0.0))
         })
         .collect();
-    let light = world.light.as_ref().unwrap().position;
+    let light = world.lights[0].position;
 
     let out: Vec<TraceResult> =
         Gpu::new()?.run_with_scene("probe_trace", &trace_probes(&rays, light), &scene)?;
@@ -1713,7 +1713,7 @@ fn test_chap_15_gpu_bvh_matches_linear() -> Result<(), String> {
     // shadow that testing every shape linearly finds.
     let (world, camera) = crate::compare::chapter_14_scene(40, 25);
     let scene = GpuScene::from_world(&world, &camera)?;
-    let light = world.light.as_ref().unwrap().position;
+    let light = world.lights[0].position;
     let rays: Vec<Ray> = (0..25)
         .flat_map(|y| (0..40).map(move |x| (x, y)))
         .map(|(x, y)| camera.ray_for_pixel(x, y))
@@ -2405,7 +2405,7 @@ fn trace_on(
 /// may land on either neighbour; at most 1 in 1000 rays), same t to f32
 /// precision.
 fn traces_agree(world: &World, camera: &Camera) -> Result<(), String> {
-    let light = world.light.as_ref().ok_or("no light")?.position;
+    let light = world.lights.first().ok_or("no light")?.position;
     let mut scene = GpuScene::from_world(world, camera)?;
     let (w, h) = (scene.width(), scene.height());
     let rays: Vec<Ray> = (0..h)
@@ -2472,7 +2472,7 @@ fn test_chap_13_metal_traversal_matches_bvh() -> Result<(), String> {
 fn test_chap_9_metal_traversal_planes_only() -> Result<(), String> {
     // No acceleration structure content: both queries are skipped.
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
@@ -2504,7 +2504,7 @@ fn test_chap_8_metal_shadow_occluders() -> Result<(), String> {
     ));
     for (occluder, want) in [(sphere_at(5.0), 1), (triangle, 1), (sphere_at(12.0), 0)] {
         let mut world = World::new();
-        world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+        world.set_light(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
         let floor = world.add_shape(Box::new(Plane::new()));
         world.add_shape(occluder);
         world.build_bounds();
@@ -2523,7 +2523,7 @@ fn test_chap_15_metal_nearer_triangle_wins() -> Result<(), String> {
     // The sphere's box is a candidate, but its root lies beyond the triangle.
     let mut world = World::new();
     let light = Tuple::point(-10.0, 10.0, -10.0);
-    world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+    world.set_light(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
     world.add_shape(Box::new(Sphere::new()));
     let t = world.add_shape(Box::new(Triangle::new(
         Tuple::point(-1.0, -1.0, -2.0),
@@ -2545,7 +2545,7 @@ fn test_chap_11_metal_ray_from_inside_sphere() -> Result<(), String> {
     // The ray starts inside the sphere's box: the exit root still counts.
     let mut world = World::new();
     let light = Tuple::point(-10.0, 10.0, -10.0);
-    world.light = Some(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
+    world.set_light(Light::point_light(light, Tuple::color(1.0, 1.0, 1.0)));
     world.add_shape(Box::new(Sphere::new()));
     world.build_bounds();
     let mut scene = GpuScene::from_world(&world, &Camera::default())?;

@@ -85,7 +85,7 @@ impl Tables {
 
 impl GpuScene {
     pub fn from_world(world: &World, camera: &Camera) -> Result<Self, String> {
-        let light = world.light.as_ref().ok_or("scene has no light")?;
+        let light = world.lights.first().ok_or("scene has no light")?;
         let mut leaves = Vec::new();
         let mut csg = CsgLeaves::default();
         let mut tables = Tables::default();
@@ -559,7 +559,7 @@ mod tests {
     #[test]
     fn unsupported_shapes_are_rejected() {
         let mut world = World::new();
-        world.light = Some(Light::point_light(
+        world.set_light(Light::point_light(
             Tuple::point(0.0, 0.0, 0.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));
@@ -579,7 +579,7 @@ mod tests {
         assert!(err.is_some_and(|e| e.contains("use GpuScene")));
 
         let mut world = World::new();
-        world.light = Some(Light::point_light(
+        world.set_light(Light::point_light(
             Tuple::point(0.0, 0.0, 0.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));
@@ -592,7 +592,7 @@ mod tests {
 
     fn lit_world() -> World {
         let mut world = World::new();
-        world.light = Some(Light::point_light(
+        world.set_light(Light::point_light(
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));
@@ -764,7 +764,7 @@ mod tests {
     fn test_chap_14_flattened_transforms_match_book() {
         // The book's nested groups: g1 rotates, g2 scales, s translates.
         let mut world = World::new();
-        world.light = Some(Light::point_light(
+        world.set_light(Light::point_light(
             Tuple::point(0.0, 0.0, 0.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));
@@ -807,7 +807,7 @@ mod tests {
     #[test]
     fn test_chap_15_scene_bounds_and_order() {
         let mut world = World::new();
-        world.light = Some(Light::point_light(
+        world.set_light(Light::point_light(
             Tuple::point(0.0, 0.0, 0.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));
@@ -865,7 +865,7 @@ mod tests {
         let gpu = crate::gpu::Gpu::new().unwrap();
         for with_plane in [true, false] {
             let mut world = World::new();
-            world.light = Some(Light::point_light(
+            world.set_light(Light::point_light(
                 Tuple::point(0.0, 5.0, 0.0),
                 Tuple::color(1.0, 1.0, 1.0),
             ));

@@ -785,7 +785,7 @@ mod tests {
         let s = world.shapes[0].as_ref();
         let chk = camera.hsize == 160
             && camera.vsize == 120
-            && world.light.is_some()
+            && !world.lights.is_empty()
             && world.shapes.len() == 1
             && s.material().color.approx_eq(Tuple::color(0.1, 0.2, 0.8))
             && approx_eq(s.material().reflective, 0.3)

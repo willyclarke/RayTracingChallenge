@@ -21,7 +21,7 @@ use std::f64::consts::PI;
 /// floor and two walls that are themselves flattened spheres.
 pub(crate) fn chapter_7_scene(width: usize, height: usize) -> (World, Camera) {
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
@@ -85,7 +85,7 @@ fn ball(color: Tuple) -> Material {
 fn chapter_9_scene(width: usize, height: usize) -> (World, Camera) {
     let (chapter_7, camera) = chapter_7_scene(width, height);
     let mut world = World::new();
-    world.light = chapter_7.light.clone();
+    world.lights = chapter_7.lights.clone();
     let mut wall = Material::new();
     wall.color = Tuple::color(1.0, 0.9, 0.9);
     wall.specular = 0.0;
@@ -112,7 +112,7 @@ fn chapter_9_scene(width: usize, height: usize) -> (World, Camera) {
 fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
     let (chapter_9, camera) = chapter_9_scene(width, height);
     let mut world = World::new();
-    world.light = chapter_9.light.clone();
+    world.lights = chapter_9.lights.clone();
     let mut materials: Vec<Material> = chapter_9
         .shapes
         .iter()
@@ -163,7 +163,7 @@ fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
 /// so the flattening also walks the identity-transform groups it inserts.
 pub(crate) fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));

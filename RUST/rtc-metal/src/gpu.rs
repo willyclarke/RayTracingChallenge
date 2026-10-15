@@ -604,7 +604,7 @@ mod accumulator_tests {
 
         let (r, g, b) = (0.5, 0.25, 0.75);
         let mut world = World::new();
-        world.light = Some(Light::point_light(
+        world.set_light(Light::point_light(
             Tuple::point(1.0, 2.0, -3.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));

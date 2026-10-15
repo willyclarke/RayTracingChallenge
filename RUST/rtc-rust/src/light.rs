@@ -546,7 +546,7 @@ mod tests {
     #[test]
     fn test_bonus_soft_shadows_1() -> Result<(), String> {
         let w = World::default_world();
-        let light = w.light.as_ref().unwrap();
+        let light = &w.lights[0];
         let cases = [
             (Tuple::point(0.0, 1.0001, 0.0), 1.0),
             (Tuple::point(-1.0001, 0.0, 0.0), 1.0),
@@ -839,7 +839,7 @@ mod tests {
             PI / 6.0,
             PI / 4.0,
         ));
-        let light = w.light.as_ref().unwrap();
+        let light = &w.lights[0];
         let below_sphere = light.intensity_at(Tuple::point(0.0, -2.0, 0.0), &w);
         let above_sphere = light.intensity_at(Tuple::point(0.0, 1.5, 0.0), &w);
         if below_sphere == 0.0 && above_sphere == 1.0 {

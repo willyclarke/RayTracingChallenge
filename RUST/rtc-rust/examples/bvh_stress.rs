@@ -21,7 +21,7 @@ const GRID: i32 = 11; // GRID x GRID spheres in one flat group
 
 fn build_scene() -> (World, usize) {
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
