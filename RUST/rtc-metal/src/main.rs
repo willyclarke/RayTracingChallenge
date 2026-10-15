@@ -8,10 +8,11 @@
 //! frames (random light samples, jittered pixels) instead of rendering
 //! rtc-rust's deterministic image. `--window` shows the sampled frames
 //! refining live (default 256, or `--samples N`); drag to orbit the camera,
-//! scroll to zoom, space to return to the scene's view, and the image is
-//! written on quit. `--traversal metal`
-//! searches the bounded shapes with Metal's ray tracing API instead of the
-//! BVH walk (milestone 10).
+//! scroll to zoom, space to return to the scene's view; resizing the window
+//! or going full screen renders at the new size, and the image is written
+//! on quit at the size last shown. `--traversal metal` searches the bounded
+//! shapes with Metal's ray tracing API instead of the BVH walk
+//! (milestone 10).
 
 use rtc_metal::gpu::Gpu;
 use rtc_metal::orbit::Orbit;
@@ -130,7 +131,6 @@ fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, out: String) 
         Tuple::point(c.to[0], c.to[1], c.to[2]),
         Tuple::vector(c.up[0], c.up[1], c.up[2]),
     );
-    let (width, height) = (scene.width(), scene.height());
     let title = path.file_name().unwrap().to_string_lossy().into_owned();
     rtc_metal::window::run(
         gpu,
@@ -139,7 +139,7 @@ fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, out: String) 
         orbit,
         samples,
         title,
-        Box::new(move |pixels| write_ppm(pixels, width, height, &out)),
+        Box::new(move |pixels, width, height| write_ppm(pixels, width, height, &out)),
     )
 }
 
@@ -181,7 +181,7 @@ fn usage() -> ! {
     );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
-        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view, quit writes the image"
+        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view, resizing re-renders,\n               quit writes the image at the window's size"
     );
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
     eprintln!("  the scene's antialias.n is ignored on the GPU");

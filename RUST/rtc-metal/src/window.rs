@@ -2,8 +2,10 @@
 //! display refresh until `target` frames, showing the running mean. Dragging
 //! orbits the camera and scrolling zooms; both restart the accumulation
 //! (events with no movement leave it alone). Space returns to the scene's
-//! own view.
-//! Quitting hands the final image to `on_close`.
+//! own view. The window can be resized or made full screen: the image is
+//! rendered at the view's pixel size, with the scene's field of view, and
+//! starts again at each new size.
+//! Quitting hands the final image and its size to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
 //! one `Rc<RefCell<Renderer>>`.
@@ -16,7 +18,8 @@ use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
-    NSEvent, NSMenu, NSMenuItem, NSResponder, NSScreen, NSView, NSWindow, NSWindowStyleMask,
+    NSEvent, NSMenu, NSMenuItem, NSResponder, NSScreen, NSView, NSWindow,
+    NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
@@ -29,7 +32,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Instant;
 
-type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>)>;
+/// Called on quit with the final image and its width and height.
+type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize)>;
 
 /// The state the view and its delegate share.
 struct Renderer {
@@ -58,17 +62,56 @@ impl Renderer {
         self.last_frame = Instant::now();
     }
 
-    /// Return to the scene's own view; false (and the image kept) when the
-    /// camera is already there.
+    /// Return to the scene's own view, at the current size; false (and the
+    /// image kept) when the camera is already there.
     fn reset_view(&mut self) -> bool {
         if !self.moved {
             return false;
         }
-        (self.camera, self.orbit) = self.home.clone();
+        let (home, orbit) = self.home.clone();
+        self.camera = resized(&home, self.camera.hsize, self.camera.vsize);
+        self.orbit = orbit;
         self.moved = false;
         self.restart();
         true
     }
+
+    /// Render at `width x height` pixels from now on; false when that is
+    /// already the size (or empty, as while the window is minimised).
+    fn resize(&mut self, width: usize, height: usize) -> bool {
+        if width == 0 || height == 0 || (width, height) == (self.camera.hsize, self.camera.vsize) {
+            return false;
+        }
+        self.camera = resized(&self.camera, width, height);
+        if let Err(e) = self.scene.set_camera(&self.camera) {
+            eprintln!("rtc-metal: {e}");
+            return false;
+        }
+        match self.gpu.accumulator(&self.scene) {
+            Ok(acc) => self.acc = acc,
+            Err(e) => {
+                eprintln!("rtc-metal: {e}");
+                return false;
+            }
+        }
+        self.last_frame = Instant::now();
+        true
+    }
+}
+
+/// `camera` at `width x height` pixels: same field of view, view transform
+/// and lens. The field of view spans the longer side, so a wider window
+/// shows more to the sides.
+fn resized(camera: &Camera, width: usize, height: usize) -> Camera {
+    let mut c = Camera::new(width, height, camera.field_of_view);
+    c.set_transform(&camera.transform());
+    c.aa_samples = camera.aa_samples;
+    c.aa_threshold = camera.aa_threshold;
+    c.aperture = camera.aperture;
+    c.focal_distance = camera.focal_distance;
+    c.dof_samples = camera.dof_samples;
+    c.motion_samples = camera.motion_samples;
+    c
 }
 
 define_class!(
@@ -184,8 +227,17 @@ define_class!(
         }
 
         #[unsafe(method(mtkView:drawableSizeWillChange:))]
-        fn drawable_size_will_change(&self, _view: &MTKView, _size: NSSize) {
-            // The drawable size is fixed to the camera's.
+        fn drawable_size_will_change(&self, view: &MTKView, size: NSSize) {
+            // The window was resized or went full screen; `size` is in pixels.
+            let resized = self
+                .ivars()
+                .renderer
+                .borrow_mut()
+                .resize(size.width as usize, size.height as usize);
+            if resized {
+                view.setPaused(false);
+                view.setEnableSetNeedsDisplay(false);
+            }
         }
     }
 
@@ -202,7 +254,7 @@ define_class!(
             match r.acc.resolve(&r.gpu) {
                 Ok(pixels) => {
                     if let Some(on_close) = ivars.on_close.take() {
-                        on_close(pixels);
+                        on_close(pixels, r.camera.hsize, r.camera.vsize);
                     }
                 }
                 Err(e) => eprintln!("rtc-metal: {e}"),
@@ -314,8 +366,10 @@ pub fn run(
 
     // One drawable pixel per image pixel, shrunk uniformly so the window,
     // title bar included, fits the screen.
-    let style =
-        NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable;
+    let style = NSWindowStyleMask::Titled
+        | NSWindowStyleMask::Closable
+        | NSWindowStyleMask::Miniaturizable
+        | NSWindowStyleMask::Resizable;
     let screen = NSScreen::mainScreen(mtm);
     let scale = screen.as_ref().map_or(1.0, |s| s.backingScaleFactor());
     let (mut w, mut h) = (width / scale, height / scale);
@@ -330,8 +384,9 @@ pub fn run(
     view.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     view.setColorPixelFormat(MTLPixelFormat::BGRA8Unorm);
     view.setFramebufferOnly(false);
-    view.setAutoResizeDrawable(false);
-    view.setDrawableSize(NSSize::new(width, height));
+    // The drawable follows the view's size in pixels; each change reaches
+    // `drawableSizeWillChange`, which re-sizes the camera.
+    view.setAutoResizeDrawable(true);
     view.setPreferredFramesPerSecond(60);
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
@@ -349,6 +404,7 @@ pub fn run(
     unsafe { window.setReleasedWhenClosed(false) };
     window.setTitle(&NSString::from_str(&title));
     window.setContentView(Some(&view));
+    window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenPrimary);
     window.center();
     window.makeKeyAndOrderFront(None);
     window.makeFirstResponder(Some(&view));
@@ -379,4 +435,30 @@ fn quit_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     let menu = NSMenu::new(mtm);
     menu.addItem(&app_item);
     menu
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rtc_rust::matrix::Matrix4;
+
+    #[test]
+    fn resized_camera_keeps_everything_but_the_size() {
+        let mut camera = Camera::new(800, 600, 0.68).with_focal_blur(0.1, 3.5, 8);
+        camera.set_transform(&Matrix4::translation(1.0, 2.0, 3.0));
+        let wide = resized(&camera, 1600, 600);
+        assert_eq!((wide.hsize, wide.vsize), (1600, 600));
+        assert_eq!(wide.field_of_view, camera.field_of_view);
+        assert!(wide.transform().approx_eq(camera.transform()));
+        assert_eq!(
+            (wide.aperture, wide.focal_distance, wide.dof_samples),
+            (0.1, 3.5, 8)
+        );
+        // The field of view spans the longer side: a wider window shows more
+        // to the sides, at the same height.
+        assert_eq!(wide.half_width, camera.half_width);
+        assert!(wide.half_height < camera.half_height);
+        let fresh = Camera::new(1600, 600, 0.68);
+        assert_eq!(wide.pixel_size, fresh.pixel_size);
+    }
 }
