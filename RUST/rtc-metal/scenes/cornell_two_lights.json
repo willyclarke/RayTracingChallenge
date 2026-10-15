@@ -1,8 +1,8 @@
 {
   "comment": "Milestone 13, multiple lights: chapter17_path_tracing.json's Cornell box (box walls, 16 paths, 2 bounces) with a second, dimmer point light in front of the room's open side, shining in through the opening: a second set of shadows and a brighter front floor",
   "camera": {
-    "width": 150,
-    "height": 150,
+    "width": 800,
+    "height": 600,
     "field_of_view": 0.6806784082777885,
     "from": [
       0,
