@@ -142,12 +142,15 @@ pub struct GpuShape {
     pub n3: Float4,
 }
 
+/// The most lights a GPU scene holds (`GpuSceneInfo::lights`).
+pub const MAX_LIGHTS: usize = 8;
+
 /// MSL `Light`: rtc-rust's area light (bonus chapter "Rendering soft
 /// shadows"), `usteps` x `vsteps` cells of size `uvec` x `vvec` from
 /// `corner`. A point light is the 1x1 case with `corner` at its position and
 /// zero edges.
 #[repr(C, align(16))]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct GpuLight {
     pub corner: Float4,
     /// One cell's worth of the u edge, as rtc-rust's `Light::uvec`.
@@ -185,7 +188,8 @@ pub struct GpuCamera {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GpuSceneInfo {
     pub camera: GpuCamera,
-    pub light: GpuLight,
+    /// The first `light_count` are the scene's lights; the rest are zero.
+    pub lights: [GpuLight; MAX_LIGHTS],
     pub counts: GpuSceneCounts,
     /// Progressive render frame index, for the sampled random numbers.
     pub frame: u32,
@@ -196,7 +200,8 @@ pub struct GpuSceneInfo {
     pub gi_samples: u32,
     /// rtc-rust's `World::gi_depth`: diffuse bounces after the first hit.
     pub gi_depth: u32,
-    pub _pad: [u32; 2],
+    pub light_count: u32,
+    pub _pad: u32,
 }
 
 /// MSL `SceneCounts`: the sizes of the scene buffers. `shapes` holds the
@@ -230,7 +235,8 @@ const _: () = assert!(size_of::<GpuLight>() == 80);
 const _: () = assert!(size_of::<GpuCamera>() == 96);
 const _: () = assert!(size_of::<GpuSceneCounts>() == 24);
 // 96 + 80 + 24 + 6 * 4 = 224 bytes of fields.
-const _: () = assert!(size_of::<GpuSceneInfo>() == 224);
+// 96 + 8 * 80 + 24 + 6 * 4 = 784 bytes, far below setBytes' 4 KB.
+const _: () = assert!(size_of::<GpuSceneInfo>() == 784);
 
 /// MSL `BvhNode`. `count > 0` is a leaf over `shapes[start..start + count]`;
 /// otherwise the left child is the next node and `right` is the right child's

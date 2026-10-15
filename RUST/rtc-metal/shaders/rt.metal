@@ -646,17 +646,20 @@ struct BvhNode {
 };
 static_assert(sizeof(BvhNode) == 48, "BvhNode must match GpuBvhNode");
 
+constant uint MAX_LIGHTS = 8;
+
 struct SceneInfo {
     Camera camera;
-    Light light;
+    Light lights[MAX_LIGHTS]; // the first light_count are the scene's
     SceneCounts counts;
     uint frame;     // progressive render frame index
     uint sampling;  // 0: rtc-rust's cell centres; 1: random samples
     uint gi_samples; // path tracing: paths per deterministic pixel; 0 = off
     uint gi_depth;   // diffuse bounces after the first hit
-    uint pad[2];
+    uint light_count;
+    uint pad;
 };
-static_assert(sizeof(SceneInfo) == 224, "SceneInfo must match GpuSceneInfo");
+static_assert(sizeof(SceneInfo) == 784, "SceneInfo must match GpuSceneInfo");
 
 // Does the ray, over t in [tmin, tmax], pass through the box? The slab
 // method again (book chapter 12's cube), on the box's own bounds.
@@ -1264,13 +1267,13 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
             normalv = -normalv; // hit from inside
         }
         float4 over_point = point + normalv * EPSILON;
-        float intensity = intensity_at(scene.light, over_point, normalv, shapes, nodes, tables,
+        float intensity = intensity_at(scene.lights[0], over_point, normalv, shapes, nodes, tables,
                                        rt, scene.counts, sampler);
         // rtc-rust samples the pattern at over_point too: on a plane the raw
         // hit's y is ~0 with either sign, and checkers would speckle
         float4 object_point = s.inverse * over_point;
         color += p.weight
-                 * lighting(m, scene.light, over_point, object_point, eyev, normalv, intensity,
+                 * lighting(m, scene.lights[0], over_point, object_point, eyev, normalv, intensity,
                             tracing ? 0.0 : 1.0, sampler, tables);
         sampler.call++;
 

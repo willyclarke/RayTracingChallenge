@@ -7,9 +7,9 @@ use crate::bvh::{self, Leaf};
 use crate::types::{
     CSG_DIFFERENCE, CSG_INTERSECTION, CSG_LEAF, CSG_MAX_HITS, CSG_MAX_LEAVES, CSG_UNION,
     GpuBvhNode, GpuCamera, GpuLight, GpuMaterial, GpuSceneCounts, GpuSceneInfo, GpuShape,
-    NOISE_NONE, PATTERN_CHECKERS, PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING, PATTERN_STRIPE,
-    SHAPE_CONE, SHAPE_CSG, SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE, SHAPE_TRIANGLE,
-    TRAVERSAL_BVH, float4,
+    MAX_LIGHTS, NOISE_NONE, PATTERN_CHECKERS, PATTERN_GRADIENT, PATTERN_NONE, PATTERN_RING,
+    PATTERN_STRIPE, SHAPE_CONE, SHAPE_CSG, SHAPE_CUBE, SHAPE_CYLINDER, SHAPE_PLANE, SHAPE_SPHERE,
+    SHAPE_TRIANGLE, TRAVERSAL_BVH, float4,
 };
 use rtc_rust::camera::Camera;
 use rtc_rust::light::Light;
@@ -85,7 +85,16 @@ impl Tables {
 
 impl GpuScene {
     pub fn from_world(world: &World, camera: &Camera) -> Result<Self, String> {
-        let light = world.lights.first().ok_or("scene has no light")?;
+        if world.lights.is_empty() {
+            return Err("scene has no light".into());
+        }
+        if world.lights.len() > MAX_LIGHTS {
+            return Err(format!("more than {MAX_LIGHTS} lights"));
+        }
+        let mut lights = [GpuLight::default(); MAX_LIGHTS];
+        for (slot, light) in lights.iter_mut().zip(&world.lights) {
+            *slot = gpu_light(light)?;
+        }
         let mut leaves = Vec::new();
         let mut csg = CsgLeaves::default();
         let mut tables = Tables::default();
@@ -129,7 +138,7 @@ impl GpuScene {
         Ok(Self {
             info: GpuSceneInfo {
                 camera: gpu_camera(camera)?,
-                light: gpu_light(light)?,
+                lights,
                 counts: GpuSceneCounts {
                     shape_count,
                     unbounded_count: bvh.unbounded_count,
@@ -142,7 +151,8 @@ impl GpuScene {
                 sampling: 0,
                 gi_samples: world.gi_samples as u32,
                 gi_depth: world.gi_depth.max(0) as u32,
-                _pad: [0; 2],
+                light_count: world.lights.len() as u32,
+                _pad: 0,
             },
             shapes: bvh.shapes,
             nodes: bvh.nodes,
@@ -950,6 +960,36 @@ mod tests {
     }
 
     #[test]
+    fn test_bonus_multiple_lights_reach_scene_info() {
+        let mut world = World::default_world();
+        let light =
+            |x: f64| Light::point_light(Tuple::point(x, 10.0, -10.0), Tuple::color(1.0, 1.0, 1.0));
+        world.set_light(light(1.0));
+        world.add_light(light(2.0));
+        world.add_light(light(3.0));
+        let info = GpuScene::from_world(&world, &Camera::default())
+            .unwrap()
+            .info;
+        assert_eq!(info.light_count, 3);
+        for k in 0..3 {
+            assert_eq!(info.lights[k], gpu_light(&world.lights[k]).unwrap());
+        }
+        for k in 3..MAX_LIGHTS {
+            assert_eq!(info.lights[k], GpuLight::default());
+        }
+
+        for x in 4..=9 {
+            world.add_light(light(x as f64));
+        }
+        let err = GpuScene::from_world(&world, &Camera::default()).err();
+        assert!(err.is_some_and(|e| e.contains("more than 8 lights")));
+
+        world.lights.clear();
+        let err = GpuScene::from_world(&world, &Camera::default()).err();
+        assert!(err.is_some_and(|e| e.contains("scene has no light")));
+    }
+
+    #[test]
     fn set_camera_replaces_only_the_camera() {
         let world = World::default_world();
         let mut scene = GpuScene::from_world(&world, &Camera::default()).unwrap();
@@ -961,7 +1001,7 @@ mod tests {
         assert_eq!(scene.info.camera, gpu_camera(&camera).unwrap());
         assert_eq!(scene.shapes, shapes);
         assert_eq!(scene.nodes, nodes);
-        assert_eq!(scene.info.light, info.light);
+        assert_eq!(scene.info.lights, info.lights);
         assert_eq!(scene.info.counts, info.counts);
     }
 
