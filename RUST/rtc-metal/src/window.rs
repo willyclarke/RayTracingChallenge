@@ -1,7 +1,8 @@
 //! Live window (`--window`): an `MTKView` that adds one sampled frame per
 //! display refresh until `target` frames, showing the running mean. Dragging
 //! orbits the camera and scrolling zooms; both restart the accumulation
-//! (events with no movement leave it alone).
+//! (events with no movement leave it alone). Space returns to the scene's
+//! own view.
 //! Quitting hands the final image to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
@@ -37,6 +38,10 @@ struct Renderer {
     acc: Accumulator,
     camera: Camera,
     orbit: Orbit,
+    /// The scene's own camera and orbit, for the space key.
+    home: (Camera, Orbit),
+    /// Whether the camera has left `home` since the last reset.
+    moved: bool,
     target: u32,
     last_frame: Instant,
 }
@@ -52,6 +57,18 @@ impl Renderer {
         self.acc.reset();
         self.last_frame = Instant::now();
     }
+
+    /// Return to the scene's own view; false (and the image kept) when the
+    /// camera is already there.
+    fn reset_view(&mut self) -> bool {
+        if !self.moved {
+            return false;
+        }
+        (self.camera, self.orbit) = self.home.clone();
+        self.moved = false;
+        self.restart();
+        true
+    }
 }
 
 define_class!(
@@ -62,7 +79,7 @@ define_class!(
     #[ivars = Rc<RefCell<Renderer>>]
     /// The image view. Dragging orbits the camera "grabbing the scene"
     /// (dragging right orbits it left, dragging down raises it; the signs
-    /// live in `Orbit::drag`); scrolling zooms.
+    /// live in `Orbit::drag`); scrolling zooms; space resets the view.
     struct RtcView;
 
     impl RtcView {
@@ -100,6 +117,19 @@ define_class!(
             };
             self.interact(|orbit| orbit.zoom(dy));
         }
+
+        #[unsafe(method(keyDown:))]
+        fn key_down(&self, event: &NSEvent) {
+            // 49 is the space bar's virtual key code on every layout.
+            if event.keyCode() != 49 {
+                // SAFETY: NSResponder's keyDown: takes one NSEvent.
+                unsafe { msg_send![super(self), keyDown: event] }
+                return;
+            }
+            if self.ivars().borrow_mut().reset_view() {
+                self.resume();
+            }
+        }
     }
 );
 
@@ -124,8 +154,14 @@ impl RtcView {
             change(&mut r.orbit);
             // Zooming keeps the lens focused on what it was focused on.
             r.camera.focal_distance *= r.orbit.radius() / before;
+            r.moved = true;
             r.restart();
         }
+        self.resume();
+    }
+
+    /// Start drawing frames again after the accumulation restarted.
+    fn resume(&self) {
         self.setPaused(false);
         self.setEnableSetNeedsDisplay(false);
     }
@@ -256,7 +292,9 @@ pub fn run(
         scene,
         acc,
         camera,
+        home: (camera, orbit.clone()),
         orbit,
+        moved: false,
         target: samples,
         last_frame: Instant::now(),
     }));

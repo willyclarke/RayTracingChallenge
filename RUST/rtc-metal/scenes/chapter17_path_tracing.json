@@ -1,8 +1,8 @@
 {
   "comment": "Book chapter 17 bonus, path tracing: rtc-rust's test_chap_17_path_tracing_putting_it_together Cornell box (cornell_box in rtc-rust's world.rs), with the five wall planes replaced by 0.02-thick boxes so the room is closed and can be orbited in --window. Inner faces are where rtc-rust's planes are: a 2x2x2 room with a red left and green right wall, open at the front, a tall and a short block, lit by a point light; 16 hemisphere paths per pixel, 2 diffuse bounces",
   "camera": {
-    "width": 3456,
-    "height": 2234,
+    "width": 800,
+    "height": 600,
     "field_of_view": 0.6806784082777885,
     "from": [
       0,
