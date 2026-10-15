@@ -130,7 +130,9 @@ Design rules:
 }
 ```
 
-One light per scene, matching `World`. `settings` is optional. An optional top-level
+One `"light"`, or a `"lights"` list of several whose contributions are summed
+(ambient included) — a scene has exactly one of the two keys, and `"lights"` must not
+be empty. `settings` is optional. An optional top-level
 `"comment"` field (any JSON value) is ignored by the loader; unknown fields elsewhere are
 rejected, so typos fail loudly.
 
@@ -163,7 +165,14 @@ rejected, so typos fail loudly.
 
 ### Light
 
-Tagged by `"type"` — the three `Light` constructors:
+Tagged by `"type"` — the three `Light` constructors. Several lights go in a list:
+
+```json
+"lights": [
+  { "type": "point", "position": [-10, 10, -10], "intensity": [0.6, 0.15, 0.15] },
+  { "type": "point", "position": [10, 10, -10], "intensity": [0.15, 0.15, 0.6] }
+]
+```
 
 ```json
 { "type": "point", "position": [-10, 10, -10], "intensity": [1, 1, 1] }

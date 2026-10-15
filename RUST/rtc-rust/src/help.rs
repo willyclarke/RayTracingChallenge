@@ -16,7 +16,11 @@ pub const TOPICS: &[(&str, &str, &str)] = &[
         "size, view point, anti-aliasing, focal and motion blur",
         CAMERA,
     ),
-    ("lights", "point, area (soft shadows), spot", LIGHTS),
+    (
+        "lights",
+        "point, area (soft shadows), spot; several lights",
+        LIGHTS,
+    ),
     (
         "transforms",
         "translate / scale / rotate / shear op lists",
@@ -90,8 +94,8 @@ pub fn print(topic: Option<&str>) -> bool {
 }
 
 const SCENE: &str = r#"SCENE
-    A scene file is one JSON object with a camera, exactly one light,
-    optional render settings, and a list of shapes. Rendered with:
+    A scene file is one JSON object with a camera, one light or a "lights"
+    list, optional render settings, and a list of shapes. Rendered with:
 
         rtc scene.json [-o out.ppm]
 
@@ -144,7 +148,9 @@ EXAMPLE
 "#;
 
 const LIGHTS: &str = r#"LIGHTS
-    Exactly one light per scene, tagged by "type".
+    One "light", or a "lights" list of several (each one's full shading,
+    ambient included, is summed). A scene has exactly one of the two keys,
+    and "lights" must not be empty. Every light is tagged by "type".
 
     point       position, intensity - hard shadows
     area        jittered rectangle - soft shadows; corner is one corner,
@@ -168,6 +174,11 @@ EXAMPLES
       "intensity": [1.2, 1.2, 1.2],
       "inner_angle": 0.22, "outer_angle": 0.42
     }
+
+    "lights": [
+      { "type": "point", "position": [-10, 10, -10], "intensity": [0.6, 0.15, 0.15] },
+      { "type": "point", "position": [10, 10, -10], "intensity": [0.15, 0.15, 0.6] }
+    ]
 "#;
 
 const TRANSFORMS: &str = r#"TRANSFORMS
