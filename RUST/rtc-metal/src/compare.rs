@@ -425,6 +425,55 @@ fn test_bonus_soft_shadows_gpu_sampled_render_converges() -> Result<(), String> 
 }
 
 #[test]
+fn test_bonus_multiple_lights_gpu_render_matches_cpu() -> Result<(), String> {
+    // Chapter 7's scene under a red and a blue light: coloured, overlapping
+    // shadows; a point shadowed from one light is still lit by the other.
+    let (world, camera) = scene_file(include_str!("../scenes/multiple_lights.json"), 200, 100);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_bonus_multiple_lights_area_gpu_render_matches_cpu() -> Result<(), String> {
+    // An area light and a point light: soft and hard shadows from each ball.
+    let (world, camera) = scene_file(include_str!("../scenes/multiple_lights_area.json"), 200, 80);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_bonus_multiple_lights_area_gpu_sampled_render_converges() -> Result<(), String> {
+    // Calibrated once: measured err_4 = 2.641e-2, err_256 = 5.024e-3;
+    // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. As with
+    // one area light, the error does not go to 0 (cell centres on the CPU).
+    const THRESHOLD: f64 = 7.6e-3;
+    let (world, camera) = scene_file(include_str!("../scenes/multiple_lights_area.json"), 200, 80);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let cpu = world.render_parallel(camera);
+    let w = scene.width();
+    let cpu_at = |i: usize| {
+        let c = cpu.pixel_at(i % w, i / w);
+        [c.x, c.y, c.z]
+    };
+    let gpu = Gpu::new()?;
+    let mut acc = gpu.accumulator(&scene)?;
+    for _ in 0..4 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_4 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    for _ in 4..256 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_256 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    eprintln!("err_4 {err_4:.3e}, err_256 {err_256:.3e}");
+    if err_256 > 0.5 * err_4 {
+        return Err(format!("err_256 {err_256} not <= half of err_4 {err_4}"));
+    }
+    if err_256 >= THRESHOLD {
+        return Err(format!("err_256 {err_256} >= {THRESHOLD}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn test_chap_17_focal_blur_gpu_sampled_render_converges() -> Result<(), String> {
     // Calibrated once: measured err_4 = 1.556e-2, err_256 = 5.421e-3;
     // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. The error
