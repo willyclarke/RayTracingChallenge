@@ -1883,6 +1883,57 @@ fn test_bonus_soft_shadows_gpu_random_deterministic() -> Result<(), String> {
     Ok(())
 }
 
+/// Input to `probe_sample`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct SampleProbe {
+    pixel: u32,
+    frame: u32,
+    call: u32,
+    light: u32,
+    slot: u32,
+}
+
+#[test]
+fn test_bonus_multiple_lights_gpu_sample_dims() -> Result<(), String> {
+    // Light 0 keeps the single-light dims, so existing sampled images are
+    // unchanged; light k >= 1 draws from its own range, so two area lights
+    // never share a random number.
+    let mut probes = Vec::new();
+    for light in [0, 1, 7] {
+        for call in [0, 3] {
+            for slot in [0, 5] {
+                probes.push(SampleProbe {
+                    pixel: 1234 + light,
+                    frame: 5 + call,
+                    call,
+                    light,
+                    slot,
+                });
+            }
+        }
+    }
+    let dim = |p: &SampleProbe| match p.light {
+        0 => 2 + 6 * p.call + p.slot,
+        k => 0x2000_0000 + (k - 1) * 0x0100_0000 + 6 * p.call + p.slot,
+    };
+    let expected = random_on_gpu(
+        &probes
+            .iter()
+            .map(|p| RandomProbe {
+                pixel: p.pixel,
+                frame: p.frame,
+                dim: dim(p),
+            })
+            .collect::<Vec<_>>(),
+    )?;
+    let got: Vec<f32> = Gpu::new()?.run("probe_sample", &probes)?;
+    if got != expected {
+        return Err(format!("probe_sample {got:?} != random01 {expected:?}"));
+    }
+    Ok(())
+}
+
 /// Input to `probe_point_on_light`.
 #[repr(C)]
 #[derive(Clone, Copy)]

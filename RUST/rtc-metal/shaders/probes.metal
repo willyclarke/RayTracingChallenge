@@ -467,6 +467,25 @@ kernel void probe_random(device const RandomProbe *in [[buffer(0)]],
     out[i] = random01(in[i].pixel, in[i].frame, in[i].dim);
 }
 
+// Milestone 13: the random number a shading call draws for one light's slot.
+struct SampleProbe {
+    uint pixel;
+    uint frame;
+    uint call;
+    uint light;
+    uint slot;
+};
+static_assert(sizeof(SampleProbe) == 20, "SampleProbe must match probes.rs");
+
+kernel void probe_sample(device const SampleProbe *in [[buffer(0)]],
+                         device float *out            [[buffer(1)]],
+                         uint i                       [[thread_position_in_grid]])
+{
+    SampleProbe p = in[i];
+    Sampler s = Sampler{p.pixel, p.frame, 1, p.call, p.light};
+    out[i] = sample(s, p.slot);
+}
+
 // Milestone 10: the scene counts as a scene kernel sees them.
 kernel void probe_counts(device const uint *in         [[buffer(0)]],
                          device uint4 *out             [[buffer(1)]],
