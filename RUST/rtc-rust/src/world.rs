@@ -407,7 +407,8 @@ pub fn hexagon(
 
 pub struct World {
     pub shapes: Vec<Box<dyn Shape>>,
-    pub light: Option<Light>,
+    /// Every light in the scene; `shade_hit` sums their contributions.
+    pub lights: Vec<Light>,
     next_id: AtomicUsize,
     /// Path tracing (book chapter 17): hemisphere rays gathered at the first
     /// hit for indirect lighting. 0 = off (the ambient term is used instead).
@@ -543,8 +544,14 @@ impl World {
         }
     }
 
+    /// Replace all lights with `light`.
     pub fn set_light(&mut self, light: Light) {
-        self.light = Some(light)
+        self.lights = vec![light];
+    }
+
+    /// Add another light.
+    pub fn add_light(&mut self, light: Light) {
+        self.lights.push(light);
     }
 
     pub fn default_world() -> Self {
@@ -555,7 +562,7 @@ impl World {
             Tuple::color(1.0, 1.0, 1.0),
         );
 
-        w.light = Some(light);
+        w.set_light(light);
 
         let mut m = Material::new();
         m.color = Tuple::color(0.8, 1.0, 0.6);
@@ -821,7 +828,7 @@ impl World {
     pub fn new() -> Self {
         Self {
             shapes: Vec::new(),
-            light: None,
+            lights: Vec::new(),
             next_id: AtomicUsize::new(1),
             gi_samples: 0,
             gi_depth: 0,
@@ -849,13 +856,19 @@ impl World {
         gi_samples: usize,
         gi_depth: i32,
     ) -> Tuple {
-        match &self.light {
-            Some(light) => {
-                // With path tracing on, the ambient term (a constant stand-in
-                // for indirect light) is replaced by the measured gather.
-                let ambient_scale = if self.gi_samples > 0 { 0.0 } else { 1.0 };
-                let intensity = light.intensity_at_time(comps.over_point, self, comps.time);
-                let surface = light.lighting_with_ambient(
+        if self.lights.is_empty() {
+            return Tuple::color(0.0, 0.0, 0.0);
+        }
+        // With path tracing on, the ambient term (a constant stand-in
+        // for indirect light) is replaced by the measured gather.
+        let ambient_scale = if self.gi_samples > 0 { 0.0 } else { 1.0 };
+        // Each light adds its full Phong term, ambient included; starting
+        // from black keeps a single light's result bit-identical.
+        let mut surface = Tuple::color(0.0, 0.0, 0.0);
+        for light in &self.lights {
+            let intensity = light.intensity_at_time(comps.over_point, self, comps.time);
+            surface = surface
+                + light.lighting_with_ambient(
                     comps.object,
                     comps.over_point,
                     comps.object_point,
@@ -864,22 +877,15 @@ impl World {
                     intensity,
                     ambient_scale,
                 );
-                let indirect = self.indirect_color_gi(comps, remaining, gi_samples, gi_depth);
-                let reflected = self.reflected_color_gi(comps, remaining, gi_samples, gi_depth);
-                let refracted = self.refracted_color_gi(comps, remaining, gi_samples, gi_depth);
-                if comps.object.material().reflective > 0.0
-                    && comps.object.material().transparency > 0.0
-                {
-                    let reflectance = schlick(comps);
-                    return surface
-                        + indirect
-                        + reflected * reflectance
-                        + refracted * (1.0 - reflectance);
-                }
-                surface + indirect + reflected + refracted
-            }
-            None => Tuple::color(0.0, 0.0, 0.0),
         }
+        let indirect = self.indirect_color_gi(comps, remaining, gi_samples, gi_depth);
+        let reflected = self.reflected_color_gi(comps, remaining, gi_samples, gi_depth);
+        let refracted = self.refracted_color_gi(comps, remaining, gi_samples, gi_depth);
+        if comps.object.material().reflective > 0.0 && comps.object.material().transparency > 0.0 {
+            let reflectance = schlick(comps);
+            return surface + indirect + reflected * reflectance + refracted * (1.0 - reflectance);
+        }
+        surface + indirect + reflected + refracted
     }
 
     pub fn render_single(&self, camera: Camera) -> Canvas {
@@ -1213,8 +1219,18 @@ impl Default for World {
 
 impl fmt::Display for World {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.light {
-            Some(l) => writeln!(
+        if self.lights.is_empty() {
+            writeln!(
+                f,
+                "{}World{} light: {}none{}",
+                Color::Yellow,
+                Color::Reset,
+                Color::Red,
+                Color::Reset
+            )?;
+        }
+        for l in &self.lights {
+            writeln!(
                 f,
                 "{}World{} light: {}{}{}",
                 Color::Yellow,
@@ -1222,15 +1238,7 @@ impl fmt::Display for World {
                 Color::Green,
                 l,
                 Color::Reset
-            )?,
-            None => writeln!(
-                f,
-                "{}World{} light: {}none{}",
-                Color::Yellow,
-                Color::Reset,
-                Color::Red,
-                Color::Reset
-            )?,
+            )?;
         }
         writeln!(
             f,
@@ -1318,7 +1326,7 @@ mod tests {
     #[test]
     fn test_chap_7_1() -> Result<(), String> {
         let w = World::new();
-        let chk = w.shapes.is_empty() && w.light.is_none();
+        let chk = w.shapes.is_empty() && w.lights.is_empty();
         if chk {
             Ok(())
         } else {
@@ -1333,7 +1341,7 @@ mod tests {
 
         let chk = !w.shapes.is_empty();
         let chk = chk
-            && w.light.as_ref().unwrap().approx_eq(&Light::point_light(
+            && w.lights[0].approx_eq(&Light::point_light(
                 Tuple::point(-10.0, 10.0, -10.0),
                 Tuple::color(1.0, 1.0, 1.0),
             ));
@@ -1477,7 +1485,7 @@ mod tests {
     fn test_chap_7_8() -> Result<(), String> {
         let mut w = World::default_world();
 
-        w.light = Some(Light::point_light(
+        w.set_light(Light::point_light(
             Tuple::point(0.0, 0.25, 0.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));
@@ -1692,7 +1700,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        world.light = Some(light);
+        world.set_light(light);
 
         let mut material = Material::new();
         material.color = Tuple::color(1.0, 0.9, 0.9);
@@ -1774,7 +1782,7 @@ mod tests {
     fn test_chap_8_2() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(0.0, 10.0, 0.0);
-        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
+        let is_shadowed = w.is_shadowed(w.lights[0].position, p);
 
         let chk = !is_shadowed;
         if chk {
@@ -1789,7 +1797,7 @@ mod tests {
     fn test_chap_8_3() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(10.0, -10.0, 10.0);
-        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
+        let is_shadowed = w.is_shadowed(w.lights[0].position, p);
 
         let chk = is_shadowed;
         if chk {
@@ -1804,7 +1812,7 @@ mod tests {
     fn test_chap_8_5() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(0.0, 10.0, 0.0);
-        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
+        let is_shadowed = w.is_shadowed(w.lights[0].position, p);
 
         let chk = !is_shadowed;
         if chk {
@@ -1819,7 +1827,7 @@ mod tests {
     fn test_chap_8_6() -> Result<(), String> {
         let w = World::default_world();
         let p = Tuple::point(0.0, 10.0, 0.0);
-        let is_shadowed = w.is_shadowed(w.light.as_ref().unwrap().position, p);
+        let is_shadowed = w.is_shadowed(w.lights[0].position, p);
 
         let chk = !is_shadowed;
         if chk {
@@ -1879,7 +1887,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        world.light = Some(light);
+        world.set_light(light);
 
         let mut material = Material::new();
         material.color = Tuple::color(1.0, 0.9, 0.9);
@@ -2183,7 +2191,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        world.light = Some(light);
+        world.set_light(light);
 
         let mut pattern = GradientPattern::new(WHITE, BLACK);
         pattern.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
@@ -2286,7 +2294,7 @@ mod tests {
         let orange = Tuple::color(1.0, 0.55, 0.0);
 
         let mut world = World::new();
-        world.light = Some(Light::point_light(
+        world.set_light(Light::point_light(
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         ));
@@ -3037,7 +3045,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        world.light = Some(light);
+        world.set_light(light);
 
         let mut pattern = GradientPattern::new(WHITE, BLACK);
         pattern.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
@@ -3275,7 +3283,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        world.light = Some(light);
+        world.set_light(light);
 
         let mut pattern = GradientPattern::new(WHITE, BLACK);
         pattern.set_transform(Matrix4::scaling(0.25, 0.25, 0.25));
@@ -3792,7 +3800,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        world.light = Some(light);
+        world.set_light(light);
 
         let mut floor_checkers = CheckersPattern::new(WHITE, BLACK);
         floor_checkers.set_transform(Matrix4::scaling(0.5, 0.5, 0.5));
@@ -4192,7 +4200,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        w.light = Some(light);
+        w.set_light(light);
 
         let mut g_top = Group::new();
         g_top.set_transform(
@@ -4623,7 +4631,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        w.light = Some(light);
+        w.set_light(light);
 
         // let contents = "v -1 1 0\nv -1 0 0\nv 1 0 0\nv 1 1 0\n \ng FirstGroup\nf 1 2 3\ng SecondGroup\nf 1 3 4";
         // Tetrahedron
@@ -4689,7 +4697,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        w.light = Some(light);
+        w.set_light(light);
 
         // Floor - a slightly reflective plane
         let mut floor = Plane::new();
@@ -5016,7 +5024,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        w.light = Some(light);
+        w.set_light(light);
 
         // Floor - a slightly reflective plane
         let mut floor = Plane::new();
@@ -5822,7 +5830,7 @@ mod tests {
             Tuple::point(-10.0, 10.0, -10.0),
             Tuple::color(1.0, 1.0, 1.0),
         );
-        w.light = Some(light);
+        w.set_light(light);
 
         // Checkered, slightly reflective floor
         // large squares: the tracer has no anti-aliasing, so small squares
@@ -6208,5 +6216,80 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    /// Shade the first hit of `r` in `w`.
+    fn shade_first_hit(w: &World, r: &Ray) -> Tuple {
+        let xs = w.intersect(r);
+        let hit = xs.hit().expect("ray hits");
+        let comps = prepare_computations(hit, r, &w.shapes, &xs);
+        w.shade_hit(&comps, 5)
+    }
+
+    /// Bonus, multiple lights - shade_hit sums every light's contribution,
+    /// ambient included
+    #[test]
+    fn test_bonus_multiple_lights_shade_hit_sums_lights() -> Result<(), String> {
+        let a = Light::point_light(Tuple::point(-10.0, 10.0, -10.0), WHITE);
+        let b = Light::point_light(
+            Tuple::point(10.0, 10.0, -10.0),
+            Tuple::color(0.5, 0.25, 0.1),
+        );
+        let r = Ray::new(Tuple::point(0.0, 0.0, -5.0), Tuple::vector(0.0, 0.0, 1.0));
+
+        let mut w = World::default_world();
+        w.set_light(a.clone());
+        let only_a = shade_first_hit(&w, &r);
+        w.set_light(b.clone());
+        let only_b = shade_first_hit(&w, &r);
+        w.set_light(a);
+        w.add_light(b);
+        let both = shade_first_hit(&w, &r);
+
+        if w.lights.len() == 2 && both.approx_eq(only_a + only_b) {
+            Ok(())
+        } else {
+            Err(format!("both {} != {} + {}", both, only_a, only_b))
+        }
+    }
+
+    /// Bonus, multiple lights - a point shadowed from one light is still lit
+    /// by the other
+    #[test]
+    fn test_bonus_multiple_lights_shadow_from_one_light() -> Result<(), String> {
+        let mut w = World::new();
+        let mut sphere = Sphere::new();
+        sphere.set_transform(Matrix4::scaling(0.5, 0.5, 0.5));
+        w.add_shape(Box::new(sphere));
+        let mut floor = Plane::new();
+        floor.set_transform(Matrix4::translation(0.0, -1.0, 0.0));
+        w.add_shape(Box::new(floor));
+        let a = Light::point_light(Tuple::point(0.0, 10.0, 0.0), WHITE);
+        let b = Light::point_light(Tuple::point(10.0, 10.0, 0.0), WHITE);
+        let p = Tuple::point(0.0, -1.0, 0.0);
+        let r = Ray::new(
+            Tuple::point(0.0, 0.0, -5.0),
+            (p - Tuple::point(0.0, 0.0, -5.0)).normalize(),
+        );
+
+        w.set_light(a.clone());
+        let only_a = shade_first_hit(&w, &r);
+        w.set_light(b.clone());
+        let only_b = shade_first_hit(&w, &r);
+        w.set_light(a.clone());
+        w.add_light(b);
+        let both = shade_first_hit(&w, &r);
+        // The default material's ambient is 0.1 of white.
+        let ambient = Tuple::color(0.1, 0.1, 0.1);
+
+        if w.is_shadowed(a.position, p)
+            && only_a.approx_eq(ambient)
+            && both.x > 2.0 * ambient.x
+            && both.approx_eq(only_a + only_b)
+        {
+            Ok(())
+        } else {
+            Err(format!("both {} = {} + {}?", both, only_a, only_b))
+        }
     }
 }

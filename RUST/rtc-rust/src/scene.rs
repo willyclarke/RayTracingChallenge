@@ -52,7 +52,7 @@ impl fmt::Display for SceneError {
 
 impl std::error::Error for SceneError {}
 
-/// Top level of a scene file: a camera, one light (matching `World`),
+/// Top level of a scene file: a camera, one `light` or a `lights` list,
 /// optional settings, and the shape tree.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -61,7 +61,13 @@ pub struct SceneDescription {
     #[serde(default)]
     pub comment: Option<serde_json::Value>,
     pub camera: CameraDescription,
-    pub light: LightDescription,
+    /// The scene's only light; a scene has this or `lights`, not both.
+    #[serde(default)]
+    pub light: Option<LightDescription>,
+    /// Several lights, summed at every hit. An `Option` so that an empty
+    /// list is told apart from a missing key.
+    #[serde(default)]
+    pub lights: Option<Vec<LightDescription>>,
     #[serde(default)]
     pub settings: Settings,
     #[serde(default)]
@@ -730,7 +736,22 @@ impl SceneDescription {
     /// (`.obj`, `.ppm`); pass the scene file's directory.
     pub fn build(&self, base_dir: &Path) -> Result<(World, Camera), SceneError> {
         let mut world = World::new();
-        world.set_light(build_light(&self.light));
+        match (&self.light, &self.lights) {
+            (Some(light), None) => world.set_light(build_light(light)),
+            (None, Some(lights)) if lights.is_empty() => {
+                return Err(SceneError(r#""lights" is empty"#.into()));
+            }
+            (None, Some(lights)) => {
+                for light in lights {
+                    world.add_light(build_light(light));
+                }
+            }
+            _ => {
+                return Err(SceneError(
+                    r#"a scene needs exactly one of "light" and "lights""#.into(),
+                ));
+            }
+        }
         for shape in &self.shapes {
             add_shape_to_world(&mut world, None, shape, base_dir)?;
         }
@@ -785,7 +806,7 @@ mod tests {
         let s = world.shapes[0].as_ref();
         let chk = camera.hsize == 160
             && camera.vsize == 120
-            && world.light.is_some()
+            && !world.lights.is_empty()
             && world.shapes.len() == 1
             && s.material().color.approx_eq(Tuple::color(0.1, 0.2, 0.8))
             && approx_eq(s.material().reflective, 0.3)
@@ -796,6 +817,66 @@ mod tests {
         } else {
             Err("minimal scene must build a world and camera".into())
         }
+    }
+
+    /// Bonus, multiple lights - a "lights" array builds every light, in order
+    #[test]
+    fn test_bonus_multiple_lights_scene_lights_array() -> Result<(), String> {
+        let json = r#"{
+          "camera": { "width": 16, "height": 12, "field_of_view": 1.047,
+                      "from": [0, 1.5, -5], "to": [0, 1, 0], "up": [0, 1, 0] },
+          "lights": [
+            { "type": "point", "position": [-10, 10, -10], "intensity": [1, 1, 1] },
+            { "type": "area", "corner": [-1, 2, 4], "uvec": [2, 0, 0], "usteps": 4,
+              "vvec": [0, 2, 0], "vsteps": 2, "intensity": [1, 1, 1] }
+          ]
+        }"#;
+        let scene = SceneDescription::from_json(json).map_err(|e| e.to_string())?;
+        let (world, _) = scene.build(Path::new(".")).map_err(|e| e.to_string())?;
+
+        let chk = world.lights.len() == 2
+            && world.lights[0]
+                .position
+                .approx_eq(Tuple::point(-10.0, 10.0, -10.0))
+            && world.lights[1].usteps == 4
+            && world.lights[1].vsteps == 2;
+        if chk {
+            Ok(())
+        } else {
+            Err(format!("expected a point and an area light, got {}", world))
+        }
+    }
+
+    /// Bonus, multiple lights - "light" and "lights" together, neither, or an
+    /// empty "lights" are load errors
+    #[test]
+    fn test_bonus_multiple_lights_scene_light_key_errors() -> Result<(), String> {
+        let camera = r#""camera": { "width": 16, "height": 12, "field_of_view": 1.047,
+                      "from": [0, 1.5, -5], "to": [0, 1, 0], "up": [0, 1, 0] }"#;
+        let light = r#"{ "type": "point", "position": [-10, 10, -10], "intensity": [1, 1, 1] }"#;
+        let cases = [
+            (
+                format!(r#"{{ {camera}, "light": {light}, "lights": [{light}] }}"#),
+                r#"exactly one of "light" and "lights""#,
+            ),
+            (
+                format!(r#"{{ {camera} }}"#),
+                r#"exactly one of "light" and "lights""#,
+            ),
+            (
+                format!(r#"{{ {camera}, "lights": [] }}"#),
+                r#""lights" is empty"#,
+            ),
+        ];
+        for (json, expected) in cases {
+            let built = SceneDescription::from_json(&json).and_then(|s| s.build(Path::new(".")));
+            match built {
+                Err(e) if e.to_string().contains(expected) => {}
+                Err(e) => return Err(format!("{json}: error {e}, expected {expected}")),
+                Ok(_) => return Err(format!("{json}: built, expected {expected}")),
+            }
+        }
+        Ok(())
     }
 
     /// Scene loader - transform ops apply in listed order

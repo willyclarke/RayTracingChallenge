@@ -22,7 +22,7 @@ const SHOW_BVH: bool = true;
 
 fn build() -> (World, usize) {
     let mut w = World::new();
-    w.light = Some(Light::point_light(
+    w.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));

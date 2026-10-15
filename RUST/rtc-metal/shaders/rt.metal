@@ -31,18 +31,24 @@ inline float random01(uint pixel, uint frame, uint dim) {
 // blur) takes dims LENS_DIM and LENS_DIM + 1, far above any shading call's.
 // Path tracing's b-th diffuse bounce takes GI_DIM + 2b and GI_DIM + 2b + 1,
 // with the path index as the frame, between the two.
+// Those shading dims are light 0's; light k >= 1 takes
+// LIGHTS_DIM + (k - 1) * 0x01000000 + 6 * call + slot instead, below GI_DIM
+// for all MAX_LIGHTS - 1 of them, so two area lights never share a number.
 constant uint LENS_DIM = 0x80000000u;
 constant uint GI_DIM = 0x40000000u;
+constant uint LIGHTS_DIM = 0x20000000u;
 
 struct Sampler {
     uint pixel;
     uint frame;
     uint on;    // 0 or 1
     uint call;  // index of the current shading call in color_at
+    uint light; // index of the light being shaded
 };
 
 inline float sample(thread const Sampler &s, uint slot) {
-    return random01(s.pixel, s.frame, 2 + 6 * s.call + slot);
+    uint base = s.light == 0 ? 2 : LIGHTS_DIM + (s.light - 1) * 0x01000000u;
+    return random01(s.pixel, s.frame, base + 6 * s.call + slot);
 }
 
 // Shape kinds; must match the SHAPE_* constants in src/types.rs.
@@ -646,17 +652,20 @@ struct BvhNode {
 };
 static_assert(sizeof(BvhNode) == 48, "BvhNode must match GpuBvhNode");
 
+constant uint MAX_LIGHTS = 8;
+
 struct SceneInfo {
     Camera camera;
-    Light light;
+    Light lights[MAX_LIGHTS]; // the first light_count are the scene's
     SceneCounts counts;
     uint frame;     // progressive render frame index
     uint sampling;  // 0: rtc-rust's cell centres; 1: random samples
     uint gi_samples; // path tracing: paths per deterministic pixel; 0 = off
     uint gi_depth;   // diffuse bounces after the first hit
-    uint pad[2];
+    uint light_count;
+    uint pad;
 };
-static_assert(sizeof(SceneInfo) == 224, "SceneInfo must match GpuSceneInfo");
+static_assert(sizeof(SceneInfo) == 784, "SceneInfo must match GpuSceneInfo");
 
 // Does the ray, over t in [tmin, tmax], pass through the box? The slab
 // method again (book chapter 12's cube), on the box's own bounds.
@@ -1264,14 +1273,19 @@ inline float3 color_at(Ray camera_ray, constant SceneInfo &scene, device const S
             normalv = -normalv; // hit from inside
         }
         float4 over_point = point + normalv * EPSILON;
-        float intensity = intensity_at(scene.light, over_point, normalv, shapes, nodes, tables,
-                                       rt, scene.counts, sampler);
         // rtc-rust samples the pattern at over_point too: on a plane the raw
         // hit's y is ~0 with either sign, and checkers would speckle
         float4 object_point = s.inverse * over_point;
-        color += p.weight
-                 * lighting(m, scene.light, over_point, object_point, eyev, normalv, intensity,
-                            tracing ? 0.0 : 1.0, sampler, tables);
+        // Every light adds its full Phong term, ambient included, as
+        // rtc-rust's shade_hit does.
+        for (uint k = 0; k < scene.light_count; k++) {
+            sampler.light = k;
+            float intensity = intensity_at(scene.lights[k], over_point, normalv, shapes, nodes,
+                                           tables, rt, scene.counts, sampler);
+            color += p.weight
+                     * lighting(m, scene.lights[k], over_point, object_point, eyev, normalv,
+                                intensity, tracing ? 0.0 : 1.0, sampler, tables);
+        }
         sampler.call++;
 
         if (p.remaining <= 0) {

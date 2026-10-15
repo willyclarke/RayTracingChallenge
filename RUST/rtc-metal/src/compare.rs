@@ -21,7 +21,7 @@ use std::f64::consts::PI;
 /// floor and two walls that are themselves flattened spheres.
 pub(crate) fn chapter_7_scene(width: usize, height: usize) -> (World, Camera) {
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
@@ -85,7 +85,7 @@ fn ball(color: Tuple) -> Material {
 fn chapter_9_scene(width: usize, height: usize) -> (World, Camera) {
     let (chapter_7, camera) = chapter_7_scene(width, height);
     let mut world = World::new();
-    world.light = chapter_7.light.clone();
+    world.lights = chapter_7.lights.clone();
     let mut wall = Material::new();
     wall.color = Tuple::color(1.0, 0.9, 0.9);
     wall.specular = 0.0;
@@ -112,7 +112,7 @@ fn chapter_9_scene(width: usize, height: usize) -> (World, Camera) {
 fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
     let (chapter_9, camera) = chapter_9_scene(width, height);
     let mut world = World::new();
-    world.light = chapter_9.light.clone();
+    world.lights = chapter_9.lights.clone();
     let mut materials: Vec<Material> = chapter_9
         .shapes
         .iter()
@@ -163,7 +163,7 @@ fn chapter_11_scene(width: usize, height: usize) -> (World, Camera) {
 /// so the flattening also walks the identity-transform groups it inserts.
 pub(crate) fn chapter_14_scene(width: usize, height: usize) -> (World, Camera) {
     let mut world = World::new();
-    world.light = Some(Light::point_light(
+    world.set_light(Light::point_light(
         Tuple::point(-10.0, 10.0, -10.0),
         Tuple::color(1.0, 1.0, 1.0),
     ));
@@ -425,6 +425,55 @@ fn test_bonus_soft_shadows_gpu_sampled_render_converges() -> Result<(), String> 
 }
 
 #[test]
+fn test_bonus_multiple_lights_gpu_render_matches_cpu() -> Result<(), String> {
+    // Chapter 7's scene under a red and a blue light: coloured, overlapping
+    // shadows; a point shadowed from one light is still lit by the other.
+    let (world, camera) = scene_file(include_str!("../scenes/multiple_lights.json"), 200, 100);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_bonus_multiple_lights_area_gpu_render_matches_cpu() -> Result<(), String> {
+    // An area light and a point light: soft and hard shadows from each ball.
+    let (world, camera) = scene_file(include_str!("../scenes/multiple_lights_area.json"), 200, 80);
+    check_matches_cpu(&world, camera)
+}
+
+#[test]
+fn test_bonus_multiple_lights_area_gpu_sampled_render_converges() -> Result<(), String> {
+    // Calibrated once: measured err_4 = 2.641e-2, err_256 = 5.024e-3;
+    // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. As with
+    // one area light, the error does not go to 0 (cell centres on the CPU).
+    const THRESHOLD: f64 = 7.6e-3;
+    let (world, camera) = scene_file(include_str!("../scenes/multiple_lights_area.json"), 200, 80);
+    let scene = GpuScene::from_world(&world, &camera)?;
+    let cpu = world.render_parallel(camera);
+    let w = scene.width();
+    let cpu_at = |i: usize| {
+        let c = cpu.pixel_at(i % w, i / w);
+        [c.x, c.y, c.z]
+    };
+    let gpu = Gpu::new()?;
+    let mut acc = gpu.accumulator(&scene)?;
+    for _ in 0..4 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_4 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    for _ in 4..256 {
+        acc.add_frame(&gpu, &scene.info)?;
+    }
+    let err_256 = mean_abs_error(&acc.resolve(&gpu)?, cpu_at);
+    eprintln!("err_4 {err_4:.3e}, err_256 {err_256:.3e}");
+    if err_256 > 0.5 * err_4 {
+        return Err(format!("err_256 {err_256} not <= half of err_4 {err_4}"));
+    }
+    if err_256 >= THRESHOLD {
+        return Err(format!("err_256 {err_256} >= {THRESHOLD}"));
+    }
+    Ok(())
+}
+
+#[test]
 fn test_chap_17_focal_blur_gpu_sampled_render_converges() -> Result<(), String> {
     // Calibrated once: measured err_4 = 1.556e-2, err_256 = 5.421e-3;
     // THRESHOLD = 1.5x err_256, rounded up to 2 significant digits. The error
@@ -601,6 +650,23 @@ fn test_chap_17_path_tracing_gpu_render_matches_cpu() -> Result<(), String> {
         149,
     );
     check_converges_to_cpu(&world, &world, camera, MAX_ABS, MAX_SIGNED)
+}
+
+#[test]
+fn test_bonus_multiple_lights_path_tracing_gpu_render_matches_cpu() -> Result<(), String> {
+    // The Cornell box with a second light shining in through the opening.
+    // Calibrated once (both traversals alike) against a 256-path CPU
+    // reference: mean abs error 4.179e-2, mean signed error 4.192e-4;
+    // thresholds 1.5x, rounded up to 2 significant digits. No bias: the
+    // signed error falls with GPU paths (64: 2.281e-4, 256: 1.299e-4), as
+    // the one-light box's does (16: 3.235e-4, 64: 1.693e-4, 256: 9.094e-5).
+    // 150x149 for the diagonal-edge ties, as in the one-light test.
+    const MAX_ABS: f64 = 6.3e-2;
+    const MAX_SIGNED: f64 = 6.3e-4;
+    let (world, camera) = scene_file(include_str!("../scenes/cornell_two_lights.json"), 150, 149);
+    let mut reference = scene_file(include_str!("../scenes/cornell_two_lights.json"), 150, 149).0;
+    reference.set_path_tracing(256, 2);
+    check_converges_to_cpu(&world, &reference, camera, MAX_ABS, MAX_SIGNED)
 }
 
 #[test]
