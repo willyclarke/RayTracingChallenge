@@ -4,7 +4,9 @@
 //! (events with no movement leave it alone). Space returns to the scene's
 //! own view. The window can be resized or made full screen: the image is
 //! rendered at the view's pixel size, with the scene's field of view, and
-//! starts again at each new size.
+//! starts again at each new size. An overlay in the top-left corner shows
+//! the progress, frame time, size and traversal (`i` hides and shows it);
+//! the title bar shows the same, outside full screen.
 //! Quitting hands the final image and its size to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
@@ -13,13 +15,16 @@
 use crate::gpu::{Accumulator, Gpu};
 use crate::orbit::Orbit;
 use crate::scene::GpuScene;
+#[cfg(test)]
+use crate::types::TRAVERSAL_BVH;
+use crate::types::TRAVERSAL_METAL;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
-    NSEvent, NSMenu, NSMenuItem, NSResponder, NSScreen, NSView, NSWindow,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSColor, NSEvent, NSFont, NSMenu, NSMenuItem, NSResponder, NSScreen, NSTextField, NSView,
+    NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
@@ -99,6 +104,26 @@ impl Renderer {
     }
 }
 
+/// The overlay's and title's text.
+fn status(
+    name: &str,
+    frames: u32,
+    target: u32,
+    ms: f64,
+    width: usize,
+    height: usize,
+    traversal: u32,
+) -> String {
+    let traversal = if traversal == TRAVERSAL_METAL {
+        "metal"
+    } else {
+        "bvh"
+    };
+    format!(
+        "{name} · {frames}/{target} samples · {ms:.1} ms/frame · {width}×{height} px · {traversal}"
+    )
+}
+
 /// `camera` at `width x height` pixels: same field of view, view transform
 /// and lens. The field of view spans the longer side, so a wider window
 /// shows more to the sides.
@@ -122,7 +147,8 @@ define_class!(
     #[ivars = Rc<RefCell<Renderer>>]
     /// The image view. Dragging orbits the camera "grabbing the scene"
     /// (dragging right orbits it left, dragging down raises it; the signs
-    /// live in `Orbit::drag`); scrolling zooms; space resets the view.
+    /// live in `Orbit::drag`); scrolling zooms; space resets the view; `i`
+    /// toggles the status overlay.
     struct RtcView;
 
     impl RtcView {
@@ -163,6 +189,13 @@ define_class!(
 
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
+            if event.charactersIgnoringModifiers().is_some_and(|c| c.to_string() == "i") {
+                // The status overlay is the view's only subview.
+                for overlay in self.subviews() {
+                    overlay.setHidden(!overlay.isHidden());
+                }
+                return;
+            }
             // 49 is the space bar's virtual key code on every layout.
             if event.keyCode() != 49 {
                 // SAFETY: NSResponder's keyDown: takes one NSEvent.
@@ -265,6 +298,8 @@ define_class!(
 
 struct Delegate {
     renderer: Rc<RefCell<Renderer>>,
+    /// The status label over the image.
+    overlay: Retained<NSTextField>,
     on_close: Cell<Option<OnClose>>,
     title: String,
 }
@@ -308,16 +343,26 @@ impl RtcDelegate {
         let now = Instant::now();
         let ms = (now - r.last_frame).as_secs_f64() * 1e3;
         r.last_frame = now;
-        let title = format!(
-            "{} — {}/{} samples, {ms:.1} ms/frame",
-            ivars.title,
+        let text = NSString::from_str(&status(
+            &ivars.title,
             r.acc.frames(),
-            r.target
-        );
+            r.target,
+            ms,
+            r.camera.hsize,
+            r.camera.vsize,
+            r.scene.info.counts.traversal,
+        ));
         drop(r);
         if let Some(window) = view.window() {
-            window.setTitle(&NSString::from_str(&title));
+            window.setTitle(&text);
         }
+        let overlay = &ivars.overlay;
+        overlay.setStringValue(&text);
+        overlay.sizeToFit();
+        // AppKit's y axis points up: pin the label 8 points from the top left.
+        let top = view.bounds().size.height;
+        let size = overlay.frame().size;
+        overlay.setFrameOrigin(NSPoint::new(8.0, top - size.height - 8.0));
     }
 }
 
@@ -354,10 +399,12 @@ pub fn run(
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
     app.setMainMenu(Some(&quit_menu(mtm)));
+    let overlay = status_label(mtm, &title);
     let delegate = RtcDelegate::new(
         mtm,
         Delegate {
             renderer: renderer.clone(),
+            overlay: overlay.clone(),
             on_close: Cell::new(Some(on_close)),
             title: title.clone(),
         },
@@ -388,6 +435,7 @@ pub fn run(
     // `drawableSizeWillChange`, which re-sizes the camera.
     view.setAutoResizeDrawable(true);
     view.setPreferredFramesPerSecond(60);
+    view.addSubview(&overlay);
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
     // window can be closed, so the `Retained` stays the only owner.
@@ -411,6 +459,19 @@ pub fn run(
     app.activate(); // needs macOS 14+ (older: activateIgnoringOtherApps)
     app.run();
     std::process::exit(0);
+}
+
+/// White text on a translucent black box, for the top-left overlay.
+fn status_label(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
+    let label = NSTextField::labelWithString(&NSString::from_str(text), mtm);
+    label.setTextColor(Some(&NSColor::whiteColor()));
+    label.setBackgroundColor(Some(&NSColor::colorWithWhite_alpha(0.0, 0.55)));
+    label.setDrawsBackground(true);
+    // Fixed-width digits so the counters don't jitter as they change.
+    label.setFont(Some(&NSFont::monospacedDigitSystemFontOfSize_weight(
+        12.0, 0.0,
+    )));
+    label
 }
 
 /// A main menu holding just the app menu with Quit (Cmd-Q): a bare
@@ -441,6 +502,16 @@ fn quit_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
 mod tests {
     use super::*;
     use rtc_rust::matrix::Matrix4;
+
+    #[test]
+    fn status_shows_progress_size_and_traversal() {
+        let text = status("cornell.json", 37, 256, 12.34, 3456, 2234, TRAVERSAL_BVH);
+        assert_eq!(
+            text,
+            "cornell.json · 37/256 samples · 12.3 ms/frame · 3456×2234 px · bvh"
+        );
+        assert!(status("a.json", 1, 2, 1.0, 3, 4, TRAVERSAL_METAL).ends_with("· metal"));
+    }
 
     #[test]
     fn resized_camera_keeps_everything_but_the_size() {
