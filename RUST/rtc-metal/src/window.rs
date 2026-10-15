@@ -8,7 +8,9 @@
 //! the progress, frame time, size and traversal (`i` hides and shows it);
 //! the title bar shows the same, outside full screen. The Traversal menu
 //! (Cmd-1 BVH, Cmd-2 Metal) switches how the bounded shapes are searched
-//! and restarts the accumulation.
+//! and restarts the accumulation. The Samples menu sets how many frames to
+//! refine up to (presets, Unlimited, Cmd-] doubles, Cmd-[ halves) without
+//! restarting: a higher target carries on, a lower one stops.
 //! Quitting hands the final image and its size to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
@@ -39,6 +41,11 @@ use std::rc::Rc;
 use std::time::Instant;
 
 /// Called on quit with the final image and its width and height.
+/// The sample target that never stops refining.
+const UNLIMITED: u32 = u32::MAX;
+/// The Samples menu's fixed targets.
+const PRESETS: [u32; 5] = [16, 64, 256, 1024, 4096];
+
 type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize)>;
 
 /// The state the view and its delegate share.
@@ -52,8 +59,11 @@ struct Renderer {
     home: (Camera, Orbit),
     /// Whether the camera has left `home` since the last reset.
     moved: bool,
+    /// Frames to refine up to; `UNLIMITED` never stops.
     target: u32,
     last_frame: Instant,
+    /// The last frame's time, for the status shown while paused.
+    ms: f64,
 }
 
 impl Renderer {
@@ -96,6 +106,14 @@ impl Renderer {
         self.rebuild()
     }
 
+    /// Refine up to `target` frames from now on, keeping the frames already
+    /// summed; true when that means drawing more.
+    fn set_target(&mut self, target: u32) -> bool {
+        self.target = target;
+        self.last_frame = Instant::now();
+        self.acc.frames() < target
+    }
+
     /// Search the bounded shapes with `traversal` (`TRAVERSAL_BVH` or
     /// `TRAVERSAL_METAL`) from now on; false when it already does.
     fn set_traversal(&mut self, traversal: u32) -> bool {
@@ -120,6 +138,24 @@ impl Renderer {
     }
 }
 
+/// Twice `target`, up to 2^31; Unlimited stays Unlimited.
+fn doubled(target: u32) -> u32 {
+    if target == UNLIMITED {
+        target
+    } else {
+        target.saturating_mul(2).min(1 << 31)
+    }
+}
+
+/// Half `target`, at least 1; from Unlimited, the largest preset.
+fn halved(target: u32) -> u32 {
+    if target == UNLIMITED {
+        PRESETS[PRESETS.len() - 1]
+    } else {
+        (target / 2).max(1)
+    }
+}
+
 /// The overlay's and title's text.
 fn status(
     name: &str,
@@ -134,6 +170,11 @@ fn status(
         "metal"
     } else {
         "bvh"
+    };
+    let target = if target == UNLIMITED {
+        "∞".to_string()
+    } else {
+        target.to_string()
     };
     format!(
         "{name} · {frames}/{target} samples · {ms:.1} ms/frame · {width}×{height} px · {traversal}"
@@ -213,17 +254,39 @@ define_class!(
             self.switch_traversal(TRAVERSAL_METAL);
         }
 
-        /// AppKit asks before showing the menu: tick the current traversal.
+        /// A Samples preset; the item's tag is the target (0 = Unlimited).
+        #[unsafe(method(useSampleTarget:))]
+        fn use_sample_target(&self, sender: &NSMenuItem) {
+            self.change_target(|_| tag_target(sender.tag()));
+        }
+
+        #[unsafe(method(doubleSamples:))]
+        fn double_samples(&self, _sender: Option<&NSObject>) {
+            self.change_target(doubled);
+        }
+
+        #[unsafe(method(halveSamples:))]
+        fn halve_samples(&self, _sender: Option<&NSObject>) {
+            self.change_target(halved);
+        }
+
+        /// AppKit asks before showing a menu: tick the current traversal and
+        /// sample target.
         #[unsafe(method(validateMenuItem:))]
         fn validate_menu_item(&self, item: &NSMenuItem) -> bool {
-            let traversal = match item.action() {
-                Some(a) if a == sel!(useBvhTraversal:) => Some(TRAVERSAL_BVH),
-                Some(a) if a == sel!(useMetalTraversal:) => Some(TRAVERSAL_METAL),
+            let r = self.ivars().borrow();
+            let ticked = match item.action() {
+                Some(a) if a == sel!(useBvhTraversal:) => {
+                    Some(r.scene.info.counts.traversal == TRAVERSAL_BVH)
+                }
+                Some(a) if a == sel!(useMetalTraversal:) => {
+                    Some(r.scene.info.counts.traversal == TRAVERSAL_METAL)
+                }
+                Some(a) if a == sel!(useSampleTarget:) => Some(tag_target(item.tag()) == r.target),
                 _ => None,
             };
-            if let Some(traversal) = traversal {
-                let current = self.ivars().borrow().scene.info.counts.traversal;
-                item.setState(if traversal == current {
+            if let Some(ticked) = ticked {
+                item.setState(if ticked {
                     NSControlStateValueOn
                 } else {
                     NSControlStateValueOff
@@ -279,6 +342,22 @@ impl RtcView {
             r.restart();
         }
         self.resume();
+    }
+
+    /// Set the sample target to `change(target)`; draw more if that is
+    /// above the frames done, otherwise just show the new target.
+    fn change_target(&self, change: impl FnOnce(u32) -> u32) {
+        let more = {
+            let mut r = self.ivars().borrow_mut();
+            let target = change(r.target);
+            r.set_target(target)
+        };
+        if more {
+            self.resume();
+        } else {
+            // Paused: one draw call refreshes the status text.
+            self.setNeedsDisplay(true);
+        }
     }
 
     /// Switch traversal from the menu and restart drawing.
@@ -369,7 +448,9 @@ impl RtcDelegate {
         let ivars = self.ivars();
         let mut r = ivars.renderer.borrow_mut();
         if r.acc.frames() >= r.target {
+            let ms = r.ms;
             drop(r);
+            self.show_status(view, ms);
             view.setPaused(true);
             view.setEnableSetNeedsDisplay(true);
             return;
@@ -395,6 +476,15 @@ impl RtcDelegate {
         let now = Instant::now();
         let ms = (now - r.last_frame).as_secs_f64() * 1e3;
         r.last_frame = now;
+        r.ms = ms;
+        drop(r);
+        self.show_status(view, ms);
+    }
+
+    /// Put the status text in the title and the overlay.
+    fn show_status(&self, view: &MTKView, ms: f64) {
+        let ivars = self.ivars();
+        let r = ivars.renderer.borrow();
         let text = NSString::from_str(&status(
             &ivars.title,
             r.acc.frames(),
@@ -446,6 +536,7 @@ pub fn run(
         moved: false,
         target: samples,
         last_frame: Instant::now(),
+        ms: 0.0,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
@@ -527,7 +618,7 @@ fn status_label(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
 }
 
 /// The main menu: the app menu with Quit (Cmd-Q; a bare `NSApplication`
-/// has no menu, so Cmd-Q would do nothing) and the Traversal menu.
+/// has no menu, so Cmd-Q would do nothing), Traversal and Samples.
 fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     let quit = NSString::from_str("Quit");
     let q = NSString::from_str("q");
@@ -548,6 +639,7 @@ fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     let menu = NSMenu::new(mtm);
     menu.addItem(&app_item);
     menu.addItem(&traversal_menu(mtm));
+    menu.addItem(&samples_menu(mtm));
     menu
 }
 
@@ -576,6 +668,42 @@ fn traversal_menu(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
     item
 }
 
+/// A Samples preset item's tag as a target: 0 is Unlimited.
+fn tag_target(tag: isize) -> u32 {
+    if tag == 0 { UNLIMITED } else { tag as u32 }
+}
+
+/// The presets and Unlimited (ticked when current), then Double (Cmd-])
+/// and Halve (Cmd-[).
+fn samples_menu(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
+    let submenu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("Samples"));
+    let item = |name: &str, action, key: &str| {
+        // SAFETY: every action is an `RtcView` method taking one sender.
+        unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(name),
+                Some(action),
+                &NSString::from_str(key),
+            )
+        }
+    };
+    for target in PRESETS {
+        let preset = item(&target.to_string(), sel!(useSampleTarget:), "");
+        preset.setTag(target as isize);
+        submenu.addItem(&preset);
+    }
+    let unlimited = item("Unlimited", sel!(useSampleTarget:), "");
+    unlimited.setTag(0);
+    submenu.addItem(&unlimited);
+    submenu.addItem(&NSMenuItem::separatorItem(mtm));
+    submenu.addItem(&item("Double", sel!(doubleSamples:), "]"));
+    submenu.addItem(&item("Halve", sel!(halveSamples:), "["));
+    let menu_item = NSMenuItem::new(mtm);
+    menu_item.setSubmenu(Some(&submenu));
+    menu_item
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,7 +730,41 @@ mod tests {
             moved: false,
             target: 4,
             last_frame: Instant::now(),
+            ms: 0.0,
         })
+    }
+
+    #[test]
+    fn doubling_and_halving_the_target() {
+        assert_eq!(doubled(256), 512);
+        assert_eq!(doubled(1 << 31), 1 << 31);
+        assert_eq!(doubled(UNLIMITED), UNLIMITED);
+        assert_eq!(halved(256), 128);
+        assert_eq!(halved(1), 1);
+        // From Unlimited, halving lands on the largest preset.
+        assert_eq!(halved(UNLIMITED), 4096);
+    }
+
+    #[test]
+    fn set_target_resumes_only_below_it() -> Result<(), String> {
+        let mut r = renderer()?;
+        for _ in 0..3 {
+            r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        }
+        // Raising the target carries on from the frames already summed.
+        assert!(r.set_target(8));
+        assert_eq!((r.target, r.acc.frames()), (8, 3));
+        // Lowering it below them stops at the current image.
+        assert!(!r.set_target(2));
+        assert_eq!((r.target, r.acc.frames()), (2, 3));
+        assert!(r.set_target(UNLIMITED));
+        Ok(())
+    }
+
+    #[test]
+    fn status_shows_unlimited_as_infinity() {
+        let text = status("a.json", 37, UNLIMITED, 1.0, 3, 4, TRAVERSAL_BVH);
+        assert!(text.contains("· 37/∞ samples ·"));
     }
 
     #[test]
