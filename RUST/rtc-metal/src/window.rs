@@ -6,7 +6,9 @@
 //! rendered at the view's pixel size, with the scene's field of view, and
 //! starts again at each new size. An overlay in the top-left corner shows
 //! the progress, frame time, size and traversal (`i` hides and shows it);
-//! the title bar shows the same, outside full screen.
+//! the title bar shows the same, outside full screen. The Traversal menu
+//! (Cmd-1 BVH, Cmd-2 Metal) switches how the bounded shapes are searched
+//! and restarts the accumulation.
 //! Quitting hands the final image and its size to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
@@ -15,16 +17,15 @@
 use crate::gpu::{Accumulator, Gpu};
 use crate::orbit::Orbit;
 use crate::scene::GpuScene;
-#[cfg(test)]
-use crate::types::TRAVERSAL_BVH;
-use crate::types::TRAVERSAL_METAL;
+use crate::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
-    NSColor, NSEvent, NSFont, NSMenu, NSMenuItem, NSResponder, NSScreen, NSTextField, NSView,
-    NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont, NSMenu, NSMenuItem,
+    NSResponder, NSScreen, NSTextField, NSView, NSWindow, NSWindowCollectionBehavior,
+    NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
@@ -92,6 +93,21 @@ impl Renderer {
             eprintln!("rtc-metal: {e}");
             return false;
         }
+        self.rebuild()
+    }
+
+    /// Search the bounded shapes with `traversal` (`TRAVERSAL_BVH` or
+    /// `TRAVERSAL_METAL`) from now on; false when it already does.
+    fn set_traversal(&mut self, traversal: u32) -> bool {
+        if traversal == self.scene.info.counts.traversal {
+            return false;
+        }
+        self.scene.info.counts.traversal = traversal;
+        self.rebuild()
+    }
+
+    /// A new, empty accumulator for the scene's current size and traversal.
+    fn rebuild(&mut self) -> bool {
         match self.gpu.accumulator(&self.scene) {
             Ok(acc) => self.acc = acc,
             Err(e) => {
@@ -187,6 +203,35 @@ define_class!(
             self.interact(|orbit| orbit.zoom(dy));
         }
 
+        #[unsafe(method(useBvhTraversal:))]
+        fn use_bvh_traversal(&self, _sender: Option<&NSObject>) {
+            self.switch_traversal(TRAVERSAL_BVH);
+        }
+
+        #[unsafe(method(useMetalTraversal:))]
+        fn use_metal_traversal(&self, _sender: Option<&NSObject>) {
+            self.switch_traversal(TRAVERSAL_METAL);
+        }
+
+        /// AppKit asks before showing the menu: tick the current traversal.
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, item: &NSMenuItem) -> bool {
+            let traversal = match item.action() {
+                Some(a) if a == sel!(useBvhTraversal:) => Some(TRAVERSAL_BVH),
+                Some(a) if a == sel!(useMetalTraversal:) => Some(TRAVERSAL_METAL),
+                _ => None,
+            };
+            if let Some(traversal) = traversal {
+                let current = self.ivars().borrow().scene.info.counts.traversal;
+                item.setState(if traversal == current {
+                    NSControlStateValueOn
+                } else {
+                    NSControlStateValueOff
+                });
+            }
+            true
+        }
+
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
             if event.charactersIgnoringModifiers().is_some_and(|c| c.to_string() == "i") {
@@ -234,6 +279,13 @@ impl RtcView {
             r.restart();
         }
         self.resume();
+    }
+
+    /// Switch traversal from the menu and restart drawing.
+    fn switch_traversal(&self, traversal: u32) {
+        if self.ivars().borrow_mut().set_traversal(traversal) {
+            self.resume();
+        }
     }
 
     /// Start drawing frames again after the accumulation restarted.
@@ -398,7 +450,7 @@ pub fn run(
 
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-    app.setMainMenu(Some(&quit_menu(mtm)));
+    app.setMainMenu(Some(&main_menu(mtm)));
     let overlay = status_label(mtm, &title);
     let delegate = RtcDelegate::new(
         mtm,
@@ -474,9 +526,9 @@ fn status_label(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
     label
 }
 
-/// A main menu holding just the app menu with Quit (Cmd-Q): a bare
-/// `NSApplication` has no menu, so Cmd-Q would do nothing.
-fn quit_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
+/// The main menu: the app menu with Quit (Cmd-Q; a bare `NSApplication`
+/// has no menu, so Cmd-Q would do nothing) and the Traversal menu.
+fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     let quit = NSString::from_str("Quit");
     let q = NSString::from_str("q");
     // SAFETY: `terminate:` is NSApplication's action method, reached through
@@ -495,13 +547,78 @@ fn quit_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     app_item.setSubmenu(Some(&app_menu));
     let menu = NSMenu::new(mtm);
     menu.addItem(&app_item);
+    menu.addItem(&traversal_menu(mtm));
     menu
+}
+
+/// BVH (Cmd-1) and Metal (Cmd-2). The actions have no target, so they go
+/// to the first responder, the image view.
+fn traversal_menu(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
+    let title = NSString::from_str("Traversal");
+    let submenu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &title);
+    for (name, action, key) in [
+        ("BVH", sel!(useBvhTraversal:), "1"),
+        ("Metal", sel!(useMetalTraversal:), "2"),
+    ] {
+        // SAFETY: both actions are `RtcView` methods taking one sender.
+        let item = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(name),
+                Some(action),
+                &NSString::from_str(key),
+            )
+        };
+        submenu.addItem(&item);
+    }
+    let item = NSMenuItem::new(mtm);
+    item.setSubmenu(Some(&submenu));
+    item
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rtc_rust::matrix::Matrix4;
+
+    fn renderer() -> Result<Renderer, String> {
+        let world = rtc_rust::world::World::default_world();
+        let camera = Camera::new(8, 6, 1.0);
+        let gpu = Gpu::new()?;
+        let scene = GpuScene::from_world(&world, &camera)?;
+        let acc = gpu.accumulator(&scene)?;
+        let orbit = Orbit::new(
+            rtc_rust::tuple::Tuple::point(0.0, 0.0, -5.0),
+            rtc_rust::tuple::Tuple::point(0.0, 0.0, 0.0),
+            rtc_rust::tuple::Tuple::vector(0.0, 1.0, 0.0),
+        );
+        Ok(Renderer {
+            gpu,
+            scene,
+            acc,
+            camera,
+            home: (camera, orbit.clone()),
+            orbit,
+            moved: false,
+            target: 4,
+            last_frame: Instant::now(),
+        })
+    }
+
+    #[test]
+    fn set_traversal_rebuilds_the_accumulator() -> Result<(), String> {
+        let mut r = renderer()?;
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        assert!(r.set_traversal(TRAVERSAL_METAL));
+        assert_eq!(r.scene.info.counts.traversal, TRAVERSAL_METAL);
+        assert_eq!(r.acc.frames(), 0);
+        // The new accumulator takes Metal frames; the old one refused them.
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        assert!(!r.set_traversal(TRAVERSAL_METAL));
+        assert!(r.set_traversal(TRAVERSAL_BVH));
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        Ok(())
+    }
 
     #[test]
     fn status_shows_progress_size_and_traversal() {

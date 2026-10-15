@@ -184,6 +184,7 @@ fn usage() -> ! {
         "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view,\n               i toggles the status overlay, resizing re-renders,\n               quit writes the image at the window's size"
     );
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
+    eprintln!("               (in --window, also the Traversal menu: Cmd-1 bvh, Cmd-2 metal)");
     eprintln!("  the scene's antialias.n is ignored on the GPU");
     std::process::exit(2);
 }
