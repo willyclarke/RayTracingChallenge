@@ -5,7 +5,9 @@
 //! own view. The window can be resized or made full screen: the image is
 //! rendered at the view's pixel size, with the scene's field of view, and
 //! starts again at each new size. An overlay in the top-left corner shows
-//! the progress, frame time, size and traversal (`i` hides and shows it);
+//! the progress, a stopwatch (seconds spent drawing the current image,
+//! frozen once the target is reached), frame time, size and traversal
+//! (`i` hides and shows it);
 //! the title bar shows the same, outside full screen. The Traversal menu
 //! (Cmd-1 BVH, Cmd-2 Metal) switches how the bounded shapes are searched
 //! and restarts the accumulation. The Samples menu sets how many frames to
@@ -38,7 +40,7 @@ use objc2_quartz_core::CAMetalDrawable;
 use rtc_rust::camera::Camera;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Called on quit with the final image and its width and height.
 /// The sample target that never stops refining.
@@ -64,6 +66,8 @@ struct Renderer {
     last_frame: Instant,
     /// The last frame's time, for the status shown while paused.
     ms: f64,
+    /// Stopwatch: the time spent drawing the current image's frames.
+    elapsed: Duration,
 }
 
 impl Renderer {
@@ -76,6 +80,7 @@ impl Renderer {
         }
         self.acc.reset();
         self.last_frame = Instant::now();
+        self.elapsed = Duration::ZERO;
     }
 
     /// Return to the scene's own view, at the current size; false (and the
@@ -134,7 +139,18 @@ impl Renderer {
             }
         }
         self.last_frame = Instant::now();
+        self.elapsed = Duration::ZERO;
         true
+    }
+
+    /// A frame finished at `now`: its time in ms, also kept in `ms` and
+    /// added to the stopwatch.
+    fn tick(&mut self, now: Instant) -> f64 {
+        let frame = now - self.last_frame;
+        self.last_frame = now;
+        self.elapsed += frame;
+        self.ms = frame.as_secs_f64() * 1e3;
+        self.ms
     }
 }
 
@@ -161,9 +177,9 @@ fn status(
     name: &str,
     frames: u32,
     target: u32,
+    secs: f64,
     ms: f64,
-    width: usize,
-    height: usize,
+    (width, height): (usize, usize),
     traversal: u32,
 ) -> String {
     let traversal = if traversal == TRAVERSAL_METAL {
@@ -177,7 +193,7 @@ fn status(
         target.to_string()
     };
     format!(
-        "{name} · {frames}/{target} samples · {ms:.1} ms/frame · {width}×{height} px · {traversal}"
+        "{name} · {frames}/{target} samples · {secs:.1} s · {ms:.1} ms/frame · {width}×{height} px · {traversal}"
     )
 }
 
@@ -473,10 +489,7 @@ impl RtcDelegate {
         commands.presentDrawable(ProtocolObject::from_ref(&*drawable));
         commands.commit();
 
-        let now = Instant::now();
-        let ms = (now - r.last_frame).as_secs_f64() * 1e3;
-        r.last_frame = now;
-        r.ms = ms;
+        let ms = r.tick(Instant::now());
         drop(r);
         self.show_status(view, ms);
     }
@@ -489,9 +502,9 @@ impl RtcDelegate {
             &ivars.title,
             r.acc.frames(),
             r.target,
+            r.elapsed.as_secs_f64(),
             ms,
-            r.camera.hsize,
-            r.camera.vsize,
+            (r.camera.hsize, r.camera.vsize),
             r.scene.info.counts.traversal,
         ));
         drop(r);
@@ -537,6 +550,7 @@ pub fn run(
         target: samples,
         last_frame: Instant::now(),
         ms: 0.0,
+        elapsed: Duration::ZERO,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
@@ -731,7 +745,35 @@ mod tests {
             target: 4,
             last_frame: Instant::now(),
             ms: 0.0,
+            elapsed: Duration::ZERO,
         })
+    }
+
+    #[test]
+    fn stopwatch_sums_frame_times_and_restarts_with_the_image() -> Result<(), String> {
+        let mut r = renderer()?;
+        let start = r.last_frame;
+        assert_eq!(r.tick(start + Duration::from_millis(30)), 30.0);
+        r.tick(start + Duration::from_millis(50));
+        assert_eq!((r.ms, r.elapsed), (20.0, Duration::from_millis(50)));
+        // Raising the target carries the stopwatch on, without the pause.
+        r.set_target(8);
+        let resumed = r.last_frame;
+        r.tick(resumed + Duration::from_millis(10));
+        assert_eq!(r.elapsed, Duration::from_millis(60));
+        // A new image starts from zero.
+        r.restart();
+        assert_eq!(r.elapsed, Duration::ZERO);
+        r.tick(r.last_frame + Duration::from_millis(10));
+        r.set_traversal(TRAVERSAL_METAL);
+        assert_eq!(r.elapsed, Duration::ZERO);
+        Ok(())
+    }
+
+    #[test]
+    fn status_shows_the_stopwatch() {
+        let text = status("a.json", 256, 256, 72.24, 8.3, (3, 4), TRAVERSAL_BVH);
+        assert!(text.contains("· 256/256 samples · 72.2 s · 8.3 ms/frame ·"));
     }
 
     #[test]
@@ -763,7 +805,7 @@ mod tests {
 
     #[test]
     fn status_shows_unlimited_as_infinity() {
-        let text = status("a.json", 37, UNLIMITED, 1.0, 3, 4, TRAVERSAL_BVH);
+        let text = status("a.json", 37, UNLIMITED, 0.0, 1.0, (3, 4), TRAVERSAL_BVH);
         assert!(text.contains("· 37/∞ samples ·"));
     }
 
@@ -784,12 +826,20 @@ mod tests {
 
     #[test]
     fn status_shows_progress_size_and_traversal() {
-        let text = status("cornell.json", 37, 256, 12.34, 3456, 2234, TRAVERSAL_BVH);
+        let text = status(
+            "cornell.json",
+            37,
+            256,
+            4.56,
+            12.34,
+            (3456, 2234),
+            TRAVERSAL_BVH,
+        );
         assert_eq!(
             text,
-            "cornell.json · 37/256 samples · 12.3 ms/frame · 3456×2234 px · bvh"
+            "cornell.json · 37/256 samples · 4.6 s · 12.3 ms/frame · 3456×2234 px · bvh"
         );
-        assert!(status("a.json", 1, 2, 1.0, 3, 4, TRAVERSAL_METAL).ends_with("· metal"));
+        assert!(status("a.json", 1, 2, 0.0, 1.0, (3, 4), TRAVERSAL_METAL).ends_with("· metal"));
     }
 
     #[test]

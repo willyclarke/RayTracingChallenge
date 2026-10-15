@@ -9,7 +9,7 @@
 //! rtc-rust's deterministic image. `--window` shows the sampled frames
 //! refining live (default 256, or `--samples N`); drag to orbit the camera,
 //! scroll to zoom, space to return to the scene's view, `i` to toggle the
-//! status overlay; resizing the window or going full screen renders at the
+//! status overlay (which times each image until it reaches the target); resizing the window or going full screen renders at the
 //! new size, and the image is written on quit at the size last shown. `--traversal metal` searches the bounded
 //! shapes with Metal's ray tracing API instead of the BVH walk
 //! (milestone 10).
@@ -181,7 +181,7 @@ fn usage() -> ! {
     );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
-        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view,\n               i toggles the status overlay, resizing re-renders,\n               quit writes the image at the window's size;
+        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view,\n               i toggles the status overlay (with seconds to reach the target),\n               resizing re-renders,\n               quit writes the image at the window's size;
                Samples menu: presets, Unlimited, Cmd-] doubles, Cmd-[ halves"
     );
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
