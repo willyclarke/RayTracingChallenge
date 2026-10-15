@@ -1,0 +1,261 @@
+{
+  "comment": "Milestone 13, multiple lights: chapter17_path_tracing.json's Cornell box (box walls, 16 paths, 2 bounces) with a second, dimmer point light in front of the room's open side, shining in through the opening: a second set of shadows and a brighter front floor",
+  "camera": {
+    "width": 150,
+    "height": 150,
+    "field_of_view": 0.6806784082777885,
+    "from": [
+      0,
+      1,
+      -3.5
+    ],
+    "to": [
+      0,
+      1,
+      0
+    ],
+    "up": [
+      0,
+      1,
+      0
+    ]
+  },
+  "lights": [
+    {
+      "type": "point",
+      "position": [
+        0,
+        1.8,
+        -0.6
+      ],
+      "intensity": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "type": "point",
+      "position": [
+        0.6,
+        1.5,
+        -2.5
+      ],
+      "intensity": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  ],
+  "settings": {
+    "path_tracing": {
+      "samples": 16,
+      "depth": 2
+    }
+  },
+  "shapes": [
+    {
+      "type": "cube",
+      "comment": "floor",
+      "transform": [
+        {
+          "scale": [
+            1.0,
+            0.01,
+            1.0
+          ]
+        },
+        {
+          "translate": [
+            0.0,
+            -0.01,
+            0.0
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.73,
+          0.73,
+          0.73
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "ceiling",
+      "transform": [
+        {
+          "scale": [
+            1.0,
+            0.01,
+            1.0
+          ]
+        },
+        {
+          "translate": [
+            0.0,
+            2.01,
+            0.0
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.73,
+          0.73,
+          0.73
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "back wall",
+      "transform": [
+        {
+          "scale": [
+            1.02,
+            1.02,
+            0.01
+          ]
+        },
+        {
+          "translate": [
+            0.0,
+            1.0,
+            1.01
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.73,
+          0.73,
+          0.73
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "left wall",
+      "transform": [
+        {
+          "scale": [
+            0.01,
+            1.02,
+            1.0
+          ]
+        },
+        {
+          "translate": [
+            -1.01,
+            1.0,
+            0.0
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.65,
+          0.05,
+          0.05
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "right wall",
+      "transform": [
+        {
+          "scale": [
+            0.01,
+            1.02,
+            1.0
+          ]
+        },
+        {
+          "translate": [
+            1.01,
+            1.0,
+            0.0
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.12,
+          0.45,
+          0.15
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "tall block",
+      "transform": [
+        {
+          "scale": [
+            0.3,
+            0.6,
+            0.3
+          ]
+        },
+        {
+          "rotate_y": 0.29670597283903605
+        },
+        {
+          "translate": [
+            -0.35,
+            0.6,
+            0.35
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.73,
+          0.73,
+          0.73
+        ],
+        "specular": 0
+      }
+    },
+    {
+      "type": "cube",
+      "comment": "short block",
+      "transform": [
+        {
+          "scale": [
+            0.3,
+            0.3,
+            0.3
+          ]
+        },
+        {
+          "rotate_y": -0.29670597283903605
+        },
+        {
+          "translate": [
+            0.35,
+            0.3,
+            -0.3
+          ]
+        }
+      ],
+      "material": {
+        "color": [
+          0.73,
+          0.73,
+          0.73
+        ],
+        "specular": 0
+      }
+    }
+  ]
+}

@@ -653,6 +653,23 @@ fn test_chap_17_path_tracing_gpu_render_matches_cpu() -> Result<(), String> {
 }
 
 #[test]
+fn test_bonus_multiple_lights_path_tracing_gpu_render_matches_cpu() -> Result<(), String> {
+    // The Cornell box with a second light shining in through the opening.
+    // Calibrated once (both traversals alike) against a 256-path CPU
+    // reference: mean abs error 4.179e-2, mean signed error 4.192e-4;
+    // thresholds 1.5x, rounded up to 2 significant digits. No bias: the
+    // signed error falls with GPU paths (64: 2.281e-4, 256: 1.299e-4), as
+    // the one-light box's does (16: 3.235e-4, 64: 1.693e-4, 256: 9.094e-5).
+    // 150x149 for the diagonal-edge ties, as in the one-light test.
+    const MAX_ABS: f64 = 6.3e-2;
+    const MAX_SIGNED: f64 = 6.3e-4;
+    let (world, camera) = scene_file(include_str!("../scenes/cornell_two_lights.json"), 150, 149);
+    let mut reference = scene_file(include_str!("../scenes/cornell_two_lights.json"), 150, 149).0;
+    reference.set_path_tracing(256, 2);
+    check_converges_to_cpu(&world, &reference, camera, MAX_ABS, MAX_SIGNED)
+}
+
+#[test]
 fn test_chap_17_path_tracing_reflection_gpu_render_matches_cpu() -> Result<(), String> {
     // Mirrors and glass keep the path's diffuse bounces. Calibrated once
     // (both traversals alike): mean abs error 4.914e-2, mean signed error
