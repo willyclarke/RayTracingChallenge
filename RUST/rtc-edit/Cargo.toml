@@ -1,0 +1,8 @@
+[package]
+name = "rtc-edit"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rtc-rust = { version = "0.1.0", path = "../rtc-rust" }
+serde_json = "1"
