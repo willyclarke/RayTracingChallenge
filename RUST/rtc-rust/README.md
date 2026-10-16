@@ -29,8 +29,7 @@ Renders are written as binary PPM files to the working directory.
 
 ## JSON scene format
 
-The `rtc` binary reads a JSON scene description and renders it (load-only — the renderer
-never writes scenes back):
+The `rtc` binary reads a JSON scene description and renders it:
 
 ```bash
 cargo run --release -- scenes/cover.json            # → cover.ppm
@@ -111,7 +110,10 @@ the walls from outside — move the walls out or drop them to film those.
 
 Design rules:
 
-- **Load-only.** JSON describes a scene to build; the renderer never writes scenes back.
+- **Load and save.** JSON describes a scene to build. `SceneDescription::to_json` and
+  `save` write a description back as pretty JSON that loads into an equal description;
+  absent and default values are left out, and `save` replaces the file atomically (a
+  temporary file, then a rename). The renderer itself never writes scenes.
 - **A separate scene layer.** Plain serde-derived structs/enums (`scene` module) mirror the
   core types and `build()` a `World` + `Camera`. Core types stay serde-free; trait objects
   (`Shape`, `Pattern`) are dispatched by enums with a `"type"` tag.

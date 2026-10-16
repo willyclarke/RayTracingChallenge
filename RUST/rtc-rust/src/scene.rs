@@ -1,4 +1,4 @@
-//! JSON scene description — load-only.
+//! JSON scene description — load and save.
 //!
 //! A scene file describes a camera, one light, optional render settings, and a
 //! tree of shapes; [`load`] turns it into a ready-to-render `(World, Camera)`
@@ -9,7 +9,7 @@
 //! scene file's directory. Computed state (world ids, bounds, the BVH) is
 //! rebuilt at load, never stored. The format is documented in `README.md`.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::Path;
 
@@ -54,27 +54,31 @@ impl std::error::Error for SceneError {}
 
 /// Top level of a scene file: a camera, one `light` or a `lights` list,
 /// optional settings, and the shape tree.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SceneDescription {
     /// Free-form notes; ignored by the loader (JSON has no comment syntax).
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub comment: Option<serde_json::Value>,
     pub camera: CameraDescription,
     /// The scene's only light; a scene has this or `lights`, not both.
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub light: Option<LightDescription>,
     /// Several lights, summed at every hit. An `Option` so that an empty
     /// list is told apart from a missing key.
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lights: Option<Vec<LightDescription>>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "is_default_settings")]
     pub settings: Settings,
     #[serde(default)]
     pub shapes: Vec<ShapeDescription>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CameraDescription {
     pub width: usize,
@@ -84,21 +88,24 @@ pub struct CameraDescription {
     pub to: [f64; 3],
     pub up: [f64; 3],
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub antialias: Option<Antialias>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub focal_blur: Option<FocalBlur>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub motion_blur: Option<MotionBlur>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Antialias {
     /// Supersampling grid size: `n`×`n` rays on edge pixels.
     pub n: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FocalBlur {
     pub aperture: f64,
@@ -106,14 +113,24 @@ pub struct FocalBlur {
     pub samples: usize,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MotionBlur {
     pub samples: usize,
 }
 
+/// `skip_serializing_if` for flags that default to `false`.
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// `skip_serializing_if` for `settings`: left out when nothing is set.
+fn is_default_settings(s: &Settings) -> bool {
+    *s == Settings::default()
+}
+
 /// The three `Light` constructors, tagged by `"type"`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LightDescription {
     Point {
@@ -137,18 +154,20 @@ pub enum LightDescription {
     },
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
     /// → `World::set_path_tracing(samples, depth)`.
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub path_tracing: Option<PathTracing>,
     /// Run `World::divide(root, threshold)` on every root shape after assembly.
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bvh_threshold: Option<usize>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PathTracing {
     pub samples: usize,
@@ -157,7 +176,7 @@ pub struct PathTracing {
 
 /// One transform step; a shape's `"transform"` is an ordered list of these,
 /// applied first-to-last (`[scale, translate]` scales, then translates).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TransformOp {
     Translate([f64; 3]),
@@ -208,20 +227,23 @@ pub fn transform_from_ops(ops: &[TransformOp]) -> Matrix4 {
 }
 
 /// A shape node: a tagged kind plus the fields every shape shares.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 pub struct ShapeDescription {
     #[serde(flatten)]
     pub shape: ShapeKind,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub transform: Vec<TransformOp>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub material: Option<MaterialDescription>,
     /// Velocity vector for motion blur (→ `set_motion`).
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub motion: Option<[f64; 3]>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ShapeKind {
     Sphere,
@@ -229,24 +251,32 @@ pub enum ShapeKind {
     Cube,
     Cylinder {
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         min: Option<f64>,
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<f64>,
         #[serde(default)]
+        #[serde(skip_serializing_if = "is_false")]
         closed: bool,
     },
     Cone {
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         min: Option<f64>,
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         max: Option<f64>,
         #[serde(default)]
+        #[serde(skip_serializing_if = "is_false")]
         closed: bool,
     },
     Torus {
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         major_radius: Option<f64>,
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         minor_radius: Option<f64>,
     },
     /// Wavefront OBJ file, loaded via `World::load_obj_file` into a group.
@@ -263,7 +293,7 @@ pub enum ShapeKind {
     },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CsgOp {
     Union,
@@ -282,41 +312,53 @@ impl From<CsgOp> for CsgOperation {
 }
 
 /// All fields optional, on top of `Material::new()` defaults.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MaterialDescription {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<[f64; 3]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub ambient: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub diffuse: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub specular: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub shininess: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reflective: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transparency: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub refractive_index: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pattern: Option<PatternDescription>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bump: Option<BumpDescription>,
 }
 
 /// Perlin normal perturbation; the noise is deterministic, so the seed is its
 /// complete state.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BumpDescription {
     pub amplitude: f64,
     pub frequency: f64,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 pub struct PatternDescription {
     #[serde(flatten)]
     pub pattern: PatternKind,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub transform: Vec<TransformOp>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PatternKind {
     Stripe {
@@ -348,6 +390,7 @@ pub enum PatternKind {
         amplitude: f64,
         frequency: f64,
         #[serde(default)]
+        #[serde(skip_serializing_if = "Option::is_none")]
         seed: Option<u64>,
     },
     TextureMap {
@@ -364,7 +407,7 @@ pub enum PatternKind {
     },
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MappingKind {
     Spherical,
@@ -382,7 +425,7 @@ impl From<MappingKind> for UvMap {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum UvDescription {
     UvCheckers {
@@ -730,6 +773,25 @@ impl SceneDescription {
         let json = std::fs::read_to_string(path)
             .map_err(|e| SceneError(format!("reading {}: {e}", path.display())))?;
         Self::from_json(&json)
+    }
+
+    /// The scene as pretty-printed JSON; [`SceneDescription::from_json`]
+    /// reads it back into an equal description. Absent and default values
+    /// are left out, so the result reads like a hand-written file.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).expect("scene descriptions always serialize")
+    }
+
+    /// Write [`SceneDescription::to_json`] to `path`, replacing the file in
+    /// one step: a temporary file in the same folder, then a rename, so
+    /// nothing ever reads a half-written scene.
+    pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), SceneError> {
+        let path = path.as_ref();
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        std::fs::write(&tmp, self.to_json())
+            .and_then(|()| std::fs::rename(&tmp, path))
+            .map_err(|e| SceneError(format!("writing {}: {e}", path.display())))
     }
 
     /// Build the world and camera. `base_dir` anchors relative asset paths
@@ -1119,6 +1181,109 @@ mod tests {
             .ok_or("expected an error for a missing scene file")?;
         if !err.to_string().contains("does-not-exist.json") {
             return Err(format!("error should name the file: {err}"));
+        }
+        Ok(())
+    }
+
+    /// Scene saving - every example scene round-trips through `to_json`
+    #[test]
+    fn test_scene_10() -> Result<(), String> {
+        let mut checked = 0;
+        for entry in std::fs::read_dir("scenes").map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.extension().is_none_or(|x| x != "json") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let desc = SceneDescription::from_json(&text).map_err(|e| e.to_string())?;
+            let again = SceneDescription::from_json(&desc.to_json())
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            if again != desc {
+                return Err(format!("{} changed in a round trip", path.display()));
+            }
+            checked += 1;
+        }
+        if checked < 5 {
+            return Err(format!("only {checked} scene files checked"));
+        }
+        Ok(())
+    }
+
+    /// Scene saving - absent and default values are left out
+    #[test]
+    fn test_scene_11() -> Result<(), String> {
+        let desc = SceneDescription::from_json(
+            r#"{"camera":{"width":10,"height":5,"field_of_view":1.0,"from":[0,0,-5],"to":[0,0,0],"up":[0,1,0]},
+                "light":{"type":"point","position":[-10,10,-10],"intensity":[1,1,1]},
+                "shapes":[{"type":"sphere"}]}"#,
+        )
+        .map_err(|e| e.to_string())?;
+        let json = desc.to_json();
+        let got: serde_json::Value = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+        let expected = serde_json::json!({
+            "camera": { "width": 10, "height": 5, "field_of_view": 1.0,
+                        "from": [0.0, 0.0, -5.0], "to": [0.0, 0.0, 0.0], "up": [0.0, 1.0, 0.0] },
+            "light": { "type": "point", "position": [-10.0, 10.0, -10.0], "intensity": [1.0, 1.0, 1.0] },
+            "shapes": [ { "type": "sphere" } ]
+        });
+        if got != expected {
+            return Err(format!("unexpected JSON:\n{json}"));
+        }
+        for absent in ["\"transform\"", "\"settings\"", "\"closed\"", "null"] {
+            if json.contains(absent) {
+                return Err(format!("{absent} should be left out:\n{json}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Scene saving - a "lights" list and a comment survive a round trip
+    #[test]
+    fn test_scene_12() -> Result<(), String> {
+        let desc = SceneDescription::from_json(
+            r#"{"comment":{"why":"test"},
+                "camera":{"width":10,"height":5,"field_of_view":1.0,"from":[0,0,-5],"to":[0,0,0],"up":[0,1,0]},
+                "lights":[{"type":"point","position":[-10,10,-10],"intensity":[1,0,0]},
+                          {"type":"point","position":[10,10,-10],"intensity":[0,0,1]}]}"#,
+        )
+        .map_err(|e| e.to_string())?;
+        let json = desc.to_json();
+        if SceneDescription::from_json(&json).map_err(|e| e.to_string())? != desc {
+            return Err(format!("changed in a round trip:\n{json}"));
+        }
+        if !json.contains("\"lights\"") || json.contains("\"light\":") || !json.contains("\"why\"")
+        {
+            return Err(format!("lights or comment not kept:\n{json}"));
+        }
+        Ok(())
+    }
+
+    /// Scene saving - save writes a file that loads into the same scene
+    #[test]
+    fn test_scene_13() -> Result<(), String> {
+        let desc = SceneDescription::from_path("scenes/cover.json").map_err(|e| e.to_string())?;
+        let path = std::env::temp_dir().join("test_scene_13.json");
+        desc.save(&path).map_err(|e| e.to_string())?;
+        if SceneDescription::from_path(&path).map_err(|e| e.to_string())? != desc {
+            return Err("saved scene differs".into());
+        }
+        let (world, camera) = load(&path).map_err(|e| e.to_string())?;
+        let (world0, camera0) = load("scenes/cover.json").map_err(|e| e.to_string())?;
+        if (
+            world.shapes.len(),
+            world.lights.len(),
+            camera.hsize,
+            camera.vsize,
+        ) != (
+            world0.shapes.len(),
+            world0.lights.len(),
+            camera0.hsize,
+            camera0.vsize,
+        ) {
+            return Err("saved scene builds a different world".into());
+        }
+        if std::env::temp_dir().join("test_scene_13.json.tmp").exists() {
+            return Err("save left its temporary file behind".into());
         }
         Ok(())
     }
