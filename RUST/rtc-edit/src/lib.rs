@@ -2,3 +2,4 @@
 //! `main.rs`; these modules hold everything that can be tested without one.
 
 pub mod paths;
+pub mod tree;
