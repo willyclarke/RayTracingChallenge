@@ -228,8 +228,9 @@ Omitted = identity.
 
 ### Shapes
 
-Tagged by `"type"`; all take optional `transform`, `material`, and `motion` (velocity vector
-for motion blur, → `set_motion`). Primitive-specific fields:
+Tagged by `"type"`; all take optional `transform`, `material`, `motion` (velocity vector
+for motion blur, → `set_motion`), and `comment` (free-form notes, ignored by the loader and
+kept when saving). Primitive-specific fields:
 
 ```json
 { "type": "sphere" }

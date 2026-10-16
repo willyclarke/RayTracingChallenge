@@ -99,8 +99,8 @@ const SCENE: &str = r#"SCENE
 
         rtc scene.json [-o out.ppm]
 
-    Unknown fields are rejected (typos fail loudly). A top-level "comment"
-    field (any JSON value) is ignored. Relative file paths in the scene
+    Unknown fields are rejected (typos fail loudly). A "comment" field
+    (any JSON value) is ignored, at the top level and on shapes. Relative file paths in the scene
     (.obj models, .ppm textures) resolve against the scene file's directory.
 
     Conventions: [x, y, z] arrays are points or vectors depending on the
@@ -202,7 +202,8 @@ EXAMPLE
 
 const SHAPES: &str = r#"SHAPES
     Tagged by "type". Every shape also takes optional "transform",
-    "material", and "motion" ([x, y, z] velocity for motion blur).
+    "material", "motion" ([x, y, z] velocity for motion blur), and
+    "comment" (any JSON value; ignored, kept when saving).
 
     sphere      unit sphere at the origin
     plane       infinite xz-plane through the origin
