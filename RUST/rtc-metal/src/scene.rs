@@ -1139,4 +1139,28 @@ mod tests {
             assert!(lo[a] > [2.0, -1.0, -1.0][a] - 1e-3 && hi[a] < [4.0, 1.0, 1.0][a] + 1e-3);
         }
     }
+
+    #[test]
+    fn every_scene_file_round_trips() -> Result<(), String> {
+        use rtc_rust::scene::SceneDescription;
+        let mut checked = 0;
+        for entry in std::fs::read_dir("scenes").map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.extension().is_none_or(|x| x != "json") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let desc = SceneDescription::from_json(&text).map_err(|e| e.to_string())?;
+            let again = SceneDescription::from_json(&desc.to_json())
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            if again != desc {
+                return Err(format!("{} changed in a round trip", path.display()));
+            }
+            checked += 1;
+        }
+        if checked < 10 {
+            return Err(format!("only {checked} scene files checked"));
+        }
+        Ok(())
+    }
 }
