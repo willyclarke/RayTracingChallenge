@@ -15,6 +15,10 @@
 //! and restarts the accumulation. The Samples menu sets how many frames to
 //! refine up to (presets, Unlimited, Cmd-] doubles, Cmd-[ halves) without
 //! restarting: a higher target carries on, a lower one stops.
+//! With `--watch` a timer checks the scene file four times a second; when it
+//! changed, the scene reloads at the current size and traversal and refines
+//! from one sample again, keeping the view unless the file's camera changed.
+//! A file that doesn't load keeps the old image, and the status shows why.
 //! Quitting hands the final image and its size to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
@@ -24,6 +28,7 @@ use crate::gpu::{Accumulator, Gpu};
 use crate::orbit::Orbit;
 use crate::scene::GpuScene;
 use crate::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
+use crate::watch::Watch;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
@@ -34,7 +39,7 @@ use objc2_app_kit::{
     NSWindowStyleMask,
 };
 use objc2_foundation::{
-    NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
+    NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSTimer,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLPixelFormat};
 use objc2_metal_kit::{MTKView, MTKViewDelegate};
@@ -52,6 +57,8 @@ const UNLIMITED: u32 = u32::MAX;
 const PRESETS: [u32; 5] = [16, 64, 256, 1024, 4096];
 /// Screen refreshes per second the view asks for.
 const FPS: isize = 60;
+/// Seconds between checks of a `--watch`ed scene file.
+const WATCH_INTERVAL: f64 = 0.25;
 /// Time between screen refreshes, in ms.
 const REFRESH_MS: f64 = 1000.0 / FPS as f64;
 
@@ -84,6 +91,8 @@ struct Renderer {
     camera_desc: CameraDescription,
     /// Why the last reload failed, shown in the status until one succeeds.
     reload_error: Option<String>,
+    /// The scene file, with `--watch`: reloaded whenever it changes.
+    watch: Option<Watch>,
 }
 
 impl Renderer {
@@ -357,6 +366,12 @@ define_class!(
             self.change_target(halved);
         }
 
+        /// The `--watch` timer: reload the scene when its file changed.
+        #[unsafe(method(checkWatchedFile:))]
+        fn check_watched_file(&self, _timer: &NSTimer) {
+            self.reload_if_changed();
+        }
+
         /// AppKit asks before showing a menu: tick the current traversal and
         /// sample target.
         #[unsafe(method(validateMenuItem:))]
@@ -458,6 +473,37 @@ impl RtcView {
     fn resume(&self) {
         self.setPaused(false);
         self.setEnableSetNeedsDisplay(false);
+    }
+
+    /// Reload the watched scene file if it changed: refine the new scene, or
+    /// keep the old one and show why the reload failed.
+    fn reload_if_changed(&self) {
+        let reloaded = {
+            let mut r = self.ivars().borrow_mut();
+            let Some(watch) = r.watch.as_mut() else {
+                return;
+            };
+            if !watch.changed() {
+                return;
+            }
+            let path = watch.path().to_path_buf();
+            let base_dir = path.parent().unwrap_or(Path::new("."));
+            let result = SceneDescription::from_path(&path)
+                .map_err(|e| e.0)
+                .and_then(|desc| r.reload(&desc, base_dir));
+            if let Err(e) = &result {
+                eprintln!("rtc-metal: reload failed: {e}");
+                // A file that doesn't parse never reaches `reload`.
+                r.reload_error = Some(e.clone());
+            }
+            result.is_ok()
+        };
+        if reloaded {
+            self.resume();
+        } else {
+            // Paused: one draw call shows the message.
+            self.setNeedsDisplay(true);
+        }
     }
 }
 
@@ -601,8 +647,10 @@ impl RtcDelegate {
 
 /// Open a window showing `scene` refining up to `samples` frames, viewed
 /// from `camera` (the scene file's `camera_desc`, at the scene's size), run
-/// the app until it quits, then exit. `on_close` gets the final image (row-major
-/// RGBA, as `Accumulator::resolve`) if at least one frame was drawn.
+/// the app until it quits, then exit. With `watch`, the scene reloads when
+/// its file changes. `on_close` gets the final image (row-major RGBA, as
+/// `Accumulator::resolve`) if at least one frame was drawn.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     gpu: Gpu,
     scene: GpuScene,
@@ -610,6 +658,7 @@ pub fn run(
     camera_desc: CameraDescription,
     samples: u32,
     title: String,
+    watch: Option<Watch>,
     on_close: OnClose,
 ) -> ! {
     let mtm = MainThreadMarker::new().expect("the window must run on the main thread");
@@ -634,6 +683,7 @@ pub fn run(
         batch: 1,
         camera_desc,
         reload_error: None,
+        watch,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
@@ -676,6 +726,20 @@ pub fn run(
     view.setAutoResizeDrawable(true);
     view.setPreferredFramesPerSecond(FPS);
     view.addSubview(&overlay);
+    if view.ivars().borrow().watch.is_some() {
+        // SAFETY: `checkWatchedFile:` takes the timer, as the selector
+        // expects; the view lives until the app exits, and so does the
+        // repeating timer, which the run loop retains.
+        let _ = unsafe {
+            NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
+                WATCH_INTERVAL,
+                &view,
+                sel!(checkWatchedFile:),
+                None,
+                true,
+            )
+        };
+    }
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
     // window can be closed, so the `Retained` stays the only owner.
@@ -843,6 +907,7 @@ mod tests {
                 motion_blur: None,
             },
             reload_error: None,
+            watch: None,
         })
     }
 
@@ -939,6 +1004,7 @@ mod tests {
             batch: 1,
             camera_desc: desc.camera.clone(),
             reload_error: None,
+            watch: None,
         };
         r.acc.add_frame(&r.gpu, &r.scene.info)?;
         r.acc.add_frame(&r.gpu, &r.scene.info)?;

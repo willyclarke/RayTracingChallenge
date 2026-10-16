@@ -30,6 +30,7 @@ cargo clippy --release
 cargo run --release -- scenes/chapter15.json                    # → chapter15.ppm
 cargo run --release -- scenes/soft_shadows.json --samples 256   # average 256 sampled frames
 cargo run --release -- scenes/cornell_three_lights.json --window
+cargo run --release -- my_scene.json --window --watch            # reload when the file changes
 cargo run --release -- scenes/chapter15.json --traversal metal  # Metal's ray tracing API
 cargo run --release -- --help
 ```
@@ -44,7 +45,10 @@ cargo run --release -- --help
   - resize or go full screen to render at the new size;
   - the Traversal menu switches between BVH (Cmd-1) and Metal (Cmd-2);
   - the Samples menu sets the target (presets, Unlimited, Cmd-] doubles, Cmd-[ halves);
-  - quitting writes the image at the window's size.
+  - quitting writes the image at the window's size;
+  - with `--watch`, the window reloads the scene whenever its file changes and refines it
+    again, keeping your view unless the file's camera changed. A file that doesn't load
+    keeps the old image, and the overlay shows why.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.
 
