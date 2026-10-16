@@ -21,6 +21,12 @@ image::RUST/rtc-rust/docs/cover.jpg[Cover scene rendered by rtc-rust,800]
   (with man-style built-in help) and Python generators for example scenes. See
   link:RUST/rtc-rust/README.md[RUST/rtc-rust/README.md].
 
+* *Rust on the GPU* — `RUST/rtc-metal`: a Metal port of rtc-rust for macOS that renders the
+  same JSON scenes on the GPU (shapes through CSG and OBJ meshes, area lights, focal blur,
+  path tracing, multiple lights), checked image by image against the CPU renderer. It can
+  also refine a scene live in a window. See
+  link:RUST/rtc-metal/README.md[RUST/rtc-metal/README.md].
+
 * *Zig* — `ZIG/raytracer-zig`: work in progress, currently around chapter 10 (patterns).
   See link:ZIG/raytracer-zig/README.md[ZIG/raytracer-zig/README.md].
 

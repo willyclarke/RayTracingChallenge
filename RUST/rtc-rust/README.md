@@ -6,6 +6,8 @@ in this repository, alongside C++ and Zig (see the repo root `Readme.adoc`). All
 online bonus chapters (soft shadows, bounding boxes/BVH, texture mapping), and all eight
 chapter 17 "next steps" (area lights, spotlights, focal blur, motion blur, anti-aliasing,
 texture maps, normal perturbation, torus) are implemented, plus path-traced indirect lighting.
+The sibling crate [`rtc-metal`](../rtc-metal/README.md) renders the same scenes on the GPU,
+using this crate as its reference.
 
 ![Cover scene rendered by rtc-rust](docs/cover.jpg)
 
