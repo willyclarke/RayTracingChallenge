@@ -1,12 +1,14 @@
-//! Live window (`--window`): an `MTKView` that adds one sampled frame per
-//! display refresh until `target` frames, showing the running mean. Dragging
+//! Live window (`--window`): an `MTKView` that adds a batch of sampled
+//! frames per display refresh until `target` frames, showing the running
+//! mean; the batch grows while the GPU keeps up with the display and halves
+//! when it lags, so the GPU, not the refresh rate, sets the pace. Dragging
 //! orbits the camera and scrolling zooms; both restart the accumulation
 //! (events with no movement leave it alone). Space returns to the scene's
 //! own view. The window can be resized or made full screen: the image is
 //! rendered at the view's pixel size, with the scene's field of view, and
 //! starts again at each new size. An overlay in the top-left corner shows
 //! the progress, a stopwatch (seconds spent drawing the current image,
-//! frozen once the target is reached), frame time, size and traversal
+//! frozen once the target is reached), frame time and batch, size and traversal
 //! (`i` hides and shows it);
 //! the title bar shows the same, outside full screen. The Traversal menu
 //! (Cmd-1 BVH, Cmd-2 Metal) switches how the bounded shapes are searched
@@ -42,12 +44,16 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-/// Called on quit with the final image and its width and height.
 /// The sample target that never stops refining.
 const UNLIMITED: u32 = u32::MAX;
 /// The Samples menu's fixed targets.
 const PRESETS: [u32; 5] = [16, 64, 256, 1024, 4096];
+/// Screen refreshes per second the view asks for.
+const FPS: isize = 60;
+/// Time between screen refreshes, in ms.
+const REFRESH_MS: f64 = 1000.0 / FPS as f64;
 
+/// Called on quit with the final image and its width and height.
 type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize)>;
 
 /// The state the view and its delegate share.
@@ -68,6 +74,9 @@ struct Renderer {
     ms: f64,
     /// Stopwatch: the time spent drawing the current image's frames.
     elapsed: Duration,
+    /// Frames to draw per screen refresh; adapts so the GPU stays busy
+    /// without the window lagging.
+    batch: u32,
 }
 
 impl Renderer {
@@ -143,14 +152,34 @@ impl Renderer {
         true
     }
 
-    /// A frame finished at `now`: its time in ms, also kept in `ms` and
-    /// added to the stopwatch.
-    fn tick(&mut self, now: Instant) -> f64 {
-        let frame = now - self.last_frame;
+    /// Frames the next draw adds: the batch, but no more than the target
+    /// leaves.
+    fn frames_to_draw(&self) -> u32 {
+        self.batch.min(self.target - self.acc.frames())
+    }
+
+    /// A draw of `frames` frames finished at `now`: the time per frame in
+    /// ms, also kept in `ms`; the draw's time goes on the stopwatch and
+    /// sets the next batch.
+    fn tick(&mut self, now: Instant, frames: u32) -> f64 {
+        let draw = now - self.last_frame;
         self.last_frame = now;
-        self.elapsed += frame;
-        self.ms = frame.as_secs_f64() * 1e3;
+        self.elapsed += draw;
+        let draw_ms = draw.as_secs_f64() * 1e3;
+        self.batch = next_batch(self.batch, draw_ms);
+        self.ms = draw_ms / frames as f64;
         self.ms
+    }
+}
+
+/// The batch after a draw that took `draw_ms`: one more while draws keep
+/// up with the screen (up to a quarter over its refresh interval), half
+/// (at least 1) once they lag.
+fn next_batch(batch: u32, draw_ms: f64) -> u32 {
+    if draw_ms <= 1.25 * REFRESH_MS {
+        batch + 1
+    } else {
+        (batch / 2).max(1)
     }
 }
 
@@ -178,7 +207,7 @@ fn status(
     frames: u32,
     target: u32,
     secs: f64,
-    ms: f64,
+    (ms, batch): (f64, u32),
     (width, height): (usize, usize),
     traversal: u32,
 ) -> String {
@@ -193,7 +222,7 @@ fn status(
         target.to_string()
     };
     format!(
-        "{name} · {frames}/{target} samples · {secs:.1} s · {ms:.1} ms/frame · {width}×{height} px · {traversal}"
+        "{name} · {frames}/{target} samples · {secs:.1} s · {ms:.1} ms/frame ×{batch} · {width}×{height} px · {traversal}"
     )
 }
 
@@ -458,8 +487,8 @@ impl RtcDelegate {
         unsafe { msg_send![super(this), init] }
     }
 
-    /// Add one frame and show the running mean; pause once `target` frames
-    /// are in.
+    /// Add a batch of frames and show the running mean; pause once
+    /// `target` frames are in.
     fn draw(&self, view: &MTKView) {
         let ivars = self.ivars();
         let mut r = ivars.renderer.borrow_mut();
@@ -483,13 +512,16 @@ impl RtcDelegate {
             return;
         };
         let info = r.scene.info;
-        r.acc.encode_frame(&encoder, &info);
+        let frames = r.frames_to_draw();
+        for _ in 0..frames {
+            r.acc.encode_frame(&encoder, &info);
+        }
         r.acc.encode_resolve_texture(&encoder, &drawable.texture());
         encoder.endEncoding();
         commands.presentDrawable(ProtocolObject::from_ref(&*drawable));
         commands.commit();
 
-        let ms = r.tick(Instant::now());
+        let ms = r.tick(Instant::now(), frames);
         drop(r);
         self.show_status(view, ms);
     }
@@ -503,7 +535,7 @@ impl RtcDelegate {
             r.acc.frames(),
             r.target,
             r.elapsed.as_secs_f64(),
-            ms,
+            (ms, r.batch),
             (r.camera.hsize, r.camera.vsize),
             r.scene.info.counts.traversal,
         ));
@@ -551,6 +583,7 @@ pub fn run(
         last_frame: Instant::now(),
         ms: 0.0,
         elapsed: Duration::ZERO,
+        batch: 1,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
@@ -591,7 +624,7 @@ pub fn run(
     // The drawable follows the view's size in pixels; each change reaches
     // `drawableSizeWillChange`, which re-sizes the camera.
     view.setAutoResizeDrawable(true);
-    view.setPreferredFramesPerSecond(60);
+    view.setPreferredFramesPerSecond(FPS);
     view.addSubview(&overlay);
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
@@ -746,25 +779,68 @@ mod tests {
             last_frame: Instant::now(),
             ms: 0.0,
             elapsed: Duration::ZERO,
+            batch: 1,
         })
+    }
+
+    #[test]
+    fn batch_grows_while_draws_keep_up_and_halves_when_they_lag() {
+        // Up to a quarter over the refresh interval still counts as keeping up.
+        assert_eq!(next_batch(1, REFRESH_MS), 2);
+        assert_eq!(next_batch(5, 1.25 * REFRESH_MS), 6);
+        assert_eq!(next_batch(6, 1.3 * REFRESH_MS), 3);
+        assert_eq!(next_batch(7, 3.0 * REFRESH_MS), 3);
+        assert_eq!(next_batch(1, 3.0 * REFRESH_MS), 1);
+    }
+
+    #[test]
+    fn a_draw_takes_the_batch_but_never_passes_the_target() -> Result<(), String> {
+        let mut r = renderer()?;
+        r.batch = 3;
+        assert_eq!(r.frames_to_draw(), 3);
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        // Target 4, 2 frames in: only 2 more.
+        assert_eq!(r.frames_to_draw(), 2);
+        r.set_target(UNLIMITED);
+        assert_eq!(r.frames_to_draw(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn tick_shares_the_draw_time_among_its_frames_and_adapts_the_batch() -> Result<(), String> {
+        let mut r = renderer()?;
+        r.batch = 4;
+        let start = r.last_frame;
+        assert_eq!(r.tick(start + Duration::from_millis(16), 4), 4.0);
+        assert_eq!((r.batch, r.elapsed), (5, Duration::from_millis(16)));
+        r.tick(start + Duration::from_millis(56), 5);
+        assert_eq!((r.ms, r.batch), (8.0, 2));
+        Ok(())
+    }
+
+    #[test]
+    fn status_shows_the_batch() {
+        let text = status("a.json", 8, 256, 1.0, (7.14, 2), (3, 4), TRAVERSAL_BVH);
+        assert!(text.contains("· 7.1 ms/frame ×2 ·"));
     }
 
     #[test]
     fn stopwatch_sums_frame_times_and_restarts_with_the_image() -> Result<(), String> {
         let mut r = renderer()?;
         let start = r.last_frame;
-        assert_eq!(r.tick(start + Duration::from_millis(30)), 30.0);
-        r.tick(start + Duration::from_millis(50));
+        assert_eq!(r.tick(start + Duration::from_millis(30), 1), 30.0);
+        r.tick(start + Duration::from_millis(50), 1);
         assert_eq!((r.ms, r.elapsed), (20.0, Duration::from_millis(50)));
         // Raising the target carries the stopwatch on, without the pause.
         r.set_target(8);
         let resumed = r.last_frame;
-        r.tick(resumed + Duration::from_millis(10));
+        r.tick(resumed + Duration::from_millis(10), 1);
         assert_eq!(r.elapsed, Duration::from_millis(60));
         // A new image starts from zero.
         r.restart();
         assert_eq!(r.elapsed, Duration::ZERO);
-        r.tick(r.last_frame + Duration::from_millis(10));
+        r.tick(r.last_frame + Duration::from_millis(10), 1);
         r.set_traversal(TRAVERSAL_METAL);
         assert_eq!(r.elapsed, Duration::ZERO);
         Ok(())
@@ -772,8 +848,8 @@ mod tests {
 
     #[test]
     fn status_shows_the_stopwatch() {
-        let text = status("a.json", 256, 256, 72.24, 8.3, (3, 4), TRAVERSAL_BVH);
-        assert!(text.contains("· 256/256 samples · 72.2 s · 8.3 ms/frame ·"));
+        let text = status("a.json", 256, 256, 72.24, (8.3, 1), (3, 4), TRAVERSAL_BVH);
+        assert!(text.contains("· 256/256 samples · 72.2 s · 8.3 ms/frame ×1 ·"));
     }
 
     #[test]
@@ -805,7 +881,15 @@ mod tests {
 
     #[test]
     fn status_shows_unlimited_as_infinity() {
-        let text = status("a.json", 37, UNLIMITED, 0.0, 1.0, (3, 4), TRAVERSAL_BVH);
+        let text = status(
+            "a.json",
+            37,
+            UNLIMITED,
+            0.0,
+            (1.0, 1),
+            (3, 4),
+            TRAVERSAL_BVH,
+        );
         assert!(text.contains("· 37/∞ samples ·"));
     }
 
@@ -831,15 +915,17 @@ mod tests {
             37,
             256,
             4.56,
-            12.34,
+            (12.34, 3),
             (3456, 2234),
             TRAVERSAL_BVH,
         );
         assert_eq!(
             text,
-            "cornell.json · 37/256 samples · 4.6 s · 12.3 ms/frame · 3456×2234 px · bvh"
+            "cornell.json · 37/256 samples · 4.6 s · 12.3 ms/frame ×3 · 3456×2234 px · bvh"
         );
-        assert!(status("a.json", 1, 2, 0.0, 1.0, (3, 4), TRAVERSAL_METAL).ends_with("· metal"));
+        assert!(
+            status("a.json", 1, 2, 0.0, (1.0, 1), (3, 4), TRAVERSAL_METAL).ends_with("· metal")
+        );
     }
 
     #[test]
