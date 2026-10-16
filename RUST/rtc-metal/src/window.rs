@@ -1,9 +1,21 @@
-//! Live window (`--window`): an `MTKView` that adds one sampled frame per
-//! display refresh until `target` frames, showing the running mean. Dragging
+//! Live window (`--window`): an `MTKView` that adds a batch of sampled
+//! frames per display refresh until `target` frames, showing the running
+//! mean; the batch grows while the GPU keeps up with the display and halves
+//! when it lags, so the GPU, not the refresh rate, sets the pace. Dragging
 //! orbits the camera and scrolling zooms; both restart the accumulation
 //! (events with no movement leave it alone). Space returns to the scene's
-//! own view.
-//! Quitting hands the final image to `on_close`.
+//! own view. The window can be resized or made full screen: the image is
+//! rendered at the view's pixel size, with the scene's field of view, and
+//! starts again at each new size. An overlay in the top-left corner shows
+//! the progress, a stopwatch (seconds spent drawing the current image,
+//! frozen once the target is reached), frame time and batch, size and traversal
+//! (`i` hides and shows it);
+//! the title bar shows the same, outside full screen. The Traversal menu
+//! (Cmd-1 BVH, Cmd-2 Metal) switches how the bounded shapes are searched
+//! and restarts the accumulation. The Samples menu sets how many frames to
+//! refine up to (presets, Unlimited, Cmd-] doubles, Cmd-[ halves) without
+//! restarting: a higher target carries on, a lower one stops.
+//! Quitting hands the final image and its size to `on_close`.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
 //! one `Rc<RefCell<Renderer>>`.
@@ -11,12 +23,15 @@
 use crate::gpu::{Accumulator, Gpu};
 use crate::orbit::Orbit;
 use crate::scene::GpuScene;
+use crate::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
-    NSEvent, NSMenu, NSMenuItem, NSResponder, NSScreen, NSView, NSWindow, NSWindowStyleMask,
+    NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont, NSMenu, NSMenuItem,
+    NSResponder, NSScreen, NSTextField, NSView, NSWindow, NSWindowCollectionBehavior,
+    NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
@@ -27,9 +42,19 @@ use objc2_quartz_core::CAMetalDrawable;
 use rtc_rust::camera::Camera;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>)>;
+/// The sample target that never stops refining.
+const UNLIMITED: u32 = u32::MAX;
+/// The Samples menu's fixed targets.
+const PRESETS: [u32; 5] = [16, 64, 256, 1024, 4096];
+/// Screen refreshes per second the view asks for.
+const FPS: isize = 60;
+/// Time between screen refreshes, in ms.
+const REFRESH_MS: f64 = 1000.0 / FPS as f64;
+
+/// Called on quit with the final image and its width and height.
+type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize)>;
 
 /// The state the view and its delegate share.
 struct Renderer {
@@ -42,8 +67,16 @@ struct Renderer {
     home: (Camera, Orbit),
     /// Whether the camera has left `home` since the last reset.
     moved: bool,
+    /// Frames to refine up to; `UNLIMITED` never stops.
     target: u32,
     last_frame: Instant,
+    /// The last frame's time, for the status shown while paused.
+    ms: f64,
+    /// Stopwatch: the time spent drawing the current image's frames.
+    elapsed: Duration,
+    /// Frames to draw per screen refresh; adapts so the GPU stays busy
+    /// without the window lagging.
+    batch: u32,
 }
 
 impl Renderer {
@@ -56,19 +89,156 @@ impl Renderer {
         }
         self.acc.reset();
         self.last_frame = Instant::now();
+        self.elapsed = Duration::ZERO;
     }
 
-    /// Return to the scene's own view; false (and the image kept) when the
-    /// camera is already there.
+    /// Return to the scene's own view, at the current size; false (and the
+    /// image kept) when the camera is already there.
     fn reset_view(&mut self) -> bool {
         if !self.moved {
             return false;
         }
-        (self.camera, self.orbit) = self.home.clone();
+        let (home, orbit) = self.home.clone();
+        self.camera = resized(&home, self.camera.hsize, self.camera.vsize);
+        self.orbit = orbit;
         self.moved = false;
         self.restart();
         true
     }
+
+    /// Render at `width x height` pixels from now on; false when that is
+    /// already the size (or empty, as while the window is minimised).
+    fn resize(&mut self, width: usize, height: usize) -> bool {
+        if width == 0 || height == 0 || (width, height) == (self.camera.hsize, self.camera.vsize) {
+            return false;
+        }
+        self.camera = resized(&self.camera, width, height);
+        if let Err(e) = self.scene.set_camera(&self.camera) {
+            eprintln!("rtc-metal: {e}");
+            return false;
+        }
+        self.rebuild()
+    }
+
+    /// Refine up to `target` frames from now on, keeping the frames already
+    /// summed; true when that means drawing more.
+    fn set_target(&mut self, target: u32) -> bool {
+        self.target = target;
+        self.last_frame = Instant::now();
+        self.acc.frames() < target
+    }
+
+    /// Search the bounded shapes with `traversal` (`TRAVERSAL_BVH` or
+    /// `TRAVERSAL_METAL`) from now on; false when it already does.
+    fn set_traversal(&mut self, traversal: u32) -> bool {
+        if traversal == self.scene.info.counts.traversal {
+            return false;
+        }
+        self.scene.info.counts.traversal = traversal;
+        self.rebuild()
+    }
+
+    /// A new, empty accumulator for the scene's current size and traversal.
+    fn rebuild(&mut self) -> bool {
+        match self.gpu.accumulator(&self.scene) {
+            Ok(acc) => self.acc = acc,
+            Err(e) => {
+                eprintln!("rtc-metal: {e}");
+                return false;
+            }
+        }
+        self.last_frame = Instant::now();
+        self.elapsed = Duration::ZERO;
+        true
+    }
+
+    /// Frames the next draw adds: the batch, but no more than the target
+    /// leaves.
+    fn frames_to_draw(&self) -> u32 {
+        self.batch.min(self.target - self.acc.frames())
+    }
+
+    /// A draw of `frames` frames finished at `now`: the time per frame in
+    /// ms, also kept in `ms`; the draw's time goes on the stopwatch and
+    /// sets the next batch.
+    fn tick(&mut self, now: Instant, frames: u32) -> f64 {
+        let draw = now - self.last_frame;
+        self.last_frame = now;
+        self.elapsed += draw;
+        let draw_ms = draw.as_secs_f64() * 1e3;
+        self.batch = next_batch(self.batch, draw_ms);
+        self.ms = draw_ms / frames as f64;
+        self.ms
+    }
+}
+
+/// The batch after a draw that took `draw_ms`: one more while draws keep
+/// up with the screen (up to a quarter over its refresh interval), half
+/// (at least 1) once they lag.
+fn next_batch(batch: u32, draw_ms: f64) -> u32 {
+    if draw_ms <= 1.25 * REFRESH_MS {
+        batch + 1
+    } else {
+        (batch / 2).max(1)
+    }
+}
+
+/// Twice `target`, up to 2^31; Unlimited stays Unlimited.
+fn doubled(target: u32) -> u32 {
+    if target == UNLIMITED {
+        target
+    } else {
+        target.saturating_mul(2).min(1 << 31)
+    }
+}
+
+/// Half `target`, at least 1; from Unlimited, the largest preset.
+fn halved(target: u32) -> u32 {
+    if target == UNLIMITED {
+        PRESETS[PRESETS.len() - 1]
+    } else {
+        (target / 2).max(1)
+    }
+}
+
+/// The overlay's and title's text.
+fn status(
+    name: &str,
+    frames: u32,
+    target: u32,
+    secs: f64,
+    (ms, batch): (f64, u32),
+    (width, height): (usize, usize),
+    traversal: u32,
+) -> String {
+    let traversal = if traversal == TRAVERSAL_METAL {
+        "metal"
+    } else {
+        "bvh"
+    };
+    let target = if target == UNLIMITED {
+        "∞".to_string()
+    } else {
+        target.to_string()
+    };
+    format!(
+        "{name} · {frames}/{target} samples · {secs:.1} s · {ms:.1} ms/frame ×{batch} · {width}×{height} px · {traversal}"
+    )
+}
+
+/// `camera` at `width x height` pixels: same field of view, view transform
+/// and lens. The field of view spans the longer side, so a wider window
+/// shows more to the sides.
+fn resized(camera: &Camera, width: usize, height: usize) -> Camera {
+    let mut c = Camera::new(width, height, camera.field_of_view);
+    c.set_transform(&camera.transform());
+    c.aa_samples = camera.aa_samples;
+    c.aa_threshold = camera.aa_threshold;
+    c.aperture = camera.aperture;
+    c.focal_distance = camera.focal_distance;
+    c.dof_samples = camera.dof_samples;
+    c.motion_samples = camera.motion_samples;
+    c
 }
 
 define_class!(
@@ -79,7 +249,8 @@ define_class!(
     #[ivars = Rc<RefCell<Renderer>>]
     /// The image view. Dragging orbits the camera "grabbing the scene"
     /// (dragging right orbits it left, dragging down raises it; the signs
-    /// live in `Orbit::drag`); scrolling zooms; space resets the view.
+    /// live in `Orbit::drag`); scrolling zooms; space resets the view; `i`
+    /// toggles the status overlay.
     struct RtcView;
 
     impl RtcView {
@@ -118,8 +289,66 @@ define_class!(
             self.interact(|orbit| orbit.zoom(dy));
         }
 
+        #[unsafe(method(useBvhTraversal:))]
+        fn use_bvh_traversal(&self, _sender: Option<&NSObject>) {
+            self.switch_traversal(TRAVERSAL_BVH);
+        }
+
+        #[unsafe(method(useMetalTraversal:))]
+        fn use_metal_traversal(&self, _sender: Option<&NSObject>) {
+            self.switch_traversal(TRAVERSAL_METAL);
+        }
+
+        /// A Samples preset; the item's tag is the target (0 = Unlimited).
+        #[unsafe(method(useSampleTarget:))]
+        fn use_sample_target(&self, sender: &NSMenuItem) {
+            self.change_target(|_| tag_target(sender.tag()));
+        }
+
+        #[unsafe(method(doubleSamples:))]
+        fn double_samples(&self, _sender: Option<&NSObject>) {
+            self.change_target(doubled);
+        }
+
+        #[unsafe(method(halveSamples:))]
+        fn halve_samples(&self, _sender: Option<&NSObject>) {
+            self.change_target(halved);
+        }
+
+        /// AppKit asks before showing a menu: tick the current traversal and
+        /// sample target.
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, item: &NSMenuItem) -> bool {
+            let r = self.ivars().borrow();
+            let ticked = match item.action() {
+                Some(a) if a == sel!(useBvhTraversal:) => {
+                    Some(r.scene.info.counts.traversal == TRAVERSAL_BVH)
+                }
+                Some(a) if a == sel!(useMetalTraversal:) => {
+                    Some(r.scene.info.counts.traversal == TRAVERSAL_METAL)
+                }
+                Some(a) if a == sel!(useSampleTarget:) => Some(tag_target(item.tag()) == r.target),
+                _ => None,
+            };
+            if let Some(ticked) = ticked {
+                item.setState(if ticked {
+                    NSControlStateValueOn
+                } else {
+                    NSControlStateValueOff
+                });
+            }
+            true
+        }
+
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
+            if event.charactersIgnoringModifiers().is_some_and(|c| c.to_string() == "i") {
+                // The status overlay is the view's only subview.
+                for overlay in self.subviews() {
+                    overlay.setHidden(!overlay.isHidden());
+                }
+                return;
+            }
             // 49 is the space bar's virtual key code on every layout.
             if event.keyCode() != 49 {
                 // SAFETY: NSResponder's keyDown: takes one NSEvent.
@@ -160,6 +389,29 @@ impl RtcView {
         self.resume();
     }
 
+    /// Set the sample target to `change(target)`; draw more if that is
+    /// above the frames done, otherwise just show the new target.
+    fn change_target(&self, change: impl FnOnce(u32) -> u32) {
+        let more = {
+            let mut r = self.ivars().borrow_mut();
+            let target = change(r.target);
+            r.set_target(target)
+        };
+        if more {
+            self.resume();
+        } else {
+            // Paused: one draw call refreshes the status text.
+            self.setNeedsDisplay(true);
+        }
+    }
+
+    /// Switch traversal from the menu and restart drawing.
+    fn switch_traversal(&self, traversal: u32) {
+        if self.ivars().borrow_mut().set_traversal(traversal) {
+            self.resume();
+        }
+    }
+
     /// Start drawing frames again after the accumulation restarted.
     fn resume(&self) {
         self.setPaused(false);
@@ -184,8 +436,17 @@ define_class!(
         }
 
         #[unsafe(method(mtkView:drawableSizeWillChange:))]
-        fn drawable_size_will_change(&self, _view: &MTKView, _size: NSSize) {
-            // The drawable size is fixed to the camera's.
+        fn drawable_size_will_change(&self, view: &MTKView, size: NSSize) {
+            // The window was resized or went full screen; `size` is in pixels.
+            let resized = self
+                .ivars()
+                .renderer
+                .borrow_mut()
+                .resize(size.width as usize, size.height as usize);
+            if resized {
+                view.setPaused(false);
+                view.setEnableSetNeedsDisplay(false);
+            }
         }
     }
 
@@ -202,7 +463,7 @@ define_class!(
             match r.acc.resolve(&r.gpu) {
                 Ok(pixels) => {
                     if let Some(on_close) = ivars.on_close.take() {
-                        on_close(pixels);
+                        on_close(pixels, r.camera.hsize, r.camera.vsize);
                     }
                 }
                 Err(e) => eprintln!("rtc-metal: {e}"),
@@ -213,6 +474,8 @@ define_class!(
 
 struct Delegate {
     renderer: Rc<RefCell<Renderer>>,
+    /// The status label over the image.
+    overlay: Retained<NSTextField>,
     on_close: Cell<Option<OnClose>>,
     title: String,
 }
@@ -224,13 +487,15 @@ impl RtcDelegate {
         unsafe { msg_send![super(this), init] }
     }
 
-    /// Add one frame and show the running mean; pause once `target` frames
-    /// are in.
+    /// Add a batch of frames and show the running mean; pause once
+    /// `target` frames are in.
     fn draw(&self, view: &MTKView) {
         let ivars = self.ivars();
         let mut r = ivars.renderer.borrow_mut();
         if r.acc.frames() >= r.target {
+            let ms = r.ms;
             drop(r);
+            self.show_status(view, ms);
             view.setPaused(true);
             view.setEnableSetNeedsDisplay(true);
             return;
@@ -247,25 +512,44 @@ impl RtcDelegate {
             return;
         };
         let info = r.scene.info;
-        r.acc.encode_frame(&encoder, &info);
+        let frames = r.frames_to_draw();
+        for _ in 0..frames {
+            r.acc.encode_frame(&encoder, &info);
+        }
         r.acc.encode_resolve_texture(&encoder, &drawable.texture());
         encoder.endEncoding();
         commands.presentDrawable(ProtocolObject::from_ref(&*drawable));
         commands.commit();
 
-        let now = Instant::now();
-        let ms = (now - r.last_frame).as_secs_f64() * 1e3;
-        r.last_frame = now;
-        let title = format!(
-            "{} — {}/{} samples, {ms:.1} ms/frame",
-            ivars.title,
+        let ms = r.tick(Instant::now(), frames);
+        drop(r);
+        self.show_status(view, ms);
+    }
+
+    /// Put the status text in the title and the overlay.
+    fn show_status(&self, view: &MTKView, ms: f64) {
+        let ivars = self.ivars();
+        let r = ivars.renderer.borrow();
+        let text = NSString::from_str(&status(
+            &ivars.title,
             r.acc.frames(),
-            r.target
-        );
+            r.target,
+            r.elapsed.as_secs_f64(),
+            (ms, r.batch),
+            (r.camera.hsize, r.camera.vsize),
+            r.scene.info.counts.traversal,
+        ));
         drop(r);
         if let Some(window) = view.window() {
-            window.setTitle(&NSString::from_str(&title));
+            window.setTitle(&text);
         }
+        let overlay = &ivars.overlay;
+        overlay.setStringValue(&text);
+        overlay.sizeToFit();
+        // AppKit's y axis points up: pin the label 8 points from the top left.
+        let top = view.bounds().size.height;
+        let size = overlay.frame().size;
+        overlay.setFrameOrigin(NSPoint::new(8.0, top - size.height - 8.0));
     }
 }
 
@@ -297,15 +581,20 @@ pub fn run(
         moved: false,
         target: samples,
         last_frame: Instant::now(),
+        ms: 0.0,
+        elapsed: Duration::ZERO,
+        batch: 1,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-    app.setMainMenu(Some(&quit_menu(mtm)));
+    app.setMainMenu(Some(&main_menu(mtm)));
+    let overlay = status_label(mtm, &title);
     let delegate = RtcDelegate::new(
         mtm,
         Delegate {
             renderer: renderer.clone(),
+            overlay: overlay.clone(),
             on_close: Cell::new(Some(on_close)),
             title: title.clone(),
         },
@@ -314,8 +603,10 @@ pub fn run(
 
     // One drawable pixel per image pixel, shrunk uniformly so the window,
     // title bar included, fits the screen.
-    let style =
-        NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable;
+    let style = NSWindowStyleMask::Titled
+        | NSWindowStyleMask::Closable
+        | NSWindowStyleMask::Miniaturizable
+        | NSWindowStyleMask::Resizable;
     let screen = NSScreen::mainScreen(mtm);
     let scale = screen.as_ref().map_or(1.0, |s| s.backingScaleFactor());
     let (mut w, mut h) = (width / scale, height / scale);
@@ -330,9 +621,11 @@ pub fn run(
     view.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     view.setColorPixelFormat(MTLPixelFormat::BGRA8Unorm);
     view.setFramebufferOnly(false);
-    view.setAutoResizeDrawable(false);
-    view.setDrawableSize(NSSize::new(width, height));
-    view.setPreferredFramesPerSecond(60);
+    // The drawable follows the view's size in pixels; each change reaches
+    // `drawableSizeWillChange`, which re-sizes the camera.
+    view.setAutoResizeDrawable(true);
+    view.setPreferredFramesPerSecond(FPS);
+    view.addSubview(&overlay);
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
     // window can be closed, so the `Retained` stays the only owner.
@@ -349,6 +642,7 @@ pub fn run(
     unsafe { window.setReleasedWhenClosed(false) };
     window.setTitle(&NSString::from_str(&title));
     window.setContentView(Some(&view));
+    window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenPrimary);
     window.center();
     window.makeKeyAndOrderFront(None);
     window.makeFirstResponder(Some(&view));
@@ -357,9 +651,22 @@ pub fn run(
     std::process::exit(0);
 }
 
-/// A main menu holding just the app menu with Quit (Cmd-Q): a bare
-/// `NSApplication` has no menu, so Cmd-Q would do nothing.
-fn quit_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
+/// White text on a translucent black box, for the top-left overlay.
+fn status_label(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
+    let label = NSTextField::labelWithString(&NSString::from_str(text), mtm);
+    label.setTextColor(Some(&NSColor::whiteColor()));
+    label.setBackgroundColor(Some(&NSColor::colorWithWhite_alpha(0.0, 0.55)));
+    label.setDrawsBackground(true);
+    // Fixed-width digits so the counters don't jitter as they change.
+    label.setFont(Some(&NSFont::monospacedDigitSystemFontOfSize_weight(
+        12.0, 0.0,
+    )));
+    label
+}
+
+/// The main menu: the app menu with Quit (Cmd-Q; a bare `NSApplication`
+/// has no menu, so Cmd-Q would do nothing), Traversal and Samples.
+fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     let quit = NSString::from_str("Quit");
     let q = NSString::from_str("q");
     // SAFETY: `terminate:` is NSApplication's action method, reached through
@@ -378,5 +685,266 @@ fn quit_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
     app_item.setSubmenu(Some(&app_menu));
     let menu = NSMenu::new(mtm);
     menu.addItem(&app_item);
+    menu.addItem(&traversal_menu(mtm));
+    menu.addItem(&samples_menu(mtm));
     menu
+}
+
+/// BVH (Cmd-1) and Metal (Cmd-2). The actions have no target, so they go
+/// to the first responder, the image view.
+fn traversal_menu(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
+    let title = NSString::from_str("Traversal");
+    let submenu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &title);
+    for (name, action, key) in [
+        ("BVH", sel!(useBvhTraversal:), "1"),
+        ("Metal", sel!(useMetalTraversal:), "2"),
+    ] {
+        // SAFETY: both actions are `RtcView` methods taking one sender.
+        let item = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(name),
+                Some(action),
+                &NSString::from_str(key),
+            )
+        };
+        submenu.addItem(&item);
+    }
+    let item = NSMenuItem::new(mtm);
+    item.setSubmenu(Some(&submenu));
+    item
+}
+
+/// A Samples preset item's tag as a target: 0 is Unlimited.
+fn tag_target(tag: isize) -> u32 {
+    if tag == 0 { UNLIMITED } else { tag as u32 }
+}
+
+/// The presets and Unlimited (ticked when current), then Double (Cmd-])
+/// and Halve (Cmd-[).
+fn samples_menu(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
+    let submenu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("Samples"));
+    let item = |name: &str, action, key: &str| {
+        // SAFETY: every action is an `RtcView` method taking one sender.
+        unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(name),
+                Some(action),
+                &NSString::from_str(key),
+            )
+        }
+    };
+    for target in PRESETS {
+        let preset = item(&target.to_string(), sel!(useSampleTarget:), "");
+        preset.setTag(target as isize);
+        submenu.addItem(&preset);
+    }
+    let unlimited = item("Unlimited", sel!(useSampleTarget:), "");
+    unlimited.setTag(0);
+    submenu.addItem(&unlimited);
+    submenu.addItem(&NSMenuItem::separatorItem(mtm));
+    submenu.addItem(&item("Double", sel!(doubleSamples:), "]"));
+    submenu.addItem(&item("Halve", sel!(halveSamples:), "["));
+    let menu_item = NSMenuItem::new(mtm);
+    menu_item.setSubmenu(Some(&submenu));
+    menu_item
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rtc_rust::matrix::Matrix4;
+
+    fn renderer() -> Result<Renderer, String> {
+        let world = rtc_rust::world::World::default_world();
+        let camera = Camera::new(8, 6, 1.0);
+        let gpu = Gpu::new()?;
+        let scene = GpuScene::from_world(&world, &camera)?;
+        let acc = gpu.accumulator(&scene)?;
+        let orbit = Orbit::new(
+            rtc_rust::tuple::Tuple::point(0.0, 0.0, -5.0),
+            rtc_rust::tuple::Tuple::point(0.0, 0.0, 0.0),
+            rtc_rust::tuple::Tuple::vector(0.0, 1.0, 0.0),
+        );
+        Ok(Renderer {
+            gpu,
+            scene,
+            acc,
+            camera,
+            home: (camera, orbit.clone()),
+            orbit,
+            moved: false,
+            target: 4,
+            last_frame: Instant::now(),
+            ms: 0.0,
+            elapsed: Duration::ZERO,
+            batch: 1,
+        })
+    }
+
+    #[test]
+    fn batch_grows_while_draws_keep_up_and_halves_when_they_lag() {
+        // Up to a quarter over the refresh interval still counts as keeping up.
+        assert_eq!(next_batch(1, REFRESH_MS), 2);
+        assert_eq!(next_batch(5, 1.25 * REFRESH_MS), 6);
+        assert_eq!(next_batch(6, 1.3 * REFRESH_MS), 3);
+        assert_eq!(next_batch(7, 3.0 * REFRESH_MS), 3);
+        assert_eq!(next_batch(1, 3.0 * REFRESH_MS), 1);
+    }
+
+    #[test]
+    fn a_draw_takes_the_batch_but_never_passes_the_target() -> Result<(), String> {
+        let mut r = renderer()?;
+        r.batch = 3;
+        assert_eq!(r.frames_to_draw(), 3);
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        // Target 4, 2 frames in: only 2 more.
+        assert_eq!(r.frames_to_draw(), 2);
+        r.set_target(UNLIMITED);
+        assert_eq!(r.frames_to_draw(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn tick_shares_the_draw_time_among_its_frames_and_adapts_the_batch() -> Result<(), String> {
+        let mut r = renderer()?;
+        r.batch = 4;
+        let start = r.last_frame;
+        assert_eq!(r.tick(start + Duration::from_millis(16), 4), 4.0);
+        assert_eq!((r.batch, r.elapsed), (5, Duration::from_millis(16)));
+        r.tick(start + Duration::from_millis(56), 5);
+        assert_eq!((r.ms, r.batch), (8.0, 2));
+        Ok(())
+    }
+
+    #[test]
+    fn status_shows_the_batch() {
+        let text = status("a.json", 8, 256, 1.0, (7.14, 2), (3, 4), TRAVERSAL_BVH);
+        assert!(text.contains("· 7.1 ms/frame ×2 ·"));
+    }
+
+    #[test]
+    fn stopwatch_sums_frame_times_and_restarts_with_the_image() -> Result<(), String> {
+        let mut r = renderer()?;
+        let start = r.last_frame;
+        assert_eq!(r.tick(start + Duration::from_millis(30), 1), 30.0);
+        r.tick(start + Duration::from_millis(50), 1);
+        assert_eq!((r.ms, r.elapsed), (20.0, Duration::from_millis(50)));
+        // Raising the target carries the stopwatch on, without the pause.
+        r.set_target(8);
+        let resumed = r.last_frame;
+        r.tick(resumed + Duration::from_millis(10), 1);
+        assert_eq!(r.elapsed, Duration::from_millis(60));
+        // A new image starts from zero.
+        r.restart();
+        assert_eq!(r.elapsed, Duration::ZERO);
+        r.tick(r.last_frame + Duration::from_millis(10), 1);
+        r.set_traversal(TRAVERSAL_METAL);
+        assert_eq!(r.elapsed, Duration::ZERO);
+        Ok(())
+    }
+
+    #[test]
+    fn status_shows_the_stopwatch() {
+        let text = status("a.json", 256, 256, 72.24, (8.3, 1), (3, 4), TRAVERSAL_BVH);
+        assert!(text.contains("· 256/256 samples · 72.2 s · 8.3 ms/frame ×1 ·"));
+    }
+
+    #[test]
+    fn doubling_and_halving_the_target() {
+        assert_eq!(doubled(256), 512);
+        assert_eq!(doubled(1 << 31), 1 << 31);
+        assert_eq!(doubled(UNLIMITED), UNLIMITED);
+        assert_eq!(halved(256), 128);
+        assert_eq!(halved(1), 1);
+        // From Unlimited, halving lands on the largest preset.
+        assert_eq!(halved(UNLIMITED), 4096);
+    }
+
+    #[test]
+    fn set_target_resumes_only_below_it() -> Result<(), String> {
+        let mut r = renderer()?;
+        for _ in 0..3 {
+            r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        }
+        // Raising the target carries on from the frames already summed.
+        assert!(r.set_target(8));
+        assert_eq!((r.target, r.acc.frames()), (8, 3));
+        // Lowering it below them stops at the current image.
+        assert!(!r.set_target(2));
+        assert_eq!((r.target, r.acc.frames()), (2, 3));
+        assert!(r.set_target(UNLIMITED));
+        Ok(())
+    }
+
+    #[test]
+    fn status_shows_unlimited_as_infinity() {
+        let text = status(
+            "a.json",
+            37,
+            UNLIMITED,
+            0.0,
+            (1.0, 1),
+            (3, 4),
+            TRAVERSAL_BVH,
+        );
+        assert!(text.contains("· 37/∞ samples ·"));
+    }
+
+    #[test]
+    fn set_traversal_rebuilds_the_accumulator() -> Result<(), String> {
+        let mut r = renderer()?;
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        assert!(r.set_traversal(TRAVERSAL_METAL));
+        assert_eq!(r.scene.info.counts.traversal, TRAVERSAL_METAL);
+        assert_eq!(r.acc.frames(), 0);
+        // The new accumulator takes Metal frames; the old one refused them.
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        assert!(!r.set_traversal(TRAVERSAL_METAL));
+        assert!(r.set_traversal(TRAVERSAL_BVH));
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        Ok(())
+    }
+
+    #[test]
+    fn status_shows_progress_size_and_traversal() {
+        let text = status(
+            "cornell.json",
+            37,
+            256,
+            4.56,
+            (12.34, 3),
+            (3456, 2234),
+            TRAVERSAL_BVH,
+        );
+        assert_eq!(
+            text,
+            "cornell.json · 37/256 samples · 4.6 s · 12.3 ms/frame ×3 · 3456×2234 px · bvh"
+        );
+        assert!(
+            status("a.json", 1, 2, 0.0, (1.0, 1), (3, 4), TRAVERSAL_METAL).ends_with("· metal")
+        );
+    }
+
+    #[test]
+    fn resized_camera_keeps_everything_but_the_size() {
+        let mut camera = Camera::new(800, 600, 0.68).with_focal_blur(0.1, 3.5, 8);
+        camera.set_transform(&Matrix4::translation(1.0, 2.0, 3.0));
+        let wide = resized(&camera, 1600, 600);
+        assert_eq!((wide.hsize, wide.vsize), (1600, 600));
+        assert_eq!(wide.field_of_view, camera.field_of_view);
+        assert!(wide.transform().approx_eq(camera.transform()));
+        assert_eq!(
+            (wide.aperture, wide.focal_distance, wide.dof_samples),
+            (0.1, 3.5, 8)
+        );
+        // The field of view spans the longer side: a wider window shows more
+        // to the sides, at the same height.
+        assert_eq!(wide.half_width, camera.half_width);
+        assert!(wide.half_height < camera.half_height);
+        let fresh = Camera::new(1600, 600, 0.68);
+        assert_eq!(wide.pixel_size, fresh.pixel_size);
+    }
 }
