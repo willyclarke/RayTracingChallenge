@@ -129,6 +129,8 @@ fn main() {
 /// it when the file changes if `watch`; write the image to `out` on quit.
 fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, out: String) -> ! {
     let path = Path::new(path);
+    // Watch before reading, so a save while the scene loads still reloads.
+    let watch = watch.then(|| Watch::new(path));
     let desc = SceneDescription::from_path(path).unwrap_or_else(|e| fail(&e.to_string()));
     let (world, camera) = desc
         .build(path.parent().unwrap_or(Path::new(".")))
@@ -143,7 +145,7 @@ fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, 
         desc.camera.clone(),
         samples,
         title,
-        watch.then(|| Watch::new(path)),
+        watch,
         Box::new(move |pixels, width, height| write_ppm(pixels, width, height, &out)),
     )
 }
