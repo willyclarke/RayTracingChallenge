@@ -15,7 +15,6 @@
 //! (milestone 10).
 
 use rtc_metal::gpu::Gpu;
-use rtc_metal::orbit::Orbit;
 use rtc_metal::scene::GpuScene;
 use rtc_metal::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
 use rtc_rust::canvas::Canvas;
@@ -125,18 +124,12 @@ fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, out: String) 
         .unwrap_or_else(|e| fail(&e.to_string()));
     let mut scene = GpuScene::from_world(&world, &camera).unwrap_or_else(|e| fail(&e));
     scene.info.counts.traversal = traversal;
-    let c = &desc.camera;
-    let orbit = Orbit::new(
-        Tuple::point(c.from[0], c.from[1], c.from[2]),
-        Tuple::point(c.to[0], c.to[1], c.to[2]),
-        Tuple::vector(c.up[0], c.up[1], c.up[2]),
-    );
     let title = path.file_name().unwrap().to_string_lossy().into_owned();
     rtc_metal::window::run(
         gpu,
         scene,
         camera,
-        orbit,
+        desc.camera.clone(),
         samples,
         title,
         Box::new(move |pixels, width, height| write_ppm(pixels, width, height, &out)),

@@ -40,7 +40,9 @@ use objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLPixel
 use objc2_metal_kit::{MTKView, MTKViewDelegate};
 use objc2_quartz_core::CAMetalDrawable;
 use rtc_rust::camera::Camera;
+use rtc_rust::scene::{CameraDescription, SceneDescription};
 use std::cell::{Cell, RefCell};
+use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -77,6 +79,11 @@ struct Renderer {
     /// Frames to draw per screen refresh; adapts so the GPU stays busy
     /// without the window lagging.
     batch: u32,
+    /// The scene file's camera the current scene was loaded with; a reload
+    /// keeps the view unless this changes.
+    camera_desc: CameraDescription,
+    /// Why the last reload failed, shown in the status until one succeeds.
+    reload_error: Option<String>,
 }
 
 impl Renderer {
@@ -150,6 +157,41 @@ impl Renderer {
         self.last_frame = Instant::now();
         self.elapsed = Duration::ZERO;
         true
+    }
+
+    /// Swap in the scene `desc` describes (asset paths relative to
+    /// `base_dir`), at the current size and traversal, and start refining
+    /// again. The view is kept unless the file's camera changed, which then
+    /// becomes the new home view. On error nothing changes but
+    /// `reload_error`.
+    fn reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
+        let result = self.try_reload(desc, base_dir);
+        self.reload_error = result.as_ref().err().cloned();
+        result
+    }
+
+    fn try_reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
+        let (world, file_camera) = desc.build(base_dir).map_err(|e| e.0)?;
+        let new_view = (desc.camera != self.camera_desc).then(|| {
+            let camera = resized(&file_camera, self.camera.hsize, self.camera.vsize);
+            (camera, Orbit::of(&desc.camera))
+        });
+        let camera = new_view.as_ref().map_or(self.camera, |(c, _)| *c);
+        let mut scene = GpuScene::from_world(&world, &camera)?;
+        scene.info.counts.traversal = self.scene.info.counts.traversal;
+        let acc = self.gpu.accumulator(&scene)?;
+        self.scene = scene;
+        self.acc = acc;
+        self.camera_desc = desc.camera.clone();
+        if let Some((camera, orbit)) = new_view {
+            self.camera = camera;
+            self.home = (camera, orbit.clone());
+            self.orbit = orbit;
+            self.moved = false;
+        }
+        self.elapsed = Duration::ZERO;
+        self.last_frame = Instant::now();
+        Ok(())
     }
 
     /// Frames the next draw adds: the batch, but no more than the target
@@ -530,7 +572,7 @@ impl RtcDelegate {
     fn show_status(&self, view: &MTKView, ms: f64) {
         let ivars = self.ivars();
         let r = ivars.renderer.borrow();
-        let text = NSString::from_str(&status(
+        let mut text = status(
             &ivars.title,
             r.acc.frames(),
             r.target,
@@ -538,8 +580,12 @@ impl RtcDelegate {
             (ms, r.batch),
             (r.camera.hsize, r.camera.vsize),
             r.scene.info.counts.traversal,
-        ));
+        );
+        if let Some(e) = &r.reload_error {
+            text.push_str(&format!(" · reload failed: {e}"));
+        }
         drop(r);
+        let text = NSString::from_str(&text);
         if let Some(window) = view.window() {
             window.setTitle(&text);
         }
@@ -553,14 +599,15 @@ impl RtcDelegate {
     }
 }
 
-/// Open a window showing `scene` refining up to `samples` frames, run the
-/// app until it quits, then exit. `on_close` gets the final image (row-major
+/// Open a window showing `scene` refining up to `samples` frames, viewed
+/// from `camera` (the scene file's `camera_desc`, at the scene's size), run
+/// the app until it quits, then exit. `on_close` gets the final image (row-major
 /// RGBA, as `Accumulator::resolve`) if at least one frame was drawn.
 pub fn run(
     gpu: Gpu,
     scene: GpuScene,
     camera: Camera,
-    orbit: Orbit,
+    camera_desc: CameraDescription,
     samples: u32,
     title: String,
     on_close: OnClose,
@@ -571,6 +618,7 @@ pub fn run(
         eprintln!("rtc-metal: {e}");
         std::process::exit(1);
     });
+    let orbit = Orbit::of(&camera_desc);
     let renderer = Rc::new(RefCell::new(Renderer {
         gpu,
         scene,
@@ -584,6 +632,8 @@ pub fn run(
         ms: 0.0,
         elapsed: Duration::ZERO,
         batch: 1,
+        camera_desc,
+        reload_error: None,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
@@ -755,6 +805,7 @@ fn samples_menu(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
 mod tests {
     use super::*;
     use rtc_rust::matrix::Matrix4;
+    use rtc_rust::scene::LightDescription;
 
     fn renderer() -> Result<Renderer, String> {
         let world = rtc_rust::world::World::default_world();
@@ -780,6 +831,18 @@ mod tests {
             ms: 0.0,
             elapsed: Duration::ZERO,
             batch: 1,
+            camera_desc: CameraDescription {
+                width: 8,
+                height: 6,
+                field_of_view: 1.0,
+                from: [0.0, 0.0, -5.0],
+                to: [0.0, 0.0, 0.0],
+                up: [0.0, 1.0, 0.0],
+                antialias: None,
+                focal_blur: None,
+                motion_blur: None,
+            },
+            reload_error: None,
         })
     }
 
@@ -850,6 +913,121 @@ mod tests {
     fn status_shows_the_stopwatch() {
         let text = status("a.json", 256, 256, 72.24, (8.3, 1), (3, 4), TRAVERSAL_BVH);
         assert!(text.contains("· 256/256 samples · 72.2 s · 8.3 ms/frame ×1 ·"));
+    }
+
+    /// A renderer for `scenes/chapter7.json` at 40x20, as `--window` builds it.
+    fn chapter7() -> Result<(Renderer, SceneDescription), String> {
+        let desc = SceneDescription::from_path("scenes/chapter7.json").map_err(|e| e.0)?;
+        let (world, camera) = desc.build(Path::new("scenes")).map_err(|e| e.0)?;
+        let camera = resized(&camera, 40, 20);
+        let gpu = Gpu::new()?;
+        let scene = GpuScene::from_world(&world, &camera)?;
+        let acc = gpu.accumulator(&scene)?;
+        let orbit = Orbit::of(&desc.camera);
+        let mut r = Renderer {
+            gpu,
+            scene,
+            acc,
+            camera,
+            home: (camera, orbit.clone()),
+            orbit,
+            moved: false,
+            target: 4,
+            last_frame: Instant::now(),
+            ms: 0.0,
+            elapsed: Duration::ZERO,
+            batch: 1,
+            camera_desc: desc.camera.clone(),
+            reload_error: None,
+        };
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        Ok((r, desc))
+    }
+
+    #[test]
+    fn reload_with_the_same_camera_keeps_the_view() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        r.orbit.drag(0.3, 0.0);
+        r.moved = true;
+        r.restart();
+        let view = r.camera.transform();
+        desc.shapes[3].material.get_or_insert_default().color = Some([1.0, 0.0, 0.0]);
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!(r.acc.frames(), 0);
+        assert_eq!(r.elapsed, Duration::ZERO);
+        assert_eq!((r.camera.hsize, r.camera.vsize), (40, 20));
+        assert!(r.camera.transform().approx_eq(view));
+        assert!(r.moved);
+        Ok(())
+    }
+
+    #[test]
+    fn reload_with_a_new_camera_takes_it_as_home() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        r.moved = true;
+        desc.camera.from = [0.0, 3.0, -8.0];
+        r.reload(&desc, Path::new("scenes"))?;
+        let view = rtc_rust::world::view_transform(
+            rtc_rust::tuple::Tuple::point(0.0, 3.0, -8.0),
+            rtc_rust::tuple::Tuple::point(0.0, 1.0, 0.0),
+            rtc_rust::tuple::Tuple::vector(0.0, 1.0, 0.0),
+        );
+        assert_eq!((r.camera.hsize, r.camera.vsize), (40, 20));
+        assert!(r.camera.transform().approx_eq(view));
+        assert!(r.home.0.transform().approx_eq(view));
+        assert!(!r.moved);
+        assert_eq!(r.camera_desc, desc.camera);
+        Ok(())
+    }
+
+    #[test]
+    fn a_broken_reload_keeps_the_old_scene() -> Result<(), String> {
+        let (mut r, desc) = chapter7()?;
+        let mut broken = desc.clone();
+        broken.light = None;
+        broken.lights = Some(vec![]);
+        broken.camera.from = [0.0, 3.0, -8.0];
+        let err = r
+            .reload(&broken, Path::new("scenes"))
+            .err()
+            .ok_or("expected an error")?;
+        assert!(err.contains("lights"), "{err}");
+        assert_eq!(r.reload_error.as_deref(), Some(err.as_str()));
+        assert_eq!(r.acc.frames(), 2);
+        assert_eq!(r.camera_desc, desc.camera);
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!(r.reload_error, None);
+        Ok(())
+    }
+
+    #[test]
+    fn an_unsupported_reload_keeps_the_old_scene() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        desc.light = Some(LightDescription::Spot {
+            position: [-10.0, 10.0, -10.0],
+            target: [0.0, 0.0, 0.0],
+            intensity: [1.0, 1.0, 1.0],
+            inner_angle: 0.2,
+            outer_angle: 0.4,
+        });
+        let err = r
+            .reload(&desc, Path::new("scenes"))
+            .err()
+            .ok_or("expected an error")?;
+        assert!(err.contains("spot"), "{err}");
+        assert_eq!(r.acc.frames(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn reload_keeps_the_traversal() -> Result<(), String> {
+        let (mut r, desc) = chapter7()?;
+        assert!(r.set_traversal(TRAVERSAL_METAL));
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!(r.scene.info.counts.traversal, TRAVERSAL_METAL);
+        r.acc.add_frame(&r.gpu, &r.scene.info)?;
+        Ok(())
     }
 
     #[test]
