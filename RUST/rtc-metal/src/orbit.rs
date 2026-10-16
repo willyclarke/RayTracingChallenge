@@ -1,6 +1,7 @@
 //! Orbit camera maths: turns mouse drag/scroll into a view transform.
 
 use rtc_rust::matrix::Matrix4;
+use rtc_rust::scene::CameraDescription;
 use rtc_rust::tuple::Tuple;
 use rtc_rust::world::view_transform;
 
@@ -20,6 +21,15 @@ pub struct Orbit {
 }
 
 impl Orbit {
+    /// The orbit a scene file's camera starts at.
+    pub fn of(c: &CameraDescription) -> Self {
+        Orbit::new(
+            Tuple::point(c.from[0], c.from[1], c.from[2]),
+            Tuple::point(c.to[0], c.to[1], c.to[2]),
+            Tuple::vector(c.up[0], c.up[1], c.up[2]),
+        )
+    }
+
     pub fn new(from: Tuple, to: Tuple, up: Tuple) -> Self {
         let d = from - to;
         let radius = d.magnitude();

@@ -1,6 +1,6 @@
 //! rtc-metal: render on the GPU via Metal, write PPM through rtc-rust's Canvas.
 //!
-//! Usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window]
+//! Usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch]]
 //!                  [--traversal bvh|metal]
 //!
 //! With a scene, renders it (scene format: rtc-rust's README); without one,
@@ -10,14 +10,17 @@
 //! refining live (default 256, or `--samples N`); drag to orbit the camera,
 //! scroll to zoom, space to return to the scene's view, `i` to toggle the
 //! status overlay (which times each image until it reaches the target); resizing the window or going full screen renders at the
-//! new size, and the image is written on quit at the size last shown. `--traversal metal` searches the bounded
+//! new size, and the image is written on quit at the size last shown. With
+//! `--watch` the window reloads the scene whenever its file changes (a scene
+//! editor, or a text editor, saves it) and refines it again; a file that
+//! doesn't load keeps the old image and shows why. `--traversal metal` searches the bounded
 //! shapes with Metal's ray tracing API instead of the BVH walk
 //! (milestone 10).
 
 use rtc_metal::gpu::Gpu;
-use rtc_metal::orbit::Orbit;
 use rtc_metal::scene::GpuScene;
 use rtc_metal::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
+use rtc_metal::watch::Watch;
 use rtc_rust::canvas::Canvas;
 use rtc_rust::scene::SceneDescription;
 use rtc_rust::tuple::Tuple;
@@ -35,6 +38,7 @@ fn main() {
     let mut scene_path = None;
     let mut samples = None;
     let mut window = false;
+    let mut watch = false;
     let mut traversal = TRAVERSAL_BVH;
     let mut i = 0;
     while i < args.len() {
@@ -49,6 +53,7 @@ fn main() {
                 i += 1;
             }
             "--window" => window = true,
+            "--watch" => watch = true,
             "--traversal" => {
                 traversal = match args.get(i + 1).map(String::as_str) {
                     Some("bvh") => TRAVERSAL_BVH,
@@ -61,6 +66,10 @@ fn main() {
             a => scene_path = Some(a.to_string()),
         }
         i += 1;
+    }
+
+    if watch && !window {
+        usage();
     }
 
     let out = out.unwrap_or_else(|| match &scene_path {
@@ -79,6 +88,7 @@ fn main() {
             &path,
             samples.unwrap_or(WINDOW_SAMPLES),
             traversal,
+            watch,
             out,
         );
     }
@@ -115,30 +125,27 @@ fn main() {
     write_ppm(pixels, width, height, &out);
 }
 
-/// Show the scene at `path` refining live until `samples` frames; write the
-/// image to `out` on quit.
-fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, out: String) -> ! {
+/// Show the scene at `path` refining live until `samples` frames, reloading
+/// it when the file changes if `watch`; write the image to `out` on quit.
+fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, out: String) -> ! {
     let path = Path::new(path);
+    // Watch before reading, so a save while the scene loads still reloads.
+    let watch = watch.then(|| Watch::new(path));
     let desc = SceneDescription::from_path(path).unwrap_or_else(|e| fail(&e.to_string()));
     let (world, camera) = desc
         .build(path.parent().unwrap_or(Path::new(".")))
         .unwrap_or_else(|e| fail(&e.to_string()));
     let mut scene = GpuScene::from_world(&world, &camera).unwrap_or_else(|e| fail(&e));
     scene.info.counts.traversal = traversal;
-    let c = &desc.camera;
-    let orbit = Orbit::new(
-        Tuple::point(c.from[0], c.from[1], c.from[2]),
-        Tuple::point(c.to[0], c.to[1], c.to[2]),
-        Tuple::vector(c.up[0], c.up[1], c.up[2]),
-    );
     let title = path.file_name().unwrap().to_string_lossy().into_owned();
     rtc_metal::window::run(
         gpu,
         scene,
         camera,
-        orbit,
+        desc.camera.clone(),
         samples,
         title,
+        watch,
         Box::new(move |pixels, width, height| write_ppm(pixels, width, height, &out)),
     )
 }
@@ -177,13 +184,14 @@ fn write_ppm(pixels: Vec<[f32; 4]>, width: usize, height: usize, out: &str) {
 
 fn usage() -> ! {
     eprintln!(
-        "usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window] [--traversal bvh|metal]"
+        "usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch]] [--traversal bvh|metal]"
     );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
         "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view,\n               i toggles the status overlay (with seconds to reach the target),\n               resizing re-renders,\n               quit writes the image at the window's size;
                Samples menu: presets, Unlimited, Cmd-] doubles, Cmd-[ halves"
     );
+    eprintln!("  --watch      with --window: reload the scene whenever its file changes");
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
     eprintln!("               (in --window, also the Traversal menu: Cmd-1 bvh, Cmd-2 metal)");
     eprintln!("  the scene's antialias.n is ignored on the GPU");
