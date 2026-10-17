@@ -241,6 +241,11 @@ pub struct ShapeDescription {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub motion: Option<[f64; 3]>,
+    /// Free-form notes; ignored by the loader. The editor labels the shape
+    /// with it.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
@@ -1185,6 +1190,18 @@ mod tests {
         Ok(())
     }
 
+    /// The number of keys named "comment" anywhere in `v`.
+    fn comment_keys(v: &serde_json::Value) -> usize {
+        match v {
+            serde_json::Value::Object(m) => m
+                .iter()
+                .map(|(k, x)| usize::from(k == "comment") + comment_keys(x))
+                .sum(),
+            serde_json::Value::Array(a) => a.iter().map(comment_keys).sum(),
+            _ => 0,
+        }
+    }
+
     /// Scene saving - every example scene round-trips through `to_json`
     #[test]
     fn test_scene_10() -> Result<(), String> {
@@ -1200,6 +1217,18 @@ mod tests {
                 .map_err(|e| format!("{}: {e}", path.display()))?;
             if again != desc {
                 return Err(format!("{} changed in a round trip", path.display()));
+            }
+            let value =
+                |t: &str| serde_json::from_str::<serde_json::Value>(t).map_err(|e| e.to_string());
+            let (before, after) = (
+                comment_keys(&value(&text)?),
+                comment_keys(&value(&desc.to_json())?),
+            );
+            if before != after {
+                return Err(format!(
+                    "{}: {before} comments before, {after} after",
+                    path.display()
+                ));
             }
             checked += 1;
         }
@@ -1284,6 +1313,26 @@ mod tests {
         }
         if std::env::temp_dir().join("test_scene_13.json.tmp").exists() {
             return Err("save left its temporary file behind".into());
+        }
+        Ok(())
+    }
+
+    /// Scene saving - a shape's comment survives a round trip and is ignored by build
+    #[test]
+    fn test_scene_14() -> Result<(), String> {
+        let desc = SceneDescription::from_json(
+            r#"{"camera":{"width":10,"height":5,"field_of_view":1.0,"from":[0,0,-5],"to":[0,0,0],"up":[0,1,0]},
+                "light":{"type":"point","position":[0,0,-5],"intensity":[1,1,1]},
+                "shapes":[{"type":"sphere","comment":"the ball"}]}"#,
+        )
+        .map_err(|e| e.to_string())?;
+        let again = SceneDescription::from_json(&desc.to_json()).map_err(|e| e.to_string())?;
+        if again.shapes[0].comment != Some(serde_json::json!("the ball")) {
+            return Err(format!("comment lost: {:?}", again.shapes[0].comment));
+        }
+        let (world, _) = again.build(Path::new(".")).map_err(|e| e.to_string())?;
+        if world.shapes.len() != 1 {
+            return Err(format!("expected 1 shape, got {}", world.shapes.len()));
         }
         Ok(())
     }
