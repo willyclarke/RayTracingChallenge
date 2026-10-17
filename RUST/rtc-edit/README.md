@@ -48,7 +48,11 @@ values, and keeps `comment` fields. It doesn't keep the file's exact text: `1` b
 `1.0`, and keys follow a fixed order.
 
 The preview is `rtc-edit-<pid>/<scene name>` in the system temp folder, with every asset path
-absolute. Quitting the editor closes the viewer and removes the folder.
+absolute. Quitting the editor closes the viewer and removes the folder. Stopping it with
+Ctrl-C or `kill` doesn't: the folder stays behind.
+
+Quitting the viewer itself writes its image, as `rtc-metal --window` always does, into the
+folder you started `rtc-edit` from.
 
 ## Layout
 
