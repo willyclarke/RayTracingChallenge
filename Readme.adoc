@@ -27,6 +27,11 @@ image::RUST/rtc-rust/docs/cover.jpg[Cover scene rendered by rtc-rust,800]
   also refine a scene live in a window. See
   link:RUST/rtc-metal/README.md[RUST/rtc-metal/README.md].
 
+* *Scene editor* — `RUST/rtc-edit`: an iced (Rust GUI) editor for the JSON scenes, with
+  rtc-metal's live window as its viewer. Work in progress: it shows a scene as a tree and
+  saves it so far; editing comes next. See
+  link:RUST/rtc-edit/README.md[RUST/rtc-edit/README.md].
+
 * *Zig* — `ZIG/raytracer-zig`: work in progress, currently around chapter 10 (patterns).
   See link:ZIG/raytracer-zig/README.md[ZIG/raytracer-zig/README.md].
 

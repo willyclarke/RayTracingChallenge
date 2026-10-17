@@ -48,7 +48,8 @@ cargo run --release -- --help
   - quitting writes the image at the window's size;
   - with `--watch`, the window reloads the scene whenever its file changes and refines it
     again, keeping your view unless the file's camera changed. A file that doesn't load
-    keeps the old image, and the overlay shows why.
+    keeps the old image, and the overlay shows why. The scene editor
+    [rtc-edit](../rtc-edit/README.md) uses this as its viewer.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.
 
