@@ -140,7 +140,10 @@ fn shape_rows(
 }
 
 /// The shape a `Node::Shape` path names.
-fn shape_at<'a>(desc: &'a SceneDescription, path: &[usize]) -> Option<&'a ShapeDescription> {
+pub(crate) fn shape_at<'a>(
+    desc: &'a SceneDescription,
+    path: &[usize],
+) -> Option<&'a ShapeDescription> {
     let (first, rest) = path.split_first()?;
     rest.iter().try_fold(desc.shapes.get(*first)?, |shape, &i| {
         children(shape).get(i).copied()
