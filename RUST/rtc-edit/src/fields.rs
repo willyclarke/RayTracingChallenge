@@ -187,6 +187,21 @@ pub fn set_closed(desc: &mut SceneDescription, node: &Node, value: bool) {
     }
 }
 
+/// Whether `new` is `old` with one run of text removed: a cut, the only
+/// change a box makes while Cmd is held that isn't a shortcut's letter
+/// typed into it (paste arrives separately).
+pub fn is_cut(old: &str, new: &str) -> bool {
+    if new.len() >= old.len() {
+        return false;
+    }
+    let same = old
+        .char_indices()
+        .zip(new.chars())
+        .find(|((_, a), b)| a != b)
+        .map_or(new.len(), |((i, _), _)| i);
+    old[same..].ends_with(&new[same..])
+}
+
 /// The box an arrow moves the shading to, `right` along a row and `down`
 /// across rows of the grid the inspector draws; it stops at the edges.
 /// A row is one variant's fields; going up or down keeps the axis, or
@@ -601,6 +616,17 @@ mod tests {
         assert_eq!(next_box(&order, Scale(2), 0, 1), Min);
         assert_eq!(next_box(&order, Max, 0, 1), Color(0));
         assert_eq!(next_box(&order, Ambient, 0, -1), Color(0));
+    }
+
+    #[test]
+    fn only_a_cut_counts_as_typing_while_cmd_is_held() {
+        assert!(is_cut("1.5", "1"));
+        assert!(is_cut("1.5", "15"));
+        assert!(is_cut("1.5", ""));
+        assert!(!is_cut("1.5", "1.5l"));
+        assert!(!is_cut("1.5", "s"));
+        assert!(!is_cut("1.5", "1.s"));
+        assert!(!is_cut("1.5", "1.5"));
     }
 
     #[test]

@@ -10,7 +10,7 @@ use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Subscription, Task, keyboard};
-use rtc_edit::fields::{Field, closed, fields, next_box, set, set_closed};
+use rtc_edit::fields::{Field, closed, fields, is_cut, next_box, set, set_closed};
 use rtc_edit::paths::{dir_of, rebase};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
@@ -359,10 +359,9 @@ impl Editor {
                 self.desc = desc;
                 self.path = new;
                 self.unsaved = false;
-                if let Some(node) = self.selected.clone() {
-                    self.select(node);
-                }
-                format!("saved {}", file_name(&self.path))
+                // Rebasing touches only asset paths, which have no boxes,
+                // so the boxes and any red text stay as they are.
+                self.warn(format!("saved {}", file_name(&self.path)))
             }
             Err(e) => e,
         };
@@ -381,9 +380,10 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
         Message::SaveAs => e.save_as(),
         Message::ShowViewer => e.show_viewer(),
         Message::Edit(field, value) => {
-            // A focused box also takes Cmd-L's `l` as typing; drop it.
-            let typed_one = |old: &str| value.chars().count() == old.chars().count() + 1;
-            if !(e.command && e.texts.get(&field).is_some_and(|old| typed_one(old))) {
+            // A focused box also takes Cmd-L's `l` as typing, over any
+            // selection; with Cmd held, keep only a cut.
+            let old = e.texts.get(&field).map_or("", String::as_str);
+            if !e.command || is_cut(old, &value) {
                 e.edit(field, value);
             }
         }
