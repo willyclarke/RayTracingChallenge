@@ -10,12 +10,14 @@ use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Subscription, Task, keyboard};
-use rtc_edit::fields::{Field, closed, fields, is_cut, lens_radius, next_box, set, set_closed};
+use rtc_edit::fields::{
+    Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
+};
 use rtc_edit::paths::{dir_of, rebase};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, find};
-use rtc_rust::scene::SceneDescription;
+use rtc_rust::scene::{FocalBlur, SceneDescription};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -70,6 +72,9 @@ struct Editor {
     left: Option<Field>,
     /// The box being edited, which takes ←/→ and letters itself.
     editing: Option<Field>,
+    /// The focal blur that emptying the selected camera's f-number removed,
+    /// so retyping one brings its focal distance and samples back.
+    removed_blur: Option<FocalBlur>,
 }
 
 #[derive(Debug, Clone)]
@@ -153,6 +158,7 @@ fn boot() -> Editor {
         command: false,
         left: None,
         editing: None,
+        removed_blur: None,
     };
     match preview {
         Ok(p) => CHILDREN.lock().unwrap().preview = Some(p),
@@ -269,7 +275,8 @@ impl Editor {
             }
             'x' => {
                 // Only a box that may be empty; one that needs a number stays.
-                if set(&mut self.desc, node, field, "").is_ok() {
+                if set_remembering(&mut self.desc, node, field, "", &mut self.removed_blur).is_ok()
+                {
                     self.texts.insert(field, String::new());
                     self.errors.remove(&field);
                     self.unsaved = true;
@@ -327,6 +334,7 @@ impl Editor {
         self.editing = None;
         self.texts = fields(&self.desc, &node).into_iter().collect();
         self.errors.clear();
+        self.removed_blur = None;
         self.selected = Some(node);
     }
 
@@ -334,7 +342,7 @@ impl Editor {
         self.left = None;
         self.editing = Some(field);
         let Some(node) = &self.selected else { return };
-        match set(&mut self.desc, node, field, &value) {
+        match set_remembering(&mut self.desc, node, field, &value, &mut self.removed_blur) {
             Ok(()) => {
                 self.errors.remove(&field);
                 self.unsaved = true;

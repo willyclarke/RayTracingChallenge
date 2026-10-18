@@ -173,7 +173,10 @@ mod tests {
         let mut v = Viewer::start(&exe, Path::new("p.json")).unwrap();
         let start = Instant::now();
         while v.running() {
-            assert!(start.elapsed() < Duration::from_secs(5), "viewer never exited");
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "viewer never exited"
+            );
             std::thread::sleep(Duration::from_millis(10));
         }
         drop(v);

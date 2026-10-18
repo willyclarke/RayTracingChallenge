@@ -195,6 +195,40 @@ pub fn set(
     }
 }
 
+/// `set`, except that the focal blur an emptied f-number removes goes to
+/// `removed`, and the next f-number typed while there is none puts its focal
+/// distance and samples back, so retyping the f-number doesn't lose them.
+pub fn set_remembering(
+    desc: &mut SceneDescription,
+    node: &Node,
+    field: Field,
+    text: &str,
+    removed: &mut Option<FocalBlur>,
+) -> Result<(), String> {
+    if !(matches!(node, Node::Camera) && field == Field::FNumber) {
+        return set(desc, node, field, text);
+    }
+    let c = &mut desc.camera;
+    let before = c.focal_blur.clone();
+    if before.is_none() {
+        c.focal_blur = removed.clone();
+    }
+    match set_camera(c, field, text) {
+        Ok(()) => {
+            if c.focal_blur.is_some() {
+                *removed = None;
+            } else if before.is_some() {
+                *removed = before;
+            }
+            Ok(())
+        }
+        Err(e) => {
+            c.focal_blur = before;
+            Err(e)
+        }
+    }
+}
+
 /// The samples of a focal blur made by typing an aperture; its focal distance
 /// is from the eye to the point looked at.
 const FOCAL_SAMPLES: usize = 32;
@@ -739,6 +773,43 @@ mod tests {
             assert_eq!(text(&desc, &Node::Camera, f), "", "{f:?}");
         }
         assert_eq!(lens_radius(&desc), None);
+    }
+
+    #[test]
+    fn emptying_then_retyping_the_f_number_keeps_focal_distance_and_samples() {
+        let mut desc = scene();
+        desc.camera.focal_blur = Some(FocalBlur {
+            aperture: 3.5 / 16.0,
+            focal_distance: 3.5,
+            samples: 8,
+        });
+        let mut removed = None;
+        let mut put = |desc: &mut SceneDescription, text| {
+            set_remembering(desc, &Node::Camera, FNumber, text, &mut removed)
+        };
+        put(&mut desc, "").unwrap();
+        assert_eq!(camera(&desc).focal_blur, None);
+        put(&mut desc, "abc").unwrap_err();
+        assert_eq!(camera(&desc).focal_blur, None);
+        put(&mut desc, "").unwrap();
+        put(&mut desc, "16").unwrap();
+        assert_eq!(
+            camera(&desc).focal_blur,
+            Some(FocalBlur {
+                aperture: 3.5 / 32.0,
+                focal_distance: 3.5,
+                samples: 8
+            })
+        );
+        assert_eq!(text(&desc, &Node::Camera, FocalDistance), "3.5");
+        assert_eq!(text(&desc, &Node::Camera, FocalSamples), "8");
+    }
+
+    #[test]
+    fn retyping_without_a_remembered_blur_derives_it() {
+        let mut desc = scene();
+        set_remembering(&mut desc, &Node::Camera, FNumber, "8", &mut None).unwrap();
+        assert_eq!(camera(&desc).focal_blur.clone().unwrap().samples, 32);
     }
 
     #[test]

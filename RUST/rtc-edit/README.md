@@ -58,7 +58,8 @@ read-only in the JSON below the boxes, and saved unchanged.
 - Focal blur is set by an f-number, as on a camera: a bigger one is sharper. Typing one creates
   focal blur, focused on the point the camera looks at, with 32 samples; an empty f-number removes
   it. The file stores the lens radius as `aperture`, `focal distance / (2 × f-number)`, shown
-  below the boxes as `lens radius`. Changing the focal distance keeps the f-number.
+  below the boxes as `lens radius`. Changing the focal distance keeps the f-number. Emptying the f-number to retype it keeps the
+  focal distance and samples until you select something else.
 - A red box keeps its reason: the status line shows it while the box is shaded or being edited.
 - A box updates the scene as you type. The shortcuts work while a box has focus.
 - An empty material, min or max box leaves the value unset, so its default applies.
