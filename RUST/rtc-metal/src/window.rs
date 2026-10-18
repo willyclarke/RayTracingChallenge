@@ -17,7 +17,8 @@
 //! restarting: a higher target carries on, a lower one stops.
 //! With `--watch` a timer checks the scene file four times a second; when it
 //! changed, the scene reloads at the current size and traversal and refines
-//! from one sample again, keeping the view unless the file's camera changed.
+//! from one sample again, keeping the view unless the camera changed in more
+//! than width and height; a new size only resizes the window.
 //! A file that doesn't load keeps the old image, and the status shows why.
 //! Quitting (Cmd-Q, closing the window, or SIGTERM) hands the final image
 //! and its size to `on_close`, with the `-o` path or, without one, a path
@@ -234,9 +235,9 @@ impl Renderer {
 
     /// Swap in the scene `desc` describes (asset paths relative to
     /// `base_dir`), at the current size and traversal, and start refining
-    /// again. The view is kept unless the file's camera changed, which then
-    /// becomes the new home view. On error nothing changes but
-    /// `reload_error`.
+    /// again. The view is kept unless the camera changed in more than width
+    /// and height, which then becomes the new home view. On error nothing
+    /// changes but `reload_error`.
     fn reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
         let result = self.try_reload(desc, base_dir);
         self.reload_error = result.as_ref().err().cloned();

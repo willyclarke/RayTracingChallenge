@@ -1,9 +1,9 @@
 //! rtc-edit: `rtc-edit <scene.json>` shows the scene as a tree, starts
 //! `rtc-metal --window --watch` on a preview copy of it, and saves it
 //! (Cmd-S, and Cmd-Shift-S to save elsewhere with asset paths rebased).
-//! Cmd-R starts the viewer again after it was closed. Simple shapes and
-//! point lights are edited in fixed fields; Cmd-L loads the edits into the
-//! viewer.
+//! Cmd-R starts the viewer again after it was closed. Simple shapes,
+//! point lights and the camera are edited in fixed fields; Cmd-L loads the
+//! edits into the viewer.
 
 use iced::widget::operation;
 use iced::widget::{
