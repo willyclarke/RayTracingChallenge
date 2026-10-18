@@ -246,6 +246,9 @@ fn set_camera(c: &mut CameraDescription, field: Field, text: &str) -> Result<(),
             };
             if field == Field::FocalDistance {
                 let distance = needed(parse(text)?)?;
+                if distance <= 0.0 {
+                    return Err("the focal distance must be above 0".into());
+                }
                 // The f-number stays, so the aperture follows the focus.
                 let f = blur.focal_distance / (2.0 * blur.aperture);
                 if f.is_finite() && f > 0.0 {
@@ -777,6 +780,19 @@ mod tests {
         let blur = camera(&desc).focal_blur.clone().unwrap();
         assert_eq!((blur.focal_distance, blur.samples), (7.5, 8));
         assert!(set_camera(&mut desc, FocalSamples, "0").is_err());
+    }
+
+    #[test]
+    fn typing_a_focal_distance_through_zero_keeps_the_f_number() {
+        let mut desc = scene();
+        set_camera(&mut desc, FNumber, "8").unwrap();
+        let before = desc.clone();
+        assert!(set_camera(&mut desc, FocalDistance, "0").is_err());
+        assert!(set_camera(&mut desc, FocalDistance, "-1").is_err());
+        assert_eq!(desc, before);
+        set_camera(&mut desc, FocalDistance, "0.5").unwrap();
+        assert_eq!(camera(&desc).focal_blur.as_ref().unwrap().aperture, 0.03125);
+        assert_eq!(text(&desc, &Node::Camera, FNumber), "8");
     }
 
     #[test]

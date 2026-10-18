@@ -274,6 +274,7 @@ impl Editor {
                     self.errors.remove(&field);
                     self.unsaved = true;
                     self.unloaded = true;
+                    self.refresh_camera(field);
                 }
                 Task::none()
             }
@@ -338,21 +339,27 @@ impl Editor {
                 self.errors.remove(&field);
                 self.unsaved = true;
                 self.unloaded = true;
-                // Some camera boxes depend on each other: an f-number
-                // creates the other focal blur boxes.
-                if *node == Node::Camera {
-                    for (f, t) in fields(&self.desc, node) {
-                        if f != field && !self.errors.contains_key(&f) {
-                            self.texts.insert(f, t);
-                        }
-                    }
-                }
+                self.refresh_camera(field);
             }
             Err(e) => {
                 self.errors.insert(field, e);
             }
         }
         self.texts.insert(field, value);
+    }
+
+    /// Some camera boxes depend on each other: an f-number creates or removes
+    /// the other focal blur boxes. Show the scene's values in all of them but
+    /// `edited` and the red ones.
+    fn refresh_camera(&mut self, edited: Field) {
+        let Some(node @ Node::Camera) = &self.selected else {
+            return;
+        };
+        for (f, t) in fields(&self.desc, node) {
+            if f != edited && !self.errors.contains_key(&f) {
+                self.texts.insert(f, t);
+            }
+        }
     }
 
     /// Put the scene's value back in `field` and clear its error.
