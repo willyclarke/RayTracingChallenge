@@ -10,7 +10,7 @@ use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Subscription, Task, keyboard};
-use rtc_edit::fields::{Field, closed, fields, is_cut, next_box, set, set_closed};
+use rtc_edit::fields::{Field, closed, fields, is_cut, lens_radius, next_box, set, set_closed};
 use rtc_edit::paths::{dir_of, rebase};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
@@ -56,8 +56,9 @@ struct Editor {
     status: String,
     /// The text typed in each box of the selected item.
     texts: HashMap<Field, String>,
-    /// Boxes whose text doesn't parse; the scene keeps their last good value.
-    errors: HashSet<Field>,
+    /// Boxes whose text doesn't parse, with why; the scene keeps their last
+    /// good value.
+    errors: HashMap<Field, String>,
     /// Edits not yet saved, shown as ` •` in the title.
     unsaved: bool,
     /// Edits the viewer hasn't loaded; Cmd-L loads them.
@@ -146,7 +147,7 @@ fn boot() -> Editor {
         preview_error: None,
         status: String::new(),
         texts: HashMap::new(),
-        errors: HashSet::new(),
+        errors: HashMap::new(),
         unsaved: false,
         unloaded: false,
         command: false,
@@ -276,6 +277,10 @@ impl Editor {
                 }
                 Task::none()
             }
+            'u' => {
+                self.reset(field);
+                Task::none()
+            }
             _ => Task::none(),
         }
     }
@@ -333,13 +338,51 @@ impl Editor {
                 self.errors.remove(&field);
                 self.unsaved = true;
                 self.unloaded = true;
+                // Some camera boxes depend on each other: an f-number
+                // creates the other focal blur boxes.
+                if *node == Node::Camera {
+                    for (f, t) in fields(&self.desc, node) {
+                        if f != field && !self.errors.contains_key(&f) {
+                            self.texts.insert(f, t);
+                        }
+                    }
+                }
             }
             Err(e) => {
-                self.errors.insert(field);
-                self.status = e;
+                self.errors.insert(field, e);
             }
         }
         self.texts.insert(field, value);
+    }
+
+    /// Put the scene's value back in `field` and clear its error.
+    fn reset(&mut self, field: Field) {
+        let Some(node) = &self.selected else { return };
+        if let Some((_, t)) = fields(&self.desc, node)
+            .into_iter()
+            .find(|(f, _)| *f == field)
+        {
+            self.texts.insert(field, t);
+        }
+        self.errors.remove(&field);
+    }
+
+    /// The status line, or why the shaded or edited box is red.
+    fn shown_status(&self) -> String {
+        let reason = self
+            .left
+            .or(self.editing)
+            .and_then(|f| self.errors.get(&f).map(|why| (f, why)));
+        match reason {
+            Some((field, why)) => {
+                let (_, label, axis) = describe(field, "");
+                match axis {
+                    Some(a) => format!("{label} {}: {why}", ["x", "y", "z"][a]),
+                    None => format!("{label}: {why}"),
+                }
+            }
+            None => self.status.clone(),
+        }
     }
 
     fn save_as(&mut self) {
@@ -414,7 +457,12 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
             }
         }
         Message::Letter(c) => return e.letter(c),
-        Message::Escape(true) => e.left = e.editing.take(),
+        Message::Escape(true) => {
+            if let Some(field) = e.editing.filter(|f| e.errors.contains_key(f)) {
+                e.reset(field);
+            }
+            e.left = e.editing.take();
+        }
         Message::Escape(false) => e.left = None,
         Message::Clicked(taken) => {
             if taken {
@@ -438,7 +486,7 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
 
 /// Cmd-S, Cmd-Shift-S, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
 /// has focus and takes the key itself; whether Cmd is held; Esc; the arrows,
-/// h/j/k/l, Enter, i, c and x that no box took; and clicks.
+/// h/j/k/l, Enter, i, c, x and u that no box took; and clicks.
 fn shortcut(
     event: iced::Event,
     status: iced::event::Status,
@@ -481,7 +529,7 @@ fn shortcut(
                 "l" => Some(Message::Move(1, 0)),
                 "k" => Some(Message::Move(0, -1)),
                 "j" => Some(Message::Move(0, 1)),
-                "i" | "c" | "x" => c.chars().next().map(Message::Letter),
+                "i" | "c" | "x" | "u" => c.chars().next().map(Message::Letter),
                 _ => None,
             };
         }
@@ -545,7 +593,7 @@ fn view(e: &Editor) -> Element<'_, Message> {
         ]
         .height(Length::Fill),
         container(row![
-            text(&e.status).size(13),
+            text(e.shown_status()).size(13),
             space::horizontal(),
             text(if e.unloaded {
                 "not in viewer — Cmd-L to load"
@@ -594,7 +642,7 @@ fn boxes<'a>(e: &'a Editor, node: &Node) -> Element<'a, Message> {
             .font(Font::MONOSPACE)
             .size(13)
             .width(80);
-        let error = e.errors.contains(&field);
+        let error = e.errors.contains_key(&field);
         let marked = e.left == Some(field);
         let input = input.style(move |theme: &iced::Theme, status| {
             let mut style = text_input::default(theme, status);
@@ -611,6 +659,10 @@ fn boxes<'a>(e: &'a Editor, node: &Node) -> Element<'a, Message> {
     }
     if let Some(r) = current.take() {
         out = out.push(r);
+    }
+    if let Some(radius) = lens_radius(&e.desc).filter(|_| *node == Node::Camera) {
+        let radius = (radius * 1e6).round() / 1e6;
+        out = out.push(text(format!("lens radius {radius}")).size(13));
     }
     out.into()
 }
@@ -643,6 +695,16 @@ fn describe(field: Field, bounds: &'static str) -> (&'static str, &'static str, 
         RefractiveIndex => ("Material", "refractive index", None),
         LightPosition(a) => ("Light", "position", Some(a)),
         LightIntensity(a) => ("Light", "intensity", Some(a)),
+        CameraFrom(a) => ("View", "from", Some(a)),
+        CameraTo(a) => ("View", "to", Some(a)),
+        CameraUp(a) => ("View", "up", Some(a)),
+        FieldOfView => ("Lens", "field of view°", None),
+        Width => ("Lens", "width", None),
+        Height => ("Lens", "height", None),
+        Antialias => ("Antialias", "n", None),
+        FNumber => ("Focal blur", "f-number", None),
+        FocalDistance => ("Focal blur", "focal distance", None),
+        FocalSamples => ("Focal blur", "samples", None),
     }
 }
 
