@@ -15,7 +15,7 @@ or cone's bounds, and a point light. Edits build up in the editor;
 Cmd-L loads them into the viewer, so several edits cost one restart.
 
 Success:
-- Select a sphere in `rtc-metal/scenes/chapter15.json`, change its
+- Select a sphere in `rtc-metal/scenes/chapter10.json`, change its
   position and color, press Cmd-L: the viewer shows the change.
 - Typing `-`, `2.` or `abc` never fights you: the box keeps your text,
   and turns red while it doesn't parse.
@@ -75,6 +75,27 @@ Success:
   parse but don't build (min above max, a refractive index of 0) are
   left to the viewer, whose overlay shows the loader's error and keeps
   the old image (milestone 16).
+- **Keyboard.** The editor is in one of three places: the tree, a shaded
+  box, or a box being edited.
+  - Tree: ↑/↓ or k/j select the previous or next visible row, stopping
+    at the ends; with nothing selected they select the first row. ← or
+    h folds the selected item, → or l unfolds it. Enter shades the
+    item's first box.
+  - Shaded box: ←/→ or h/l move along a row (a vector's three axes),
+    ↑/↓ or k/j move to the row above or below at the same axis, or the
+    nearest one; they stop at the edges. Enter edits it with the
+    cursor at the end, i with the cursor at the start, c empties it and
+    edits it. x empties a box that may be empty (a material value, min,
+    max), so the default applies; on a box that needs a number it does
+    nothing. Esc clears the shading, back to the tree.
+  - Box being edited: ←/→ and letters belong to the box; ↑/↓ do
+    nothing. Enter or Esc leaves it shaded.
+  - Tab and Shift-Tab, from anywhere, edit the next or previous box,
+    wrapping; from the tree they start at the first or last box.
+  - Clicking a box edits it, and clicking a tree row goes back to the
+    tree.
+  - The arrows and h/j/k/l only navigate without modifiers, so Cmd-L
+    stays Load.
 
 ## rtc-edit
 
@@ -98,10 +119,18 @@ Success:
   - `closed(desc, node) -> Option<bool>` and
     `set_closed(desc, node, bool)`, for the cylinder's or cone's
     checkbox.
+  - `next_box(order: &[Field], from: Field, right: isize, down: isize)
+    -> Field`: the box an arrow moves the shading to, in the grid the
+    inspector draws. A row is the fields of one variant.
+- **`src/tree.rs`** gains `next_row(rows: &[Row], from: Option<&Node>,
+  by: isize) -> Option<Node>`: the row `by` steps away among the visible
+  rows, stopping at the ends.
 - **`src/main.rs`**:
   - New state: `texts: HashMap<Field, String>` for the selected item,
     rebuilt when the selection changes; `unsaved: bool`;
-    `unloaded: bool`.
+    `unloaded: bool`; the shaded box and the box being edited, each an
+    `Option<Field>`. After a click the editor asks iced which box has
+    focus (`operation::is_focused`).
   - New messages: `Edit(Field, String)`, `Closed(bool)`, `Load`.
   - Selecting another item drops any red text; the scene keeps its last
     good value.
@@ -144,15 +173,26 @@ rtc-edit (unit tests, no window):
     no material creates it;
   - bad text and a zero scale return `Err` and leave the scene equal to
     before;
-  - a shape inside a group can be edited.
+  - a shape inside a group can be edited;
+  - `next_box` moves along a vector and stops at its end, keeps the
+    axis going up or down and clamps it on a single box, and stops at
+    the first and last row;
+- `tree`: `next_row` moves to the next and previous row, skips rows a
+  fold hides, stops at the first and last row, and picks the first row
+  with nothing selected.
 
 By eye:
-- Edit a sphere's position and color in chapter15, press Cmd-L: the
+- Edit a sphere's position and color in chapter10, press Cmd-L: the
   viewer shows it.
 - Type `-`, `2.` and `abc`: the box keeps the text, red for `abc`.
 - The `•` appears after an edit, and Cmd-S clears it.
 - Cmd-S, Cmd-L and Cmd-R work while a box has focus.
 - Toggle a cylinder's closed box; the viewer shows the caps after Cmd-L.
+- Walk the tree with j/k and ↑/↓, fold with h, unfold with l; Enter,
+  move the shading with h/j/k/l, Enter to edit, Enter, Esc to the tree.
+- On a shaded box: i puts the cursor at the start, c empties the box
+  for typing, x empties ambient but leaves a position alone.
+- ↑/↓ while editing a box change nothing.
 
 ## Risks
 
@@ -160,6 +200,8 @@ By eye:
   `text_input` consumes them, the shortcuts listen to all key events
   rather than only ignored ones. Checked by eye.
 - **Many boxes.** A cylinder has about 25; the inspector scrolls.
+- **The tree doesn't scroll to follow the keys.** A selection moved
+  past the edge of a long tree is out of sight; scroll by hand.
 - **Rebuilding the transform list changes its text** on the first edit
   of a shape, for example dropping a `scale [1, 1, 1]`. The render is
   the same.

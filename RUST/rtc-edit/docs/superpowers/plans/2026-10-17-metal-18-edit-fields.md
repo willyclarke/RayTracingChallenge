@@ -282,7 +282,7 @@ Run: `cargo build --release && cargo test --lib && cargo clippy --all-targets`
 Expected: builds; all tests pass; clippy clean.
 
 - [ ] **Step 3: Check by eye** (with the user), running
-  `cargo run --release -- ../rtc-metal/scenes/chapter15.json`:
+  `cargo run --release -- ../rtc-metal/scenes/chapter10.json` (chapter15 is two teapots and a plane):
   1. Select a sphere; change its position and color; the title shows
      ` •` and the status line `not in viewer — Cmd-L to load`. Cmd-L:
      the viewer restarts and shows the change.
@@ -300,3 +300,113 @@ Expected: builds; all tests pass; clippy clean.
 - [ ] **Step 4: Commit** after the user's approval:
 
 `ENHANCEMENT: rtc-edit edits shapes and point lights in fixed fields (milestone 18)`
+
+### Task 4: arrow keys and h/j/k/l for the tree and the boxes
+
+**Files:**
+- Modify: `RUST/rtc-edit/src/fields.rs`, `RUST/rtc-edit/src/tree.rs`,
+  `RUST/rtc-edit/src/main.rs`, `RUST/rtc-edit/README.md`.
+
+**Interfaces:**
+- Consumes: `fields::fields`, `tree::{rows, Row, Node}`, Task 3's
+  `left` (the shaded box) and `box_id`.
+- Produces:
+  - `fields::next_box(order: &[Field], from: Field, right: isize, down: isize) -> Field`
+  - `tree::next_row(rows: &[Row], from: Option<&Node>, by: isize) -> Option<Node>`
+
+- [ ] **Step 1: Write the failing tests.**
+
+  In `fields.rs`, on the cylinder's order from `fields`:
+  - `next_box_moves_along_a_vector_and_stops_at_its_end`:
+    `Position(0)` right 1 → `Position(1)`; `Position(2)` right 1 →
+    `Position(2)`; `Position(0)` right -1 → `Position(0)`.
+  - `next_box_keeps_the_axis_going_down_and_clamps_it_on_a_single_box`:
+    `Position(2)` down 1 → `Rotation(2)`; `Scale(2)` down 1 → `Min`;
+    `Max` down 1 → `Color(0)`; `Ambient` up 1 → `Color(0)`.
+  - `next_box_stops_at_the_first_and_last_row`: `Position(1)` up 1 →
+    `Position(1)`; `RefractiveIndex` down 1 → `RefractiveIndex`.
+
+  In `tree.rs`, on a scene with one light and a group holding two
+  spheres:
+  - `next_row_moves_to_the_next_and_previous_row`.
+  - `next_row_skips_the_rows_a_fold_hides`: with the group folded, the
+    row after the group is the next top-level shape (or `None` past the
+    end, since rows stop).
+  - `next_row_stops_at_the_first_and_last_row`: `Camera` by -1 →
+    `Camera`; the last row by 1 → the last row.
+  - `next_row_with_nothing_selected_picks_the_first_row`: `None` by 1
+    and by -1 → `Camera`.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `cargo test --lib next_`
+Expected: FAIL to compile, `next_box` / `next_row` not found.
+
+- [ ] **Step 3: Implement `next_box` and `next_row`.** A box's row is
+  its variant (`std::mem::discriminant`), its column the axis (0 for a
+  scalar). Going up or down, take the neighbouring row and the box at
+  `min(axis, row width - 1)`. A `from` not in the list returns `from`.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cargo test --lib`
+Expected: all pass.
+
+- [ ] **Step 5: Wire the keys in `main.rs`.**
+  - State: `editing: Option<Field>`, the box being edited, beside
+    `left`.
+  - `shortcut` emits, only for key presses with no modifiers:
+    `Move(dx, dy)` for arrows and h/j/k/l when the event was
+    **ignored** (a focused box takes ←/→ and letters); `Enter` when
+    ignored; `Escape(captured: bool)` either way; `Letter(char)` for
+    i, c and x when ignored.
+  - `Move`: editing → nothing; shaded → `left = next_box(...)`; tree →
+    ↑/↓ `select(next_row(...))`, ← fold / → unfold the selected
+    foldable row.
+  - `Enter`: shaded → focus it, `editing = left.take()`; tree with
+    boxes → `left` = first box.
+  - `Letter` on a shaded box (else nothing): `i` focuses it and
+    `move_cursor_to_front`; `c` sets its text to `""` through `edit`,
+    then focuses it; `x` calls `set(desc, node, field, "")` and only on
+    Ok stores the empty text and marks unsaved and unloaded, leaving
+    the box shaded.
+  - `Escape(true)` (the box took it and lost focus): `left =
+    editing.take()`. `Escape(false)`: `left = None`.
+  - `Submit(f)`: `left = Some(f)`, `editing = None`, unfocus.
+  - `Edit` / `Paste(f)`: `editing = Some(f)`.
+  - `tab(step)`: always the editor's own order — from `editing`, else
+    `left`, else first (Tab) or last (Shift-Tab) box; wrap; focus it and
+    set `editing`, clear `left`. `focus_next` / `focus_previous` are no
+    longer used.
+  - `Clicked`: clear `left` and `editing`, then `Task::batch` of
+    `operation::is_focused(box_id(f))` for each box, mapped to
+    `Focused(f, bool)`; `true` sets `editing`.
+  - `select` clears `editing` too.
+
+- [ ] **Step 6: README.** The Editing section gets a short keys list:
+  tree (↑↓/jk, ←→/hl, Enter), shaded box (arrows/hjkl, Enter, i, c,
+  x, Esc),
+  editing (Enter/Esc), Tab.
+
+- [ ] **Step 7: Build and lint**
+
+Run: `cargo build --release && cargo test --lib && cargo clippy --all-targets`
+Expected: builds; all tests pass; clippy clean.
+
+- [ ] **Step 8: Check by eye** (with the user), on
+  `../rtc-metal/scenes/chapter10.json` and a scene with a group:
+  1. j/k and ↑/↓ walk the tree; h folds, l unfolds a group.
+  2. Enter shades the first box; h/j/k/l and arrows move the shading
+     and stop at the edges.
+  3. Enter edits; ↑/↓ change nothing; Enter shades it again; Esc goes
+     back to the tree, and j moves the tree.
+  4. Click a box, press ↓: nothing moves. Tab moves on from the clicked
+     box.
+  5. Cmd-L with the shading on still loads.
+  6. On a shaded box: i edits with the cursor at the start; c empties
+     it for typing; x empties ambient (default applies after Cmd-L)
+     and leaves a position unchanged.
+
+- [ ] **Step 9: Commit** after the user's approval:
+
+`ENHANCEMENT: rtc-edit moves through the tree and boxes with arrows and h/j/k/l, and i, c, x (milestone 18)`
