@@ -1,6 +1,7 @@
 //! The Metal viewer, `rtc-metal <preview> --window --watch`, run as a child
 //! process that ends with the editor.
 
+use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
@@ -47,10 +48,23 @@ impl Viewer {
     }
 }
 
+const SIGTERM: c_int = 15;
+
+unsafe extern "C" {
+    fn kill(pid: c_int, sig: c_int) -> c_int;
+}
+
 impl Drop for Viewer {
+    /// Ask the viewer to quit, so it can offer to save its image; it is not
+    /// waited for, as the user may take a while to answer. A child that has
+    /// already exited is left alone: its pid may have been reused.
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if matches!(self.child.try_wait(), Ok(None)) {
+            // SAFETY: `kill` only sends a signal; the child is still ours.
+            unsafe {
+                kill(self.child.id() as c_int, SIGTERM);
+            }
+        }
     }
 }
 
@@ -124,19 +138,48 @@ mod tests {
     }
 
     #[test]
-    fn dropping_the_viewer_kills_it() {
-        let root = fresh("kill");
-        let exe = script(&root, "viewer", "exec sleep 30");
+    fn dropping_the_viewer_asks_it_to_quit() {
+        let root = fresh("quit");
+        let got = root.join("got");
+        let ready = root.join("ready");
+        let body = format!(
+            "trap 'echo term > {}; kill $!; exit 0' TERM; : > {}; sleep 30 & wait",
+            got.display(),
+            ready.display()
+        );
+        let exe = script(&root, "viewer", &body);
         let v = Viewer::start(&exe, Path::new("p.json")).unwrap();
-        let id = v.id();
+        // Wait for the shell to install its trap before the signal arrives.
+        let start = Instant::now();
+        while !ready.exists() {
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "viewer script never installed its trap"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
         drop(v);
-        let alive = std::process::Command::new("kill")
-            .args(["-0", &id.to_string()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .unwrap()
-            .success();
-        assert!(!alive, "viewer {id} still running");
+        let start = Instant::now();
+        while !got.exists() && start.elapsed() < Duration::from_secs(2) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(got.exists(), "viewer never received SIGTERM");
+    }
+
+    #[test]
+    fn dropping_a_viewer_that_already_exited_is_harmless() {
+        let root = fresh("exited");
+        let exe = script(&root, "viewer", "exit 0");
+        let mut v = Viewer::start(&exe, Path::new("p.json")).unwrap();
+        let start = Instant::now();
+        while v.running() {
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "viewer never exited"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        drop(v);
     }
 
     #[test]

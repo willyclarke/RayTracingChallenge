@@ -17,9 +17,12 @@
 //! restarting: a higher target carries on, a lower one stops.
 //! With `--watch` a timer checks the scene file four times a second; when it
 //! changed, the scene reloads at the current size and traversal and refines
-//! from one sample again, keeping the view unless the file's camera changed.
+//! from one sample again, keeping the view unless the camera changed in more
+//! than width and height; a new size only resizes the window.
 //! A file that doesn't load keeps the old image, and the status shows why.
-//! Quitting hands the final image and its size to `on_close`.
+//! Quitting (Cmd-Q, closing the window, or SIGTERM) hands the final image
+//! and its size to `on_close`, with the `-o` path or, without one, a path
+//! the user picks in a save panel after an alert asks whether to save.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
 //! one `Rc<RefCell<Renderer>>`.
@@ -33,13 +36,14 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
-    NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont, NSMenu, NSMenuItem,
-    NSResponder, NSScreen, NSTextField, NSView, NSWindow, NSWindowCollectionBehavior,
-    NSWindowStyleMask,
+    NSAlert, NSAlertFirstButtonReturn, NSApplication, NSApplicationActivationPolicy,
+    NSApplicationDelegate, NSApplicationTerminateReply, NSBackingStoreType, NSColor,
+    NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont, NSMenu, NSMenuItem,
+    NSModalResponseOK, NSResponder, NSSavePanel, NSScreen, NSTextField, NSView, NSWindow,
+    NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{
-    NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSTimer,
+    NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSTimer, NSURL,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLPixelFormat};
 use objc2_metal_kit::{MTKView, MTKViewDelegate};
@@ -47,8 +51,9 @@ use objc2_quartz_core::CAMetalDrawable;
 use rtc_rust::camera::Camera;
 use rtc_rust::scene::{CameraDescription, SceneDescription};
 use std::cell::{Cell, RefCell};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// The sample target that never stops refining.
@@ -57,13 +62,59 @@ const UNLIMITED: u32 = u32::MAX;
 const PRESETS: [u32; 5] = [16, 64, 256, 1024, 4096];
 /// Screen refreshes per second the view asks for.
 const FPS: isize = 60;
-/// Seconds between checks of a `--watch`ed scene file.
+/// Seconds between checks for SIGTERM and of a `--watch`ed scene file.
 const WATCH_INTERVAL: f64 = 0.25;
+/// SIGTERM's number on macOS.
+const SIGTERM: i32 = 15;
 /// Time between screen refreshes, in ms.
 const REFRESH_MS: f64 = 1000.0 / FPS as f64;
 
-/// Called on quit with the final image and its width and height.
-type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize)>;
+/// Set by the SIGTERM handler; the timer quits the app when it sees it.
+static QUIT: AtomicBool = AtomicBool::new(false);
+
+unsafe extern "C" {
+    /// libc's `signal(3)`; returns the previous handler (unused here).
+    fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
+}
+
+/// SIGTERM handler: only flags the quit, as a handler may do nothing that
+/// isn't async-signal-safe; the main thread's timer does the quitting.
+extern "C" fn on_sigterm(_sig: i32) {
+    QUIT.store(true, Ordering::SeqCst);
+}
+
+/// Called on quit with the final image, its width and height, and the path
+/// to write it to; an `Err` is shown to the user before the app quits.
+pub type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize, &Path) -> Result<(), String>>;
+
+/// Where the image goes on quit.
+pub enum Save {
+    /// Write it to this path (`-o`) without asking.
+    To(String),
+    /// Ask, offering this file name (`image_name` of the scene).
+    Ask(String),
+}
+
+/// The default image file name for `scene`: its stem with `.ppm`.
+pub fn image_name(scene: &Path) -> String {
+    format!(
+        "{}.ppm",
+        scene.file_stem().unwrap_or_default().to_string_lossy()
+    )
+}
+
+/// The path to write the image to on quit, or `None` to write nothing:
+/// nothing before the first frame is drawn, `-o`'s path without asking,
+/// otherwise whatever `ask` answers when offered the default name.
+fn choose(save: &Save, frames: u32, ask: impl FnOnce(&str) -> Option<PathBuf>) -> Option<PathBuf> {
+    if frames == 0 {
+        return None;
+    }
+    match save {
+        Save::To(path) => Some(PathBuf::from(path)),
+        Save::Ask(name) => ask(name),
+    }
+}
 
 /// The state the view and its delegate share.
 struct Renderer {
@@ -93,6 +144,20 @@ struct Renderer {
     reload_error: Option<String>,
     /// The scene file, with `--watch`: reloaded whenever it changes.
     watch: Option<Watch>,
+    /// The file's new `(width, height)` after a reload changed them; the
+    /// view takes it to resize the window.
+    resize: Option<(usize, usize)>,
+}
+
+/// Whether two cameras differ at most in image size, so a reload keeps the
+/// user's orbit.
+fn same_view(a: &CameraDescription, b: &CameraDescription) -> bool {
+    let sized = |c: &CameraDescription| CameraDescription {
+        width: 0,
+        height: 0,
+        ..c.clone()
+    };
+    sized(a) == sized(b)
 }
 
 impl Renderer {
@@ -170,9 +235,9 @@ impl Renderer {
 
     /// Swap in the scene `desc` describes (asset paths relative to
     /// `base_dir`), at the current size and traversal, and start refining
-    /// again. The view is kept unless the file's camera changed, which then
-    /// becomes the new home view. On error nothing changes but
-    /// `reload_error`.
+    /// again. The view is kept unless the camera changed in more than width
+    /// and height, which then becomes the new home view. On error nothing
+    /// changes but `reload_error`.
     fn reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
         let result = self.try_reload(desc, base_dir);
         self.reload_error = result.as_ref().err().cloned();
@@ -181,7 +246,7 @@ impl Renderer {
 
     fn try_reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
         let (world, file_camera) = desc.build(base_dir).map_err(|e| e.0)?;
-        let new_view = (desc.camera != self.camera_desc).then(|| {
+        let new_view = (!same_view(&desc.camera, &self.camera_desc)).then(|| {
             let camera = resized(&file_camera, self.camera.hsize, self.camera.vsize);
             (camera, Orbit::of(&desc.camera))
         });
@@ -191,6 +256,8 @@ impl Renderer {
         let acc = self.gpu.accumulator(&scene)?;
         self.scene = scene;
         self.acc = acc;
+        let size = |c: &CameraDescription| (c.width, c.height);
+        self.resize = (size(&desc.camera) != size(&self.camera_desc)).then(|| size(&desc.camera));
         self.camera_desc = desc.camera.clone();
         if let Some((camera, orbit)) = new_view {
             self.camera = camera;
@@ -250,6 +317,15 @@ fn halved(target: u32) -> u32 {
     } else {
         (target / 2).max(1)
     }
+}
+
+/// The content size for a `width` x `height` image on a screen with backing
+/// `scale`: one drawable pixel per image pixel, shrunk uniformly to fit
+/// `room` (the content area available, if there is a screen), never grown.
+fn window_size(width: usize, height: usize, scale: f64, room: Option<NSSize>) -> NSSize {
+    let (w, h) = (width as f64 / scale, height as f64 / scale);
+    let fit = room.map_or(1.0, |room| (room.width / w).min(room.height / h).min(1.0));
+    NSSize::new(w * fit, h * fit)
 }
 
 /// The overlay's and title's text.
@@ -366,9 +442,14 @@ define_class!(
             self.change_target(halved);
         }
 
-        /// The `--watch` timer: reload the scene when its file changed.
-        #[unsafe(method(checkWatchedFile:))]
-        fn check_watched_file(&self, _timer: &NSTimer) {
+        /// The timer: quit after a SIGTERM, otherwise reload a `--watch`ed
+        /// scene when its file changed.
+        #[unsafe(method(checkQuitAndWatchedFile:))]
+        fn check_quit_and_watched_file(&self, _timer: &NSTimer) {
+            if QUIT.swap(false, Ordering::SeqCst) {
+                NSApplication::sharedApplication(self.mtm()).terminate(None);
+                return;
+            }
             self.reload_if_changed();
         }
 
@@ -496,8 +577,27 @@ impl RtcView {
                 // A file that doesn't parse never reaches `reload`.
                 r.reload_error = Some(e.clone());
             }
-            result.is_ok()
+            let resize = if result.is_ok() {
+                r.resize.take()
+            } else {
+                None
+            };
+            (result.is_ok(), resize)
         };
+        let (reloaded, resize) = reloaded;
+        if let (Some((w, h)), Some(window)) = (resize, self.window()) {
+            let scale = window.backingScaleFactor();
+            let room = window.screen().map(|screen| {
+                let style = window.styleMask();
+                NSWindow::contentRectForFrameRect_styleMask(
+                    screen.visibleFrame(),
+                    style,
+                    MainThreadMarker::from(self),
+                )
+                .size
+            });
+            window.setContentSize(window_size(w, h, scale, room));
+        }
         if reloaded {
             self.resume();
         } else {
@@ -544,18 +644,35 @@ define_class!(
             true
         }
 
-        #[unsafe(method(applicationWillTerminate:))]
-        fn will_terminate(&self, _notification: &NSNotification) {
+        /// Write the image where `save` says (asking first without `-o`),
+        /// then quit; a second quit while asking is cancelled.
+        #[unsafe(method(applicationShouldTerminate:))]
+        fn should_terminate(&self, _sender: &NSApplication) -> NSApplicationTerminateReply {
             let ivars = self.ivars();
-            let r = ivars.renderer.borrow();
-            match r.acc.resolve(&r.gpu) {
-                Ok(pixels) => {
-                    if let Some(on_close) = ivars.on_close.take() {
-                        on_close(pixels, r.camera.hsize, r.camera.vsize);
-                    }
-                }
-                Err(e) => eprintln!("rtc-metal: {e}"),
+            if ivars.asking.replace(true) {
+                return NSApplicationTerminateReply::TerminateCancel;
             }
+            // No borrow is held while the alert and panel run: the view may
+            // draw meanwhile.
+            let frames = ivars.renderer.borrow().acc.frames();
+            let mtm = self.mtm();
+            if let Some(path) = choose(&ivars.save, frames, |name| ask(mtm, name)) {
+                let image = {
+                    let r = ivars.renderer.borrow();
+                    let size = (r.camera.hsize, r.camera.vsize);
+                    r.acc.resolve(&r.gpu).map(|pixels| (pixels, size))
+                };
+                let written =
+                    image.and_then(|(pixels, (width, height))| match ivars.on_close.take() {
+                        Some(on_close) => on_close(pixels, width, height, &path),
+                        None => Ok(()),
+                    });
+                if let Err(e) = written {
+                    eprintln!("rtc-metal: {e}");
+                    show_error(mtm, &e);
+                }
+            }
+            NSApplicationTerminateReply::TerminateNow
         }
     }
 );
@@ -564,6 +681,10 @@ struct Delegate {
     renderer: Rc<RefCell<Renderer>>,
     /// The status label over the image.
     overlay: Retained<NSTextField>,
+    /// Where the image goes on quit.
+    save: Save,
+    /// Set while quitting asks where to save.
+    asking: Cell<bool>,
     on_close: Cell<Option<OnClose>>,
     title: String,
 }
@@ -648,8 +769,10 @@ impl RtcDelegate {
 /// Open a window showing `scene` refining up to `samples` frames, viewed
 /// from `camera` (the scene file's `camera_desc`, at the scene's size), run
 /// the app until it quits, then exit. With `watch`, the scene reloads when
-/// its file changes. `on_close` gets the final image (row-major RGBA, as
-/// `Accumulator::resolve`) if at least one frame was drawn.
+/// its file changes. On quit, `on_close` gets the final image (row-major
+/// RGBA, as `Accumulator::resolve`) and the path `save` gives (see
+/// `choose`), if at least one frame was drawn and a path was chosen. A
+/// SIGTERM quits as Cmd-Q does.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     gpu: Gpu,
@@ -659,6 +782,7 @@ pub fn run(
     samples: u32,
     title: String,
     watch: Option<Watch>,
+    save: Save,
     on_close: OnClose,
 ) -> ! {
     let mtm = MainThreadMarker::new().expect("the window must run on the main thread");
@@ -684,6 +808,7 @@ pub fn run(
         camera_desc,
         reload_error: None,
         watch,
+        resize: None,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
@@ -695,6 +820,8 @@ pub fn run(
         Delegate {
             renderer: renderer.clone(),
             overlay: overlay.clone(),
+            save,
+            asking: Cell::new(false),
             on_close: Cell::new(Some(on_close)),
             title: title.clone(),
         },
@@ -709,13 +836,13 @@ pub fn run(
         | NSWindowStyleMask::Resizable;
     let screen = NSScreen::mainScreen(mtm);
     let scale = screen.as_ref().map_or(1.0, |s| s.backingScaleFactor());
-    let (mut w, mut h) = (width / scale, height / scale);
-    if let Some(screen) = screen {
-        let room = NSWindow::contentRectForFrameRect_styleMask(screen.visibleFrame(), style, mtm);
-        let fit = (room.size.width / w).min(room.size.height / h).min(1.0);
-        (w, h) = (w * fit, h * fit);
-    }
-    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(w, h));
+    let room = screen.map(|screen| {
+        NSWindow::contentRectForFrameRect_styleMask(screen.visibleFrame(), style, mtm).size
+    });
+    let frame = NSRect::new(
+        NSPoint::new(0.0, 0.0),
+        window_size(width as usize, height as usize, scale, room),
+    );
 
     let view = RtcView::new(mtm, renderer, frame);
     view.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -726,20 +853,21 @@ pub fn run(
     view.setAutoResizeDrawable(true);
     view.setPreferredFramesPerSecond(FPS);
     view.addSubview(&overlay);
-    if view.ivars().borrow().watch.is_some() {
-        // SAFETY: `checkWatchedFile:` takes the timer, as the selector
-        // expects; the view lives until the app exits, and so does the
-        // repeating timer, which the run loop retains.
-        let _ = unsafe {
-            NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
-                WATCH_INTERVAL,
-                &view,
-                sel!(checkWatchedFile:),
-                None,
-                true,
-            )
-        };
-    }
+    // SAFETY: `checkQuitAndWatchedFile:` takes the timer, as the selector
+    // expects; the view lives until the app exits, and so does the
+    // repeating timer, which the run loop retains.
+    let _ = unsafe {
+        NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
+            WATCH_INTERVAL,
+            &view,
+            sel!(checkQuitAndWatchedFile:),
+            None,
+            true,
+        )
+    };
+    // SAFETY: `on_sigterm` has the signature `signal` expects and only
+    // stores to an atomic, which is async-signal-safe.
+    unsafe { signal(SIGTERM, on_sigterm) };
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
     // window can be closed, so the `Retained` stays the only owner.
@@ -763,6 +891,49 @@ pub fn run(
     app.activate(); // needs macOS 14+ (older: activateIgnoringOtherApps)
     app.run();
     std::process::exit(0);
+}
+
+/// Ask whether to save the image and, if so, where, offering `name` in the
+/// current directory; the chosen path, or `None` for no image.
+fn ask(mtm: MainThreadMarker, name: &str) -> Option<PathBuf> {
+    let app = NSApplication::sharedApplication(mtm);
+    // A SIGTERM may come while another app (the scene editor) is active:
+    // the plain `activate` only asks, so force the alert to the front.
+    #[allow(deprecated)]
+    app.activateIgnoringOtherApps(true);
+    let alert = NSAlert::new(mtm);
+    alert.setMessageText(&NSString::from_str("Save the rendered image?"));
+    alert.addButtonWithTitle(&NSString::from_str("Save…"));
+    alert.addButtonWithTitle(&NSString::from_str("Quit Without Saving"));
+    if alert.runModal() != NSAlertFirstButtonReturn {
+        return None;
+    }
+    let panel = NSSavePanel::savePanel(mtm);
+    if let Ok(dir) = std::env::current_dir() {
+        let dir = NSString::from_str(&dir.to_string_lossy());
+        panel.setDirectoryURL(Some(&NSURL::fileURLWithPath_isDirectory(&dir, true)));
+    }
+    panel.setNameFieldStringValue(&NSString::from_str(name));
+    // `allowedContentTypes` would need the UniformTypeIdentifiers crate.
+    #[allow(deprecated)]
+    panel.setAllowedFileTypes(Some(&NSArray::from_retained_slice(&[NSString::from_str(
+        "ppm",
+    )])));
+    if panel.runModal() != NSModalResponseOK {
+        return None;
+    }
+    panel
+        .URL()
+        .and_then(|url| url.path())
+        .map(|path| PathBuf::from(path.to_string()))
+}
+
+/// Tell the user the image could not be written, and why.
+fn show_error(mtm: MainThreadMarker, error: &str) {
+    let alert = NSAlert::new(mtm);
+    alert.setMessageText(&NSString::from_str("The image could not be saved."));
+    alert.setInformativeText(&NSString::from_str(error));
+    alert.runModal();
 }
 
 /// White text on a translucent black box, for the top-left overlay.
@@ -908,6 +1079,7 @@ mod tests {
             },
             reload_error: None,
             watch: None,
+            resize: None,
         })
     }
 
@@ -1005,6 +1177,7 @@ mod tests {
             camera_desc: desc.camera.clone(),
             reload_error: None,
             watch: None,
+            resize: None,
         };
         r.acc.add_frame(&r.gpu, &r.scene.info)?;
         r.acc.add_frame(&r.gpu, &r.scene.info)?;
@@ -1026,6 +1199,85 @@ mod tests {
         assert!(r.camera.transform().approx_eq(view));
         assert!(r.moved);
         Ok(())
+    }
+
+    #[test]
+    fn same_view_ignores_the_size() -> Result<(), String> {
+        let (_, desc) = chapter7()?;
+        let base = desc.camera;
+        let mut resized = base.clone();
+        resized.width = 999;
+        resized.height = 3;
+        assert!(same_view(&base, &resized));
+        let mut moved = base.clone();
+        moved.from = [0.0, 3.0, -8.0];
+        assert!(!same_view(&base, &moved));
+        let mut zoomed = base.clone();
+        zoomed.field_of_view += 0.1;
+        assert!(!same_view(&base, &zoomed));
+        let mut blurred = base.clone();
+        blurred.focal_blur = Some(rtc_rust::scene::FocalBlur {
+            aperture: 0.1,
+            focal_distance: 5.0,
+            samples: 4,
+        });
+        assert!(!same_view(&base, &blurred));
+        Ok(())
+    }
+
+    #[test]
+    fn reload_with_only_a_new_size_keeps_the_view() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        r.orbit.drag(0.3, 0.0);
+        r.moved = true;
+        r.restart();
+        let view = r.camera.transform();
+        desc.camera.width = 77;
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!((r.camera.hsize, r.camera.vsize), (40, 20));
+        assert!(r.camera.transform().approx_eq(view));
+        assert!(r.moved);
+        assert_eq!(r.camera_desc, desc.camera);
+        Ok(())
+    }
+
+    #[test]
+    fn reload_with_a_new_size_asks_for_that_window_size() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        r.orbit.drag(0.3, 0.0);
+        r.moved = true;
+        r.restart();
+        let view = r.camera.transform();
+        desc.camera.width = 77;
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!(r.resize, Some((77, desc.camera.height)));
+        assert!(r.camera.transform().approx_eq(view));
+        assert!(r.moved);
+        Ok(())
+    }
+
+    #[test]
+    fn reload_with_the_same_size_asks_for_no_resize() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        desc.camera.focal_blur = None;
+        desc.camera.from = [0.0, 3.0, -8.0];
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!(r.resize, None);
+        Ok(())
+    }
+
+    #[test]
+    fn window_size_fits_the_room_and_never_grows() {
+        let size = |room| window_size(800, 600, 2.0, room);
+        assert_eq!(size(None), NSSize::new(400.0, 300.0));
+        assert_eq!(
+            size(Some(NSSize::new(200.0, 300.0))),
+            NSSize::new(200.0, 150.0)
+        );
+        assert_eq!(
+            size(Some(NSSize::new(4000.0, 4000.0))),
+            NSSize::new(400.0, 300.0)
+        );
     }
 
     #[test]
@@ -1190,5 +1442,44 @@ mod tests {
         assert!(wide.half_height < camera.half_height);
         let fresh = Camera::new(1600, 600, 0.68);
         assert_eq!(wide.pixel_size, fresh.pixel_size);
+    }
+
+    #[test]
+    fn image_name_is_the_scene_stem_with_ppm() {
+        assert_eq!(
+            image_name(Path::new("scenes/chapter7.json")),
+            "chapter7.ppm"
+        );
+        assert_eq!(image_name(Path::new("/tmp/rtc-edit-1/a.b.json")), "a.b.ppm");
+    }
+
+    #[test]
+    fn a_given_path_is_used_without_asking() {
+        let save = Save::To("x.ppm".to_string());
+        assert_eq!(
+            choose(&save, 3, |_| panic!("asked")),
+            Some(PathBuf::from("x.ppm"))
+        );
+    }
+
+    #[test]
+    fn asking_returns_the_answer() {
+        let save = Save::Ask("a.ppm".to_string());
+        let answer = choose(&save, 3, |name| {
+            assert_eq!(name, "a.ppm");
+            Some(PathBuf::from("/d/b.ppm"))
+        });
+        assert_eq!(answer, Some(PathBuf::from("/d/b.ppm")));
+        assert_eq!(choose(&save, 3, |_| None), None);
+    }
+
+    #[test]
+    fn nothing_is_saved_before_a_frame_is_drawn() {
+        for save in [
+            Save::To("x.ppm".to_string()),
+            Save::Ask("a.ppm".to_string()),
+        ] {
+            assert_eq!(choose(&save, 0, |_| panic!("asked")), None);
+        }
     }
 }

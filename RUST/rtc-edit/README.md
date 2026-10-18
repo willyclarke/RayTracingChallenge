@@ -49,9 +49,18 @@ works and the status line says where it looked.
 Spheres, cubes, planes, cylinders and cones, also inside groups and CSG, get boxes for their
 position, rotation (in degrees) and scale, and for their material: color, ambient, diffuse,
 specular, shininess, reflective, transparency and refractive index. Cylinders and cones also
-get min, max and closed; point lights get position and intensity. Everything else is shown
+get min, max and closed; point lights get position and intensity; the camera gets from, to, up,
+field of view (in degrees), width, height, antialias n and focal blur. Everything else is shown
 read-only in the JSON below the boxes, and saved unchanged.
 
+- The camera's n only matters to rtc-rust renders, as rtc-metal's progressive rendering
+  antialiases anyway. An empty n removes antialias.
+- Focal blur is set by an f-number, as on a camera: a bigger one is sharper. Typing one creates
+  focal blur, focused on the point the camera looks at, with 32 samples; an empty f-number removes
+  it. The file stores the lens radius as `aperture`, `focal distance / (2 × f-number)`, shown
+  below the boxes as `lens radius`. Changing the focal distance keeps the f-number. Emptying the f-number to retype it keeps the
+  focal distance and samples until you select something else.
+- A red box keeps its reason: the status line shows it while the box is shaded or being edited.
 - A box updates the scene as you type. The shortcuts work while a box has focus.
 - An empty material, min or max box leaves the value unset, so its default applies.
 - A box whose text isn't a number turns red, and the scene keeps the last value that was.
@@ -74,8 +83,9 @@ letters only act with no modifier held, so Cmd-L stays Load.
 | shaded box | Enter, i | edit it, with the cursor at the end or the start |
 | shaded box | c | empty it and edit it |
 | shaded box | x | empty it, if the box may be empty |
+| shaded box | u | put the scene's value back, clearing a red box |
 | shaded box | Esc | back to the tree |
-| editing | Enter or Esc | leave the box, shaded |
+| editing | Enter or Esc | leave the box, shaded; Esc on a red box also puts the scene's value back |
 | anywhere | Tab, Shift-Tab | edit the next or previous box |
 
 Clicking a box edits it. The tree doesn't scroll to follow the keys.
@@ -88,8 +98,8 @@ The preview is `rtc-edit-<pid>/<scene name>` in the system temp folder, with eve
 absolute. Quitting the editor closes the viewer and removes the folder. Stopping it with
 Ctrl-C or `kill` doesn't: the folder stays behind.
 
-Quitting the viewer itself writes its image, as `rtc-metal --window` always does, into the
-folder you started `rtc-edit` from.
+Quitting the editor or the viewer asks in the viewer whether to save the image; Save...
+starts in the folder you started `rtc-edit` from.
 
 ## Layout
 

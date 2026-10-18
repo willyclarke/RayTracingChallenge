@@ -45,17 +45,21 @@ cargo run --release -- --help
   - resize or go full screen to render at the new size;
   - the Traversal menu switches between BVH (Cmd-1) and Metal (Cmd-2);
   - the Samples menu sets the target (presets, Unlimited, Cmd-] doubles, Cmd-[ halves);
-  - quitting writes the image at the window's size;
+  - quitting (Cmd-Q, closing the window, or SIGTERM) asks whether to save the image at the
+    window's size and, if so, where (a save panel offering `<scene>.ppm` in the working
+    directory); with `-o` it writes there without asking;
   - with `--watch`, the window reloads the scene whenever its file changes and refines it
-    again, keeping your view unless the file's camera changed. A file that doesn't load
+    again, keeping your view unless the camera changed in more than width and height. A new width or
+    height in the file resizes the window (fitted to the screen, as at start-up) and keeps your
+    view. A file that doesn't load
     keeps the old image, and the overlay shows why. The scene editor
     [rtc-edit](../rtc-edit/README.md) uses this as its viewer.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.
 
-Images are written as PPM files to the working directory (`-o` names the file). The scenes in
-`scenes/` are rtc-rust's chapter scenes, plus soft-shadow, multiple-light and Cornell box
-scenes.
+Without `--window`, images are written as PPM files to the working directory (`-o` names the
+file). The scenes in `scenes/` are rtc-rust's chapter scenes, plus soft-shadow,
+multiple-light and Cornell box scenes.
 
 ## What the GPU supports
 
