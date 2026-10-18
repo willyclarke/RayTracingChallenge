@@ -138,14 +138,23 @@ mod tests {
     fn dropping_the_viewer_asks_it_to_quit() {
         let root = fresh("quit");
         let got = root.join("got");
+        let ready = root.join("ready");
         let body = format!(
-            "trap 'echo term > {}; exit 0' TERM; sleep 30 & wait",
-            got.display()
+            "trap 'echo term > {}; kill $!; exit 0' TERM; : > {}; sleep 30 & wait",
+            got.display(),
+            ready.display()
         );
         let exe = script(&root, "viewer", &body);
         let v = Viewer::start(&exe, Path::new("p.json")).unwrap();
-        // Let the shell install its trap before the signal arrives.
-        std::thread::sleep(Duration::from_millis(300));
+        // Wait for the shell to install its trap before the signal arrives.
+        let start = Instant::now();
+        while !ready.exists() {
+            assert!(
+                start.elapsed() < Duration::from_secs(5),
+                "viewer script never installed its trap"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
         drop(v);
         let start = Instant::now();
         while !got.exists() && start.elapsed() < Duration::from_secs(2) {
