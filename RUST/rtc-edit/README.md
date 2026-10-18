@@ -88,8 +88,8 @@ The preview is `rtc-edit-<pid>/<scene name>` in the system temp folder, with eve
 absolute. Quitting the editor closes the viewer and removes the folder. Stopping it with
 Ctrl-C or `kill` doesn't: the folder stays behind.
 
-Quitting the viewer itself writes its image, as `rtc-metal --window` always does, into the
-folder you started `rtc-edit` from.
+Quitting the editor or the viewer asks in the viewer whether to save the image; Save...
+starts in the folder you started `rtc-edit` from.
 
 ## Layout
 

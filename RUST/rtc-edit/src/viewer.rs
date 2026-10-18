@@ -1,6 +1,7 @@
 //! The Metal viewer, `rtc-metal <preview> --window --watch`, run as a child
 //! process that ends with the editor.
 
+use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
@@ -47,10 +48,20 @@ impl Viewer {
     }
 }
 
+const SIGTERM: c_int = 15;
+
+unsafe extern "C" {
+    fn kill(pid: c_int, sig: c_int) -> c_int;
+}
+
 impl Drop for Viewer {
+    /// Ask the viewer to quit, so it can offer to save its image; it is not
+    /// waited for, as the user may take a while to answer.
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // SAFETY: `kill` only sends a signal; the pid is our own child's.
+        unsafe {
+            kill(self.child.id() as c_int, SIGTERM);
+        }
     }
 }
 
@@ -124,19 +135,23 @@ mod tests {
     }
 
     #[test]
-    fn dropping_the_viewer_kills_it() {
-        let root = fresh("kill");
-        let exe = script(&root, "viewer", "exec sleep 30");
+    fn dropping_the_viewer_asks_it_to_quit() {
+        let root = fresh("quit");
+        let got = root.join("got");
+        let body = format!(
+            "trap 'echo term > {}; exit 0' TERM; sleep 30 & wait",
+            got.display()
+        );
+        let exe = script(&root, "viewer", &body);
         let v = Viewer::start(&exe, Path::new("p.json")).unwrap();
-        let id = v.id();
+        // Let the shell install its trap before the signal arrives.
+        std::thread::sleep(Duration::from_millis(300));
         drop(v);
-        let alive = std::process::Command::new("kill")
-            .args(["-0", &id.to_string()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .unwrap()
-            .success();
-        assert!(!alive, "viewer {id} still running");
+        let start = Instant::now();
+        while !got.exists() && start.elapsed() < Duration::from_secs(2) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(got.exists(), "viewer never received SIGTERM");
     }
 
     #[test]
