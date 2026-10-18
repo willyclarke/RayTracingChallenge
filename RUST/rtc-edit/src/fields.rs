@@ -6,6 +6,7 @@ use crate::trs::Trs;
 use rtc_rust::scene::{
     LightDescription, MaterialDescription, SceneDescription, ShapeDescription, ShapeKind,
 };
+use std::mem::discriminant;
 
 /// One box. The `usize` is the axis, 0 to 2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -184,6 +185,31 @@ pub fn set_closed(desc: &mut SceneDescription, node: &Node, value: bool) {
     {
         *closed = value;
     }
+}
+
+/// The box an arrow moves the shading to, `right` along a row and `down`
+/// across rows of the grid the inspector draws; it stops at the edges.
+/// A row is one variant's fields; going up or down keeps the axis, or
+/// takes the row's last box when the row is shorter.
+pub fn next_box(order: &[Field], from: Field, right: isize, down: isize) -> Field {
+    // The rows, each a run of fields of one variant, in display order.
+    let mut grid: Vec<Vec<Field>> = vec![];
+    for &f in order {
+        match grid.last_mut() {
+            Some(row) if discriminant(&row[0]) == discriminant(&f) => row.push(f),
+            _ => grid.push(vec![f]),
+        }
+    }
+    let Some((r, c)) = grid
+        .iter()
+        .enumerate()
+        .find_map(|(r, row)| row.iter().position(|f| *f == from).map(|c| (r, c)))
+    else {
+        return from;
+    };
+    let clamp = |i: isize, len: usize| i.clamp(0, len as isize - 1) as usize;
+    let row = &grid[clamp(r as isize + down, grid.len())];
+    row[clamp(c as isize + right, row.len())]
 }
 
 /// The material's optional number behind a scalar field.
@@ -551,5 +577,36 @@ mod tests {
         let mut desc = scene();
         set(&mut desc, &shape(1), Max, " 2 ").unwrap();
         assert_eq!(text(&desc, &shape(1), Max), "2");
+    }
+
+    fn cylinder_order() -> Vec<Field> {
+        fields(&scene(), &shape(1))
+            .into_iter()
+            .map(|(f, _)| f)
+            .collect()
+    }
+
+    #[test]
+    fn next_box_moves_along_a_vector_and_stops_at_its_end() {
+        let order = cylinder_order();
+        assert_eq!(next_box(&order, Position(0), 1, 0), Position(1));
+        assert_eq!(next_box(&order, Position(2), 1, 0), Position(2));
+        assert_eq!(next_box(&order, Position(0), -1, 0), Position(0));
+    }
+
+    #[test]
+    fn next_box_keeps_the_axis_going_down_and_clamps_it_on_a_single_box() {
+        let order = cylinder_order();
+        assert_eq!(next_box(&order, Position(2), 0, 1), Rotation(2));
+        assert_eq!(next_box(&order, Scale(2), 0, 1), Min);
+        assert_eq!(next_box(&order, Max, 0, 1), Color(0));
+        assert_eq!(next_box(&order, Ambient, 0, -1), Color(0));
+    }
+
+    #[test]
+    fn next_box_stops_at_the_first_and_last_row() {
+        let order = cylinder_order();
+        assert_eq!(next_box(&order, Position(1), 0, -1), Position(1));
+        assert_eq!(next_box(&order, RefractiveIndex, 0, 1), RefractiveIndex);
     }
 }

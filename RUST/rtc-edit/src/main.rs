@@ -5,14 +5,15 @@
 //! point lights are edited in fixed fields; Cmd-L loads the edits into the
 //! viewer.
 
+use iced::widget::operation;
 use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Subscription, Task, keyboard};
-use rtc_edit::fields::{Field, closed, fields, set, set_closed};
+use rtc_edit::fields::{Field, closed, fields, next_box, set, set_closed};
 use rtc_edit::paths::{dir_of, rebase};
 use rtc_edit::preview::Preview;
-use rtc_edit::tree::{Node, json, rows};
+use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, find};
 use rtc_rust::scene::SceneDescription;
 use std::collections::{HashMap, HashSet};
@@ -63,9 +64,11 @@ struct Editor {
     unloaded: bool,
     /// Cmd is held, so a box's one-character insert is a shortcut's letter.
     command: bool,
-    /// The box Enter left, shaded so you see it: Tab continues from it
-    /// and Enter edits it again. A click on a widget clears it.
+    /// The shaded box: the arrows and h/j/k/l move it, Enter, i and c edit
+    /// it, x empties it. With neither it nor `editing`, keys go to the tree.
     left: Option<Field>,
+    /// The box being edited, which takes ←/→ and letters itself.
+    editing: Option<Field>,
 }
 
 #[derive(Debug, Clone)]
@@ -85,10 +88,18 @@ enum Message {
     /// Tab and Shift-Tab.
     FocusNext,
     FocusPrevious,
-    /// Enter with no box focused.
-    EditAgain,
-    /// A click a widget took, such as one that focuses a box.
-    Clicked,
+    /// An arrow or h/j/k/l no box took: right and down, each -1, 0 or 1.
+    Move(isize, isize),
+    /// Enter no box took.
+    Enter,
+    /// i, c or x no box took.
+    Letter(char),
+    /// Esc; `true` when a box took it and lost focus.
+    Escape(bool),
+    /// A click; `true` when a widget took it, such as a box it focused.
+    Clicked(bool),
+    /// Whether a box has focus, asked after a click.
+    Focused(Field, bool),
     /// Whether Cmd is held.
     Command(bool),
 }
@@ -140,6 +151,7 @@ fn boot() -> Editor {
         unloaded: false,
         command: false,
         left: None,
+        editing: None,
     };
     match preview {
         Ok(p) => CHILDREN.lock().unwrap().preview = Some(p),
@@ -175,25 +187,97 @@ impl Editor {
         }
     }
 
-    /// Tab (`step` 1) or Shift-Tab (-1): after Enter left a box, focus the
-    /// box next to it; otherwise move on from the focused box.
-    fn tab(&mut self, step: isize) -> Task<Message> {
-        let (Some(left), Some(node)) = (self.left.take(), &self.selected) else {
-            return if step > 0 {
-                iced::widget::operation::focus_next()
-            } else {
-                iced::widget::operation::focus_previous()
-            };
+    /// The selected item's boxes, in display order.
+    fn order(&self) -> Vec<Field> {
+        let Some(node) = &self.selected else {
+            return vec![];
         };
-        let order: Vec<Field> = fields(&self.desc, node)
+        fields(&self.desc, node)
             .into_iter()
             .map(|(f, _)| f)
-            .collect();
-        let Some(i) = order.iter().position(|f| *f == left) else {
+            .collect()
+    }
+
+    /// Tab (`step` 1) or Shift-Tab (-1): edit the box next to the one being
+    /// edited or shaded, wrapping; from the tree, the first or last box.
+    fn tab(&mut self, step: isize) -> Task<Message> {
+        let order = self.order();
+        if order.is_empty() {
+            return Task::none();
+        }
+        let n = order.len() as isize;
+        let next = match self.editing.or(self.left) {
+            Some(f) => order
+                .iter()
+                .position(|o| *o == f)
+                .map_or(0, |i| (i as isize + step).rem_euclid(n) as usize),
+            None if step > 0 => 0,
+            None => order.len() - 1,
+        };
+        self.start_editing(order[next])
+    }
+
+    /// Focus `field` for typing; the cursor goes to the end.
+    fn start_editing(&mut self, field: Field) -> Task<Message> {
+        self.left = None;
+        self.editing = Some(field);
+        operation::focus(box_id(field))
+    }
+
+    /// An arrow or h/j/k/l: move the shading, or else the tree.
+    fn arrow(&mut self, right: isize, down: isize) {
+        if self.editing.is_some() {
+            return;
+        }
+        if let Some(left) = self.left {
+            self.left = Some(next_box(&self.order(), left, right, down));
+            return;
+        }
+        if down != 0 {
+            let rows = rows(&self.desc, &self.folded);
+            if let Some(node) = next_row(&rows, self.selected.as_ref(), down) {
+                self.select(node);
+            }
+            return;
+        }
+        let Some(node) = self.selected.clone() else {
+            return;
+        };
+        let foldable = rows(&self.desc, &self.folded)
+            .iter()
+            .any(|r| r.node == node && r.foldable);
+        if foldable && right < 0 {
+            self.folded.insert(node);
+        } else if foldable {
+            self.folded.remove(&node);
+        }
+    }
+
+    /// i, c or x on the shaded box.
+    fn letter(&mut self, c: char) -> Task<Message> {
+        let (Some(field), Some(node)) = (self.left, &self.selected) else {
             return Task::none();
         };
-        let next = (i as isize + step).rem_euclid(order.len() as isize) as usize;
-        iced::widget::operation::focus(box_id(order[next]))
+        match c {
+            'i' => self
+                .start_editing(field)
+                .chain(operation::move_cursor_to_front(box_id(field))),
+            'c' => {
+                self.edit(field, String::new());
+                self.start_editing(field)
+            }
+            'x' => {
+                // Only a box that may be empty; one that needs a number stays.
+                if set(&mut self.desc, node, field, "").is_ok() {
+                    self.texts.insert(field, String::new());
+                    self.errors.remove(&field);
+                    self.unsaved = true;
+                    self.unloaded = true;
+                }
+                Task::none()
+            }
+            _ => Task::none(),
+        }
     }
 
     /// Write the preview, so the viewer reloads the edits.
@@ -234,6 +318,7 @@ impl Editor {
 
     fn select(&mut self, node: Node) {
         self.left = None;
+        self.editing = None;
         self.texts = fields(&self.desc, &node).into_iter().collect();
         self.errors.clear();
         self.selected = Some(node);
@@ -241,6 +326,7 @@ impl Editor {
 
     fn edit(&mut self, field: Field, value: String) {
         self.left = None;
+        self.editing = Some(field);
         let Some(node) = &self.selected else { return };
         match set(&mut self.desc, node, field, &value) {
             Ok(()) => {
@@ -312,25 +398,47 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
         Message::Load => e.load(),
         Message::Submit(field) => {
             e.left = Some(field);
+            e.editing = None;
             // Focusing an id no widget has unfocuses them all.
-            return iced::widget::operation::focus(iced::widget::Id::new("none"));
+            return operation::focus(iced::widget::Id::new("none"));
         }
         Message::FocusNext => return e.tab(1),
         Message::FocusPrevious => return e.tab(-1),
-        Message::EditAgain => {
-            if let Some(field) = e.left.take() {
-                return iced::widget::operation::focus(box_id(field));
+        Message::Move(right, down) => e.arrow(right, down),
+        Message::Enter => {
+            if let Some(field) = e.left {
+                return e.start_editing(field);
+            }
+            if e.editing.is_none() {
+                e.left = e.order().first().copied();
             }
         }
-        Message::Clicked => e.left = None,
+        Message::Letter(c) => return e.letter(c),
+        Message::Escape(true) => e.left = e.editing.take(),
+        Message::Escape(false) => e.left = None,
+        Message::Clicked(taken) => {
+            if taken {
+                e.left = None;
+            }
+            e.editing = None;
+            // iced doesn't say which box a click focused; ask each one.
+            return Task::batch(e.order().into_iter().map(|f| {
+                operation::is_focused(box_id(f)).map(move |yes| Message::Focused(f, yes))
+            }));
+        }
+        Message::Focused(field, yes) => {
+            if yes {
+                e.editing = Some(field);
+            }
+        }
         Message::Command(held) => e.command = held,
     }
     Task::none()
 }
 
 /// Cmd-S, Cmd-Shift-S, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
-/// has focus and takes the key itself; whether Cmd is held; Enter that no
-/// box took; and clicks a widget took.
+/// has focus and takes the key itself; whether Cmd is held; Esc; the arrows,
+/// h/j/k/l, Enter, i, c and x that no box took; and clicks.
 fn shortcut(
     event: iced::Event,
     status: iced::event::Status,
@@ -339,8 +447,8 @@ fn shortcut(
     let ignored = status == iced::event::Status::Ignored;
     let event = match event {
         iced::Event::Keyboard(event) => event,
-        iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) if !ignored => {
-            return Some(Message::Clicked);
+        iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_)) => {
+            return Some(Message::Clicked(!ignored));
         }
         _ => return None,
     };
@@ -349,13 +457,33 @@ fn shortcut(
         keyboard::Event::KeyPressed { key, modifiers, .. } => (key, modifiers),
         _ => return None,
     };
+    use keyboard::key::Named;
+    let plain = ignored && modifiers.is_empty();
     let c = match key {
-        keyboard::Key::Named(keyboard::key::Named::Tab) if modifiers.shift() => {
+        keyboard::Key::Named(Named::Tab) if modifiers.shift() => {
             return Some(Message::FocusPrevious);
         }
-        keyboard::Key::Named(keyboard::key::Named::Tab) => return Some(Message::FocusNext),
-        keyboard::Key::Named(keyboard::key::Named::Enter) if ignored => {
-            return Some(Message::EditAgain);
+        keyboard::Key::Named(Named::Tab) => return Some(Message::FocusNext),
+        keyboard::Key::Named(Named::Escape) => return Some(Message::Escape(!ignored)),
+        keyboard::Key::Named(named) if plain => {
+            return match named {
+                Named::Enter => Some(Message::Enter),
+                Named::ArrowLeft => Some(Message::Move(-1, 0)),
+                Named::ArrowRight => Some(Message::Move(1, 0)),
+                Named::ArrowUp => Some(Message::Move(0, -1)),
+                Named::ArrowDown => Some(Message::Move(0, 1)),
+                _ => None,
+            };
+        }
+        keyboard::Key::Character(c) if plain => {
+            return match c.as_str() {
+                "h" => Some(Message::Move(-1, 0)),
+                "l" => Some(Message::Move(1, 0)),
+                "k" => Some(Message::Move(0, -1)),
+                "j" => Some(Message::Move(0, 1)),
+                "i" | "c" | "x" => c.chars().next().map(Message::Letter),
+                _ => None,
+            };
         }
         keyboard::Key::Character(c) if modifiers.command() => c,
         _ => return None,

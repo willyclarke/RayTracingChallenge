@@ -52,8 +52,7 @@ specular, shininess, reflective, transparency and refractive index. Cylinders an
 get min, max and closed; point lights get position and intensity. Everything else is shown
 read-only in the JSON below the boxes, and saved unchanged.
 
-- A box updates the scene as you type. Enter leaves the box and shades it; Enter again edits
-  it, and Tab and Shift-Tab move on from it. The shortcuts work while a box has focus.
+- A box updates the scene as you type. The shortcuts work while a box has focus.
 - An empty material, min or max box leaves the value unset, so its default applies.
 - A box whose text isn't a number turns red, and the scene keeps the last value that was.
 - A transform the boxes can't show (shear, a matrix, or steps out of the order scale, rotate
@@ -62,6 +61,24 @@ read-only in the JSON below the boxes, and saved unchanged.
   again, so several edits cost one restart. The status line says when the viewer is behind.
 - The title shows ` •` while there are unsaved edits. Quitting doesn't ask: unsaved edits are
   lost.
+
+The keyboard works in three places: the tree, a shaded box, and a box being edited. The
+letters only act with no modifier held, so Cmd-L stays Load.
+
+| where | key | does |
+|---|---|---|
+| tree | ↑/↓ or k/j | select the previous or next row |
+| tree | ← or h, → or l | fold or unfold the selected item |
+| tree | Enter | shade the item's first box |
+| shaded box | arrows or h/j/k/l | move the shading; it stops at the edges |
+| shaded box | Enter, i | edit it, with the cursor at the end or the start |
+| shaded box | c | empty it and edit it |
+| shaded box | x | empty it, if the box may be empty |
+| shaded box | Esc | back to the tree |
+| editing | Enter or Esc | leave the box, shaded |
+| anywhere | Tab, Shift-Tab | edit the next or previous box |
+
+Clicking a box edits it. The tree doesn't scroll to follow the keys.
 
 Saving writes the file in one step (a temporary file, then a rename), leaves out default
 values, and keeps `comment` fields. It doesn't keep the file's exact text: `1` becomes
