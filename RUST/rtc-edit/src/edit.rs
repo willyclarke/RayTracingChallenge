@@ -6,6 +6,7 @@ use rtc_rust::scene::{
     CameraDescription, LightDescription, MaterialDescription, SceneDescription, ShapeDescription,
     ShapeKind, TransformOp,
 };
+use std::collections::HashSet;
 
 /// Something the editor can add.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,6 +153,97 @@ pub fn add(desc: &mut SceneDescription, selected: Option<&Node>, item: Item) -> 
     siblings.insert(at, new);
     path.push(at);
     Node::Shape(path)
+}
+
+/// Why `node` can't be deleted, if it can't.
+pub fn can_delete(desc: &SceneDescription, node: &Node) -> Result<(), String> {
+    match node {
+        Node::Shape(path) if shape_at(desc, path).is_some() => {
+            if path.len() > 1 && is_csg(shape_at(desc, &path[..path.len() - 1])) {
+                Err("a CSG needs both its shapes".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        Node::Light(i) if *i < light_count(desc) => {
+            if light_count(desc) == 1 {
+                Err("a scene needs a light".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err("nothing to delete".to_string()),
+    }
+}
+
+fn light_count(desc: &SceneDescription) -> usize {
+    match (&desc.light, &desc.lights) {
+        (Some(_), _) => 1,
+        (None, Some(lights)) => lights.len(),
+        (None, None) => 0,
+    }
+}
+
+/// Deletes `node` and returns the node to select afterwards: the next
+/// sibling, else the previous one, else the parent.
+pub fn delete(desc: &mut SceneDescription, node: &Node) -> Result<Node, String> {
+    can_delete(desc, node)?;
+    match node {
+        Node::Light(i) => {
+            let lights = desc.lights.as_mut().expect("more than one light is a list");
+            lights.remove(*i);
+            Ok(Node::Light(if *i < lights.len() { *i } else { *i - 1 }))
+        }
+        Node::Shape(path) => {
+            let (&at, parent) = path.split_last().expect("a shape path is not empty");
+            let siblings = if parent.is_empty() {
+                &mut desc.shapes
+            } else {
+                match &mut shape_at_mut(desc, parent).shape {
+                    ShapeKind::Group { children } => children,
+                    _ => unreachable!("only a group or the scene holds a list of shapes"),
+                }
+            };
+            siblings.remove(at);
+            let mut next = parent.to_vec();
+            if at < siblings.len() {
+                next.push(at);
+            } else if at > 0 {
+                next.push(at - 1);
+            } else if parent.is_empty() {
+                return Ok(Node::Shapes);
+            }
+            Ok(Node::Shape(next))
+        }
+        _ => unreachable!("can_delete accepts only shapes and lights"),
+    }
+}
+
+/// Moves the folded shapes after an insert at `at` (`by = 1`) or a delete at
+/// `at` (`by = -1`): the later siblings, and what is inside them, change
+/// index. The folds of a deleted shape and of what was inside it go.
+pub fn shift(folded: &mut HashSet<Node>, at: &[usize], by: isize) {
+    let Some((&last, parent)) = at.split_last() else {
+        return;
+    };
+    let depth = parent.len();
+    *folded = folded
+        .drain()
+        .filter_map(|node| match node {
+            Node::Shape(mut p) if p.len() > depth && p.starts_with(parent) => {
+                if by < 0 && p[depth] == last {
+                    return None;
+                }
+                if p[depth] >= last {
+                    p[depth] = p[depth]
+                        .checked_add_signed(by)
+                        .expect("an index stays valid");
+                }
+                Some(Node::Shape(p))
+            }
+            other => Some(other),
+        })
+        .collect();
 }
 
 fn is_csg(shape: Option<&ShapeDescription>) -> bool {
@@ -376,5 +468,123 @@ mod tests {
             ]
         );
         assert_eq!(Item::from_key('x'), None);
+    }
+
+    fn folds(nodes: &[Node]) -> HashSet<Node> {
+        nodes.iter().cloned().collect()
+    }
+
+    fn sh(path: &[usize]) -> Node {
+        Node::Shape(path.to_vec())
+    }
+
+    #[test]
+    fn deleting_a_shape_in_a_group_selects_the_next_one() {
+        let mut d = scene();
+        assert_eq!(delete(&mut d, &sh(&[1, 0])), Ok(sh(&[1, 0])));
+        assert_eq!(children_len(&d, &[1]), 1);
+        assert_eq!(kind(&d, &[1, 0]), ShapeKind::Plane);
+    }
+
+    #[test]
+    fn deleting_the_last_shape_of_a_level_selects_the_previous_one() {
+        let mut d = scene();
+        assert_eq!(delete(&mut d, &sh(&[2])), Ok(sh(&[1])));
+        assert_eq!(d.shapes.len(), 2);
+    }
+
+    #[test]
+    fn deleting_an_only_child_selects_its_group() {
+        let mut d = scene();
+        d.shapes[1] = ShapeDescription {
+            shape: ShapeKind::Group {
+                children: vec![d.shapes[0].clone()],
+            },
+            ..d.shapes[1].clone()
+        };
+        assert_eq!(delete(&mut d, &sh(&[1, 0])), Ok(sh(&[1])));
+        assert_eq!(children_len(&d, &[1]), 0);
+        d.shapes.truncate(1);
+        assert_eq!(delete(&mut d, &sh(&[0])), Ok(Node::Shapes));
+        assert!(d.shapes.is_empty());
+    }
+
+    #[test]
+    fn deleting_a_group_removes_its_children() {
+        let mut d = scene();
+        assert_eq!(delete(&mut d, &sh(&[1])), Ok(sh(&[1])));
+        assert_eq!(d.shapes.len(), 2);
+    }
+
+    #[test]
+    fn a_csg_child_cant_be_deleted() {
+        let mut d = scene();
+        let before = d.clone();
+        let msg = "a CSG needs both its shapes".to_string();
+        assert_eq!(can_delete(&d, &sh(&[2, 0])), Err(msg.clone()));
+        assert_eq!(delete(&mut d, &sh(&[2, 0])), Err(msg));
+        assert_eq!(d, before);
+    }
+
+    #[test]
+    fn the_last_light_cant_be_deleted() {
+        let mut d = single_light_scene();
+        let before = d.clone();
+        let msg = "a scene needs a light".to_string();
+        assert_eq!(can_delete(&d, &Node::Light(0)), Err(msg.clone()));
+        assert_eq!(delete(&mut d, &Node::Light(0)), Err(msg));
+        assert_eq!(d, before);
+    }
+
+    #[test]
+    fn deleting_a_light_selects_the_next_or_previous() {
+        let mut d = scene();
+        assert_eq!(delete(&mut d, &Node::Light(1)), Ok(Node::Light(0)));
+        assert_eq!(d.lights.as_ref().unwrap().len(), 1);
+        let mut d = scene();
+        assert_eq!(delete(&mut d, &Node::Light(0)), Ok(Node::Light(0)));
+        assert_eq!(d.lights.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn heading_rows_cant_be_deleted() {
+        for node in [Node::Camera, Node::Settings, Node::Lights, Node::Shapes] {
+            let mut d = scene();
+            let before = d.clone();
+            assert!(can_delete(&d, &node).is_err(), "{node:?}");
+            assert!(delete(&mut d, &node).is_err(), "{node:?}");
+            assert_eq!(d, before);
+        }
+        let mut d = scene();
+        assert!(delete(&mut d, &sh(&[9])).is_err());
+    }
+
+    #[test]
+    fn a_folded_group_stays_folded_after_an_insert_before_it() {
+        let mut f = folds(&[sh(&[1]), sh(&[1, 0])]);
+        shift(&mut f, &[0], 1);
+        assert_eq!(f, folds(&[sh(&[2]), sh(&[2, 0])]));
+    }
+
+    #[test]
+    fn a_folded_group_stays_folded_after_a_delete_before_it() {
+        let mut f = folds(&[sh(&[2])]);
+        shift(&mut f, &[0], -1);
+        assert_eq!(f, folds(&[sh(&[1])]));
+    }
+
+    #[test]
+    fn deleting_a_folded_group_drops_its_folds() {
+        let mut f = folds(&[sh(&[1]), sh(&[1, 0]), sh(&[2])]);
+        shift(&mut f, &[1], -1);
+        assert_eq!(f, folds(&[sh(&[1])]));
+    }
+
+    #[test]
+    fn folds_elsewhere_dont_move() {
+        let mut f = folds(&[Node::Lights, sh(&[0]), sh(&[1, 0])]);
+        let before = f.clone();
+        shift(&mut f, &[1, 1], 1);
+        assert_eq!(f, before);
     }
 }
