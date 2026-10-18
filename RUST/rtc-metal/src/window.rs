@@ -95,6 +95,17 @@ struct Renderer {
     watch: Option<Watch>,
 }
 
+/// Whether two cameras differ at most in image size, so a reload keeps the
+/// user's orbit.
+fn same_view(a: &CameraDescription, b: &CameraDescription) -> bool {
+    let sized = |c: &CameraDescription| CameraDescription {
+        width: 0,
+        height: 0,
+        ..c.clone()
+    };
+    sized(a) == sized(b)
+}
+
 impl Renderer {
     /// Point the camera at the orbit's new position and start accumulating
     /// again.
@@ -181,7 +192,7 @@ impl Renderer {
 
     fn try_reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
         let (world, file_camera) = desc.build(base_dir).map_err(|e| e.0)?;
-        let new_view = (desc.camera != self.camera_desc).then(|| {
+        let new_view = (!same_view(&desc.camera, &self.camera_desc)).then(|| {
             let camera = resized(&file_camera, self.camera.hsize, self.camera.vsize);
             (camera, Orbit::of(&desc.camera))
         });
@@ -1025,6 +1036,46 @@ mod tests {
         assert_eq!((r.camera.hsize, r.camera.vsize), (40, 20));
         assert!(r.camera.transform().approx_eq(view));
         assert!(r.moved);
+        Ok(())
+    }
+
+    #[test]
+    fn same_view_ignores_the_size() -> Result<(), String> {
+        let (_, desc) = chapter7()?;
+        let base = desc.camera;
+        let mut resized = base.clone();
+        resized.width = 999;
+        resized.height = 3;
+        assert!(same_view(&base, &resized));
+        let mut moved = base.clone();
+        moved.from = [0.0, 3.0, -8.0];
+        assert!(!same_view(&base, &moved));
+        let mut zoomed = base.clone();
+        zoomed.field_of_view += 0.1;
+        assert!(!same_view(&base, &zoomed));
+        let mut blurred = base.clone();
+        blurred.focal_blur = Some(rtc_rust::scene::FocalBlur {
+            aperture: 0.1,
+            focal_distance: 5.0,
+            samples: 4,
+        });
+        assert!(!same_view(&base, &blurred));
+        Ok(())
+    }
+
+    #[test]
+    fn reload_with_only_a_new_size_keeps_the_view() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        r.orbit.drag(0.3, 0.0);
+        r.moved = true;
+        r.restart();
+        let view = r.camera.transform();
+        desc.camera.width = 77;
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!((r.camera.hsize, r.camera.vsize), (40, 20));
+        assert!(r.camera.transform().approx_eq(view));
+        assert!(r.moved);
+        assert_eq!(r.camera_desc, desc.camera);
         Ok(())
     }
 
