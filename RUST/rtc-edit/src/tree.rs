@@ -64,6 +64,16 @@ pub fn rows(desc: &SceneDescription, folded: &HashSet<Node>) -> Vec<Row> {
     rows
 }
 
+/// The row `by` steps from `from` among `rows`, stopping at the first and
+/// last; the first row when nothing is selected or `from` is hidden.
+pub fn next_row(rows: &[Row], from: Option<&Node>, by: isize) -> Option<Node> {
+    let i = match from.and_then(|n| rows.iter().position(|r| r.node == *n)) {
+        Some(i) => (i as isize + by).clamp(0, rows.len() as isize - 1) as usize,
+        None => 0,
+    };
+    rows.get(i).map(|r| r.node.clone())
+}
+
 fn row(node: Node, depth: usize, label: String, foldable: bool) -> Row {
     Row {
         node,
@@ -140,7 +150,10 @@ fn shape_rows(
 }
 
 /// The shape a `Node::Shape` path names.
-fn shape_at<'a>(desc: &'a SceneDescription, path: &[usize]) -> Option<&'a ShapeDescription> {
+pub(crate) fn shape_at<'a>(
+    desc: &'a SceneDescription,
+    path: &[usize],
+) -> Option<&'a ShapeDescription> {
     let (first, rest) = path.split_first()?;
     rest.iter().try_fold(desc.shapes.get(*first)?, |shape, &i| {
         children(shape).get(i).copied()
@@ -285,5 +298,35 @@ mod tests {
     fn json_of_a_nested_shape() {
         let v: Value = serde_json::from_str(&json(&scene(), &Node::Shape(vec![2, 1]))).unwrap();
         assert_eq!(v["type"], "sphere");
+    }
+
+    #[test]
+    fn next_row_moves_to_the_next_and_previous_row() {
+        let rows = rows(&scene(), &HashSet::new());
+        let ball = Node::Shape(vec![0]);
+        assert_eq!(next_row(&rows, Some(&ball), 1), Some(Node::Shape(vec![1])));
+        assert_eq!(next_row(&rows, Some(&ball), -1), Some(Node::Shapes));
+    }
+
+    #[test]
+    fn next_row_skips_the_rows_a_fold_hides() {
+        let rows = rows(&scene(), &HashSet::from([Node::Shape(vec![1])]));
+        let group = Node::Shape(vec![1]);
+        assert_eq!(next_row(&rows, Some(&group), 1), Some(Node::Shape(vec![2])));
+    }
+
+    #[test]
+    fn next_row_stops_at_the_first_and_last_row() {
+        let rows = rows(&scene(), &HashSet::new());
+        let last = rows.last().unwrap().node.clone();
+        assert_eq!(next_row(&rows, Some(&Node::Camera), -1), Some(Node::Camera));
+        assert_eq!(next_row(&rows, Some(&last), 1), Some(last));
+    }
+
+    #[test]
+    fn next_row_with_nothing_selected_picks_the_first_row() {
+        let rows = rows(&scene(), &HashSet::new());
+        assert_eq!(next_row(&rows, None, 1), Some(Node::Camera));
+        assert_eq!(next_row(&rows, None, -1), Some(Node::Camera));
     }
 }

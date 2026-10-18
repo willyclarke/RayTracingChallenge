@@ -9,9 +9,9 @@ The editor grows in milestones:
 
 - **17 (done):** the scene as a foldable tree, each item's JSON in the inspector, Save and
   Save As, and the viewer.
-- **18:** editing spheres, cubes, planes, cylinders and cones (position, rotation, scale and a
+- **18 (done):** editing spheres, cubes, planes, cylinders and cones (position, rotation, scale and a
   basic material), and point lights.
-- **19:** adding and deleting items, New and Open.
+- **19:** adding and deleting items, New and Open, and the camera.
 
 ## Dependencies
 
@@ -41,7 +41,44 @@ works and the status line says where it looked.
 |---|---|
 | Cmd-S | save the scene |
 | Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
+| Cmd-L | load the edits into the viewer |
 | Cmd-R | start the viewer again after closing it |
+
+## Editing
+
+Spheres, cubes, planes, cylinders and cones, also inside groups and CSG, get boxes for their
+position, rotation (in degrees) and scale, and for their material: color, ambient, diffuse,
+specular, shininess, reflective, transparency and refractive index. Cylinders and cones also
+get min, max and closed; point lights get position and intensity. Everything else is shown
+read-only in the JSON below the boxes, and saved unchanged.
+
+- A box updates the scene as you type. The shortcuts work while a box has focus.
+- An empty material, min or max box leaves the value unset, so its default applies.
+- A box whose text isn't a number turns red, and the scene keeps the last value that was.
+- A transform the boxes can't show (shear, a matrix, or steps out of the order scale, rotate
+  x, y, z, translate) has no boxes; the material can still be edited.
+- Edits build up in the editor: Cmd-L loads them into the viewer, which then starts refining
+  again, so several edits cost one restart. The status line says when the viewer is behind.
+- The title shows ` •` while there are unsaved edits. Quitting doesn't ask: unsaved edits are
+  lost.
+
+The keyboard works in three places: the tree, a shaded box, and a box being edited. The
+letters only act with no modifier held, so Cmd-L stays Load.
+
+| where | key | does |
+|---|---|---|
+| tree | ↑/↓ or k/j | select the previous or next row |
+| tree | ← or h, → or l | fold or unfold the selected item |
+| tree | Enter | shade the item's first box |
+| shaded box | arrows or h/j/k/l | move the shading; it stops at the edges |
+| shaded box | Enter, i | edit it, with the cursor at the end or the start |
+| shaded box | c | empty it and edit it |
+| shaded box | x | empty it, if the box may be empty |
+| shaded box | Esc | back to the tree |
+| editing | Enter or Esc | leave the box, shaded |
+| anywhere | Tab, Shift-Tab | edit the next or previous box |
+
+Clicking a box edits it. The tree doesn't scroll to follow the keys.
 
 Saving writes the file in one step (a temporary file, then a rename), leaves out default
 values, and keeps `comment` fields. It doesn't keep the file's exact text: `1` becomes
@@ -61,6 +98,8 @@ folder you started `rtc-edit` from.
 | `src/main.rs` | the iced application: state, messages, keys, view |
 | `src/paths.rs` | asset paths in a scene: rebasing for Save As, absolute for the preview |
 | `src/tree.rs` | the scene as tree rows, and an item's JSON |
+| `src/trs.rs` | a transform list as scale, rotation and translation |
+| `src/fields.rs` | the boxes an item has, and writing typed text into the scene |
 | `src/preview.rs` | the preview file and its folder |
 | `src/viewer.rs` | finding and running `rtc-metal` |
 | `docs/superpowers/` | design specs and implementation plans |
