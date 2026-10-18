@@ -56,11 +56,14 @@ unsafe extern "C" {
 
 impl Drop for Viewer {
     /// Ask the viewer to quit, so it can offer to save its image; it is not
-    /// waited for, as the user may take a while to answer.
+    /// waited for, as the user may take a while to answer. A child that has
+    /// already exited is left alone: its pid may have been reused.
     fn drop(&mut self) {
-        // SAFETY: `kill` only sends a signal; the pid is our own child's.
-        unsafe {
-            kill(self.child.id() as c_int, SIGTERM);
+        if matches!(self.child.try_wait(), Ok(None)) {
+            // SAFETY: `kill` only sends a signal; the child is still ours.
+            unsafe {
+                kill(self.child.id() as c_int, SIGTERM);
+            }
         }
     }
 }
@@ -161,6 +164,19 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert!(got.exists(), "viewer never received SIGTERM");
+    }
+
+    #[test]
+    fn dropping_a_viewer_that_already_exited_is_harmless() {
+        let root = fresh("exited");
+        let exe = script(&root, "viewer", "exit 0");
+        let mut v = Viewer::start(&exe, Path::new("p.json")).unwrap();
+        let start = Instant::now();
+        while v.running() {
+            assert!(start.elapsed() < Duration::from_secs(5), "viewer never exited");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        drop(v);
     }
 
     #[test]

@@ -71,8 +71,9 @@ Success:
 - `Viewer`'s `Drop` sends SIGTERM instead of `Child::kill` (SIGKILL), and
   doesn't wait: the editor exits, and removes its preview folder, while
   the viewer waits for your answer. The image is already in the viewer's
-  memory. The editor never reaps the child before sending, so its pid
-  can't have been reused.
+  memory. `Drop` checks with `try_wait` and only
+  signals a child that is still running, so a reaped child's pid, which may
+  have been reused, is never signalled.
 
 ### rtc-edit: the camera's boxes
 
