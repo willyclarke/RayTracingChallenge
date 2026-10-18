@@ -49,7 +49,8 @@ cargo run --release -- --help
     window's size and, if so, where (a save panel offering `<scene>.ppm` in the working
     directory); with `-o` it writes there without asking;
   - with `--watch`, the window reloads the scene whenever its file changes and refines it
-    again, keeping your view unless the file's camera changed. A file that doesn't load
+    again, keeping your view unless the file's camera changed. A new width or height in the
+    file resizes the window (fitted to the screen, as at start-up). A file that doesn't load
     keeps the old image, and the overlay shows why. The scene editor
     [rtc-edit](../rtc-edit/README.md) uses this as its viewer.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH

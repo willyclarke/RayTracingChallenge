@@ -143,6 +143,9 @@ struct Renderer {
     reload_error: Option<String>,
     /// The scene file, with `--watch`: reloaded whenever it changes.
     watch: Option<Watch>,
+    /// The file's new `(width, height)` after a reload changed them; the
+    /// view takes it to resize the window.
+    resize: Option<(usize, usize)>,
 }
 
 /// Whether two cameras differ at most in image size, so a reload keeps the
@@ -252,6 +255,8 @@ impl Renderer {
         let acc = self.gpu.accumulator(&scene)?;
         self.scene = scene;
         self.acc = acc;
+        let size = |c: &CameraDescription| (c.width, c.height);
+        self.resize = (size(&desc.camera) != size(&self.camera_desc)).then(|| size(&desc.camera));
         self.camera_desc = desc.camera.clone();
         if let Some((camera, orbit)) = new_view {
             self.camera = camera;
@@ -311,6 +316,15 @@ fn halved(target: u32) -> u32 {
     } else {
         (target / 2).max(1)
     }
+}
+
+/// The content size for a `width` x `height` image on a screen with backing
+/// `scale`: one drawable pixel per image pixel, shrunk uniformly to fit
+/// `room` (the content area available, if there is a screen), never grown.
+fn window_size(width: usize, height: usize, scale: f64, room: Option<NSSize>) -> NSSize {
+    let (w, h) = (width as f64 / scale, height as f64 / scale);
+    let fit = room.map_or(1.0, |room| (room.width / w).min(room.height / h).min(1.0));
+    NSSize::new(w * fit, h * fit)
 }
 
 /// The overlay's and title's text.
@@ -562,8 +576,27 @@ impl RtcView {
                 // A file that doesn't parse never reaches `reload`.
                 r.reload_error = Some(e.clone());
             }
-            result.is_ok()
+            let resize = if result.is_ok() {
+                r.resize.take()
+            } else {
+                None
+            };
+            (result.is_ok(), resize)
         };
+        let (reloaded, resize) = reloaded;
+        if let (Some((w, h)), Some(window)) = (resize, self.window()) {
+            let scale = window.backingScaleFactor();
+            let room = window.screen().map(|screen| {
+                let style = window.styleMask();
+                NSWindow::contentRectForFrameRect_styleMask(
+                    screen.visibleFrame(),
+                    style,
+                    MainThreadMarker::from(self),
+                )
+                .size
+            });
+            window.setContentSize(window_size(w, h, scale, room));
+        }
         if reloaded {
             self.resume();
         } else {
@@ -774,6 +807,7 @@ pub fn run(
         camera_desc,
         reload_error: None,
         watch,
+        resize: None,
     }));
 
     let app = NSApplication::sharedApplication(mtm);
@@ -801,13 +835,13 @@ pub fn run(
         | NSWindowStyleMask::Resizable;
     let screen = NSScreen::mainScreen(mtm);
     let scale = screen.as_ref().map_or(1.0, |s| s.backingScaleFactor());
-    let (mut w, mut h) = (width / scale, height / scale);
-    if let Some(screen) = screen {
-        let room = NSWindow::contentRectForFrameRect_styleMask(screen.visibleFrame(), style, mtm);
-        let fit = (room.size.width / w).min(room.size.height / h).min(1.0);
-        (w, h) = (w * fit, h * fit);
-    }
-    let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(w, h));
+    let room = screen.map(|screen| {
+        NSWindow::contentRectForFrameRect_styleMask(screen.visibleFrame(), style, mtm).size
+    });
+    let frame = NSRect::new(
+        NSPoint::new(0.0, 0.0),
+        window_size(width as usize, height as usize, scale, room),
+    );
 
     let view = RtcView::new(mtm, renderer, frame);
     view.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -1044,6 +1078,7 @@ mod tests {
             },
             reload_error: None,
             watch: None,
+            resize: None,
         })
     }
 
@@ -1141,6 +1176,7 @@ mod tests {
             camera_desc: desc.camera.clone(),
             reload_error: None,
             watch: None,
+            resize: None,
         };
         r.acc.add_frame(&r.gpu, &r.scene.info)?;
         r.acc.add_frame(&r.gpu, &r.scene.info)?;
@@ -1202,6 +1238,45 @@ mod tests {
         assert!(r.moved);
         assert_eq!(r.camera_desc, desc.camera);
         Ok(())
+    }
+
+    #[test]
+    fn reload_with_a_new_size_asks_for_that_window_size() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        r.orbit.drag(0.3, 0.0);
+        r.moved = true;
+        r.restart();
+        let view = r.camera.transform();
+        desc.camera.width = 77;
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!(r.resize, Some((77, desc.camera.height)));
+        assert!(r.camera.transform().approx_eq(view));
+        assert!(r.moved);
+        Ok(())
+    }
+
+    #[test]
+    fn reload_with_the_same_size_asks_for_no_resize() -> Result<(), String> {
+        let (mut r, mut desc) = chapter7()?;
+        desc.camera.focal_blur = None;
+        desc.camera.from = [0.0, 3.0, -8.0];
+        r.reload(&desc, Path::new("scenes"))?;
+        assert_eq!(r.resize, None);
+        Ok(())
+    }
+
+    #[test]
+    fn window_size_fits_the_room_and_never_grows() {
+        let size = |room| window_size(800, 600, 2.0, room);
+        assert_eq!(size(None), NSSize::new(400.0, 300.0));
+        assert_eq!(
+            size(Some(NSSize::new(200.0, 300.0))),
+            NSSize::new(200.0, 150.0)
+        );
+        assert_eq!(
+            size(Some(NSSize::new(4000.0, 4000.0))),
+            NSSize::new(400.0, 300.0)
+        );
     }
 
     #[test]
