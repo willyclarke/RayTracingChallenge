@@ -312,3 +312,122 @@ Expected: all pass; clippy clean.
 - [ ] **Step 7: Commit** after the user's approval:
 
 `ENHANCEMENT: rtc-edit edits the camera in fixed fields (milestone 19)`
+
+### Task 4 amendment: f-number, red-box reasons, reset
+
+Spec: the "Amendment after the Task 4 check by eye" section. Replaces
+the aperture parts of Task 4; the rest of Task 4 stands.
+
+**Interfaces:**
+- `Field::Aperture` becomes `Field::FNumber`.
+- `pub fn lens_radius(desc: &SceneDescription) -> Option<f64>` in
+  `fields.rs`: the camera's `aperture` when focal blur is set.
+- `main.rs`: `errors` becomes `HashMap<Field, String>` (the reason).
+
+- [ ] **Step 1: Write the failing tests** in `fields.rs`, replacing the
+  aperture tests (test camera: from `[0,0,-5]`, to `[0,0,0]`):
+  - `an_f_number_creates_focal_blur`: set `FNumber` `"8"` →
+    `FocalBlur { aperture: 0.3125, focal_distance: 5.0, samples: 32 }`
+    (5 / 16); `fields` shows `"8"`, `"5"`, `"32"`;
+    `lens_radius == Some(0.3125)`.
+  - `emptying_the_f_number_removes_focal_blur`: then `""` → `None`, the
+    three boxes `""`, `lens_radius == None`.
+  - `changing_the_focal_distance_keeps_the_f_number`: with f-number 8,
+    set `FocalDistance` `"10"` → aperture `0.625`, `FNumber` still
+    shows `"8"`.
+  - `the_f_number_must_be_above_zero`: `"0"` and `"-2"` → `Err`, scene
+    unchanged.
+  - `an_aperture_of_zero_shows_an_infinite_f_number`: a camera with
+    `focal_blur {aperture: 0, focal_distance: 5, samples: 8}` shows
+    `FNumber` `"∞"`.
+  - `an_f_number_with_from_equal_to_to_gives_distance_zero` (replaces
+    the aperture version): focal distance 0, aperture 0.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `cargo test --lib -- f_number focal lens`
+Expected: compile errors, `FNumber` / `lens_radius` not found.
+
+- [ ] **Step 3: Implement** `FNumber` and `lens_radius` in `fields.rs`.
+  In `main.rs`:
+  - `describe`: *Focal blur* row labels `f-number`, `focal distance`,
+    `samples`; below the focal blur boxes a `text` line
+    `lens radius <r>` from `lens_radius` when it is `Some`.
+  - `errors: HashMap<Field, String>`; `edit` stores the reason. The
+    status line shows `<label>: <reason>` (the row label from
+    `describe`, with the axis as `x`/`y`/`z` for vectors) while the
+    shaded or edited box is in `errors`; otherwise the usual status.
+  - `fn reset(&mut self, field)`: the text from `fields` for that
+    field, remove it from `errors`. `Letter('u')` on a shaded box calls
+    it; `Escape(true)` resets first when the box it leaves is in
+    `errors`. `shortcut` adds `"u"` to the letters.
+  - README: the f-number and lens radius; `u` and Esc-on-red in the
+    keys table; a red box's reason shows in the status line.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cargo test --lib && cargo clippy --all-targets && cargo build --release`
+Expected: all pass; clippy clean; builds.
+
+- [ ] **Step 5: Check by eye** (with the user), on chapter10:
+  1. Type an f-number of 4, Cmd-L: blur; the lens radius line shows;
+     16 is sharper than 4.
+  2. Type `abc` in width, shade it: the status line says why; `u`
+     restores the value. Type `abc` again, Esc: restored.
+  3. Set focal distance with f-number kept: the lens radius changes.
+
+- [ ] **Step 6: Commit** Task 4 and this amendment together, after the
+  user's approval, with Task 4's subject.
+
+### Task 5: the viewer resizes its window to the scene's width and height
+
+Spec: the "Amendment: the viewer follows width and height" section.
+
+**Files:**
+- Modify: `RUST/rtc-metal/src/window.rs`, `RUST/rtc-metal/README.md`.
+
+**Interfaces:**
+- `Renderer` gains `resize: Option<(usize, usize)>`: set by
+  `try_reload` to the file's `(width, height)` when they differ from
+  the previous `camera_desc`'s; taken (and cleared) by the view after a
+  reload.
+- `fn window_size(width: usize, height: usize, scale: f64, room: Option<NSSize>) -> NSSize`:
+  the content size `run` computes today (pixels / backing scale, shrunk
+  uniformly to fit `room`, never grown), extracted so `run` and the
+  resize share it.
+
+- [ ] **Step 1: Write the failing tests** in `window.rs`'s tests:
+  - `reload_with_a_new_size_asks_for_that_window_size`: chapter7, set
+    `desc.camera.width = 77`, reload → `r.resize == Some((77, height))`
+    with the file's height; the orbit kept as in Task 1's test.
+  - `reload_with_the_same_size_asks_for_no_resize`: a material change
+    → `r.resize == None`.
+  - `window_size_fits_the_room_and_never_grows`: `(800, 600)` at scale
+    2 with no room → `400 × 300`; with room `200 × 300` → `200 × 150`;
+    with room `4000 × 4000` → `400 × 300`.
+
+- [ ] **Step 2: Run them to verify they fail**
+
+Run (from `RUST/rtc-metal`): `cargo test --release --lib -- resize window_size`
+Expected: compile errors, `resize` / `window_size` not found.
+
+- [ ] **Step 3: Implement.** `try_reload` sets `resize`; `run` uses
+  `window_size`; `reload_if_changed`, after a good reload, takes
+  `resize` and calls `setContentSize` on the view's window with
+  `window_size(w, h, backing scale, room from the window's screen)`.
+  The drawable then follows through `drawableSizeWillChange`, as for a
+  hand resize. README: width and height in the file resize the window
+  on reload.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `cargo test --release --lib && cargo clippy --all-targets && cargo build --release`
+Expected: all pass; clippy clean; builds.
+
+- [ ] **Step 5: Check by eye** (with the user): in rtc-edit on
+  chapter10, orbit, change width to half and Cmd-L: the window gets
+  narrower, the orbit stays; a size larger than the screen is fitted.
+
+- [ ] **Step 6: Commit** after the user's approval:
+
+`ENHANCEMENT: rtc-metal resizes its window when the scene's width or height changes (milestone 19)`

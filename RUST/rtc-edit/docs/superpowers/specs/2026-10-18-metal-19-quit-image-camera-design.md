@@ -173,3 +173,41 @@ By eye:
   `replyToApplicationShouldTerminate:` when it closes.
 - **The editor's terminal**: after the editor exits, the viewer keeps
   running until answered; a shell prompt may come back first.
+
+## Amendment after the Task 4 check by eye (2026-10-18)
+
+The user found red camera boxes hard to understand with no way back, and
+the aperture backwards compared with a camera. These replace the
+aperture decisions above:
+
+- **The f-number replaces the aperture box.** Focal blur shows
+  *f-number*, focal distance and samples, plus a read-only line
+  `lens radius <r>` (rounded to 6 decimals). The file still stores
+  `aperture`, the lens radius:
+  `aperture = focal_distance / (2 × f-number)`, so the box shows
+  `focal_distance / (2 × aperture)`. A bigger f-number is sharper, as
+  on a camera.
+  - The f-number must be a finite number above 0.
+  - Typing an f-number with no focal blur creates it with focal
+    distance = |to − from| and samples 32. Emptying it removes focal
+    blur and empties the other two boxes.
+  - Changing the focal distance keeps the f-number and recalculates
+    the aperture, so the blur's look follows the focus.
+  - An aperture of 0 in a file shows the f-number as `∞`.
+- **A red box says why.** Each red box keeps its reason; the status
+  line shows `<box name>: <reason>` while that box is shaded or being
+  edited.
+- **A red box can be reset** to the value the scene still holds,
+  clearing the red: **u** on a shaded box, or **Esc** while editing a
+  red box (which then leaves it shaded). Esc on a box that isn't red
+  works as before. This applies to every box, not only the camera's.
+
+## Amendment: the viewer follows width and height (Task 5, 2026-10-18)
+
+The user found the width and height boxes had no visible effect, since
+the viewer draws at its window's size. On a reload whose camera width or
+height differs from the last one, the viewer now resizes its window to
+show the new size, fitted to the screen the same way as at start-up. The
+orbit still stays when only the size changed (Task 1); the image refines
+again at the new size. Resizing the window by hand still changes only
+the window, not the file.
