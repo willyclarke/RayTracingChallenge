@@ -10,7 +10,9 @@
 //! refining live (default 256, or `--samples N`); drag to orbit the camera,
 //! scroll to zoom, space to return to the scene's view, `i` to toggle the
 //! status overlay (which times each image until it reaches the target); resizing the window or going full screen renders at the
-//! new size, and the image is written on quit at the size last shown. With
+//! new size. On quit (or SIGTERM) the image, at the size last shown, is
+//! written to `-o` or, without it, wherever the user picks after an alert
+//! asks whether to save it. With
 //! `--watch` the window reloads the scene whenever its file changes (a scene
 //! editor, or a text editor, saves it) and refines it again; a file that
 //! doesn't load keeps the old image and shows why. `--traversal metal` searches the bounded
@@ -21,6 +23,7 @@ use rtc_metal::gpu::Gpu;
 use rtc_metal::scene::GpuScene;
 use rtc_metal::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
 use rtc_metal::watch::Watch;
+use rtc_metal::window::{Save, image_name};
 use rtc_rust::canvas::Canvas;
 use rtc_rust::scene::SceneDescription;
 use rtc_rust::tuple::Tuple;
@@ -72,26 +75,26 @@ fn main() {
         usage();
     }
 
-    let out = out.unwrap_or_else(|| match &scene_path {
-        Some(path) => format!(
-            "{}.ppm",
-            Path::new(path).file_stem().unwrap().to_string_lossy()
-        ),
-        None => "gradient.ppm".to_string(),
-    });
-
     let gpu = Gpu::new().unwrap_or_else(|e| fail(&e));
     if window {
         let path = scene_path.unwrap_or_else(|| usage());
+        let save = match out {
+            Some(out) => Save::To(out),
+            None => Save::Ask(image_name(Path::new(&path))),
+        };
         open_window(
             gpu,
             &path,
             samples.unwrap_or(WINDOW_SAMPLES),
             traversal,
             watch,
-            out,
+            save,
         );
     }
+    let out = out.unwrap_or_else(|| match &scene_path {
+        Some(path) => image_name(Path::new(path)),
+        None => "gradient.ppm".to_string(),
+    });
     let (pixels, width, height) = match &scene_path {
         Some(path) => {
             let (world, camera) =
@@ -122,12 +125,13 @@ fn main() {
             (pixels, GRADIENT_WIDTH, GRADIENT_HEIGHT)
         }
     };
-    write_ppm(pixels, width, height, &out);
+    write_ppm(pixels, width, height, Path::new(&out)).unwrap_or_else(|e| fail(&e));
 }
 
 /// Show the scene at `path` refining live until `samples` frames, reloading
-/// it when the file changes if `watch`; write the image to `out` on quit.
-fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, out: String) -> ! {
+/// it when the file changes if `watch`; on quit, write the image where
+/// `save` says.
+fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, save: Save) -> ! {
     let path = Path::new(path);
     // Watch before reading, so a save while the scene loads still reloads.
     let watch = watch.then(|| Watch::new(path));
@@ -146,7 +150,8 @@ fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, 
         samples,
         title,
         watch,
-        Box::new(move |pixels, width, height| write_ppm(pixels, width, height, &out)),
+        save,
+        Box::new(write_ppm),
     )
 }
 
@@ -167,7 +172,7 @@ fn accumulate(gpu: &Gpu, scene: &GpuScene, n: u32) -> Result<Vec<[f32; 4]>, Stri
 }
 
 /// Write row-major RGBA `pixels` as a PPM through rtc-rust's Canvas.
-fn write_ppm(pixels: Vec<[f32; 4]>, width: usize, height: usize, out: &str) {
+fn write_ppm(pixels: Vec<[f32; 4]>, width: usize, height: usize, out: &Path) -> Result<(), String> {
     let mut canvas = Canvas::new(width, height);
     for (i, [r, g, b, _]) in pixels.into_iter().enumerate() {
         canvas.write_pixel(
@@ -178,8 +183,9 @@ fn write_ppm(pixels: Vec<[f32; 4]>, width: usize, height: usize, out: &str) {
     }
     canvas
         .write_ppm(out)
-        .unwrap_or_else(|e| fail(&e.to_string()));
-    println!("wrote {out} ({width}x{height})");
+        .map_err(|e| format!("{}: {e}", out.display()))?;
+    println!("wrote {} ({width}x{height})", out.display());
+    Ok(())
 }
 
 fn usage() -> ! {
@@ -188,7 +194,8 @@ fn usage() -> ! {
     );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
-        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view,\n               i toggles the status overlay (with seconds to reach the target),\n               resizing re-renders,\n               quit writes the image at the window's size;
+        "  --window     refine live (default {WINDOW_SAMPLES} samples); drag orbits, scroll zooms,\n               space resets the view,\n               i toggles the status overlay (with seconds to reach the target),\n               resizing re-renders,\n               quit asks whether and where to save the image at the window's
+               size (with -o, writes there without asking);
                Samples menu: presets, Unlimited, Cmd-] doubles, Cmd-[ halves"
     );
     eprintln!("  --watch      with --window: reload the scene whenever its file changes");
