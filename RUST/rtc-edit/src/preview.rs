@@ -46,7 +46,8 @@ mod tests {
     use std::fs;
 
     fn fresh(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("rtc_edit_preview_{name}"));
+        let root =
+            std::env::temp_dir().join(format!("rtc_edit_preview_{name}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         root

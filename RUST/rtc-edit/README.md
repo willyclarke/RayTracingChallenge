@@ -11,7 +11,8 @@ The editor grows in milestones:
   Save As, and the viewer.
 - **18 (done):** editing spheres, cubes, planes, cylinders and cones (position, rotation, scale and a
   basic material), and point lights.
-- **19:** adding and deleting items, New and Open, and the camera.
+- **19 (done):** the viewer's image on quit, and the camera.
+- **20 (done):** New and Open, adding and deleting items, comments.
 
 ## Dependencies
 
@@ -19,7 +20,8 @@ The editor grows in milestones:
   saving.
 - `serde_json`: the inspector's JSON.
 - `iced` 0.14: the window and widgets.
-- `rfd`: the native Save panel, since iced has no file dialogs.
+- `rfd`: the native Save and Open panels and the unsaved-changes alert, since iced has no
+  file dialogs.
 
 The editor never uses Metal itself; it starts `rtc-metal` as a separate program. No Cargo
 workspace: the crate has its own `target/`, and the first build takes a minute or two.
@@ -29,6 +31,7 @@ workspace: the crate has its own `target/`, and the first build takes a minute o
 ```bash
 (cd ../rtc-metal && cargo build --release)    # the viewer
 cargo run --release -- ../rtc-metal/scenes/chapter15.json
+cargo run --release                           # no argument: a new scene
 cargo test                                    # no window needed
 cargo clippy --all-targets
 ```
@@ -39,10 +42,19 @@ works and the status line says where it looked.
 
 | key | does |
 |---|---|
-| Cmd-S | save the scene |
+| Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
+| Cmd-O | open another scene (a `.json` file) |
+| Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
 | Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
 | Cmd-L | load the edits into the viewer |
 | Cmd-R | start the viewer again after closing it |
+
+`rtc-edit` with no argument starts with a new scene. Cmd-N and Cmd-O replace the scene; with
+unsaved edits (the ` •`) an alert first asks `Save changes to <name>?` with Save, Don't Save and
+Cancel. Cancel, or a Save that fails or whose Save As is cancelled, keeps the scene and its
+edits. A file that doesn't load leaves the scene as it is, and the status line says why. On a
+switch the old viewer gets SIGTERM, so it offers to save its image, and a new viewer opens on the
+new scene.
 
 ## Editing
 
@@ -52,6 +64,10 @@ specular, shininess, reflective, transparency and refractive index. Cylinders an
 get min, max and closed; point lights get position and intensity; the camera gets from, to, up,
 field of view (in degrees), width, height, antialias n and focal blur. Everything else is shown
 read-only in the JSON below the boxes, and saved unchanged.
+
+Every shape, groups, CSGs and OBJ files included, also gets a `comment` box above the other
+boxes (alone, for those that have no others). The tree row shows it as `<type> — <comment>`. An
+empty box removes the comment; a comment that isn't text gets no box and stays as it is.
 
 - The camera's n only matters to rtc-rust renders, as rtc-metal's progressive rendering
   antialiases anyway. An empty n removes antialias.
@@ -87,6 +103,25 @@ letters only act with no modifier held, so Cmd-L stays Load.
 | shaded box | Esc | back to the tree |
 | editing | Enter or Esc | leave the box, shaded; Esc on a red box also puts the scene's value back |
 | anywhere | Tab, Shift-Tab | edit the next or previous box |
+| tree | a, then s c p y o l | add a sphere, cube, plane, cylinder, cone or light; any other key cancels |
+| tree | d d or Cmd-Delete | delete the selected shape or light |
+
+## Adding and deleting
+
+The button bar above the tree adds a sphere, cube, plane, cylinder, cone or light, and deletes
+the selected item (the Delete button). `a` then a letter does the same from the keyboard (`a` shows the letters in
+the status line), and `d d` or Cmd-Delete deletes. They work with no box shaded or edited.
+
+A new shape goes at the end of a selected group, else right after the selected shape; inside a
+CSG it goes after the CSG, whose two shapes are fixed. With nothing selected it goes at the end of
+the scene. A new light goes at the end of the lights. The new item is selected, and the groups
+that hide it unfold. Deleting selects the next row.
+
+Two deletes are refused, with the reason in the status line: a shape directly inside a CSG (a
+CSG needs both its shapes) and the last light (a scene needs a light). The camera, settings and
+headings can't be deleted.
+
+There is no undo: to go back, open the file again and choose Don't Save.
 
 Clicking a box edits it. The tree doesn't scroll to follow the keys.
 

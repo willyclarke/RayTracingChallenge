@@ -12,6 +12,7 @@ use std::mem::discriminant;
 /// One box. The `usize` is the axis, 0 to 2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Field {
+    Comment,
     Position(usize),
     Rotation(usize),
     Scale(usize),
@@ -56,10 +57,28 @@ const MATERIAL: [Field; 10] = [
 /// for items that can't be edited.
 pub fn fields(desc: &SceneDescription, node: &Node) -> Vec<(Field, String)> {
     match node {
-        Node::Shape(path) => match shape_at(desc, path) {
-            Some(shape) if editable(shape) => shape_fields(shape),
-            _ => vec![],
-        },
+        Node::Shape(path) => {
+            let Some(shape) = shape_at(desc, path) else {
+                return vec![];
+            };
+            let comment = match &shape.comment {
+                None => (Field::Comment, String::new()),
+                Some(serde_json::Value::String(s)) => (Field::Comment, s.clone()),
+                // Not text: no box, so it is never overwritten.
+                Some(_) => {
+                    return if editable(shape) {
+                        shape_fields(shape)
+                    } else {
+                        vec![]
+                    };
+                }
+            };
+            let mut out = vec![comment];
+            if editable(shape) {
+                out.extend(shape_fields(shape));
+            }
+            out
+        }
         Node::Light(i) => match light_at(desc, *i) {
             Some(LightDescription::Point {
                 position,
@@ -166,6 +185,11 @@ pub fn set(
 ) -> Result<(), String> {
     if let Node::Camera = node {
         return set_camera(&mut desc.camera, field, text);
+    }
+    if let (Node::Shape(path), Field::Comment) = (node, field) {
+        let shape = shape_at_mut(desc, path).ok_or("this item can't be edited")?;
+        shape.comment = (!text.trim().is_empty()).then(|| text.into());
+        return Ok(());
     }
     let value = parse(text)?;
     match node {
@@ -549,7 +573,7 @@ mod tests {
     fn a_sphere_lists_transform_and_material() {
         let desc = scene();
         let got = fields(&desc, &shape(0));
-        let first: Vec<(Field, &str)> = got[..9].iter().map(|(f, t)| (*f, t.as_str())).collect();
+        let first: Vec<(Field, &str)> = got[1..10].iter().map(|(f, t)| (*f, t.as_str())).collect();
         assert_eq!(
             first,
             [
@@ -568,7 +592,7 @@ mod tests {
         assert_eq!(text(&desc, &shape(0), Color(1)), "0.2");
         assert_eq!(text(&desc, &shape(0), Color(2)), "0.2");
         assert_eq!(text(&desc, &shape(0), Ambient), "");
-        let rest: Vec<Field> = got[9..].iter().map(|(f, _)| *f).collect();
+        let rest: Vec<Field> = got[10..].iter().map(|(f, _)| *f).collect();
         assert_eq!(
             rest,
             [
@@ -614,21 +638,13 @@ mod tests {
     #[test]
     fn a_shape_whose_transform_doesnt_fit_lists_material_only() {
         let desc = scene();
-        assert_eq!(fields(&desc, &shape(5))[0].0, Color(0));
+        assert_eq!(fields(&desc, &shape(5))[1].0, Color(0));
     }
 
     #[test]
     fn items_you_cant_edit_list_nothing() {
         let desc = scene();
-        for node in [
-            shape(2),
-            shape(3),
-            shape(4),
-            Node::Light(1),
-            Node::Settings,
-            Node::Lights,
-            Node::Shapes,
-        ] {
+        for node in [Node::Light(1), Node::Settings, Node::Lights, Node::Shapes] {
             assert!(fields(&desc, &node).is_empty(), "{node:?}");
         }
     }
@@ -1061,7 +1077,78 @@ mod tests {
     #[test]
     fn next_box_stops_at_the_first_and_last_row() {
         let order = cylinder_order();
-        assert_eq!(next_box(&order, Position(1), 0, -1), Position(1));
+        assert_eq!(next_box(&order, Comment, 0, -1), Comment);
+        assert_eq!(next_box(&order, Position(1), 0, -1), Comment);
+        assert_eq!(next_box(&order, Comment, 0, 1), Position(0));
         assert_eq!(next_box(&order, RefractiveIndex, 0, 1), RefractiveIndex);
+    }
+
+    fn commented_scene() -> SceneDescription {
+        let v = json!({
+            "camera": {"width": 10, "height": 5, "field_of_view": 1.0,
+                       "from": [0, 0, -5], "to": [0, 0, 0], "up": [0, 1, 0]},
+            "light": {"type": "point", "position": [0, 0, -5], "intensity": [1, 1, 1]},
+            "shapes": [
+                {"type": "sphere", "comment": "ball"},
+                {"type": "sphere"},
+                {"type": "group", "comment": "stack", "children": [{"type": "cube"}]},
+                {"type": "csg", "operation": "union",
+                 "left": {"type": "sphere"}, "right": {"type": "cube"}},
+                {"type": "sphere", "comment": ["a", "b"]}
+            ]
+        });
+        SceneDescription::from_json(&v.to_string()).unwrap()
+    }
+
+    #[test]
+    fn a_shape_lists_its_comment_first() {
+        let desc = commented_scene();
+        assert_eq!(fields(&desc, &shape(0))[0], (Comment, "ball".to_string()));
+        assert_eq!(fields(&desc, &shape(1))[0], (Comment, String::new()));
+    }
+
+    #[test]
+    fn a_group_and_a_csg_list_only_a_comment_box() {
+        let desc = commented_scene();
+        assert_eq!(
+            fields(&desc, &shape(2)),
+            vec![(Comment, "stack".to_string())]
+        );
+        assert_eq!(fields(&desc, &shape(3)), vec![(Comment, String::new())]);
+    }
+
+    #[test]
+    fn a_non_string_comment_gets_no_box() {
+        let desc = commented_scene();
+        assert!(fields(&desc, &shape(4)).iter().all(|(f, _)| *f != Comment));
+    }
+
+    #[test]
+    fn typing_a_comment_sets_it() {
+        let mut desc = commented_scene();
+        set(&mut desc, &shape(0), Comment, "red ball").unwrap();
+        assert_eq!(desc.shapes[0].comment, Some(json!("red ball")));
+        set(&mut desc, &shape(2), Comment, " a  stack ").unwrap();
+        assert_eq!(desc.shapes[2].comment, Some(json!(" a  stack ")));
+    }
+
+    #[test]
+    fn an_empty_comment_removes_it() {
+        let mut desc = commented_scene();
+        for text in ["", "   "] {
+            set(&mut desc, &shape(0), Comment, "x").unwrap();
+            set(&mut desc, &shape(0), Comment, text).unwrap();
+            assert_eq!(desc.shapes[0].comment, None);
+        }
+        let saved = serde_json::to_string(&desc.shapes[0]).unwrap();
+        assert!(!saved.contains("comment"), "{saved}");
+    }
+
+    #[test]
+    fn lights_and_the_camera_have_no_comment_box() {
+        let desc = commented_scene();
+        for node in [Node::Light(0), Node::Camera] {
+            assert!(fields(&desc, &node).iter().all(|(f, _)| *f != Comment));
+        }
     }
 }

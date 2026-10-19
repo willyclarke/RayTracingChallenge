@@ -1,24 +1,27 @@
-//! rtc-edit: `rtc-edit <scene.json>` shows the scene as a tree, starts
+//! rtc-edit: `rtc-edit [scene.json]` shows the scene as a tree, starts
 //! `rtc-metal --window --watch` on a preview copy of it, and saves it
 //! (Cmd-S, and Cmd-Shift-S to save elsewhere with asset paths rebased).
 //! Cmd-R starts the viewer again after it was closed. Simple shapes,
 //! point lights and the camera are edited in fixed fields; Cmd-L loads the
-//! edits into the viewer.
+//! edits into the viewer. Cmd-N and Cmd-O start a new scene or open another,
+//! and shapes and lights are added and deleted from a button bar and keys.
 
 use iced::widget::operation;
 use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Subscription, Task, keyboard};
+use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
-use rtc_edit::paths::{dir_of, rebase};
+use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, find};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -49,7 +52,8 @@ extern "C" fn clean_up() {
 }
 
 struct Editor {
-    path: PathBuf,
+    /// The scene's file; none for a new scene not yet saved.
+    path: Option<PathBuf>,
     desc: SceneDescription,
     folded: HashSet<Node>,
     selected: Option<Node>,
@@ -75,6 +79,9 @@ struct Editor {
     /// The focal blur that emptying the selected camera's f-number removed,
     /// so retyping one brings its focal distance and samples back.
     removed_blur: Option<FocalBlur>,
+    /// A key waiting for its second: `a` for the item to add, `d` for a
+    /// second `d` that deletes.
+    pending: Option<char>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,6 +90,8 @@ enum Message {
     Toggle(Node),
     Save,
     SaveAs,
+    New,
+    Open,
     ShowViewer,
     Edit(Field, String),
     /// Pasted text, which arrives while Cmd is held.
@@ -94,12 +103,16 @@ enum Message {
     /// Tab and Shift-Tab.
     FocusNext,
     FocusPrevious,
-    /// An arrow or h/j/k/l no box took: right and down, each -1, 0 or 1.
+    /// An arrow no box took: right and down, each -1, 0 or 1.
     Move(isize, isize),
     /// Enter no box took.
     Enter,
-    /// i, c or x no box took.
-    Letter(char),
+    /// A plain character no box took: h j k l i c x u a d s p y o.
+    Key(char),
+    /// Add an item next to the selected one.
+    Add(Item),
+    /// Delete the selected item.
+    Delete,
     /// Esc; `true` when a box took it and lost focus.
     Escape(bool),
     /// A click; `true` when a widget took it, such as a box it focused.
@@ -114,7 +127,7 @@ fn main() -> iced::Result {
     iced::application(boot, update, view)
         .title(|e: &Editor| {
             let mark = if e.unsaved { " •" } else { "" };
-            format!("rtc-edit — {}{mark}", file_name(&e.path))
+            format!("rtc-edit — {}{mark}", e.name())
         })
         .subscription(subscription)
         .window_size((900.0, 640.0))
@@ -128,25 +141,19 @@ fn file_name(path: &Path) -> String {
 }
 
 fn boot() -> Editor {
-    let Some(arg) = std::env::args().nth(1) else {
-        eprintln!("usage: rtc-edit <scene.json>");
-        std::process::exit(2);
-    };
-    let path = PathBuf::from(arg);
-    let desc = SceneDescription::from_path(&path).unwrap_or_else(|e| {
-        eprintln!("rtc-edit: {e}");
-        std::process::exit(1);
+    let loaded = std::env::args().nth(1).map(|arg| {
+        let path = PathBuf::from(arg);
+        let desc = SceneDescription::from_path(&path).unwrap_or_else(|e| {
+            eprintln!("rtc-edit: {e}");
+            std::process::exit(1);
+        });
+        (desc, path)
     });
     // SAFETY: registers a plain function with no arguments; it runs once, at exit.
     unsafe { atexit(clean_up) };
-    let preview = path
-        .file_name()
-        .ok_or_else(|| format!("{} names no file", path.display()))
-        .and_then(|name| Preview::new(&std::env::temp_dir(), name))
-        .and_then(|p| p.write(&desc, dir_of(&path)).map(|()| p));
     let mut editor = Editor {
-        path,
-        desc,
+        path: None,
+        desc: new_scene(),
         folded: HashSet::new(),
         selected: None,
         preview_error: None,
@@ -159,16 +166,126 @@ fn boot() -> Editor {
         left: None,
         editing: None,
         removed_blur: None,
+        pending: None,
     };
-    match preview {
-        Ok(p) => CHILDREN.lock().unwrap().preview = Some(p),
-        Err(e) => editor.preview_error = Some(e),
+    match loaded {
+        Some((desc, path)) => editor.switch(desc, Some(path)),
+        None => editor.switch(new_scene(), None),
     }
-    editor.show_viewer();
     editor
 }
 
 impl Editor {
+    /// The scene's file name, or `untitled.json`.
+    fn name(&self) -> String {
+        scene_name(self.path.as_deref())
+    }
+
+    /// The scene's file as an absolute path, `..` resolved where it exists;
+    /// `None` for an untitled scene.
+    fn full_path(&self) -> Option<PathBuf> {
+        let path = self.path.as_deref()?;
+        Some(path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
+    }
+
+    /// The status after a save: where the file went, in full.
+    fn saved(&self) -> String {
+        let path = self.full_path().unwrap_or_default();
+        self.warn(format!("saved {}", path.display()))
+    }
+
+    /// The scene's folder, or the working directory for an untitled scene.
+    fn dir(&self) -> PathBuf {
+        dir_for(self.path.as_deref())
+    }
+
+    /// Replace the scene: the old viewer ends (and offers its image), the old
+    /// preview goes, and a preview and viewer start on `desc`.
+    fn switch(&mut self, desc: SceneDescription, path: Option<PathBuf>) {
+        {
+            let mut children = CHILDREN.lock().unwrap();
+            children.viewer = None;
+            children.preview = None;
+            let name = scene_name(path.as_deref());
+            let preview = Preview::new(&std::env::temp_dir(), OsStr::new(&name))
+                .and_then(|p| p.write(&desc, &dir_for(path.as_deref())).map(|()| p));
+            self.preview_error = None;
+            match preview {
+                Ok(p) => children.preview = Some(p),
+                Err(e) => self.preview_error = Some(e),
+            }
+        }
+        self.desc = desc;
+        self.path = path;
+        self.folded.clear();
+        self.selected = None;
+        self.texts.clear();
+        self.errors.clear();
+        self.left = None;
+        self.editing = None;
+        self.removed_blur = None;
+        self.pending = None;
+        self.unsaved = false;
+        self.unloaded = false;
+        self.show_viewer();
+    }
+
+    /// Before New or Open: true when the scene has no unsaved edits, or they
+    /// were saved or given up; false when the user cancelled or saving failed.
+    fn ask_unsaved(&mut self) -> bool {
+        if !self.unsaved {
+            return true;
+        }
+        let mut question = format!("Save changes to {}?", self.name());
+        if let Some(path) = self.full_path() {
+            question += &format!("\n\nin {}", dir_of(&path).display());
+        }
+        let answer = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Warning)
+            .set_description(question)
+            .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
+                "Save".into(),
+                "Don't Save".into(),
+                "Cancel".into(),
+            ))
+            .show();
+        // The key-up of Cmd went to the alert.
+        self.command = false;
+        match answer {
+            rfd::MessageDialogResult::Custom(s) if s == "Save" => {}
+            rfd::MessageDialogResult::Yes => {}
+            rfd::MessageDialogResult::Custom(s) if s == "Don't Save" => return true,
+            rfd::MessageDialogResult::No => return true,
+            _ => return false,
+        }
+        self.save();
+        !self.unsaved
+    }
+
+    /// Cmd-N.
+    fn new_file(&mut self) {
+        if self.ask_unsaved() {
+            self.switch(new_scene(), None);
+        }
+    }
+
+    /// Cmd-O.
+    fn open(&mut self) {
+        if !self.ask_unsaved() {
+            return;
+        }
+        let picked = rfd::FileDialog::new()
+            .set_directory(self.dir())
+            .add_filter("scene", &["json"])
+            .pick_file();
+        self.command = false;
+        let Some(path) = picked else { return };
+        match SceneDescription::from_path(&path) {
+            Ok(desc) => self.switch(desc, Some(path)),
+            Err(e) => self.status = format!("{}: {e}", file_name(&path)),
+        }
+    }
+
     /// Start the viewer unless it is still open.
     fn show_viewer(&mut self) {
         let mut children = CHILDREN.lock().unwrap();
@@ -260,7 +377,83 @@ impl Editor {
         }
     }
 
-    /// i, c or x on the shaded box.
+    /// A plain character no box took: the second key of `a` or `d`, else a
+    /// move, a letter for the shaded box, or the first key of `a` or `d`.
+    fn key(&mut self, c: char) -> Task<Message> {
+        match self.pending.take() {
+            Some('a') => {
+                match Item::from_key(c) {
+                    Some(item) => self.add_item(item),
+                    None => self.status.clear(),
+                }
+                return Task::none();
+            }
+            Some('d') => {
+                if c == 'd' {
+                    self.delete_selected();
+                }
+                return Task::none();
+            }
+            _ => {}
+        }
+        match c {
+            DELETE if self.left.is_none() && self.editing.is_none() => self.delete_selected(),
+            'h' => self.arrow(-1, 0),
+            'l' => self.arrow(1, 0),
+            'k' => self.arrow(0, -1),
+            'j' => self.arrow(0, 1),
+            'i' | 'c' | 'x' | 'u' => return self.letter(c),
+            'a' | 'd' if self.left.is_none() && self.editing.is_none() => {
+                if c == 'a' {
+                    self.pending = Some('a');
+                    self.status =
+                        "add: s sphere  c cube  p plane  y cylinder  o cone  l light".into();
+                } else if self.selected.is_some() {
+                    self.pending = Some('d');
+                }
+            }
+            _ => {}
+        }
+        Task::none()
+    }
+
+    /// Add `item` next to the selected one and select it, unfolding what
+    /// hides it.
+    fn add_item(&mut self, item: Item) {
+        let node = edit::add(&mut self.desc, self.selected.as_ref(), item);
+        if let Node::Shape(p) = &node {
+            rtc_edit::edit::shift(&mut self.folded, p, 1);
+        }
+        for a in ancestors(&node) {
+            self.folded.remove(&a);
+        }
+        self.select(node);
+        self.status.clear();
+        self.unsaved = true;
+        self.unloaded = true;
+    }
+
+    /// Delete the selected item and select the one that takes its place, or
+    /// say why it can't go.
+    fn delete_selected(&mut self) {
+        let Some(node) = self.selected.clone() else {
+            return;
+        };
+        match edit::delete(&mut self.desc, &node) {
+            Ok(next) => {
+                if let Node::Shape(p) = &node {
+                    rtc_edit::edit::shift(&mut self.folded, p, -1);
+                }
+                self.select(next);
+                self.status.clear();
+                self.unsaved = true;
+                self.unloaded = true;
+            }
+            Err(reason) => self.status = reason,
+        }
+    }
+
+    /// i, c, x or u on the shaded box.
     fn letter(&mut self, c: char) -> Task<Message> {
         let (Some(field), Some(node)) = (self.left, &self.selected) else {
             return Task::none();
@@ -301,7 +494,7 @@ impl Editor {
             self.status = format!("no preview file: {e}");
             return;
         };
-        self.status = match preview.write(&self.desc, dir_of(&self.path)) {
+        self.status = match preview.write(&self.desc, &self.dir()) {
             Ok(()) => {
                 self.unloaded = false;
                 self.warn("loaded into viewer".into())
@@ -311,10 +504,14 @@ impl Editor {
     }
 
     fn save(&mut self) {
-        self.status = match self.desc.save(&self.path) {
+        let Some(path) = &self.path else {
+            self.save_as();
+            return;
+        };
+        self.status = match self.desc.save(path) {
             Ok(()) => {
                 self.unsaved = false;
-                self.warn(format!("saved {}", file_name(&self.path)))
+                self.saved()
             }
             Err(e) => e.to_string(),
         };
@@ -400,33 +597,68 @@ impl Editor {
         }
     }
 
-    fn save_as(&mut self) {
-        let Some(new) = rfd::FileDialog::new()
-            .set_directory(dir_of(&self.path))
-            .set_file_name(file_name(&self.path))
+    /// Ask where to save, rebasing asset paths; true when it saved.
+    fn save_as(&mut self) -> bool {
+        let dir = self.dir();
+        let picked = rfd::FileDialog::new()
+            .set_directory(&dir)
+            .set_file_name(self.name())
             .add_filter("scene", &["json"])
-            .save_file()
-        else {
-            return;
+            .save_file();
+        // The key-up of Cmd went to the dialog.
+        self.command = false;
+        let Some(new) = picked else {
+            return false;
         };
         let mut desc = self.desc.clone();
-        let saved = rebase(&mut desc, dir_of(&self.path), dir_of(&new))
+        let saved = rebase(&mut desc, &dir, dir_of(&new))
             .and_then(|()| desc.save(&new).map_err(|e| e.to_string()));
-        self.status = match saved {
+        match saved {
             Ok(()) => {
                 self.desc = desc;
-                self.path = new;
+                self.path = Some(new);
                 self.unsaved = false;
                 // Rebasing touches only asset paths, which have no boxes,
                 // so the boxes and any red text stay as they are.
-                self.warn(format!("saved {}", file_name(&self.path)))
+                self.status = self.saved();
+                true
             }
-            Err(e) => e,
-        };
+            Err(e) => {
+                self.status = e;
+                false
+            }
+        }
     }
 }
 
+/// `path`'s folder, or the working directory for a scene with no file.
+fn dir_for(path: Option<&Path>) -> PathBuf {
+    match path {
+        Some(p) => dir_of(p).to_path_buf(),
+        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    }
+}
+
+/// `Message::Key` for Cmd-Delete (Cmd-Backspace, or Cmd with forward Delete).
+const DELETE: char = '\u{7f}';
+/// `Message::Key` for a key that does nothing but cancel a wait for a second one.
+const OTHER: char = '\0';
+
 fn update(e: &mut Editor, message: Message) -> Task<Message> {
+    // Anything but a key, Cmd or a focus answer ends a wait for a second key;
+    // Esc only does that.
+    if !matches!(
+        message,
+        Message::Key(_) | Message::Command(_) | Message::Focused(..)
+    ) && let Some(waiting) = e.pending.take()
+    {
+        if waiting == 'a' {
+            e.status.clear();
+        }
+        if matches!(message, Message::Escape(_)) {
+            return Task::none();
+        }
+    }
     match message {
         Message::Select(node) => e.select(node),
         Message::Toggle(node) => {
@@ -435,7 +667,11 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
             }
         }
         Message::Save => e.save(),
-        Message::SaveAs => e.save_as(),
+        Message::SaveAs => {
+            e.save_as();
+        }
+        Message::New => e.new_file(),
+        Message::Open => e.open(),
         Message::ShowViewer => e.show_viewer(),
         Message::Edit(field, value) => {
             // A focused box also takes Cmd-L's `l` as typing, over any
@@ -471,7 +707,9 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
                 e.left = e.order().first().copied();
             }
         }
-        Message::Letter(c) => return e.letter(c),
+        Message::Key(c) => return e.key(c),
+        Message::Add(item) => e.add_item(item),
+        Message::Delete => e.delete_selected(),
         Message::Escape(true) => {
             if let Some(field) = e.editing.filter(|f| e.errors.contains_key(f)) {
                 e.reset(field);
@@ -499,9 +737,10 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
     Task::none()
 }
 
-/// Cmd-S, Cmd-Shift-S, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
+/// Cmd-S, Cmd-Shift-S, Cmd-N, Cmd-O, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
 /// has focus and takes the key itself; whether Cmd is held; Esc; the arrows,
-/// h/j/k/l, Enter, i, c, x and u that no box took; and clicks.
+/// h/j/k/l, Enter, Cmd-Delete and the letters a c d h i j k l o p s u x y that no
+/// box took, and any other such key as one that only cancels; and clicks.
 fn shortcut(
     event: iced::Event,
     status: iced::event::Status,
@@ -528,6 +767,11 @@ fn shortcut(
         }
         keyboard::Key::Named(Named::Tab) => return Some(Message::FocusNext),
         keyboard::Key::Named(Named::Escape) => return Some(Message::Escape(!ignored)),
+        keyboard::Key::Named(Named::Backspace | Named::Delete)
+            if ignored && modifiers == keyboard::Modifiers::COMMAND =>
+        {
+            return Some(Message::Key(DELETE));
+        }
         keyboard::Key::Named(named) if plain => {
             return match named {
                 Named::Enter => Some(Message::Enter),
@@ -535,17 +779,20 @@ fn shortcut(
                 Named::ArrowRight => Some(Message::Move(1, 0)),
                 Named::ArrowUp => Some(Message::Move(0, -1)),
                 Named::ArrowDown => Some(Message::Move(0, 1)),
-                _ => None,
+                Named::Shift | Named::Control | Named::Alt | Named::Super | Named::Meta => None,
+                // Any other key only cancels a wait for a second key.
+                _ => Some(Message::Key(OTHER)),
             };
         }
-        keyboard::Key::Character(c) if plain => {
+        keyboard::Key::Character(c) if ignored && !modifiers.command() => {
             return match c.as_str() {
-                "h" => Some(Message::Move(-1, 0)),
-                "l" => Some(Message::Move(1, 0)),
-                "k" => Some(Message::Move(0, -1)),
-                "j" => Some(Message::Move(0, 1)),
-                "i" | "c" | "x" | "u" => c.chars().next().map(Message::Letter),
-                _ => None,
+                "h" | "j" | "k" | "l" | "i" | "c" | "x" | "u" | "a" | "d" | "s" | "p" | "y"
+                | "o"
+                    if modifiers.is_empty() =>
+                {
+                    c.chars().next().map(Message::Key)
+                }
+                _ => Some(Message::Key(OTHER)),
             };
         }
         keyboard::Key::Character(c) if modifiers.command() => c,
@@ -554,6 +801,8 @@ fn shortcut(
     match c.to_lowercase().as_str() {
         "s" if modifiers.shift() => Some(Message::SaveAs),
         "s" => Some(Message::Save),
+        "n" => Some(Message::New),
+        "o" => Some(Message::Open),
         "r" => Some(Message::ShowViewer),
         "l" => Some(Message::Load),
         _ => None,
@@ -599,7 +848,31 @@ fn view(e: &Editor) -> Element<'_, Message> {
         .into(),
         None => text("select an item").into(),
     };
+    let can_delete = e
+        .selected
+        .as_ref()
+        .is_some_and(|n| edit::can_delete(&e.desc, n).is_ok());
+    let add = |label: &'static str, item| {
+        button(text(label).size(13))
+            .on_press(Message::Add(item))
+            .padding([2, 8])
+    };
+    let bar = row![
+        add("+ sphere", Item::Sphere),
+        add("+ cube", Item::Cube),
+        add("+ plane", Item::Plane),
+        add("+ cylinder", Item::Cylinder),
+        add("+ cone", Item::Cone),
+        add("+ light", Item::Light),
+        space::horizontal(),
+        button(text("Delete").size(13))
+            .on_press_maybe(can_delete.then_some(Message::Delete))
+            .padding([2, 8])
+            .style(button::danger),
+    ]
+    .spacing(4);
     column![
+        container(bar).padding([4, 8]),
         row![
             container(scrollable(tree)).width(260).padding(8),
             container(scrollable(inspector).width(Length::Fill))
@@ -654,9 +927,13 @@ fn boxes<'a>(e: &'a Editor, node: &Node) -> Element<'a, Message> {
             .on_paste(move |s| Message::Paste(field, s))
             .on_submit(Message::Submit(field))
             .id(box_id(field))
-            .font(Font::MONOSPACE)
-            .size(13)
-            .width(80);
+            .size(13);
+        // A comment is free text, wide as a row of three number boxes.
+        let input = if field == Field::Comment {
+            input.width(248)
+        } else {
+            input.font(Font::MONOSPACE).width(80)
+        };
         let error = e.errors.contains_key(&field);
         let marked = e.left == Some(field);
         let input = input.style(move |theme: &iced::Theme, status| {
@@ -695,6 +972,7 @@ fn closed_box<'a>(e: &Editor, node: &Node) -> Element<'a, Message> {
 fn describe(field: Field, bounds: &'static str) -> (&'static str, &'static str, Option<usize>) {
     use Field::*;
     match field {
+        Comment => ("", "comment", None),
         Position(a) => ("Transform", "position", Some(a)),
         Rotation(a) => ("Transform", "rotation°", Some(a)),
         Scale(a) => ("Transform", "scale", Some(a)),
