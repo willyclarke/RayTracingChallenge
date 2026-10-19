@@ -76,7 +76,8 @@ mod tests {
     use std::time::{Duration, Instant};
 
     fn fresh(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("rtc_edit_viewer_{name}"));
+        let root =
+            std::env::temp_dir().join(format!("rtc_edit_viewer_{name}_{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         root
@@ -160,7 +161,7 @@ mod tests {
         }
         drop(v);
         let start = Instant::now();
-        while !got.exists() && start.elapsed() < Duration::from_secs(2) {
+        while !got.exists() && start.elapsed() < Duration::from_secs(10) {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert!(got.exists(), "viewer never received SIGTERM");

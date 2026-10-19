@@ -11,7 +11,8 @@ The editor grows in milestones:
   Save As, and the viewer.
 - **18 (done):** editing spheres, cubes, planes, cylinders and cones (position, rotation, scale and a
   basic material), and point lights.
-- **19:** adding and deleting items, New and Open, and the camera.
+- **19 (done):** the viewer's image on quit, and the camera.
+- **20 (done):** New and Open, adding and deleting items, comments.
 
 ## Dependencies
 
@@ -19,7 +20,8 @@ The editor grows in milestones:
   saving.
 - `serde_json`: the inspector's JSON.
 - `iced` 0.14: the window and widgets.
-- `rfd`: the native Save panel, since iced has no file dialogs.
+- `rfd`: the native Save and Open panels and the unsaved-changes alert, since iced has no
+  file dialogs.
 
 The editor never uses Metal itself; it starts `rtc-metal` as a separate program. No Cargo
 workspace: the crate has its own `target/`, and the first build takes a minute or two.
@@ -29,6 +31,7 @@ workspace: the crate has its own `target/`, and the first build takes a minute o
 ```bash
 (cd ../rtc-metal && cargo build --release)    # the viewer
 cargo run --release -- ../rtc-metal/scenes/chapter15.json
+cargo run --release                           # no argument: a new scene
 cargo test                                    # no window needed
 cargo clippy --all-targets
 ```
@@ -101,13 +104,13 @@ letters only act with no modifier held, so Cmd-L stays Load.
 | editing | Enter or Esc | leave the box, shaded; Esc on a red box also puts the scene's value back |
 | anywhere | Tab, Shift-Tab | edit the next or previous box |
 | tree | a, then s c p y o l | add a sphere, cube, plane, cylinder, cone or light; any other key cancels |
-| tree | d d | delete the selected shape or light |
+| tree | d d or Cmd-Delete | delete the selected shape or light |
 
 ## Adding and deleting
 
 The button bar above the tree adds a sphere, cube, plane, cylinder, cone or light, and deletes
-the selected item. `a` then a letter does the same from the keyboard (`a` shows the letters in
-the status line), and `d d` deletes. They work with no box shaded or edited.
+the selected item (the Delete button). `a` then a letter does the same from the keyboard (`a` shows the letters in
+the status line), and `d d` or Cmd-Delete deletes. They work with no box shaded or edited.
 
 A new shape goes at the end of a selected group, else right after the selected shape; inside a
 CSG it goes after the CSG, whose two shapes are fixed. With nothing selected it goes at the end of

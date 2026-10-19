@@ -3,7 +3,8 @@
 //! (Cmd-S, and Cmd-Shift-S to save elsewhere with asset paths rebased).
 //! Cmd-R starts the viewer again after it was closed. Simple shapes,
 //! point lights and the camera are edited in fixed fields; Cmd-L loads the
-//! edits into the viewer.
+//! edits into the viewer. Cmd-N and Cmd-O start a new scene or open another,
+//! and shapes and lights are added and deleted from a button bar and keys.
 
 use iced::widget::operation;
 use iced::widget::{
@@ -396,6 +397,7 @@ impl Editor {
             _ => {}
         }
         match c {
+            DELETE if self.left.is_none() && self.editing.is_none() => self.delete_selected(),
             'h' => self.arrow(-1, 0),
             'l' => self.arrow(1, 0),
             'k' => self.arrow(0, -1),
@@ -637,6 +639,11 @@ fn dir_for(path: Option<&Path>) -> PathBuf {
     }
 }
 
+/// `Message::Key` for Cmd-Delete (Cmd-Backspace, or Cmd with forward Delete).
+const DELETE: char = '\u{7f}';
+/// `Message::Key` for a key that does nothing but cancel a wait for a second one.
+const OTHER: char = '\0';
+
 fn update(e: &mut Editor, message: Message) -> Task<Message> {
     // Anything but a key, Cmd or a focus answer ends a wait for a second key;
     // Esc only does that.
@@ -732,7 +739,8 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
 
 /// Cmd-S, Cmd-Shift-S, Cmd-N, Cmd-O, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
 /// has focus and takes the key itself; whether Cmd is held; Esc; the arrows,
-/// h/j/k/l, Enter and the letters a c d h i j k l o p s u x y that no box took; and clicks.
+/// h/j/k/l, Enter, Cmd-Delete and the letters a c d h i j k l o p s u x y that no
+/// box took, and any other such key as one that only cancels; and clicks.
 fn shortcut(
     event: iced::Event,
     status: iced::event::Status,
@@ -759,6 +767,11 @@ fn shortcut(
         }
         keyboard::Key::Named(Named::Tab) => return Some(Message::FocusNext),
         keyboard::Key::Named(Named::Escape) => return Some(Message::Escape(!ignored)),
+        keyboard::Key::Named(Named::Backspace | Named::Delete)
+            if ignored && modifiers == keyboard::Modifiers::COMMAND =>
+        {
+            return Some(Message::Key(DELETE));
+        }
         keyboard::Key::Named(named) if plain => {
             return match named {
                 Named::Enter => Some(Message::Enter),
@@ -766,14 +779,20 @@ fn shortcut(
                 Named::ArrowRight => Some(Message::Move(1, 0)),
                 Named::ArrowUp => Some(Message::Move(0, -1)),
                 Named::ArrowDown => Some(Message::Move(0, 1)),
-                _ => None,
+                Named::Shift | Named::Control | Named::Alt | Named::Super | Named::Meta => None,
+                // Any other key only cancels a wait for a second key.
+                _ => Some(Message::Key(OTHER)),
             };
         }
-        keyboard::Key::Character(c) if plain => {
+        keyboard::Key::Character(c) if ignored && !modifiers.command() => {
             return match c.as_str() {
                 "h" | "j" | "k" | "l" | "i" | "c" | "x" | "u" | "a" | "d" | "s" | "p" | "y"
-                | "o" => c.chars().next().map(Message::Key),
-                _ => None,
+                | "o"
+                    if modifiers.is_empty() =>
+                {
+                    c.chars().next().map(Message::Key)
+                }
+                _ => Some(Message::Key(OTHER)),
             };
         }
         keyboard::Key::Character(c) if modifiers.command() => c,

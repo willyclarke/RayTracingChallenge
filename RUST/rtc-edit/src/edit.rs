@@ -1,5 +1,5 @@
-//! Making a new scene and adding shapes and lights to one, as pure edits of
-//! a `SceneDescription`.
+//! Making a new scene, and adding and deleting shapes and lights, as pure
+//! edits of a `SceneDescription`, plus moving the tree's folds to follow them.
 
 use crate::tree::{Node, shape_at};
 use rtc_rust::scene::{
