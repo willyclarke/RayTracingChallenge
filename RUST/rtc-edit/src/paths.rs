@@ -144,6 +144,13 @@ pub fn dir_of(path: &Path) -> &Path {
     }
 }
 
+/// A scene's file name, or `untitled.json` for a scene with no file yet.
+pub fn scene_name(path: Option<&Path>) -> String {
+    path.and_then(Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "untitled.json".into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,5 +332,11 @@ mod tests {
     fn an_empty_folder_means_the_current_one() {
         assert_eq!(dir_of(Path::new("x.json")), Path::new("."));
         assert_eq!(dir_of(Path::new("a/x.json")), Path::new("a"));
+    }
+
+    #[test]
+    fn scene_name_is_the_file_name_or_untitled() {
+        assert_eq!(scene_name(Some(Path::new("a/b/c.json"))), "c.json");
+        assert_eq!(scene_name(None), "untitled.json");
     }
 }

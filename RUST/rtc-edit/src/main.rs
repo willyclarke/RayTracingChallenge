@@ -1,4 +1,4 @@
-//! rtc-edit: `rtc-edit <scene.json>` shows the scene as a tree, starts
+//! rtc-edit: `rtc-edit [scene.json]` shows the scene as a tree, starts
 //! `rtc-metal --window --watch` on a preview copy of it, and saves it
 //! (Cmd-S, and Cmd-Shift-S to save elsewhere with asset paths rebased).
 //! Cmd-R starts the viewer again after it was closed. Simple shapes,
@@ -10,16 +10,17 @@ use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Subscription, Task, keyboard};
-use rtc_edit::edit::{self, Item, ancestors};
+use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
-use rtc_edit::paths::{dir_of, rebase};
+use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, find};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -50,7 +51,8 @@ extern "C" fn clean_up() {
 }
 
 struct Editor {
-    path: PathBuf,
+    /// The scene's file; none for a new scene not yet saved.
+    path: Option<PathBuf>,
     desc: SceneDescription,
     folded: HashSet<Node>,
     selected: Option<Node>,
@@ -87,6 +89,8 @@ enum Message {
     Toggle(Node),
     Save,
     SaveAs,
+    New,
+    Open,
     ShowViewer,
     Edit(Field, String),
     /// Pasted text, which arrives while Cmd is held.
@@ -122,7 +126,7 @@ fn main() -> iced::Result {
     iced::application(boot, update, view)
         .title(|e: &Editor| {
             let mark = if e.unsaved { " •" } else { "" };
-            format!("rtc-edit — {}{mark}", file_name(&e.path))
+            format!("rtc-edit — {}{mark}", e.name())
         })
         .subscription(subscription)
         .window_size((900.0, 640.0))
@@ -136,25 +140,19 @@ fn file_name(path: &Path) -> String {
 }
 
 fn boot() -> Editor {
-    let Some(arg) = std::env::args().nth(1) else {
-        eprintln!("usage: rtc-edit <scene.json>");
-        std::process::exit(2);
-    };
-    let path = PathBuf::from(arg);
-    let desc = SceneDescription::from_path(&path).unwrap_or_else(|e| {
-        eprintln!("rtc-edit: {e}");
-        std::process::exit(1);
+    let loaded = std::env::args().nth(1).map(|arg| {
+        let path = PathBuf::from(arg);
+        let desc = SceneDescription::from_path(&path).unwrap_or_else(|e| {
+            eprintln!("rtc-edit: {e}");
+            std::process::exit(1);
+        });
+        (desc, path)
     });
     // SAFETY: registers a plain function with no arguments; it runs once, at exit.
     unsafe { atexit(clean_up) };
-    let preview = path
-        .file_name()
-        .ok_or_else(|| format!("{} names no file", path.display()))
-        .and_then(|name| Preview::new(&std::env::temp_dir(), name))
-        .and_then(|p| p.write(&desc, dir_of(&path)).map(|()| p));
     let mut editor = Editor {
-        path,
-        desc,
+        path: None,
+        desc: new_scene(),
         folded: HashSet::new(),
         selected: None,
         preview_error: None,
@@ -169,15 +167,124 @@ fn boot() -> Editor {
         removed_blur: None,
         pending: None,
     };
-    match preview {
-        Ok(p) => CHILDREN.lock().unwrap().preview = Some(p),
-        Err(e) => editor.preview_error = Some(e),
+    match loaded {
+        Some((desc, path)) => editor.switch(desc, Some(path)),
+        None => editor.switch(new_scene(), None),
     }
-    editor.show_viewer();
     editor
 }
 
 impl Editor {
+    /// The scene's file name, or `untitled.json`.
+    fn name(&self) -> String {
+        scene_name(self.path.as_deref())
+    }
+
+    /// The scene's file as an absolute path, `..` resolved where it exists;
+    /// `None` for an untitled scene.
+    fn full_path(&self) -> Option<PathBuf> {
+        let path = self.path.as_deref()?;
+        Some(path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
+    }
+
+    /// The status after a save: where the file went, in full.
+    fn saved(&self) -> String {
+        let path = self.full_path().unwrap_or_default();
+        self.warn(format!("saved {}", path.display()))
+    }
+
+    /// The scene's folder, or the working directory for an untitled scene.
+    fn dir(&self) -> PathBuf {
+        dir_for(self.path.as_deref())
+    }
+
+    /// Replace the scene: the old viewer ends (and offers its image), the old
+    /// preview goes, and a preview and viewer start on `desc`.
+    fn switch(&mut self, desc: SceneDescription, path: Option<PathBuf>) {
+        {
+            let mut children = CHILDREN.lock().unwrap();
+            children.viewer = None;
+            children.preview = None;
+            let name = scene_name(path.as_deref());
+            let preview = Preview::new(&std::env::temp_dir(), OsStr::new(&name))
+                .and_then(|p| p.write(&desc, &dir_for(path.as_deref())).map(|()| p));
+            self.preview_error = None;
+            match preview {
+                Ok(p) => children.preview = Some(p),
+                Err(e) => self.preview_error = Some(e),
+            }
+        }
+        self.desc = desc;
+        self.path = path;
+        self.folded.clear();
+        self.selected = None;
+        self.texts.clear();
+        self.errors.clear();
+        self.left = None;
+        self.editing = None;
+        self.removed_blur = None;
+        self.pending = None;
+        self.unsaved = false;
+        self.unloaded = false;
+        self.show_viewer();
+    }
+
+    /// Before New or Open: true when the scene has no unsaved edits, or they
+    /// were saved or given up; false when the user cancelled or saving failed.
+    fn ask_unsaved(&mut self) -> bool {
+        if !self.unsaved {
+            return true;
+        }
+        let mut question = format!("Save changes to {}?", self.name());
+        if let Some(path) = self.full_path() {
+            question += &format!("\n\nin {}", dir_of(&path).display());
+        }
+        let answer = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Warning)
+            .set_description(question)
+            .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
+                "Save".into(),
+                "Don't Save".into(),
+                "Cancel".into(),
+            ))
+            .show();
+        // The key-up of Cmd went to the alert.
+        self.command = false;
+        match answer {
+            rfd::MessageDialogResult::Custom(s) if s == "Save" => {}
+            rfd::MessageDialogResult::Yes => {}
+            rfd::MessageDialogResult::Custom(s) if s == "Don't Save" => return true,
+            rfd::MessageDialogResult::No => return true,
+            _ => return false,
+        }
+        self.save();
+        !self.unsaved
+    }
+
+    /// Cmd-N.
+    fn new_file(&mut self) {
+        if self.ask_unsaved() {
+            self.switch(new_scene(), None);
+        }
+    }
+
+    /// Cmd-O.
+    fn open(&mut self) {
+        if !self.ask_unsaved() {
+            return;
+        }
+        let picked = rfd::FileDialog::new()
+            .set_directory(self.dir())
+            .add_filter("scene", &["json"])
+            .pick_file();
+        self.command = false;
+        let Some(path) = picked else { return };
+        match SceneDescription::from_path(&path) {
+            Ok(desc) => self.switch(desc, Some(path)),
+            Err(e) => self.status = format!("{}: {e}", file_name(&path)),
+        }
+    }
+
     /// Start the viewer unless it is still open.
     fn show_viewer(&mut self) {
         let mut children = CHILDREN.lock().unwrap();
@@ -385,7 +492,7 @@ impl Editor {
             self.status = format!("no preview file: {e}");
             return;
         };
-        self.status = match preview.write(&self.desc, dir_of(&self.path)) {
+        self.status = match preview.write(&self.desc, &self.dir()) {
             Ok(()) => {
                 self.unloaded = false;
                 self.warn("loaded into viewer".into())
@@ -395,10 +502,14 @@ impl Editor {
     }
 
     fn save(&mut self) {
-        self.status = match self.desc.save(&self.path) {
+        let Some(path) = &self.path else {
+            self.save_as();
+            return;
+        };
+        self.status = match self.desc.save(path) {
             Ok(()) => {
                 self.unsaved = false;
-                self.warn(format!("saved {}", file_name(&self.path)))
+                self.saved()
             }
             Err(e) => e.to_string(),
         };
@@ -484,29 +595,45 @@ impl Editor {
         }
     }
 
-    fn save_as(&mut self) {
-        let Some(new) = rfd::FileDialog::new()
-            .set_directory(dir_of(&self.path))
-            .set_file_name(file_name(&self.path))
+    /// Ask where to save, rebasing asset paths; true when it saved.
+    fn save_as(&mut self) -> bool {
+        let dir = self.dir();
+        let picked = rfd::FileDialog::new()
+            .set_directory(&dir)
+            .set_file_name(self.name())
             .add_filter("scene", &["json"])
-            .save_file()
-        else {
-            return;
+            .save_file();
+        // The key-up of Cmd went to the dialog.
+        self.command = false;
+        let Some(new) = picked else {
+            return false;
         };
         let mut desc = self.desc.clone();
-        let saved = rebase(&mut desc, dir_of(&self.path), dir_of(&new))
+        let saved = rebase(&mut desc, &dir, dir_of(&new))
             .and_then(|()| desc.save(&new).map_err(|e| e.to_string()));
-        self.status = match saved {
+        match saved {
             Ok(()) => {
                 self.desc = desc;
-                self.path = new;
+                self.path = Some(new);
                 self.unsaved = false;
                 // Rebasing touches only asset paths, which have no boxes,
                 // so the boxes and any red text stay as they are.
-                self.warn(format!("saved {}", file_name(&self.path)))
+                self.status = self.saved();
+                true
             }
-            Err(e) => e,
-        };
+            Err(e) => {
+                self.status = e;
+                false
+            }
+        }
+    }
+}
+
+/// `path`'s folder, or the working directory for a scene with no file.
+fn dir_for(path: Option<&Path>) -> PathBuf {
+    match path {
+        Some(p) => dir_of(p).to_path_buf(),
+        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
     }
 }
 
@@ -533,7 +660,11 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
             }
         }
         Message::Save => e.save(),
-        Message::SaveAs => e.save_as(),
+        Message::SaveAs => {
+            e.save_as();
+        }
+        Message::New => e.new_file(),
+        Message::Open => e.open(),
         Message::ShowViewer => e.show_viewer(),
         Message::Edit(field, value) => {
             // A focused box also takes Cmd-L's `l` as typing, over any
@@ -599,7 +730,7 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
     Task::none()
 }
 
-/// Cmd-S, Cmd-Shift-S, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
+/// Cmd-S, Cmd-Shift-S, Cmd-N, Cmd-O, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
 /// has focus and takes the key itself; whether Cmd is held; Esc; the arrows,
 /// h/j/k/l, Enter and the letters a c d h i j k l o p s u x y that no box took; and clicks.
 fn shortcut(
@@ -651,6 +782,8 @@ fn shortcut(
     match c.to_lowercase().as_str() {
         "s" if modifiers.shift() => Some(Message::SaveAs),
         "s" => Some(Message::Save),
+        "n" => Some(Message::New),
+        "o" => Some(Message::Open),
         "r" => Some(Message::ShowViewer),
         "l" => Some(Message::Load),
         _ => None,

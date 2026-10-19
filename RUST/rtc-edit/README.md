@@ -39,10 +39,19 @@ works and the status line says where it looked.
 
 | key | does |
 |---|---|
-| Cmd-S | save the scene |
+| Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
+| Cmd-O | open another scene (a `.json` file) |
+| Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
 | Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
 | Cmd-L | load the edits into the viewer |
 | Cmd-R | start the viewer again after closing it |
+
+`rtc-edit` with no argument starts with a new scene. Cmd-N and Cmd-O replace the scene; with
+unsaved edits (the ` •`) an alert first asks `Save changes to <name>?` with Save, Don't Save and
+Cancel. Cancel, or a Save that fails or whose Save As is cancelled, keeps the scene and its
+edits. A file that doesn't load leaves the scene as it is, and the status line says why. On a
+switch the old viewer gets SIGTERM, so it offers to save its image, and a new viewer opens on the
+new scene.
 
 ## Editing
 
