@@ -136,3 +136,29 @@
 - [ ] **Step 7: Run** `cargo test --lib`, `cargo clippy --all-targets`, `cargo build --release` (and `cargo build --release` in `RUST/rtc-metal`). Expected: pass, clean.
 - [ ] **Step 8: Stop for the by-eye check** (report; do not commit). The user checks: `cargo run --release` with no argument shows the new scene and the viewer renders the floor; Cmd-S asks where to save; with an edit, Cmd-O shows the alert — Cancel keeps everything, Don't Save switches, the old viewer offers its image and a new viewer opens; Save on an untitled scene then cancelling Save As keeps the scene; opening `rtc-metal/scenes/chapter15.json` renders its teapot; Cmd-N gives `untitled.json`; Cmd-S/Cmd-L still work after a dialog.
 - [ ] **Step 9: Commit when told** `ENHANCEMENT: rtc-edit starts new scenes and opens others, asking to save edits first (milestone 20)`.
+
+### Task 5: a comment box for shapes
+
+Spec: the amendment "a comment box (Task 5, 2026-10-19)".
+
+**Files:**
+- Modify: `RUST/rtc-edit/src/fields.rs`, `RUST/rtc-edit/src/main.rs`, `RUST/rtc-edit/README.md`
+
+**Interfaces:**
+- Consumes: `fields::{Field, fields, set}`, `main.rs`'s `describe` and `boxes`.
+- Produces: `Field::Comment`.
+
+- [ ] **Step 1: Write the failing tests** in `fields.rs`:
+  - `a_shape_lists_its_comment_first`: a sphere with `"comment": "ball"` → `fields(..)[0] == (Field::Comment, "ball")`; one without → `(Field::Comment, "")`.
+  - `a_group_and_a_csg_list_only_a_comment_box`: `fields` of a group and of a CSG → `vec![(Field::Comment, …)]`.
+  - `a_non_string_comment_gets_no_box`: a sphere with `"comment": ["a", "b"]` → no `Field::Comment` in `fields`.
+  - `typing_a_comment_sets_it`: `set(.., Field::Comment, "red ball")` → `comment == Some(json!("red ball"))`; on a group as well.
+  - `an_empty_comment_removes_it`: `""` and `"   "` → `comment == None`, and the saved JSON has no `comment` key.
+  - `lights_and_the_camera_have_no_comment_box`.
+- [ ] **Step 2: Run** `cargo test --lib fields`. Expected: FAIL (`Field::Comment` missing).
+- [ ] **Step 3: Implement** `Field::Comment`: `fields` puts it first for every shape whose comment is a string or absent (non-editable shapes get only it); `set` handles it before `parse`, for any shape, storing the text as typed, removing the key when the text trims empty.
+- [ ] **Step 4: The box.** `describe(Comment)` → no heading, row label `comment`; `boxes` draws it about 248 wide (three 80-wide boxes and their spacing) and not monospace. Check that paste, Submit, Esc/u reset and `next_box` treat it like any box, and that nothing numeric (e.g. the paste filter, if any) rejects its text.
+- [ ] **Step 5: README**: the comment box and that the tree shows it.
+- [ ] **Step 6: Run** `cargo test --lib`, `cargo clippy --all-targets`, `cargo fmt`, `cargo build --release`. Expected: pass, clean.
+- [ ] **Step 7: Stop for the by-eye check** (report; do not commit). The user checks: `a s`, then type a comment: the row shows `sphere — <comment>`; Cmd-S writes it; emptying it removes it; a group in `chapter16.json` shows a comment box alone; arrows and h/j/k/l reach the box.
+- [ ] **Step 8: Commit when told** `ENHANCEMENT: rtc-edit edits a shape's comment, which labels its row (milestone 20)`.

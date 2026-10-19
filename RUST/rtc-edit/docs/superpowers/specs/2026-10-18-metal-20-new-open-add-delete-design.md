@@ -187,3 +187,23 @@ By eye:
   the editor's state. Checked by eye.
 - **Two viewers on screen** during a switch: the old one waits for its
   image answer while the new one starts.
+
+## Amendment: a comment box (Task 5, 2026-10-19)
+
+The user found added shapes hard to tell apart in the tree: rows from a
+file show `<type> — <comment>`, an added shape only its type, and the
+editor had no way to set `comment`.
+
+- **Every shape gets a comment box**, groups, CSGs, OBJ files and tori
+  included; for those it is their only box. It sits above the first
+  heading, labelled `comment`, with no heading of its own, about as wide
+  as a row of three number boxes.
+- **The text is stored as typed** as the shape's `comment` string; a box
+  that is empty or only spaces removes the key. The tree row shows the
+  new label at once, as other edits show at once.
+- **A comment that isn't a string** (an array, say) gets no box, so it is
+  never overwritten; it stays editable in the JSON file by hand.
+- Lights and the camera get no comment box; their rows don't show one.
+- The arrows, h/j/k/l, Tab, Enter, i/c/x/u, Esc and the red-box rules
+  work on it as on any box; a comment is never red, since any text is
+  valid.
