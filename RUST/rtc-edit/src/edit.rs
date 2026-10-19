@@ -219,6 +219,20 @@ pub fn delete(desc: &mut SceneDescription, node: &Node) -> Result<Node, String> 
     }
 }
 
+/// The nodes that must be unfolded for `node` to show: its enclosing groups
+/// and the `Shapes` or `Lights` heading.
+pub fn ancestors(node: &Node) -> Vec<Node> {
+    match node {
+        Node::Light(_) => vec![Node::Lights],
+        Node::Shape(p) => {
+            let mut out = vec![Node::Shapes];
+            out.extend((1..p.len()).map(|n| Node::Shape(p[..n].to_vec())));
+            out
+        }
+        _ => vec![],
+    }
+}
+
 /// Moves the folded shapes after an insert at `at` (`by = 1`) or a delete at
 /// `at` (`by = -1`): the later siblings, and what is inside them, change
 /// index. The folds of a deleted shape and of what was inside it go.
@@ -273,6 +287,16 @@ mod tests {
     use super::*;
     use serde_json::json;
     use std::path::Path;
+
+    #[test]
+    fn ancestors_lists_what_hides_a_node() {
+        assert_eq!(ancestors(&Node::Light(2)), vec![Node::Lights]);
+        assert_eq!(
+            ancestors(&Node::Shape(vec![1, 0, 3])),
+            vec![Node::Shapes, Node::Shape(vec![1]), Node::Shape(vec![1, 0])]
+        );
+        assert!(ancestors(&Node::Camera).is_empty());
+    }
 
     fn scene() -> SceneDescription {
         let v = json!({

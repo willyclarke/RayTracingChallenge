@@ -87,6 +87,25 @@ letters only act with no modifier held, so Cmd-L stays Load.
 | shaded box | Esc | back to the tree |
 | editing | Enter or Esc | leave the box, shaded; Esc on a red box also puts the scene's value back |
 | anywhere | Tab, Shift-Tab | edit the next or previous box |
+| tree | a, then s c p y o l | add a sphere, cube, plane, cylinder, cone or light; any other key cancels |
+| tree | d d | delete the selected shape or light |
+
+## Adding and deleting
+
+The button bar above the tree adds a sphere, cube, plane, cylinder, cone or light, and deletes
+the selected item. `a` then a letter does the same from the keyboard (`a` shows the letters in
+the status line), and `d d` deletes. They work with no box shaded or edited.
+
+A new shape goes at the end of a selected group, else right after the selected shape; inside a
+CSG it goes after the CSG, whose two shapes are fixed. With nothing selected it goes at the end of
+the scene. A new light goes at the end of the lights. The new item is selected, and the groups
+that hide it unfold. Deleting selects the next row.
+
+Two deletes are refused, with the reason in the status line: a shape directly inside a CSG (a
+CSG needs both its shapes) and the last light (a scene needs a light). The camera, settings and
+headings can't be deleted.
+
+There is no undo: to go back, open the file again and choose Don't Save.
 
 Clicking a box edits it. The tree doesn't scroll to follow the keys.
 

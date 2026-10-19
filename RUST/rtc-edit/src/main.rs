@@ -10,6 +10,7 @@ use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Subscription, Task, keyboard};
+use rtc_edit::edit::{self, Item, ancestors};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
@@ -75,6 +76,9 @@ struct Editor {
     /// The focal blur that emptying the selected camera's f-number removed,
     /// so retyping one brings its focal distance and samples back.
     removed_blur: Option<FocalBlur>,
+    /// A key waiting for its second: `a` for the item to add, `d` for a
+    /// second `d` that deletes.
+    pending: Option<char>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,12 +98,16 @@ enum Message {
     /// Tab and Shift-Tab.
     FocusNext,
     FocusPrevious,
-    /// An arrow or h/j/k/l no box took: right and down, each -1, 0 or 1.
+    /// An arrow no box took: right and down, each -1, 0 or 1.
     Move(isize, isize),
     /// Enter no box took.
     Enter,
-    /// i, c or x no box took.
-    Letter(char),
+    /// A plain character no box took: h j k l i c x u a d s p y o.
+    Key(char),
+    /// Add an item next to the selected one.
+    Add(Item),
+    /// Delete the selected item.
+    Delete,
     /// Esc; `true` when a box took it and lost focus.
     Escape(bool),
     /// A click; `true` when a widget took it, such as a box it focused.
@@ -159,6 +167,7 @@ fn boot() -> Editor {
         left: None,
         editing: None,
         removed_blur: None,
+        pending: None,
     };
     match preview {
         Ok(p) => CHILDREN.lock().unwrap().preview = Some(p),
@@ -260,7 +269,82 @@ impl Editor {
         }
     }
 
-    /// i, c or x on the shaded box.
+    /// A plain character no box took: the second key of `a` or `d`, else a
+    /// move, a letter for the shaded box, or the first key of `a` or `d`.
+    fn key(&mut self, c: char) -> Task<Message> {
+        match self.pending.take() {
+            Some('a') => {
+                match Item::from_key(c) {
+                    Some(item) => self.add_item(item),
+                    None => self.status.clear(),
+                }
+                return Task::none();
+            }
+            Some('d') => {
+                if c == 'd' {
+                    self.delete_selected();
+                }
+                return Task::none();
+            }
+            _ => {}
+        }
+        match c {
+            'h' => self.arrow(-1, 0),
+            'l' => self.arrow(1, 0),
+            'k' => self.arrow(0, -1),
+            'j' => self.arrow(0, 1),
+            'i' | 'c' | 'x' | 'u' => return self.letter(c),
+            'a' | 'd' if self.left.is_none() && self.editing.is_none() => {
+                if c == 'a' {
+                    self.pending = Some('a');
+                    self.status =
+                        "add: s sphere  c cube  p plane  y cylinder  o cone  l light".into();
+                } else if self.selected.is_some() {
+                    self.pending = Some('d');
+                }
+            }
+            _ => {}
+        }
+        Task::none()
+    }
+
+    /// Add `item` next to the selected one and select it, unfolding what
+    /// hides it.
+    fn add_item(&mut self, item: Item) {
+        let node = edit::add(&mut self.desc, self.selected.as_ref(), item);
+        if let Node::Shape(p) = &node {
+            rtc_edit::edit::shift(&mut self.folded, p, 1);
+        }
+        for a in ancestors(&node) {
+            self.folded.remove(&a);
+        }
+        self.select(node);
+        self.status.clear();
+        self.unsaved = true;
+        self.unloaded = true;
+    }
+
+    /// Delete the selected item and select the one that takes its place, or
+    /// say why it can't go.
+    fn delete_selected(&mut self) {
+        let Some(node) = self.selected.clone() else {
+            return;
+        };
+        match edit::delete(&mut self.desc, &node) {
+            Ok(next) => {
+                if let Node::Shape(p) = &node {
+                    rtc_edit::edit::shift(&mut self.folded, p, -1);
+                }
+                self.select(next);
+                self.status.clear();
+                self.unsaved = true;
+                self.unloaded = true;
+            }
+            Err(reason) => self.status = reason,
+        }
+    }
+
+    /// i, c, x or u on the shaded box.
     fn letter(&mut self, c: char) -> Task<Message> {
         let (Some(field), Some(node)) = (self.left, &self.selected) else {
             return Task::none();
@@ -427,6 +511,20 @@ impl Editor {
 }
 
 fn update(e: &mut Editor, message: Message) -> Task<Message> {
+    // Anything but a key, Cmd or a focus answer ends a wait for a second key;
+    // Esc only does that.
+    if !matches!(
+        message,
+        Message::Key(_) | Message::Command(_) | Message::Focused(..)
+    ) && let Some(waiting) = e.pending.take()
+    {
+        if waiting == 'a' {
+            e.status.clear();
+        }
+        if matches!(message, Message::Escape(_)) {
+            return Task::none();
+        }
+    }
     match message {
         Message::Select(node) => e.select(node),
         Message::Toggle(node) => {
@@ -471,7 +569,9 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
                 e.left = e.order().first().copied();
             }
         }
-        Message::Letter(c) => return e.letter(c),
+        Message::Key(c) => return e.key(c),
+        Message::Add(item) => e.add_item(item),
+        Message::Delete => e.delete_selected(),
         Message::Escape(true) => {
             if let Some(field) = e.editing.filter(|f| e.errors.contains_key(f)) {
                 e.reset(field);
@@ -501,7 +601,7 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
 
 /// Cmd-S, Cmd-Shift-S, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
 /// has focus and takes the key itself; whether Cmd is held; Esc; the arrows,
-/// h/j/k/l, Enter, i, c, x and u that no box took; and clicks.
+/// h/j/k/l, Enter and the letters a c d h i j k l o p s u x y that no box took; and clicks.
 fn shortcut(
     event: iced::Event,
     status: iced::event::Status,
@@ -540,11 +640,8 @@ fn shortcut(
         }
         keyboard::Key::Character(c) if plain => {
             return match c.as_str() {
-                "h" => Some(Message::Move(-1, 0)),
-                "l" => Some(Message::Move(1, 0)),
-                "k" => Some(Message::Move(0, -1)),
-                "j" => Some(Message::Move(0, 1)),
-                "i" | "c" | "x" | "u" => c.chars().next().map(Message::Letter),
+                "h" | "j" | "k" | "l" | "i" | "c" | "x" | "u" | "a" | "d" | "s" | "p" | "y"
+                | "o" => c.chars().next().map(Message::Key),
                 _ => None,
             };
         }
@@ -599,7 +696,31 @@ fn view(e: &Editor) -> Element<'_, Message> {
         .into(),
         None => text("select an item").into(),
     };
+    let can_delete = e
+        .selected
+        .as_ref()
+        .is_some_and(|n| edit::can_delete(&e.desc, n).is_ok());
+    let add = |label: &'static str, item| {
+        button(text(label).size(13))
+            .on_press(Message::Add(item))
+            .padding([2, 8])
+    };
+    let bar = row![
+        add("+ sphere", Item::Sphere),
+        add("+ cube", Item::Cube),
+        add("+ plane", Item::Plane),
+        add("+ cylinder", Item::Cylinder),
+        add("+ cone", Item::Cone),
+        add("+ light", Item::Light),
+        space::horizontal(),
+        button(text("Delete").size(13))
+            .on_press_maybe(can_delete.then_some(Message::Delete))
+            .padding([2, 8])
+            .style(button::danger),
+    ]
+    .spacing(4);
     column![
+        container(bar).padding([4, 8]),
         row![
             container(scrollable(tree)).width(260).padding(8),
             container(scrollable(inspector).width(Length::Fill))
