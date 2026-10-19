@@ -908,9 +908,13 @@ fn boxes<'a>(e: &'a Editor, node: &Node) -> Element<'a, Message> {
             .on_paste(move |s| Message::Paste(field, s))
             .on_submit(Message::Submit(field))
             .id(box_id(field))
-            .font(Font::MONOSPACE)
-            .size(13)
-            .width(80);
+            .size(13);
+        // A comment is free text, wide as a row of three number boxes.
+        let input = if field == Field::Comment {
+            input.width(248)
+        } else {
+            input.font(Font::MONOSPACE).width(80)
+        };
         let error = e.errors.contains_key(&field);
         let marked = e.left == Some(field);
         let input = input.style(move |theme: &iced::Theme, status| {
@@ -949,6 +953,7 @@ fn closed_box<'a>(e: &Editor, node: &Node) -> Element<'a, Message> {
 fn describe(field: Field, bounds: &'static str) -> (&'static str, &'static str, Option<usize>) {
     use Field::*;
     match field {
+        Comment => ("", "comment", None),
         Position(a) => ("Transform", "position", Some(a)),
         Rotation(a) => ("Transform", "rotation°", Some(a)),
         Scale(a) => ("Transform", "scale", Some(a)),

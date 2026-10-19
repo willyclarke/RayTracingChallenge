@@ -62,6 +62,10 @@ get min, max and closed; point lights get position and intensity; the camera get
 field of view (in degrees), width, height, antialias n and focal blur. Everything else is shown
 read-only in the JSON below the boxes, and saved unchanged.
 
+Every shape, groups, CSGs and OBJ files included, also gets a `comment` box above the other
+boxes (alone, for those that have no others). The tree row shows it as `<type> — <comment>`. An
+empty box removes the comment; a comment that isn't text gets no box and stays as it is.
+
 - The camera's n only matters to rtc-rust renders, as rtc-metal's progressive rendering
   antialiases anyway. An empty n removes antialias.
 - Focal blur is set by an f-number, as on a camera: a bigger one is sharper. Typing one creates
