@@ -328,6 +328,49 @@ fn window_size(width: usize, height: usize, scale: f64, room: Option<NSSize>) ->
     NSSize::new(w * fit, h * fit)
 }
 
+/// The narrowest room beside the editor worth placing the window in;
+/// with less, the window is centred.
+const MIN_ROOM: f64 = 200.0;
+
+/// `--at X,Y`: two finite numbers.
+pub fn parse_at(s: &str) -> Option<(f64, f64)> {
+    let (x, y) = s.split_once(',')?;
+    let (x, y) = (x.parse::<f64>().ok()?, y.parse::<f64>().ok()?);
+    (x.is_finite() && y.is_finite()).then_some((x, y))
+}
+
+/// Where a window whose frame's top-left is `at` goes: `at` is in points,
+/// right and down from the top-left of the main screen (`main_height`
+/// tall). `screens` are each screen's frame and visible frame. Gives the
+/// top-left in AppKit's coordinates, moved down below the menu bar if
+/// above it, and the room the frame has to the visible right and bottom
+/// edges; `None` when no screen holds the point or the room is narrower
+/// than `MIN_ROOM`.
+pub fn place(
+    at: (f64, f64),
+    main_height: f64,
+    screens: &[(NSRect, NSRect)],
+) -> Option<(NSPoint, NSSize)> {
+    let (x, y) = (at.0, main_height - at.1);
+    let (_, visible) = screens.iter().find(|(frame, _)| {
+        let (min, max) = (frame.origin, frame.origin.x + frame.size.width);
+        (min.x..=max).contains(&x) && (min.y..=min.y + frame.size.height).contains(&y)
+    })?;
+    let top = y.min(visible.origin.y + visible.size.height);
+    let top_left = NSPoint::new(x, top);
+    let room = room_from(top_left, *visible);
+    (room.width >= MIN_ROOM).then_some((top_left, room))
+}
+
+/// The room from a window frame's top-left (AppKit coordinates) to the
+/// right and bottom edges of `visible`.
+pub fn room_from(top_left: NSPoint, visible: NSRect) -> NSSize {
+    NSSize::new(
+        visible.origin.x + visible.size.width - top_left.x,
+        top_left.y - visible.origin.y,
+    )
+}
+
 /// The overlay's and title's text.
 fn status(
     name: &str,
@@ -587,16 +630,21 @@ impl RtcView {
         let (reloaded, resize) = reloaded;
         if let (Some((w, h)), Some(window)) = (resize, self.window()) {
             let scale = window.backingScaleFactor();
+            // The window keeps its top-left; AppKit's resize keeps the
+            // bottom-left.
+            let frame = window.frame();
+            let top_left = NSPoint::new(frame.origin.x, frame.origin.y + frame.size.height);
             let room = window.screen().map(|screen| {
-                let style = window.styleMask();
+                let room = room_from(top_left, screen.visibleFrame());
                 NSWindow::contentRectForFrameRect_styleMask(
-                    screen.visibleFrame(),
-                    style,
+                    NSRect::new(NSPoint::new(0.0, 0.0), room),
+                    window.styleMask(),
                     MainThreadMarker::from(self),
                 )
                 .size
             });
             window.setContentSize(window_size(w, h, scale, room));
+            window.setFrameTopLeftPoint(top_left);
         }
         if reloaded {
             self.resume();
@@ -782,6 +830,7 @@ pub fn run(
     samples: u32,
     title: String,
     watch: Option<Watch>,
+    at: Option<(f64, f64)>,
     save: Save,
     on_close: OnClose,
 ) -> ! {
@@ -836,9 +885,28 @@ pub fn run(
         | NSWindowStyleMask::Resizable;
     let screen = NSScreen::mainScreen(mtm);
     let scale = screen.as_ref().map_or(1.0, |s| s.backingScaleFactor());
-    let room = screen.map(|screen| {
-        NSWindow::contentRectForFrameRect_styleMask(screen.visibleFrame(), style, mtm).size
+    // With `--at`, the room right of that point on its screen; else the
+    // main screen's.
+    let placed = at.zip(screen.as_ref()).and_then(|(at, main)| {
+        let screens: Vec<_> = NSScreen::screens(mtm)
+            .iter()
+            .map(|s| (s.frame(), s.visibleFrame()))
+            .collect();
+        place(at, main.frame().size.height, &screens)
     });
+    let room = match placed {
+        Some((_, room)) => Some(
+            NSWindow::contentRectForFrameRect_styleMask(
+                NSRect::new(NSPoint::new(0.0, 0.0), room),
+                style,
+                mtm,
+            )
+            .size,
+        ),
+        None => screen.map(|screen| {
+            NSWindow::contentRectForFrameRect_styleMask(screen.visibleFrame(), style, mtm).size
+        }),
+    };
     let frame = NSRect::new(
         NSPoint::new(0.0, 0.0),
         window_size(width as usize, height as usize, scale, room),
@@ -885,7 +953,10 @@ pub fn run(
     window.setTitle(&NSString::from_str(&title));
     window.setContentView(Some(&view));
     window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenPrimary);
-    window.center();
+    match placed {
+        Some((top_left, _)) => window.setFrameTopLeftPoint(top_left),
+        None => window.center(),
+    }
     window.makeKeyAndOrderFront(None);
     window.makeFirstResponder(Some(&view));
     app.activate(); // needs macOS 14+ (older: activateIgnoringOtherApps)
@@ -1264,6 +1335,71 @@ mod tests {
         r.reload(&desc, Path::new("scenes"))?;
         assert_eq!(r.resize, None);
         Ok(())
+    }
+
+    #[test]
+    fn parse_at_reads_two_numbers() {
+        assert_eq!(parse_at("900,0"), Some((900.0, 0.0)));
+        assert_eq!(parse_at("-1440,12.5"), Some((-1440.0, 12.5)));
+    }
+
+    #[test]
+    fn parse_at_rejects_bad_values() {
+        for bad in ["5", "a,b", "1,2,3", "inf,0", "NaN,0", ""] {
+            assert_eq!(parse_at(bad), None, "{bad}");
+        }
+    }
+
+    /// A 1440x900 main screen with a 25-point menu bar.
+    fn main_screen() -> (NSRect, NSRect) {
+        (
+            NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1440.0, 900.0)),
+            NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1440.0, 875.0)),
+        )
+    }
+
+    #[test]
+    fn place_puts_the_window_right_of_the_point() {
+        assert_eq!(
+            place((900.0, 30.0), 900.0, &[main_screen()]),
+            Some((NSPoint::new(900.0, 870.0), NSSize::new(540.0, 870.0)))
+        );
+    }
+
+    #[test]
+    fn place_moves_a_point_under_the_menu_bar_down() {
+        assert_eq!(
+            place((900.0, 0.0), 900.0, &[main_screen()]),
+            Some((NSPoint::new(900.0, 875.0), NSSize::new(540.0, 875.0)))
+        );
+    }
+
+    #[test]
+    fn place_finds_the_screen_holding_the_point() {
+        let left = NSRect::new(NSPoint::new(-1280.0, 0.0), NSSize::new(1280.0, 1024.0));
+        assert_eq!(
+            place((-380.0, 0.0), 900.0, &[main_screen(), (left, left)]),
+            Some((NSPoint::new(-380.0, 900.0), NSSize::new(380.0, 900.0)))
+        );
+    }
+
+    #[test]
+    fn place_gives_none_without_200_points_of_room() {
+        assert_eq!(place((1300.0, 30.0), 900.0, &[main_screen()]), None);
+        assert!(place((1240.0, 30.0), 900.0, &[main_screen()]).is_some());
+    }
+
+    #[test]
+    fn place_gives_none_off_every_screen() {
+        assert_eq!(place((5000.0, 30.0), 900.0, &[main_screen()]), None);
+    }
+
+    #[test]
+    fn room_from_measures_to_the_visible_right_and_bottom() {
+        assert_eq!(
+            room_from(NSPoint::new(100.0, 800.0), main_screen().1),
+            NSSize::new(1340.0, 800.0)
+        );
     }
 
     #[test]

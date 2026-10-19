@@ -31,6 +31,7 @@ cargo run --release -- scenes/chapter15.json                    # → chapter15.
 cargo run --release -- scenes/soft_shadows.json --samples 256   # average 256 sampled frames
 cargo run --release -- scenes/cornell_three_lights.json --window
 cargo run --release -- my_scene.json --window --watch            # reload when the file changes
+cargo run --release -- scenes/chapter10.json --window --at 900,0 # window's top-left at x 900
 cargo run --release -- scenes/chapter15.json --traversal metal  # Metal's ray tracing API
 cargo run --release -- --help
 ```
@@ -50,10 +51,15 @@ cargo run --release -- --help
     directory); with `-o` it writes there without asking;
   - with `--watch`, the window reloads the scene whenever its file changes and refines it
     again, keeping your view unless the camera changed in more than width and height. A new width or
-    height in the file resizes the window (fitted to the screen, as at start-up) and keeps your
-    view. A file that doesn't load
+    height in the file resizes the window, keeping its top-left corner and fitted to the room
+    from there to the screen's right and bottom edges, and keeps your view. A file that doesn't load
     keeps the old image, and the overlay shows why. The scene editor
     [rtc-edit](../rtc-edit/README.md) uses this as its viewer.
+  - with `--at X,Y`, the window's top-left goes at that point, in points right and down from
+    the main screen's top-left (moved below the menu bar if needed), and the image is fitted
+    to the room right of it on that screen; with less than 200 points of room, or off every
+    screen, the window is centred as without `--at`. rtc-edit uses this to put its viewer
+    beside itself.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.
 
