@@ -1,7 +1,7 @@
 //! rtc-metal: render on the GPU via Metal, write PPM through rtc-rust's Canvas.
 //!
-//! Usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch] [--at X,Y]]
-//!                  [--traversal bvh|metal]
+//! Usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch] [--at X,Y]
+//!                  [--share PATH]] [--traversal bvh|metal]
 //!
 //! With a scene, renders it (scene format: rtc-rust's README); without one,
 //! writes the milestone 1 test gradient. `--samples N` averages N sampled
@@ -15,7 +15,9 @@
 //! asks whether to save it. With
 //! `--watch` the window reloads the scene whenever its file changes (a scene
 //! editor, or a text editor, saves it) and refines it again; a file that
-//! doesn't load keeps the old image and shows why. `--traversal metal` searches the bounded
+//! doesn't load keeps the old image and shows why. `--share PATH` writes the
+//! window's camera to a file made by the scene editor (rtc-share) whenever
+//! it changes. `--traversal metal` searches the bounded
 //! shapes with Metal's ray tracing API instead of the BVH walk
 //! (milestone 10).
 
@@ -43,6 +45,7 @@ fn main() {
     let mut window = false;
     let mut watch = false;
     let mut at = None;
+    let mut share = None;
     let mut traversal = TRAVERSAL_BVH;
     let mut i = 0;
     while i < args.len() {
@@ -63,6 +66,10 @@ fn main() {
                 at = Some(xy.unwrap_or_else(|| usage()));
                 i += 1;
             }
+            "--share" => {
+                share = Some(args.get(i + 1).cloned().unwrap_or_else(|| usage()));
+                i += 1;
+            }
             "--traversal" => {
                 traversal = match args.get(i + 1).map(String::as_str) {
                     Some("bvh") => TRAVERSAL_BVH,
@@ -77,7 +84,7 @@ fn main() {
         i += 1;
     }
 
-    if (watch || at.is_some()) && !window {
+    if (watch || at.is_some() || share.is_some()) && !window {
         usage();
     }
 
@@ -95,6 +102,7 @@ fn main() {
             traversal,
             watch,
             at,
+            share.as_deref(),
             save,
         );
     }
@@ -138,6 +146,7 @@ fn main() {
 /// Show the scene at `path` refining live until `samples` frames, reloading
 /// it when the file changes if `watch`; on quit, write the image where
 /// `save` says.
+#[allow(clippy::too_many_arguments)]
 fn open_window(
     gpu: Gpu,
     path: &str,
@@ -145,6 +154,7 @@ fn open_window(
     traversal: u32,
     watch: bool,
     at: Option<(f64, f64)>,
+    share: Option<&str>,
     save: Save,
 ) -> ! {
     let path = Path::new(path);
@@ -166,6 +176,11 @@ fn open_window(
         title,
         watch,
         at,
+        share.and_then(|p| {
+            rtc_share::Shared::open(Path::new(p))
+                .map_err(|e| eprintln!("rtc-metal: {e}"))
+                .ok()
+        }),
         save,
         Box::new(write_ppm),
     )
@@ -206,7 +221,7 @@ fn write_ppm(pixels: Vec<[f32; 4]>, width: usize, height: usize, out: &Path) -> 
 
 fn usage() -> ! {
     eprintln!(
-        "usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch] [--at X,Y]] [--traversal bvh|metal]"
+        "usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch] [--at X,Y] [--share PATH]] [--traversal bvh|metal]"
     );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
@@ -217,6 +232,9 @@ fn usage() -> ! {
     eprintln!("  --watch      with --window: reload the scene whenever its file changes");
     eprintln!(
         "  --at X,Y     with --window: the window's top-left, in points right and down from\n               the main screen's top-left, fitted to the room right of it\n               (centred when under 200 points are left)"
+    );
+    eprintln!(
+        "  --share PATH with --window: write the camera to PATH, a file the scene editor made,\n               whenever it changes"
     );
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
     eprintln!("               (in --window, also the Traversal menu: Cmd-1 bvh, Cmd-2 metal)");

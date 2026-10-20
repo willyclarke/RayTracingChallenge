@@ -64,6 +64,11 @@ cargo run --release -- --help
     fitted to the room right of and below it on that screen; with less than 200 points of
     room either way, or off every screen, the window is centred as without `--at`. rtc-edit uses this to put its viewer
     beside itself.
+  - with `--share PATH`, the window writes its camera (from, to, up and focal distance) to
+    `PATH`, a file the scene editor made with [rtc-share](../rtc-share/README.md), at start-up
+    and whenever it changes: orbiting, zooming, space, or a reload with a new camera. rtc-edit
+    shows it and can follow it into the scene. A file made by another version of rtc-share is
+    refused with `rebuild rtc-metal`, and the window runs without sharing.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.
 

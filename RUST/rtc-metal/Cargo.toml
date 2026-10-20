@@ -45,3 +45,4 @@ objc2-quartz-core = { version = "0.3.2", default-features = false, features = [
     "objc2-metal",
 ] }
 rtc-rust = { version = "0.1.0", path = "../rtc-rust" }
+rtc-share = { path = "../rtc-share" }

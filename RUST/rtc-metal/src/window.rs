@@ -52,6 +52,7 @@ use objc2_metal_kit::{MTKView, MTKViewDelegate};
 use objc2_quartz_core::CAMetalDrawable;
 use rtc_rust::camera::Camera;
 use rtc_rust::scene::{CameraDescription, SceneDescription};
+use rtc_share::Shared;
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -103,6 +104,18 @@ pub fn image_name(scene: &Path) -> String {
     format!(
         "{}.ppm",
         scene.file_stem().unwrap_or_default().to_string_lossy()
+    )
+}
+
+/// The camera `orbit` shows, as from, to and up (x, y, z), with
+/// `focal_distance`: what `--share` writes.
+pub fn shot(orbit: &Orbit, focal_distance: f64) -> ([f64; 3], [f64; 3], [f64; 3], f64) {
+    let xyz = |t: rtc_rust::tuple::Tuple| [t.x, t.y, t.z];
+    (
+        xyz(orbit.from()),
+        xyz(orbit.to()),
+        xyz(orbit.up()),
+        focal_distance,
     )
 }
 
@@ -191,6 +204,8 @@ struct Renderer {
     /// The file's new `(width, height)` after a reload changed them; the
     /// view takes it to resize the window.
     resize: Option<(usize, usize)>,
+    /// With `--share`: where the camera is written whenever it changes.
+    share: Option<Shared>,
 }
 
 /// Whether two cameras differ at most in image size, so a reload keeps the
@@ -215,6 +230,15 @@ impl Renderer {
         self.acc.reset();
         self.last_frame = Instant::now();
         self.elapsed = Duration::ZERO;
+        self.publish();
+    }
+
+    /// Write the camera to the `--share` file, if any.
+    fn publish(&self) {
+        if let Some(share) = &self.share {
+            let (from, to, up, focus) = shot(&self.orbit, self.camera.focal_distance);
+            share.write(from, to, up, focus);
+        }
     }
 
     /// Return to the scene's own view, at the current size; false (and the
@@ -308,6 +332,7 @@ impl Renderer {
             self.home = (camera, orbit.clone());
             self.orbit = orbit;
             self.moved = false;
+            self.publish();
         }
         self.elapsed = Duration::ZERO;
         self.last_frame = Instant::now();
@@ -911,7 +936,8 @@ impl RtcDelegate {
 /// its file changes. On quit, `on_close` gets the final image (row-major
 /// RGBA, as `Accumulator::resolve`) and the path `save` gives (see
 /// `choose`), if at least one frame was drawn and a path was chosen. A
-/// SIGTERM quits as Cmd-Q does.
+/// SIGTERM quits as Cmd-Q does. With `share`, the camera is written there
+/// at start-up and whenever it changes.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     gpu: Gpu,
@@ -922,6 +948,7 @@ pub fn run(
     title: String,
     watch: Option<Watch>,
     at: Option<(f64, f64)>,
+    share: Option<Shared>,
     save: Save,
     on_close: OnClose,
 ) -> ! {
@@ -949,7 +976,9 @@ pub fn run(
         reload_error: None,
         watch,
         resize: None,
+        share,
     }));
+    renderer.borrow().publish();
 
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
@@ -1215,6 +1244,24 @@ fn samples_menu(mtm: MainThreadMarker) -> Retained<NSMenuItem> {
 mod tests {
     use super::*;
     use rtc_rust::matrix::Matrix4;
+    use rtc_rust::tuple::Tuple;
+
+    #[test]
+    fn shot_gives_the_orbits_camera() {
+        let mut o = Orbit::new(
+            Tuple::point(0.0, 1.0, -5.0),
+            Tuple::point(0.0, 1.0, 0.0),
+            Tuple::vector(0.0, 1.0, 0.0),
+        );
+        let close = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-9);
+        let (from, to, up, focus) = shot(&o, 4.5);
+        assert!(close(from, [0.0, 1.0, -5.0]), "{from:?}");
+        assert!(close(to, [0.0, 1.0, 0.0]) && close(up, [0.0, 1.0, 0.0]));
+        assert_eq!(focus, 4.5);
+        o.zoom(3.0);
+        let f = o.from();
+        assert!(close(shot(&o, 4.5).0, [f.x, f.y, f.z]));
+    }
     use rtc_rust::scene::LightDescription;
 
     fn renderer() -> Result<Renderer, String> {
@@ -1255,6 +1302,7 @@ mod tests {
             reload_error: None,
             watch: None,
             resize: None,
+            share: None,
         })
     }
 
@@ -1353,6 +1401,7 @@ mod tests {
             reload_error: None,
             watch: None,
             resize: None,
+            share: None,
         };
         r.acc.add_frame(&r.gpu, &r.scene.info)?;
         r.acc.add_frame(&r.gpu, &r.scene.info)?;

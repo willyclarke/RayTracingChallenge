@@ -50,6 +50,16 @@ impl Orbit {
         self.to + Tuple::vector(cp * sy, sp, -cp * cy) * self.radius
     }
 
+    /// The point the camera orbits and looks at.
+    pub fn to(&self) -> Tuple {
+        self.to
+    }
+
+    /// The scene's up, as given.
+    pub fn up(&self) -> Tuple {
+        self.up
+    }
+
     /// Distance from the camera to the point it orbits.
     pub fn radius(&self) -> f64 {
         self.radius
@@ -86,6 +96,14 @@ mod tests {
     }
     fn up() -> Tuple {
         Tuple::vector(0.0, 1.0, 0.0)
+    }
+
+    #[test]
+    fn orbit_keeps_its_to_and_up() {
+        let mut o = Orbit::new(p(0.0, 1.0, -5.0), p(0.0, 1.0, 0.0), up());
+        o.drag(30.0, 10.0);
+        assert!(o.to().approx_eq(p(0.0, 1.0, 0.0)));
+        assert!(o.up().approx_eq(up()));
     }
 
     #[test]

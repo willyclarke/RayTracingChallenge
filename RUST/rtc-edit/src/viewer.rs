@@ -25,11 +25,15 @@ pub fn find(env: Option<&str>, crate_dir: &Path) -> Result<PathBuf, String> {
 
 /// The viewer's arguments: `<preview> --window --watch --at X,Y`, with its
 /// window's top-left at `at` (points right and down from the main screen's
-/// top-left).
-pub fn viewer_args(preview: &Path, at: (f64, f64)) -> Vec<OsString> {
+/// top-left), and `--share <path>` when the camera is to be shared.
+pub fn viewer_args(preview: &Path, at: (f64, f64), share: Option<&Path>) -> Vec<OsString> {
     let mut args = vec![preview.as_os_str().to_owned()];
     args.extend(["--window", "--watch", "--at"].map(OsString::from));
     args.push(format!("{},{}", at.0, at.1).into());
+    if let Some(share) = share {
+        args.push("--share".into());
+        args.push(share.as_os_str().to_owned());
+    }
     args
 }
 
@@ -38,10 +42,16 @@ pub struct Viewer {
 }
 
 impl Viewer {
-    /// Start `exe` on `preview` with its window's top-left at `at`.
-    pub fn start(exe: &Path, preview: &Path, at: (f64, f64)) -> Result<Viewer, String> {
+    /// Start `exe` on `preview` with its window's top-left at `at`, writing
+    /// its camera to `share` if given.
+    pub fn start(
+        exe: &Path,
+        preview: &Path,
+        at: (f64, f64),
+        share: Option<&Path>,
+    ) -> Result<Viewer, String> {
         Command::new(exe)
-            .args(viewer_args(preview, at))
+            .args(viewer_args(preview, at, share))
             .stdin(Stdio::null())
             .spawn()
             .map(|child| Viewer { child })
@@ -84,12 +94,20 @@ mod tests {
 
     #[test]
     fn viewer_args_put_the_window_at_the_point() {
-        let args = |at| viewer_args(Path::new("/p/s.json"), at);
+        let args = |at| viewer_args(Path::new("/p/s.json"), at, None);
         assert_eq!(
             args((900.0, 0.0)),
             ["/p/s.json", "--window", "--watch", "--at", "900,0"].map(OsString::from)
         );
         assert_eq!(args((-1440.0, 12.5))[4], "-1440,12.5");
+    }
+
+    #[test]
+    fn viewer_args_pass_the_shared_file() {
+        let preview = Path::new("/p/s.json");
+        let args = viewer_args(preview, (0.0, 0.0), Some(Path::new("/p/view")));
+        assert_eq!(args[5..], ["--share", "/p/view"].map(OsString::from));
+        assert_eq!(viewer_args(preview, (0.0, 0.0), None).len(), 5);
     }
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
@@ -142,7 +160,7 @@ mod tests {
     fn running_is_true_while_the_child_runs() {
         let root = fresh("runs");
         let exe = script(&root, "viewer", "exec sleep 30");
-        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0)).unwrap();
+        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
         assert!(v.running());
     }
 
@@ -150,7 +168,7 @@ mod tests {
     fn running_is_false_after_the_child_exits() {
         let root = fresh("exits");
         let exe = script(&root, "viewer", "exit 0");
-        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0)).unwrap();
+        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
         let start = Instant::now();
         while v.running() && start.elapsed() < Duration::from_secs(2) {
             std::thread::sleep(Duration::from_millis(20));
@@ -169,7 +187,7 @@ mod tests {
             ready.display()
         );
         let exe = script(&root, "viewer", &body);
-        let v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0)).unwrap();
+        let v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
         // Wait for the shell to install its trap before the signal arrives.
         let start = Instant::now();
         while !ready.exists() {
@@ -191,7 +209,7 @@ mod tests {
     fn dropping_a_viewer_that_already_exited_is_harmless() {
         let root = fresh("exited");
         let exe = script(&root, "viewer", "exit 0");
-        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0)).unwrap();
+        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
         let start = Instant::now();
         while v.running() {
             assert!(
@@ -209,6 +227,7 @@ mod tests {
             Path::new("/no/such/rtc-metal"),
             Path::new("p.json"),
             (0.0, 0.0),
+            None,
         )
         .err()
         .expect("start should fail");
