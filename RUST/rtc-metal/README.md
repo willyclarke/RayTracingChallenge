@@ -48,7 +48,9 @@ cargo run --release -- --help
   - the Samples menu sets the target (presets, Unlimited, Cmd-] doubles, Cmd-[ halves);
   - quitting (Cmd-Q, closing the window, or SIGTERM) asks whether to save the image at the
     window's size and, if so, where (a save panel offering `<scene>.ppm` in the working
-    directory); with `-o` it writes there without asking;
+    directory); with `-o` it writes there without asking. Cancel (or Esc) in the alert keeps
+    the window open, and cancelling the save panel asks again; a SIGTERM (the scene editor
+    closing its viewer) offers no Cancel;
   - with `--watch`, the window reloads the scene whenever its file changes and refines it
     again, keeping your view unless the camera changed in more than width and height. A new width or
     height in the file resizes the window, keeping its top-left corner and fitted to the room
