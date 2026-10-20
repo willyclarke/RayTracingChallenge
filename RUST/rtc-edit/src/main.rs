@@ -20,6 +20,7 @@ use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, find};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
+use rtc_share::Shared;
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -85,6 +86,8 @@ struct Editor {
     /// The window's outer top-left and inner size, in points from the main
     /// screen's top-left; each viewer starts at its top-right corner.
     frame: Rectangle,
+    /// The current viewer's shared camera file, when it has one.
+    share: Option<Shared>,
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +181,7 @@ fn boot() -> Editor {
         removed_blur: None,
         pending: None,
         frame: Rectangle::new(Point::ORIGIN, Size::new(WIDTH, HEIGHT)),
+        share: None,
     };
     match loaded {
         Some((desc, path)) => editor.switch(desc, Some(path)),
@@ -216,6 +220,7 @@ impl Editor {
         {
             let mut children = CHILDREN.lock().unwrap();
             children.viewer = None;
+            self.share = None;
             children.preview = None;
             let name = scene_name(path.as_deref());
             let preview = Preview::new(&std::env::temp_dir(), OsStr::new(&name))
@@ -297,10 +302,12 @@ impl Editor {
         }
     }
 
-    /// Start the viewer unless it is still open.
+    /// Start the viewer, with a fresh shared camera file, unless it is
+    /// still open.
     fn show_viewer(&mut self) {
         let mut children = CHILDREN.lock().unwrap();
         if children.viewer.as_mut().is_some_and(Viewer::running) {
+            self.status = "viewer already running".into();
             return;
         }
         let Some(preview) = &children.preview else {
@@ -315,12 +322,20 @@ impl Editor {
         .and_then(|exe| {
             let at = (self.frame.x + self.frame.width, self.frame.y);
             let at = (f64::from(at.0), f64::from(at.1));
-            Viewer::start(&exe, preview.path(), at)
+            let path = preview.dir().join("view");
+            let shared = Shared::create(&path);
+            let share = shared.as_ref().ok().map(|_| path.as_path());
+            let viewer = Viewer::start(&exe, preview.path(), at, share)?;
+            Ok((viewer, shared))
         });
         match started {
-            Ok(v) => {
+            Ok((v, shared)) => {
                 children.viewer = Some(v);
-                self.status = "viewer started".into();
+                self.status = match &shared {
+                    Ok(_) => "viewer started".into(),
+                    Err(e) => format!("viewer started; no shared view: {e}"),
+                };
+                self.share = shared.ok();
             }
             Err(e) => self.status = e,
         }

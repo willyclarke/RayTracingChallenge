@@ -22,6 +22,11 @@ impl Preview {
         })
     }
 
+    /// The preview's folder, removed with it.
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }
