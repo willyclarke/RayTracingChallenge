@@ -219,6 +219,16 @@ pub fn set(
     }
 }
 
+/// Focus `blur` at `distance`, keeping its f-number, so the aperture follows
+/// the focus.
+pub fn set_focal_distance(blur: &mut FocalBlur, distance: f64) {
+    let f = blur.focal_distance / (2.0 * blur.aperture);
+    if f.is_finite() && f > 0.0 {
+        blur.aperture = distance / (2.0 * f);
+    }
+    blur.focal_distance = distance;
+}
+
 /// `set`, except that the focal blur an emptied f-number removes goes to
 /// `removed`, and the next f-number typed while there is none puts its focal
 /// distance and samples back, so retyping the f-number doesn't lose them.
@@ -307,12 +317,7 @@ fn set_camera(c: &mut CameraDescription, field: Field, text: &str) -> Result<(),
                 if distance <= 0.0 {
                     return Err("the focal distance must be above 0".into());
                 }
-                // The f-number stays, so the aperture follows the focus.
-                let f = blur.focal_distance / (2.0 * blur.aperture);
-                if f.is_finite() && f > 0.0 {
-                    blur.aperture = distance / (2.0 * f);
-                }
-                blur.focal_distance = distance;
+                set_focal_distance(blur, distance);
             } else {
                 blur.samples = whole(text)?;
             }
