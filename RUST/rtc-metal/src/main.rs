@@ -1,6 +1,6 @@
 //! rtc-metal: render on the GPU via Metal, write PPM through rtc-rust's Canvas.
 //!
-//! Usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch]]
+//! Usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch] [--at X,Y]]
 //!                  [--traversal bvh|metal]
 //!
 //! With a scene, renders it (scene format: rtc-rust's README); without one,
@@ -42,6 +42,7 @@ fn main() {
     let mut samples = None;
     let mut window = false;
     let mut watch = false;
+    let mut at = None;
     let mut traversal = TRAVERSAL_BVH;
     let mut i = 0;
     while i < args.len() {
@@ -57,6 +58,11 @@ fn main() {
             }
             "--window" => window = true,
             "--watch" => watch = true,
+            "--at" => {
+                let xy = args.get(i + 1).and_then(|a| rtc_metal::window::parse_at(a));
+                at = Some(xy.unwrap_or_else(|| usage()));
+                i += 1;
+            }
             "--traversal" => {
                 traversal = match args.get(i + 1).map(String::as_str) {
                     Some("bvh") => TRAVERSAL_BVH,
@@ -71,7 +77,7 @@ fn main() {
         i += 1;
     }
 
-    if watch && !window {
+    if (watch || at.is_some()) && !window {
         usage();
     }
 
@@ -88,6 +94,7 @@ fn main() {
             samples.unwrap_or(WINDOW_SAMPLES),
             traversal,
             watch,
+            at,
             save,
         );
     }
@@ -131,7 +138,15 @@ fn main() {
 /// Show the scene at `path` refining live until `samples` frames, reloading
 /// it when the file changes if `watch`; on quit, write the image where
 /// `save` says.
-fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, save: Save) -> ! {
+fn open_window(
+    gpu: Gpu,
+    path: &str,
+    samples: u32,
+    traversal: u32,
+    watch: bool,
+    at: Option<(f64, f64)>,
+    save: Save,
+) -> ! {
     let path = Path::new(path);
     // Watch before reading, so a save while the scene loads still reloads.
     let watch = watch.then(|| Watch::new(path));
@@ -150,6 +165,7 @@ fn open_window(gpu: Gpu, path: &str, samples: u32, traversal: u32, watch: bool, 
         samples,
         title,
         watch,
+        at,
         save,
         Box::new(write_ppm),
     )
@@ -190,7 +206,7 @@ fn write_ppm(pixels: Vec<[f32; 4]>, width: usize, height: usize, out: &Path) -> 
 
 fn usage() -> ! {
     eprintln!(
-        "usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch]] [--traversal bvh|metal]"
+        "usage: rtc-metal [scene.json] [-o out.ppm] [--samples N] [--window [--watch] [--at X,Y]] [--traversal bvh|metal]"
     );
     eprintln!("  --samples N  average N >= 1 sampled frames (soft shadows, anti-aliasing)");
     eprintln!(
@@ -199,6 +215,9 @@ fn usage() -> ! {
                Samples menu: presets, Unlimited, Cmd-] doubles, Cmd-[ halves"
     );
     eprintln!("  --watch      with --window: reload the scene whenever its file changes");
+    eprintln!(
+        "  --at X,Y     with --window: the window's top-left, in points right and down from\n               the main screen's top-left, fitted to the room right of it\n               (centred when under 200 points are left)"
+    );
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
     eprintln!("               (in --window, also the Traversal menu: Cmd-1 bvh, Cmd-2 metal)");
     eprintln!("  the scene's antialias.n is ignored on the GPU");

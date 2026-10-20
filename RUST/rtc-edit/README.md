@@ -13,6 +13,7 @@ The editor grows in milestones:
   basic material), and point lights.
 - **19 (done):** the viewer's image on quit, and the camera.
 - **20 (done):** New and Open, adding and deleting items, comments.
+- **21 (done):** the editor and the viewer side by side.
 
 ## Dependencies
 
@@ -39,6 +40,12 @@ cargo clippy --all-targets
 The editor looks for the viewer in `$RTC_METAL`, and otherwise at
 `../rtc-metal/target/release/rtc-metal` next to this crate. Without it, the editor still
 works and the status line says where it looked.
+
+The editor opens at the top-left of the screen, and each viewer it starts (on opening, New,
+Open and Cmd-R) opens just right of it, tops aligned, fitted to the rest of that screen
+(`rtc-metal --at`). A new viewer goes beside the editor where it is now; one already open
+stays where it is. With less than 200 points left right of the editor, the viewer opens
+centred.
 
 | key | does |
 |---|---|

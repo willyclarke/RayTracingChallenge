@@ -10,7 +10,7 @@ use iced::widget::operation;
 use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
-use iced::{Element, Font, Length, Subscription, Task, keyboard};
+use iced::{Element, Font, Length, Point, Rectangle, Size, Subscription, Task, keyboard, window};
 use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
@@ -82,6 +82,9 @@ struct Editor {
     /// A key waiting for its second: `a` for the item to add, `d` for a
     /// second `d` that deletes.
     pending: Option<char>,
+    /// The window's outer top-left and inner size, in points from the main
+    /// screen's top-left; each viewer starts at its top-right corner.
+    frame: Rectangle,
 }
 
 #[derive(Debug, Clone)]
@@ -121,7 +124,13 @@ enum Message {
     Focused(Field, bool),
     /// Whether Cmd is held.
     Command(bool),
+    /// The window opened, moved or was resized.
+    Window(window::Event),
 }
+
+/// The editor window's size at start-up.
+const WIDTH: f32 = 900.0;
+const HEIGHT: f32 = 640.0;
 
 fn main() -> iced::Result {
     iced::application(boot, update, view)
@@ -130,7 +139,8 @@ fn main() -> iced::Result {
             format!("rtc-edit — {}{mark}", e.name())
         })
         .subscription(subscription)
-        .window_size((900.0, 640.0))
+        .window_size((WIDTH, HEIGHT))
+        .position(window::Position::Specific(Point::ORIGIN))
         .run()
 }
 
@@ -167,6 +177,7 @@ fn boot() -> Editor {
         editing: None,
         removed_blur: None,
         pending: None,
+        frame: Rectangle::new(Point::ORIGIN, Size::new(WIDTH, HEIGHT)),
     };
     match loaded {
         Some((desc, path)) => editor.switch(desc, Some(path)),
@@ -301,7 +312,11 @@ impl Editor {
             std::env::var("RTC_METAL").ok().as_deref(),
             Path::new(env!("CARGO_MANIFEST_DIR")),
         )
-        .and_then(|exe| Viewer::start(&exe, preview.path()));
+        .and_then(|exe| {
+            let at = (self.frame.x + self.frame.width, self.frame.y);
+            let at = (f64::from(at.0), f64::from(at.1));
+            Viewer::start(&exe, preview.path(), at)
+        });
         match started {
             Ok(v) => {
                 children.viewer = Some(v);
@@ -649,7 +664,7 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
     // Esc only does that.
     if !matches!(
         message,
-        Message::Key(_) | Message::Command(_) | Message::Focused(..)
+        Message::Key(_) | Message::Command(_) | Message::Focused(..) | Message::Window(_)
     ) && let Some(waiting) = e.pending.take()
     {
         if waiting == 'a' {
@@ -733,6 +748,18 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
             }
         }
         Message::Command(held) => e.command = held,
+        Message::Window(event) => match event {
+            window::Event::Opened { position, size } => {
+                e.frame.x = position.map_or(e.frame.x, |p| p.x);
+                e.frame.y = position.map_or(e.frame.y, |p| p.y);
+                (e.frame.width, e.frame.height) = (size.width, size.height);
+            }
+            window::Event::Moved(p) => (e.frame.x, e.frame.y) = (p.x, p.y),
+            window::Event::Resized(size) => {
+                (e.frame.width, e.frame.height) = (size.width, size.height)
+            }
+            _ => {}
+        },
     }
     Task::none()
 }
@@ -810,7 +837,10 @@ fn shortcut(
 }
 
 fn subscription(_: &Editor) -> Subscription<Message> {
-    iced::event::listen_with(shortcut)
+    Subscription::batch([
+        iced::event::listen_with(shortcut),
+        window::events().map(|(_, event)| Message::Window(event)),
+    ])
 }
 
 fn view(e: &Editor) -> Element<'_, Message> {
