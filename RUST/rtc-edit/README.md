@@ -75,7 +75,7 @@ has written one). The two share it through a small file in the preview folder
 
 - Ticking **follow the viewer**, above the `from` row, copies the viewer's `from` into the scene as you orbit, rounded to 4
   decimals, and with focal blur also its focal distance (zooming moves the focus with the
-  camera; the f-number stays). The `from` boxes are read-only meanwhile, and each change is an
+  camera and keeps the lens, so the f-number changes as the viewer's does). The `from` boxes are read-only meanwhile, and each change is an
   unsaved edit.
 - **Keep** (beside it while following, or Cmd-K) stops following and keeps the view; Cmd-S saves it.
 - Unticking puts back the `from` and focal distance the camera had when you ticked.

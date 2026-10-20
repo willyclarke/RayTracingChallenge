@@ -321,8 +321,8 @@ impl Editor {
         }
     }
 
-    /// Start the viewer, with a fresh shared camera file, unless it is
-    /// still open.
+    /// Start the viewer on the scene as it is now, with a fresh shared
+    /// camera file, unless it is still open.
     fn show_viewer(&mut self) {
         let mut children = CHILDREN.lock().unwrap();
         if children.viewer.as_mut().is_some_and(Viewer::running) {
@@ -334,6 +334,13 @@ impl Editor {
             self.status = format!("no preview file: {e}");
             return;
         };
+        // The new viewer shows the scene as it is now, including a view
+        // followed from the last one and never loaded.
+        if let Err(e) = preview.write(&self.desc, &self.dir()) {
+            self.status = e;
+            return;
+        }
+        self.unloaded = false;
         let started = find(
             std::env::var("RTC_METAL").ok().as_deref(),
             Path::new(env!("CARGO_MANIFEST_DIR")),

@@ -3,16 +3,18 @@
 //! the viewer is copied in, Keep keeps it, and unticking puts the
 //! remembered values back.
 
-use crate::fields::set_focal_distance;
 use rtc_rust::scene::CameraDescription;
 use rtc_share::Snapshot;
+
+/// The camera's `from` and, with focal blur, its focal distance and aperture.
+type Cached = ([f64; 3], Option<(f64, f64)>);
 
 /// Whether the scene's camera follows the viewer's, and what to put back.
 #[derive(Default)]
 pub struct Follower {
     /// While following: the `from` and, with focal blur, the focal distance
-    /// the camera had when following started.
-    cache: Option<([f64; 3], Option<f64>)>,
+    /// and aperture the camera had when following started.
+    cache: Option<Cached>,
 }
 
 /// To 4 decimals, so the boxes and the file stay readable.
@@ -27,12 +29,17 @@ impl Follower {
 
     /// Follow from now on, remembering `camera`'s values.
     pub fn start(&mut self, camera: &CameraDescription) {
-        let distance = camera.focal_blur.as_ref().map(|b| b.focal_distance);
-        self.cache = Some((camera.from, distance));
+        let blur = camera
+            .focal_blur
+            .as_ref()
+            .map(|b| (b.focal_distance, b.aperture));
+        self.cache = Some((camera.from, blur));
     }
 
     /// While following, copy `shot`'s `from`, and its focal distance when
-    /// `camera` has focal blur, rounded; whether `camera` changed.
+    /// `camera` has focal blur, rounded; whether `camera` changed. The
+    /// aperture stays, as the viewer keeps its lens when it zooms, so the
+    /// scene renders as the viewer shows it.
     pub fn update(&mut self, camera: &mut CameraDescription, shot: &Snapshot) -> bool {
         if !self.following() {
             return false;
@@ -45,7 +52,7 @@ impl Follower {
             && distance > 0.0
             && blur.focal_distance != distance
         {
-            set_focal_distance(blur, distance);
+            blur.focal_distance = distance;
             changed = true;
         }
         changed
@@ -59,15 +66,15 @@ impl Follower {
     /// Stop following and put back the values from when it started; whether
     /// `camera` changed.
     pub fn untick(&mut self, camera: &mut CameraDescription) -> bool {
-        let Some((from, distance)) = self.cache.take() else {
+        let Some((from, cached)) = self.cache.take() else {
             return false;
         };
         let mut changed = camera.from != from;
         camera.from = from;
-        if let (Some(blur), Some(d)) = (&mut camera.focal_blur, distance)
-            && blur.focal_distance != d
+        if let (Some(blur), Some((distance, aperture))) = (&mut camera.focal_blur, cached)
+            && (blur.focal_distance, blur.aperture) != (distance, aperture)
         {
-            set_focal_distance(blur, d);
+            (blur.focal_distance, blur.aperture) = (distance, aperture);
             changed = true;
         }
         changed
@@ -120,10 +127,6 @@ mod tests {
         }
     }
 
-    fn distance(c: &CameraDescription) -> Option<f64> {
-        c.focal_blur.as_ref().map(|b| b.focal_distance)
-    }
-
     #[test]
     fn nothing_follows_until_started() {
         let mut c = camera();
@@ -160,7 +163,8 @@ mod tests {
         f.update(&mut c, &shot(1));
         let blur = c.focal_blur.unwrap();
         assert_eq!(blur.focal_distance, 6.0);
-        assert!((blur.aperture - 0.3).abs() < 1e-12, "{}", blur.aperture);
+        // The viewer keeps its lens radius as it zooms, so the scene does too.
+        assert_eq!(blur.aperture, 0.25);
     }
 
     #[test]
@@ -170,8 +174,24 @@ mod tests {
         f.update(&mut c, &shot(1));
         assert!(f.untick(&mut c));
         assert!(!f.following());
-        assert_eq!(c.from, [0.0, 1.5, -5.0]);
-        assert_eq!(distance(&c), Some(5.0));
+        assert_eq!(c, blurred());
+    }
+
+    #[test]
+    fn unticking_puts_back_the_exact_blur() {
+        let (mut c, mut f) = (blurred(), Follower::default());
+        f.start(&c);
+        for d in [6.0, 7.3, 2.9] {
+            f.update(
+                &mut c,
+                &Snapshot {
+                    focal_distance: d,
+                    ..shot(1)
+                },
+            );
+        }
+        f.untick(&mut c);
+        assert_eq!(c.focal_blur, blurred().focal_blur);
     }
 
     #[test]
