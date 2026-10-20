@@ -23,6 +23,8 @@
 //! Quitting (Cmd-Q, closing the window, or SIGTERM) hands the final image
 //! and its size to `on_close`, with the `-o` path or, without one, a path
 //! the user picks in a save panel after an alert asks whether to save.
+//! The alert's Cancel (Esc) keeps the viewer running, except after a
+//! SIGTERM; cancelling the save panel shows the alert again.
 //!
 //! Everything here runs on the main thread: the view and its delegate share
 //! one `Rc<RefCell<Renderer>>`.
@@ -36,11 +38,11 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAlert, NSAlertFirstButtonReturn, NSApplication, NSApplicationActivationPolicy,
-    NSApplicationDelegate, NSApplicationTerminateReply, NSBackingStoreType, NSColor,
-    NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont, NSMenu, NSMenuItem,
-    NSModalResponseOK, NSResponder, NSSavePanel, NSScreen, NSTextField, NSView, NSWindow,
-    NSWindowCollectionBehavior, NSWindowStyleMask,
+    NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSApplication,
+    NSApplicationActivationPolicy, NSApplicationDelegate, NSApplicationTerminateReply,
+    NSBackingStoreType, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont,
+    NSMenu, NSMenuItem, NSModalResponseOK, NSResponder, NSSavePanel, NSScreen, NSTextField, NSView,
+    NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSTimer, NSURL,
@@ -69,7 +71,8 @@ const SIGTERM: i32 = 15;
 /// Time between screen refreshes, in ms.
 const REFRESH_MS: f64 = 1000.0 / FPS as f64;
 
-/// Set by the SIGTERM handler; the timer quits the app when it sees it.
+/// Set by the SIGTERM handler; the timer quits the app when it sees it,
+/// and the quit then offers no Cancel.
 static QUIT: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" {
@@ -103,17 +106,58 @@ pub fn image_name(scene: &Path) -> String {
     )
 }
 
-/// The path to write the image to on quit, or `None` to write nothing:
-/// nothing before the first frame is drawn, `-o`'s path without asking,
-/// otherwise whatever `ask` answers when offered the default name.
-fn choose(save: &Save, frames: u32, ask: impl FnOnce(&str) -> Option<PathBuf>) -> Option<PathBuf> {
+/// What a quit does with the image.
+#[derive(Debug, PartialEq)]
+enum Quit {
+    /// Write it to this path, then quit.
+    Save(PathBuf),
+    /// Quit without writing it.
+    Discard,
+    /// Don't quit.
+    Cancel,
+}
+
+/// The quit alert's buttons.
+#[derive(Clone, Copy)]
+enum Button {
+    Save,
+    Discard,
+    Cancel,
+}
+
+/// What a quit does: nothing to write before the first frame is drawn,
+/// `-o`'s path without asking, otherwise whatever `ask` answers when
+/// offered the default name.
+fn choose(save: &Save, frames: u32, ask: impl FnOnce(&str) -> Quit) -> Quit {
     if frames == 0 {
-        return None;
+        return Quit::Discard;
     }
     match save {
-        Save::To(path) => Some(PathBuf::from(path)),
+        Save::To(path) => Quit::Save(PathBuf::from(path)),
         Save::Ask(name) => ask(name),
     }
+}
+
+/// The answer from the quit alert's `button` and, after Save…, the save
+/// panel's `path`; cancelling the panel shows the alert again.
+fn answer(mut button: impl FnMut() -> Button, mut path: impl FnMut() -> Option<PathBuf>) -> Quit {
+    loop {
+        match button() {
+            Button::Discard => return Quit::Discard,
+            Button::Cancel => return Quit::Cancel,
+            Button::Save => {
+                if let Some(path) = path() {
+                    return Quit::Save(path);
+                }
+            }
+        }
+    }
+}
+
+/// Whether the quit alert offers Cancel: not when the scene editor asked
+/// the viewer to quit (SIGTERM), as it has already moved on.
+fn offers_cancel(sigterm: bool) -> bool {
+    !sigterm
 }
 
 /// The state the view and its delegate share.
@@ -513,7 +557,9 @@ define_class!(
         /// scene when its file changed.
         #[unsafe(method(checkQuitAndWatchedFile:))]
         fn check_quit_and_watched_file(&self, _timer: &NSTimer) {
-            if QUIT.swap(false, Ordering::SeqCst) {
+            // QUIT stays set: the quit it starts offers no Cancel, and a
+            // repeat while the alert is up is refused.
+            if QUIT.load(Ordering::SeqCst) {
                 NSApplication::sharedApplication(self.mtm()).terminate(None);
                 return;
             }
@@ -715,6 +761,15 @@ define_class!(
         }
     }
 
+    unsafe impl NSWindowDelegate for RtcDelegate {
+        /// Closing the window quits, asking first, so Cancel keeps it open.
+        #[unsafe(method(windowShouldClose:))]
+        fn window_should_close(&self, _sender: &NSWindow) -> bool {
+            NSApplication::sharedApplication(self.mtm()).terminate(None);
+            false
+        }
+    }
+
     unsafe impl NSApplicationDelegate for RtcDelegate {
         #[unsafe(method(applicationShouldTerminateAfterLastWindowClosed:))]
         fn should_terminate_after_last_window_closed(&self, _sender: &NSApplication) -> bool {
@@ -722,7 +777,8 @@ define_class!(
         }
 
         /// Write the image where `save` says (asking first without `-o`),
-        /// then quit; a second quit while asking is cancelled.
+        /// then quit, unless the user cancels; a second quit while asking
+        /// is cancelled.
         #[unsafe(method(applicationShouldTerminate:))]
         fn should_terminate(&self, _sender: &NSApplication) -> NSApplicationTerminateReply {
             let ivars = self.ivars();
@@ -733,7 +789,13 @@ define_class!(
             // draw meanwhile.
             let frames = ivars.renderer.borrow().acc.frames();
             let mtm = self.mtm();
-            if let Some(path) = choose(&ivars.save, frames, |name| ask(mtm, name)) {
+            let cancel = offers_cancel(QUIT.load(Ordering::SeqCst));
+            let quit = choose(&ivars.save, frames, |name| ask(mtm, name, cancel));
+            if quit == Quit::Cancel {
+                ivars.asking.set(false);
+                return NSApplicationTerminateReply::TerminateCancel;
+            }
+            if let Quit::Save(path) = quit {
                 let image = {
                     let r = ivars.renderer.borrow();
                     let size = (r.camera.hsize, r.camera.vsize);
@@ -982,6 +1044,7 @@ pub fn run(
     window.setTitle(&NSString::from_str(&title));
     window.setContentView(Some(&view));
     window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenPrimary);
+    window.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
     match placed {
         Some((top_left, _)) => window.setFrameTopLeftPoint(top_left),
         None => window.center(),
@@ -994,8 +1057,8 @@ pub fn run(
 }
 
 /// Ask whether to save the image and, if so, where, offering `name` in the
-/// current directory; the chosen path, or `None` for no image.
-fn ask(mtm: MainThreadMarker, name: &str) -> Option<PathBuf> {
+/// current directory, with a Cancel button (Esc) when `cancel`.
+fn ask(mtm: MainThreadMarker, name: &str, cancel: bool) -> Quit {
     let app = NSApplication::sharedApplication(mtm);
     // A SIGTERM may come while another app (the scene editor) is active:
     // the plain `activate` only asks, so force the alert to the front.
@@ -1005,9 +1068,21 @@ fn ask(mtm: MainThreadMarker, name: &str) -> Option<PathBuf> {
     alert.setMessageText(&NSString::from_str("Save the rendered image?"));
     alert.addButtonWithTitle(&NSString::from_str("Save…"));
     alert.addButtonWithTitle(&NSString::from_str("Quit Without Saving"));
-    if alert.runModal() != NSAlertFirstButtonReturn {
-        return None;
+    if cancel {
+        // AppKit gives a button titled Cancel the Esc key.
+        alert.addButtonWithTitle(&NSString::from_str("Cancel"));
     }
+    let button = || match alert.runModal() {
+        r if r == NSAlertFirstButtonReturn => Button::Save,
+        r if r == NSAlertSecondButtonReturn => Button::Discard,
+        _ => Button::Cancel,
+    };
+    answer(button, || save_path(mtm, name))
+}
+
+/// A save panel offering `name` in the current directory; the chosen path,
+/// or `None` when cancelled.
+fn save_path(mtm: MainThreadMarker, name: &str) -> Option<PathBuf> {
     let panel = NSSavePanel::savePanel(mtm);
     if let Ok(dir) = std::env::current_dir() {
         let dir = NSString::from_str(&dir.to_string_lossy());
@@ -1685,7 +1760,7 @@ mod tests {
         let save = Save::To("x.ppm".to_string());
         assert_eq!(
             choose(&save, 3, |_| panic!("asked")),
-            Some(PathBuf::from("x.ppm"))
+            Quit::Save(PathBuf::from("x.ppm"))
         );
     }
 
@@ -1694,10 +1769,11 @@ mod tests {
         let save = Save::Ask("a.ppm".to_string());
         let answer = choose(&save, 3, |name| {
             assert_eq!(name, "a.ppm");
-            Some(PathBuf::from("/d/b.ppm"))
+            Quit::Save(PathBuf::from("/d/b.ppm"))
         });
-        assert_eq!(answer, Some(PathBuf::from("/d/b.ppm")));
-        assert_eq!(choose(&save, 3, |_| None), None);
+        assert_eq!(answer, Quit::Save(PathBuf::from("/d/b.ppm")));
+        assert_eq!(choose(&save, 3, |_| Quit::Discard), Quit::Discard);
+        assert_eq!(choose(&save, 3, |_| Quit::Cancel), Quit::Cancel);
     }
 
     #[test]
@@ -1706,7 +1782,50 @@ mod tests {
             Save::To("x.ppm".to_string()),
             Save::Ask("a.ppm".to_string()),
         ] {
-            assert_eq!(choose(&save, 0, |_| panic!("asked")), None);
+            assert_eq!(choose(&save, 0, |_| panic!("asked")), Quit::Discard);
         }
+    }
+
+    /// Runs `answer` with the alert's buttons in turn and the panel's paths
+    /// in turn, panicking if either is asked once too often.
+    fn answer_with(buttons: &[Button], paths: &[Option<&str>]) -> Quit {
+        let (mut buttons, mut paths) = (buttons.iter(), paths.iter());
+        answer(
+            || *buttons.next().expect("alert asked too often"),
+            || {
+                paths
+                    .next()
+                    .expect("panel asked too often")
+                    .map(PathBuf::from)
+            },
+        )
+    }
+
+    #[test]
+    fn the_alert_buttons_give_their_answers() {
+        assert_eq!(answer_with(&[Button::Discard], &[]), Quit::Discard);
+        assert_eq!(answer_with(&[Button::Cancel], &[]), Quit::Cancel);
+        assert_eq!(
+            answer_with(&[Button::Save], &[Some("/d/a.ppm")]),
+            Quit::Save(PathBuf::from("/d/a.ppm"))
+        );
+    }
+
+    #[test]
+    fn cancelling_the_save_panel_asks_again() {
+        assert_eq!(
+            answer_with(&[Button::Save, Button::Discard], &[None]),
+            Quit::Discard
+        );
+        assert_eq!(
+            answer_with(&[Button::Save, Button::Save], &[None, Some("/d/b.ppm")]),
+            Quit::Save(PathBuf::from("/d/b.ppm"))
+        );
+    }
+
+    #[test]
+    fn cancel_is_offered_unless_the_editor_asked_to_quit() {
+        assert!(offers_cancel(false));
+        assert!(!offers_cancel(true));
     }
 }
