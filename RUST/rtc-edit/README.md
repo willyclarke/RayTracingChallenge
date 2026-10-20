@@ -14,6 +14,7 @@ The editor grows in milestones:
 - **19 (done):** the viewer's image on quit, and the camera.
 - **20 (done):** New and Open, adding and deleting items, comments.
 - **21 (done):** the editor and the viewer side by side.
+- **23 (done):** the viewer's view into the scene's camera.
 
 ## Dependencies
 
@@ -54,7 +55,8 @@ centred.
 | Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
 | Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
 | Cmd-L | load the edits into the viewer |
-| Cmd-R | start the viewer again after closing it |
+| Cmd-R | start the viewer again after closing it (with one open, the status line says `viewer already running`) |
+| Cmd-K | keep the followed view (see below) |
 
 `rtc-edit` with no argument starts with a new scene. Cmd-N and Cmd-O replace the scene; with
 unsaved edits (the ` •`) an alert first asks `Save changes to <name>?` with Save, Don't Save and
@@ -62,6 +64,25 @@ Cancel. Cancel, or a Save that fails or whose Save As is cancelled, keeps the sc
 edits. A file that doesn't load leaves the scene as it is, and the status line says why. On a
 switch the old viewer gets SIGTERM, so it offers to save its image, and a new viewer opens on the
 new scene.
+
+## The viewer's view
+
+With the camera selected, a `viewer` column beside `from`, `to` and `up` shows the viewer's
+camera, greyed, as you orbit and zoom in it (`no viewer` with none running, `waiting` until it
+has written one). The two share it through a small file in the preview folder
+([rtc-share](../rtc-share/README.md)); a viewer built from an older rtc-share prints
+`rebuild rtc-metal` and the column stays at `waiting`.
+
+- Ticking **follow the viewer**, above the `from` row, copies the viewer's `from` into the scene as you orbit, rounded to 4
+  decimals, and with focal blur also its focal distance (zooming moves the focus with the
+  camera; the f-number stays). The `from` boxes are read-only meanwhile, and each change is an
+  unsaved edit.
+- **Keep** (beside it while following, or Cmd-K) stops following and keeps the view; Cmd-S saves it.
+- Unticking puts back the `from` and focal distance the camera had when you ticked.
+- New, Open, or the viewer ending stop following without putting anything back; selecting
+  another item doesn't stop it.
+- Cmd-L isn't needed: the viewer already shows the view, and the next Cmd-L reloads it without
+  a jump.
 
 ## Editing
 

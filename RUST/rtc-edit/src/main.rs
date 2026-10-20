@@ -15,16 +15,18 @@ use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
+use rtc_edit::follow::Follower;
 use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, find};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
-use rtc_share::Shared;
+use rtc_share::{Shared, Snapshot};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 /// The preview and the viewer, which must not outlive the editor. They live
 /// here rather than in `Editor` because Quit in the app menu (Cmd-Q) ends
@@ -88,6 +90,12 @@ struct Editor {
     frame: Rectangle,
     /// The current viewer's shared camera file, when it has one.
     share: Option<Shared>,
+    /// Whether a viewer is running, as of the last tick.
+    live: bool,
+    /// The viewer's camera as last read from `share`.
+    seen: Option<Snapshot>,
+    /// Whether the camera's `from` follows the viewer's.
+    follower: Follower,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +137,12 @@ enum Message {
     Command(bool),
     /// The window opened, moved or was resized.
     Window(window::Event),
+    /// Time to read the viewer's camera.
+    Tick,
+    /// The follow checkbox.
+    Follow(bool),
+    /// Keep the followed camera (the button or Cmd-K).
+    Keep,
 }
 
 /// The editor window's size at start-up.
@@ -182,6 +196,9 @@ fn boot() -> Editor {
         pending: None,
         frame: Rectangle::new(Point::ORIGIN, Size::new(WIDTH, HEIGHT)),
         share: None,
+        live: false,
+        seen: None,
+        follower: Follower::default(),
     };
     match loaded {
         Some((desc, path)) => editor.switch(desc, Some(path)),
@@ -221,6 +238,8 @@ impl Editor {
             let mut children = CHILDREN.lock().unwrap();
             children.viewer = None;
             self.share = None;
+            self.seen = None;
+            self.follower.stop();
             children.preview = None;
             let name = scene_name(path.as_deref());
             let preview = Preview::new(&std::env::temp_dir(), OsStr::new(&name))
@@ -504,7 +523,7 @@ impl Editor {
                     self.errors.remove(&field);
                     self.unsaved = true;
                     self.unloaded = true;
-                    self.refresh_camera(field);
+                    self.refresh_camera(Some(field));
                 }
                 Task::none()
             }
@@ -574,7 +593,7 @@ impl Editor {
                 self.errors.remove(&field);
                 self.unsaved = true;
                 self.unloaded = true;
-                self.refresh_camera(field);
+                self.refresh_camera(Some(field));
             }
             Err(e) => {
                 self.errors.insert(field, e);
@@ -586,15 +605,57 @@ impl Editor {
     /// Some camera boxes depend on each other: an f-number creates or removes
     /// the other focal blur boxes. Show the scene's values in all of them but
     /// `edited` and the red ones.
-    fn refresh_camera(&mut self, edited: Field) {
+    fn refresh_camera(&mut self, edited: Option<Field>) {
         let Some(node @ Node::Camera) = &self.selected else {
             return;
         };
         for (f, t) in fields(&self.desc, node) {
-            if f != edited && !self.errors.contains_key(&f) {
+            if Some(f) != edited && !self.errors.contains_key(&f) {
                 self.texts.insert(f, t);
             }
         }
+    }
+
+    /// Read the viewer's camera: on a new write, show it and, following,
+    /// copy it into the scene. A viewer that ended stops the following.
+    fn tick(&mut self) {
+        self.live = CHILDREN
+            .lock()
+            .unwrap()
+            .viewer
+            .as_mut()
+            .is_some_and(Viewer::running);
+        if !self.live {
+            self.seen = None;
+            self.follower.stop();
+            return;
+        }
+        let Some(shot) = self.share.as_ref().and_then(Shared::read) else {
+            return;
+        };
+        if self.seen.is_some_and(|s| s.seq == shot.seq) {
+            return;
+        }
+        self.seen = Some(shot);
+        self.follow(shot);
+    }
+
+    /// Copy `shot` into the camera while following.
+    fn follow(&mut self, shot: Snapshot) {
+        if self.follower.update(&mut self.desc.camera, &shot) {
+            self.unsaved = true;
+            self.show_camera();
+        }
+    }
+
+    /// Show the camera's values in its boxes after following changed them,
+    /// clearing the errors of the boxes it wrote.
+    fn show_camera(&mut self) {
+        for f in [0, 1, 2].map(Field::CameraFrom) {
+            self.errors.remove(&f);
+        }
+        self.errors.remove(&Field::FocalDistance);
+        self.refresh_camera(None);
     }
 
     /// Put the scene's value back in `field` and clear its error.
@@ -679,7 +740,11 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
     // Esc only does that.
     if !matches!(
         message,
-        Message::Key(_) | Message::Command(_) | Message::Focused(..) | Message::Window(_)
+        Message::Key(_)
+            | Message::Command(_)
+            | Message::Focused(..)
+            | Message::Window(_)
+            | Message::Tick
     ) && let Some(waiting) = e.pending.take()
     {
         if waiting == 'a' {
@@ -720,6 +785,22 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
         }
         Message::Paste(field, value) => e.edit(field, value),
         Message::Load => e.load(),
+        Message::Tick => e.tick(),
+        Message::Follow(true) => {
+            if e.live {
+                e.follower.start(&e.desc.camera);
+                if let Some(shot) = e.seen {
+                    e.follow(shot);
+                }
+            }
+        }
+        Message::Follow(false) => {
+            if e.follower.untick(&mut e.desc.camera) {
+                e.unsaved = true;
+                e.show_camera();
+            }
+        }
+        Message::Keep => e.follower.keep(),
         Message::Submit(field) => {
             e.left = Some(field);
             e.editing = None;
@@ -847,6 +928,7 @@ fn shortcut(
         "o" => Some(Message::Open),
         "r" => Some(Message::ShowViewer),
         "l" => Some(Message::Load),
+        "k" => Some(Message::Keep),
         _ => None,
     }
 }
@@ -855,6 +937,7 @@ fn subscription(_: &Editor) -> Subscription<Message> {
     Subscription::batch([
         iced::event::listen_with(shortcut),
         window::events().map(|(_, event)| Message::Window(event)),
+        iced::time::every(Duration::from_millis(100)).map(|_| Message::Tick),
     ])
 }
 
@@ -965,14 +1048,23 @@ fn boxes<'a>(e: &'a Editor, node: &Node) -> Element<'a, Message> {
             if let Some(r) = current.take() {
                 out = out.push(r);
             }
+            if field == Field::CameraFrom(0) && e.live {
+                out = out.push(follow_controls(e));
+            }
             current = Some(row![text(label).size(13).width(90)].spacing(4));
         }
         let input = text_input("", e.texts.get(&field).map_or("", String::as_str))
-            .on_input(move |s| Message::Edit(field, s))
-            .on_paste(move |s| Message::Paste(field, s))
             .on_submit(Message::Submit(field))
             .id(box_id(field))
             .size(13);
+        // While following, the viewer writes `from`; its boxes are read-only.
+        let input = if e.follower.following() && matches!(field, Field::CameraFrom(_)) {
+            input
+        } else {
+            input
+                .on_input(move |s| Message::Edit(field, s))
+                .on_paste(move |s| Message::Paste(field, s))
+        };
         // A comment is free text, wide as a row of three number boxes.
         let input = if field == Field::Comment {
             input.width(248)
@@ -993,6 +1085,9 @@ fn boxes<'a>(e: &'a Editor, node: &Node) -> Element<'a, Message> {
             style
         });
         current = current.map(|r| r.push(input));
+        if let Field::CameraFrom(2) | Field::CameraTo(2) | Field::CameraUp(2) = field {
+            current = current.map(|r| r.push(viewer_column(e, field)));
+        }
     }
     if let Some(r) = current.take() {
         out = out.push(r);
@@ -1002,6 +1097,52 @@ fn boxes<'a>(e: &'a Editor, node: &Node) -> Element<'a, Message> {
         out = out.push(text(format!("lens radius {radius}")).size(13));
     }
     out.into()
+}
+
+/// Beside a camera vector's boxes: the viewer's value, greyed. Without a
+/// viewer, or before it writes, one word on the `from` row.
+fn viewer_column<'a>(e: &Editor, field: Field) -> Element<'a, Message> {
+    let is_from = matches!(field, Field::CameraFrom(_));
+    let grey = |theme: &iced::Theme| text::Style {
+        color: Some(theme.palette().text.scale_alpha(0.5)),
+    };
+    let shown = match (e.live, e.seen) {
+        (true, Some(s)) => {
+            let v = match field {
+                Field::CameraFrom(_) => s.from,
+                Field::CameraTo(_) => s.to,
+                _ => s.up,
+            };
+            format!("{:>8.3} {:>8.3} {:>8.3}", v[0], v[1], v[2])
+        }
+        (true, None) if is_from => "waiting".into(),
+        (false, _) if is_from => "no viewer".into(),
+        _ => String::new(),
+    };
+    row![
+        text("viewer").size(13).style(grey),
+        text(shown).font(Font::MONOSPACE).size(13).style(grey),
+    ]
+    .spacing(8)
+    .padding(iced::Padding::ZERO.left(12))
+    .into()
+}
+
+/// Above the `from` row, with a viewer running: the follow checkbox and,
+/// while following, Keep.
+fn follow_controls<'a>(e: &Editor) -> Element<'a, Message> {
+    let mut r = row![
+        checkbox(e.follower.following())
+            .label("follow the viewer")
+            .on_toggle(Message::Follow)
+            .size(14)
+    ]
+    .spacing(12)
+    .align_y(iced::Alignment::Center);
+    if e.follower.following() {
+        r = r.push(button(text("Keep").size(13)).on_press(Message::Keep));
+    }
+    r.into()
 }
 
 fn closed_box<'a>(e: &Editor, node: &Node) -> Element<'a, Message> {
