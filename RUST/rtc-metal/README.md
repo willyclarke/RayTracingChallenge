@@ -52,13 +52,15 @@ cargo run --release -- --help
   - with `--watch`, the window reloads the scene whenever its file changes and refines it
     again, keeping your view unless the camera changed in more than width and height. A new width or
     height in the file resizes the window, keeping its top-left corner and fitted to the room
-    from there to the screen's right and bottom edges, and keeps your view. A file that doesn't load
+    from there to the screen's right and bottom edges (the whole screen when under 200 points
+    are left either way, moving the window back onto the screen if it no longer fits), and
+    keeps your view. A file that doesn't load
     keeps the old image, and the overlay shows why. The scene editor
     [rtc-edit](../rtc-edit/README.md) uses this as its viewer.
   - with `--at X,Y`, the window's top-left goes at that point, in points right and down from
-    the main screen's top-left (moved below the menu bar if needed), and the image is fitted
-    to the room right of it on that screen; with less than 200 points of room, or off every
-    screen, the window is centred as without `--at`. rtc-edit uses this to put its viewer
+    the primary display's top-left (moved below the menu bar if needed), and the image is
+    fitted to the room right of and below it on that screen; with less than 200 points of
+    room either way, or off every screen, the window is centred as without `--at`. rtc-edit uses this to put its viewer
     beside itself.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.

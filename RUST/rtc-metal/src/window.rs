@@ -340,18 +340,18 @@ pub fn parse_at(s: &str) -> Option<(f64, f64)> {
 }
 
 /// Where a window whose frame's top-left is `at` goes: `at` is in points,
-/// right and down from the top-left of the main screen (`main_height`
-/// tall). `screens` are each screen's frame and visible frame. Gives the
-/// top-left in AppKit's coordinates, moved down below the menu bar if
-/// above it, and the room the frame has to the visible right and bottom
-/// edges; `None` when no screen holds the point or the room is narrower
-/// than `MIN_ROOM`.
-pub fn place(
-    at: (f64, f64),
-    main_height: f64,
-    screens: &[(NSRect, NSRect)],
-) -> Option<(NSPoint, NSSize)> {
-    let (x, y) = (at.0, main_height - at.1);
+/// right and down from the top-left of the primary screen, the one at
+/// AppKit's origin. `screens` are each screen's frame and visible frame.
+/// Gives the top-left in AppKit's coordinates, moved down below the menu
+/// bar if above it, and the room the frame has to the visible right and
+/// bottom edges; `None` when no screen holds the point or the room is
+/// narrower or lower than `MIN_ROOM`.
+pub fn place(at: (f64, f64), screens: &[(NSRect, NSRect)]) -> Option<(NSPoint, NSSize)> {
+    let primary = screens
+        .iter()
+        .find(|(frame, _)| frame.origin == NSPoint::new(0.0, 0.0))
+        .or(screens.first())?;
+    let (x, y) = (at.0, primary.0.size.height - at.1);
     let (_, visible) = screens.iter().find(|(frame, _)| {
         let (min, max) = (frame.origin, frame.origin.x + frame.size.width);
         (min.x..=max).contains(&x) && (min.y..=min.y + frame.size.height).contains(&y)
@@ -359,7 +359,31 @@ pub fn place(
     let top = y.min(visible.origin.y + visible.size.height);
     let top_left = NSPoint::new(x, top);
     let room = room_from(top_left, *visible);
-    (room.width >= MIN_ROOM).then_some((top_left, room))
+    (room.width >= MIN_ROOM && room.height >= MIN_ROOM).then_some((top_left, room))
+}
+
+/// `top_left` moved left and up just enough that a window frame of `size`
+/// fits inside `visible`; a frame larger than `visible` keeps its top-left
+/// corner on the screen.
+pub fn on_screen(top_left: NSPoint, size: NSSize, visible: NSRect) -> NSPoint {
+    let (left, bottom) = (visible.origin.x, visible.origin.y);
+    let (right, top) = (left + visible.size.width, bottom + visible.size.height);
+    NSPoint::new(
+        top_left.x.min(right - size.width).max(left),
+        top_left.y.max(bottom + size.height).min(top),
+    )
+}
+
+/// The room for a window resized on a reload, keeping its top-left: to the
+/// visible right and bottom edges, or the whole visible frame when that
+/// leaves less than `MIN_ROOM` either way.
+pub fn reload_room(top_left: NSPoint, visible: NSRect) -> NSSize {
+    let room = room_from(top_left, visible);
+    if room.width >= MIN_ROOM && room.height >= MIN_ROOM {
+        room
+    } else {
+        visible.size
+    }
 }
 
 /// The room from a window frame's top-left (AppKit coordinates) to the
@@ -634,17 +658,22 @@ impl RtcView {
             // bottom-left.
             let frame = window.frame();
             let top_left = NSPoint::new(frame.origin.x, frame.origin.y + frame.size.height);
-            let room = window.screen().map(|screen| {
-                let room = room_from(top_left, screen.visibleFrame());
+            let visible = window.screen().map(|screen| screen.visibleFrame());
+            let room = visible.map(|visible| {
                 NSWindow::contentRectForFrameRect_styleMask(
-                    NSRect::new(NSPoint::new(0.0, 0.0), room),
+                    NSRect::new(NSPoint::new(0.0, 0.0), reload_room(top_left, visible)),
                     window.styleMask(),
                     MainThreadMarker::from(self),
                 )
                 .size
             });
             window.setContentSize(window_size(w, h, scale, room));
-            window.setFrameTopLeftPoint(top_left);
+            // Grown back to the whole screen near an edge, it moves back
+            // onto the screen.
+            let size = window.frame().size;
+            window.setFrameTopLeftPoint(
+                visible.map_or(top_left, |visible| on_screen(top_left, size, visible)),
+            );
         }
         if reloaded {
             self.resume();
@@ -887,12 +916,12 @@ pub fn run(
     let scale = screen.as_ref().map_or(1.0, |s| s.backingScaleFactor());
     // With `--at`, the room right of that point on its screen; else the
     // main screen's.
-    let placed = at.zip(screen.as_ref()).and_then(|(at, main)| {
+    let placed = at.and_then(|at| {
         let screens: Vec<_> = NSScreen::screens(mtm)
             .iter()
             .map(|s| (s.frame(), s.visibleFrame()))
             .collect();
-        place(at, main.frame().size.height, &screens)
+        place(at, &screens)
     });
     let room = match placed {
         Some((_, room)) => Some(
@@ -1361,7 +1390,7 @@ mod tests {
     #[test]
     fn place_puts_the_window_right_of_the_point() {
         assert_eq!(
-            place((900.0, 30.0), 900.0, &[main_screen()]),
+            place((900.0, 30.0), &[main_screen()]),
             Some((NSPoint::new(900.0, 870.0), NSSize::new(540.0, 870.0)))
         );
     }
@@ -1369,7 +1398,7 @@ mod tests {
     #[test]
     fn place_moves_a_point_under_the_menu_bar_down() {
         assert_eq!(
-            place((900.0, 0.0), 900.0, &[main_screen()]),
+            place((900.0, 0.0), &[main_screen()]),
             Some((NSPoint::new(900.0, 875.0), NSSize::new(540.0, 875.0)))
         );
     }
@@ -1378,20 +1407,82 @@ mod tests {
     fn place_finds_the_screen_holding_the_point() {
         let left = NSRect::new(NSPoint::new(-1280.0, 0.0), NSSize::new(1280.0, 1024.0));
         assert_eq!(
-            place((-380.0, 0.0), 900.0, &[main_screen(), (left, left)]),
+            place((-380.0, 0.0), &[main_screen(), (left, left)]),
             Some((NSPoint::new(-380.0, 900.0), NSSize::new(380.0, 900.0)))
         );
     }
 
     #[test]
     fn place_gives_none_without_200_points_of_room() {
-        assert_eq!(place((1300.0, 30.0), 900.0, &[main_screen()]), None);
-        assert!(place((1240.0, 30.0), 900.0, &[main_screen()]).is_some());
+        assert_eq!(place((1300.0, 30.0), &[main_screen()]), None);
+        assert!(place((1240.0, 30.0), &[main_screen()]).is_some());
     }
 
     #[test]
     fn place_gives_none_off_every_screen() {
-        assert_eq!(place((5000.0, 30.0), 900.0, &[main_screen()]), None);
+        assert_eq!(place((5000.0, 30.0), &[main_screen()]), None);
+    }
+
+    #[test]
+    fn place_measures_from_the_screen_at_the_origin() {
+        // The key screen comes first in no particular order; the y flip
+        // uses the screen at (0, 0), whatever its place in the list.
+        let left = NSRect::new(NSPoint::new(-1280.0, 0.0), NSSize::new(1280.0, 1024.0));
+        assert_eq!(
+            place((900.0, 30.0), &[(left, left), main_screen()]),
+            Some((NSPoint::new(900.0, 870.0), NSSize::new(540.0, 870.0)))
+        );
+    }
+
+    #[test]
+    fn place_gives_none_without_200_points_of_height() {
+        assert_eq!(place((900.0, 800.0), &[main_screen()]), None);
+        assert!(place((900.0, 700.0), &[main_screen()]).is_some());
+    }
+
+    #[test]
+    fn reload_room_falls_back_to_the_whole_screen_near_an_edge() {
+        let visible = main_screen().1;
+        assert_eq!(
+            reload_room(NSPoint::new(100.0, 800.0), visible),
+            NSSize::new(1340.0, 800.0)
+        );
+        for near in [
+            NSPoint::new(1300.0, 800.0),
+            NSPoint::new(100.0, 150.0),
+            NSPoint::new(100.0, -20.0),
+        ] {
+            assert_eq!(reload_room(near, visible), visible.size, "{near:?}");
+        }
+    }
+
+    #[test]
+    fn on_screen_keeps_a_top_left_that_fits() {
+        let visible = main_screen().1;
+        let size = NSSize::new(400.0, 300.0);
+        assert_eq!(
+            on_screen(NSPoint::new(100.0, 800.0), size, visible),
+            NSPoint::new(100.0, 800.0)
+        );
+    }
+
+    #[test]
+    fn on_screen_moves_a_window_back_from_the_right_and_bottom() {
+        let visible = main_screen().1;
+        let size = NSSize::new(400.0, 300.0);
+        assert_eq!(
+            on_screen(NSPoint::new(1300.0, 150.0), size, visible),
+            NSPoint::new(1040.0, 300.0)
+        );
+        // Larger than the screen: its top-left corner stays visible.
+        assert_eq!(
+            on_screen(
+                NSPoint::new(1300.0, 150.0),
+                NSSize::new(2000.0, 1000.0),
+                visible
+            ),
+            NSPoint::new(0.0, 875.0)
+        );
     }
 
     #[test]
