@@ -4,6 +4,7 @@
 pub mod edit;
 pub mod fields;
 pub mod follow;
+pub mod history;
 pub mod paths;
 pub mod preview;
 pub mod tree;

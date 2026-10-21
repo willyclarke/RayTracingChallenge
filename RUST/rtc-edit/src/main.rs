@@ -16,6 +16,7 @@ use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
 use rtc_edit::follow::Follower;
+use rtc_edit::history::{Group, History};
 use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
@@ -96,6 +97,8 @@ struct Editor {
     seen: Option<Snapshot>,
     /// Whether the camera's `from` follows the viewer's.
     follower: Follower,
+    /// The steps Cmd-Z undoes and Cmd-Shift-Z redoes.
+    history: History,
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +146,9 @@ enum Message {
     Follow(bool),
     /// Keep the followed camera (the button or Cmd-K).
     Keep,
+    /// Cmd-Z and Cmd-Shift-Z.
+    Undo,
+    Redo,
 }
 
 /// The editor window's size at start-up.
@@ -199,6 +205,8 @@ fn boot() -> Editor {
         live: false,
         seen: None,
         follower: Follower::default(),
+        // `switch` below starts the history on the scene it opens.
+        history: History::new(&new_scene()),
     };
     match loaded {
         Some((desc, path)) => editor.switch(desc, Some(path)),
@@ -262,6 +270,7 @@ impl Editor {
         self.pending = None;
         self.unsaved = false;
         self.unloaded = false;
+        self.history.clear(&self.desc);
         self.show_viewer();
     }
 
@@ -476,7 +485,10 @@ impl Editor {
     /// Add `item` next to the selected one and select it, unfolding what
     /// hides it.
     fn add_item(&mut self, item: Item) {
+        let before = self.desc.clone();
         let node = edit::add(&mut self.desc, self.selected.as_ref(), item);
+        let label = format!("add {}", self.item_name(&node));
+        self.history.record(&before, Group::Once, &label);
         if let Node::Shape(p) = &node {
             rtc_edit::edit::shift(&mut self.folded, p, 1);
         }
@@ -495,8 +507,11 @@ impl Editor {
         let Some(node) = self.selected.clone() else {
             return;
         };
+        let before = self.desc.clone();
+        let label = format!("delete {}", self.item_name(&node));
         match edit::delete(&mut self.desc, &node) {
             Ok(next) => {
+                self.history.record(&before, Group::Once, &label);
                 if let Node::Shape(p) = &node {
                     rtc_edit::edit::shift(&mut self.folded, p, -1);
                 }
@@ -519,13 +534,18 @@ impl Editor {
                 .start_editing(field)
                 .chain(operation::move_cursor_to_front(box_id(field))),
             'c' => {
-                self.edit(field, String::new());
+                self.edit_as(field, String::new(), "change");
                 self.start_editing(field)
             }
             'x' => {
                 // Only a box that may be empty; one that needs a number stays.
+                let before = self.desc.clone();
                 if set_remembering(&mut self.desc, node, field, "", &mut self.removed_blur).is_ok()
                 {
+                    if self.desc != before {
+                        let label = format!("empty {}", row_label(field));
+                        self.history.record(&before, Group::Once, &label);
+                    }
                     self.texts.insert(field, String::new());
                     self.errors.remove(&field);
                     self.unsaved = true;
@@ -567,6 +587,7 @@ impl Editor {
         self.status = match self.desc.save(path) {
             Ok(()) => {
                 self.unsaved = false;
+                self.history.saved(&self.desc);
                 self.saved()
             }
             Err(e) => e.to_string(),
@@ -592,11 +613,24 @@ impl Editor {
     }
 
     fn edit(&mut self, field: Field, value: String) {
+        self.edit_as(field, value, "typing in");
+    }
+
+    /// `edit`, with the undo step named `<verb> <row label>`.
+    fn edit_as(&mut self, field: Field, value: String, verb: &str) {
         self.left = None;
         self.editing = Some(field);
-        let Some(node) = &self.selected else { return };
-        match set_remembering(&mut self.desc, node, field, &value, &mut self.removed_blur) {
+        let Some(node) = self.selected.clone() else {
+            return;
+        };
+        let before = self.desc.clone();
+        match set_remembering(&mut self.desc, &node, field, &value, &mut self.removed_blur) {
             Ok(()) => {
+                if self.desc != before {
+                    let label = format!("{verb} {}", row_label(field));
+                    self.history
+                        .record(&before, Group::Box(node, field), &label);
+                }
                 self.errors.remove(&field);
                 self.unsaved = true;
                 self.unloaded = true;
@@ -621,6 +655,54 @@ impl Editor {
                 self.texts.insert(f, t);
             }
         }
+    }
+
+    /// Undo the last step (`back`) or redo the last undone one, and show
+    /// the scene as it now is.
+    fn undo(&mut self, back: bool) {
+        self.follower.stop();
+        let done = if back {
+            self.history.undo(&mut self.desc)
+        } else {
+            self.history.redo(&mut self.desc)
+        };
+        let Some(label) = done else {
+            self.status = if back {
+                "nothing to undo"
+            } else {
+                "nothing to redo"
+            }
+            .into();
+            return;
+        };
+        self.status = format!("{} {label}", if back { "undid:" } else { "redid:" });
+        self.unsaved = self.history.differs(&self.desc);
+        self.unloaded = true;
+        self.editing = None;
+        self.left = None;
+        self.errors.clear();
+        match self.selected.clone() {
+            Some(node)
+                if rows(&self.desc, &self.folded)
+                    .iter()
+                    .any(|r| r.node == node) =>
+            {
+                self.select(node)
+            }
+            _ => {
+                self.selected = None;
+                self.texts.clear();
+            }
+        }
+    }
+
+    /// An item's tree label without its comment, such as `sphere`.
+    fn item_name(&self, node: &Node) -> String {
+        rows(&self.desc, &HashSet::new())
+            .into_iter()
+            .find(|r| r.node == *node)
+            .map(|r| r.label.split(" — ").next().unwrap_or("").to_string())
+            .unwrap_or_else(|| "item".into())
     }
 
     /// Read the viewer's camera: on a new write, show it and, following,
@@ -649,7 +731,10 @@ impl Editor {
 
     /// Copy `shot` into the camera while following.
     fn follow(&mut self, shot: Snapshot) {
+        let before = self.desc.clone();
         if self.follower.update(&mut self.desc.camera, &shot) {
+            self.history
+                .record(&before, Group::Follow, "follow the viewer");
             self.unsaved = true;
             self.show_camera();
         }
@@ -713,9 +798,15 @@ impl Editor {
             .and_then(|()| desc.save(&new).map_err(|e| e.to_string()));
         match saved {
             Ok(()) => {
+                // The undo and redo copies get the same new asset paths. A
+                // copy whose paths can't be rewritten keeps them.
+                self.history.for_each_scene(|d| {
+                    let _ = rebase(d, &dir, dir_of(&new));
+                });
                 self.desc = desc;
                 self.path = Some(new);
                 self.unsaved = false;
+                self.history.saved(&self.desc);
                 // Rebasing touches only asset paths, which have no boxes,
                 // so the boxes and any red text stay as they are.
                 self.status = self.saved();
@@ -743,6 +834,17 @@ const DELETE: char = '\u{7f}';
 const OTHER: char = '\0';
 
 fn update(e: &mut Editor, message: Message) -> Task<Message> {
+    let editing = e.editing;
+    let task = handle(e, message);
+    // Leaving a box, for none or another, ends its undo step. Entering one
+    // from none doesn't: its first keystroke both enters it and records.
+    if editing.is_some() && e.editing != editing {
+        e.history.close();
+    }
+    task
+}
+
+fn handle(e: &mut Editor, message: Message) -> Task<Message> {
     // Anything but a key, Cmd or a focus answer ends a wait for a second key;
     // Esc only does that.
     if !matches!(
@@ -785,7 +887,9 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
         }
         Message::Closed(value) => {
             if let Some(node) = &e.selected {
+                let before = e.desc.clone();
                 set_closed(&mut e.desc, node, value);
+                e.history.record(&before, Group::Once, "closed");
                 e.unsaved = true;
                 e.unloaded = true;
             }
@@ -802,12 +906,19 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
             }
         }
         Message::Follow(false) => {
+            let before = e.desc.clone();
             if e.follower.untick(&mut e.desc.camera) {
+                e.history.record(&before, Group::Once, "untick follow");
                 e.unsaved = true;
                 e.show_camera();
             }
         }
-        Message::Keep => e.follower.keep(),
+        Message::Keep => {
+            e.follower.keep();
+            e.history.close();
+        }
+        Message::Undo => e.undo(true),
+        Message::Redo => e.undo(false),
         Message::Submit(field) => {
             e.left = Some(field);
             e.editing = None;
@@ -936,6 +1047,8 @@ fn shortcut(
         "r" => Some(Message::ShowViewer),
         "l" => Some(Message::Load),
         "k" => Some(Message::Keep),
+        "z" if modifiers.shift() => Some(Message::Redo),
+        "z" => Some(Message::Undo),
         _ => None,
     }
 }
@@ -1158,6 +1271,11 @@ fn closed_box<'a>(e: &Editor, node: &Node) -> Element<'a, Message> {
         .on_toggle(Message::Closed)
         .size(14)
         .into()
+}
+
+/// A box's row label, such as `position`, for undo steps.
+fn row_label(field: Field) -> &'static str {
+    describe(field, "bounds").1
 }
 
 /// A box's heading, its row label, and its axis when it is part of a vector.
