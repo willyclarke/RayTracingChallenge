@@ -15,6 +15,7 @@ The editor grows in milestones:
 - **20 (done):** New and Open, adding and deleting items, comments.
 - **21 (done):** the editor and the viewer side by side.
 - **23 (done):** the viewer's view into the scene's camera.
+- **24 (done):** undo and redo.
 
 ## Dependencies
 
@@ -57,6 +58,7 @@ centred.
 | Cmd-L | load the edits into the viewer |
 | Cmd-R | start the viewer again after closing it (with one open, the status line says `viewer already running`) |
 | Cmd-K | keep the followed view (see below) |
+| Cmd-Z, Cmd-Shift-Z | undo, redo (see Undo) |
 
 `rtc-edit` with no argument starts with a new scene. Cmd-N and Cmd-O replace the scene; with
 unsaved edits (the ` •`) an alert first asks `Save changes to <name>?` with Save, Don't Save and
@@ -149,7 +151,20 @@ Two deletes are refused, with the reason in the status line: a shape directly in
 CSG needs both its shapes) and the last light (a scene needs a light). The camera, settings and
 headings can't be deleted.
 
-There is no undo: to go back, open the file again and choose Don't Save.
+## Undo
+
+Cmd-Z takes back the last change to the scene and Cmd-Shift-Z puts it back; the status line
+names the step (`undid: delete sphere`). One step is:
+
+- everything typed into one box, from entering it to leaving it (`c` and the typing after it
+  included), `x` on a shaded box, a click on `closed`;
+- adding or deleting an item;
+- a whole run of following the viewer (Keep ends it), and unticking follow.
+
+Folding, selection and the viewer's orbit aren't steps. The last 100 steps are kept; a new
+change clears what Cmd-Shift-Z would redo, and New and Open clear it all (Save doesn't). Undoing
+back to the scene as saved removes the ` •`. After an undo the viewer is behind: Cmd-L loads it.
+Cmd-Z while following stops following first.
 
 Clicking a box edits it. The tree doesn't scroll to follow the keys.
 
