@@ -83,6 +83,15 @@ impl History {
         Some(label)
     }
 
+    /// Apply `f` to every scene kept (the undo and redo copies and the
+    /// saved one), as Save As rewrites asset paths for a new folder.
+    pub fn for_each_scene(&mut self, mut f: impl FnMut(&mut SceneDescription)) {
+        for (scene, _) in self.undo.iter_mut().chain(self.redo.iter_mut()) {
+            f(scene);
+        }
+        f(&mut self.saved);
+    }
+
     /// `scene` was saved.
     pub fn saved(&mut self, scene: &SceneDescription) {
         self.saved = scene.clone();
@@ -214,6 +223,25 @@ mod tests {
         let mut t = other.clone();
         assert_eq!(h.undo(&mut t), None);
         assert!(!h.differs(&other));
+    }
+
+    #[test]
+    fn every_copy_can_be_rewritten() {
+        let mut s = with_fov(&new_scene(), 1.0);
+        let mut h = History::new(&s);
+        change(&mut h, &mut s, 2.0, Group::Once);
+        change(&mut h, &mut s, 3.0, Group::Once);
+        h.undo(&mut s);
+        // As Save As rewrites asset paths: here, every copy's width.
+        h.for_each_scene(|d| d.camera.width = 7);
+        s.camera.width = 7;
+        h.undo(&mut s);
+        assert_eq!((s.camera.field_of_view, s.camera.width), (1.0, 7));
+        // The saved scene was rewritten too.
+        assert!(!h.differs(&s));
+        h.redo(&mut s);
+        h.redo(&mut s);
+        assert_eq!((s.camera.field_of_view, s.camera.width), (3.0, 7));
     }
 
     #[test]

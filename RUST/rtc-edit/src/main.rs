@@ -798,6 +798,11 @@ impl Editor {
             .and_then(|()| desc.save(&new).map_err(|e| e.to_string()));
         match saved {
             Ok(()) => {
+                // The undo and redo copies get the same new asset paths. A
+                // copy whose paths can't be rewritten keeps them.
+                self.history.for_each_scene(|d| {
+                    let _ = rebase(d, &dir, dir_of(&new));
+                });
                 self.desc = desc;
                 self.path = Some(new);
                 self.unsaved = false;
