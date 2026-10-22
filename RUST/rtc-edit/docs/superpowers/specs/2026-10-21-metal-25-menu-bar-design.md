@@ -40,7 +40,7 @@ An iced 0.14 app with a `muda` 0.21 menu bar, checked by eye:
 
 | Menu | Items (key) |
 |---|---|
-| rtc-edit | About rtc-edit, Quit (Cmd-Q) |
+| rtc-edit | About rtc-edit, Services, Hide (Cmd-H), Hide Others (Cmd-Opt-H), Show All, Quit (Cmd-Q) |
 | File | New (Cmd-N), Open… (Cmd-O), Save (Cmd-S), Save As… (Cmd-Shift-S) |
 | Edit | Undo (Cmd-Z), Redo (Cmd-Shift-Z), Delete (Cmd-Delete) |
 | Scene | Add Sphere, Add Cube, Add Plane, Add Cylinder, Add Cone, Add Light |

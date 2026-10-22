@@ -55,7 +55,7 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 
 | menu | item | key | does |
 |---|---|---|---|
-| rtc-edit | About rtc-edit, Quit | Cmd-Q | |
+| rtc-edit | About rtc-edit, Services, Hide, Hide Others, Show All, Quit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app |
 | File | New | Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
 | File | Open… | Cmd-O | open another scene (a `.json` file) |
 | File | Save | Cmd-S | save the scene; on an untitled scene it asks where, like Save As |

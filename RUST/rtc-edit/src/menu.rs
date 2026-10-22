@@ -166,6 +166,12 @@ impl Menus {
             &[
                 &about,
                 &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::services(None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::hide(None),
+                &PredefinedMenuItem::hide_others(None),
+                &PredefinedMenuItem::show_all(None),
+                &PredefinedMenuItem::separator(),
                 &PredefinedMenuItem::quit(None),
             ],
         )
