@@ -5,18 +5,21 @@
 //! point lights and the camera are edited in fixed fields; Cmd-L loads the
 //! edits into the viewer. Cmd-N and Cmd-O start a new scene or open another,
 //! and shapes and lights are added and deleted from a button bar and keys.
+//! The menu bar lists every command with its Cmd key, and owns those keys.
 
 use iced::widget::operation;
 use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
 };
 use iced::{Element, Font, Length, Point, Rectangle, Size, Subscription, Task, keyboard, window};
+use muda::MenuEvent;
 use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
 use rtc_edit::follow::Follower;
 use rtc_edit::history::{Group, History};
+use rtc_edit::menu::{self, Command, Menus, State};
 use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
@@ -99,6 +102,8 @@ struct Editor {
     follower: Follower,
     /// The steps Cmd-Z undoes and Cmd-Shift-Z redoes.
     history: History,
+    /// The menu bar, once the window has opened.
+    menus: Option<Menus>,
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +154,8 @@ enum Message {
     /// Cmd-Z and Cmd-Shift-Z.
     Undo,
     Redo,
+    /// Time to read the menu bar's clicks and keys.
+    Poll,
 }
 
 /// The editor window's size at start-up.
@@ -207,6 +214,7 @@ fn boot() -> Editor {
         follower: Follower::default(),
         // `switch` below starts the history on the scene it opens.
         history: History::new(&new_scene()),
+        menus: None,
     };
     match loaded {
         Some((desc, path)) => editor.switch(desc, Some(path)),
@@ -216,6 +224,22 @@ fn boot() -> Editor {
 }
 
 impl Editor {
+    /// What the menu bar's greying and tick need.
+    fn menu_state(&self) -> State {
+        State {
+            can_undo: self.history.can_undo(),
+            can_redo: self.history.can_redo(),
+            can_delete: self.left.is_none()
+                && self.editing.is_none()
+                && self
+                    .selected
+                    .as_ref()
+                    .is_some_and(|n| edit::can_delete(&self.desc, n).is_ok()),
+            viewer_running: self.live,
+            following: self.follower.following(),
+        }
+    }
+
     /// The scene's file name, or `untitled.json`.
     fn name(&self) -> String {
         scene_name(self.path.as_deref())
@@ -462,7 +486,6 @@ impl Editor {
             _ => {}
         }
         match c {
-            DELETE if self.left.is_none() && self.editing.is_none() => self.delete_selected(),
             'h' => self.arrow(-1, 0),
             'l' => self.arrow(1, 0),
             'k' => self.arrow(0, -1),
@@ -828,8 +851,6 @@ fn dir_for(path: Option<&Path>) -> PathBuf {
     }
 }
 
-/// `Message::Key` for Cmd-Delete (Cmd-Backspace, or Cmd with forward Delete).
-const DELETE: char = '\u{7f}';
 /// `Message::Key` for a key that does nothing but cancel a wait for a second one.
 const OTHER: char = '\0';
 
@@ -841,7 +862,29 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
     if editing.is_some() && e.editing != editing {
         e.history.close();
     }
+    let state = e.menu_state();
+    if let Some(menus) = &mut e.menus {
+        menus.refresh(&state);
+    }
     task
+}
+
+/// The message a menu command sends.
+fn menu_message(command: Command, following: bool) -> Message {
+    match command {
+        Command::New => Message::New,
+        Command::Open => Message::Open,
+        Command::Save => Message::Save,
+        Command::SaveAs => Message::SaveAs,
+        Command::Undo => Message::Undo,
+        Command::Redo => Message::Redo,
+        Command::Delete => Message::Delete,
+        Command::Add(item) => Message::Add(item),
+        Command::Load => Message::Load,
+        Command::StartViewer => Message::ShowViewer,
+        Command::Follow => Message::Follow(!following),
+        Command::Keep => Message::Keep,
+    }
 }
 
 fn handle(e: &mut Editor, message: Message) -> Task<Message> {
@@ -854,6 +897,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             | Message::Focused(..)
             | Message::Window(_)
             | Message::Tick
+            | Message::Poll
     ) && let Some(waiting) = e.pending.take()
     {
         if waiting == 'a' {
@@ -919,6 +963,16 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         }
         Message::Undo => e.undo(true),
         Message::Redo => e.undo(false),
+        Message::Poll => {
+            let mut tasks = Vec::new();
+            while let Ok(event) = MenuEvent::receiver().try_recv() {
+                if let Some(c) = menu::command(&event.id.0) {
+                    let message = menu_message(c, e.follower.following());
+                    tasks.push(handle(e, message));
+                }
+            }
+            return Task::batch(tasks);
+        }
         Message::Submit(field) => {
             e.left = Some(field);
             e.editing = None;
@@ -964,6 +1018,11 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         Message::Command(held) => e.command = held,
         Message::Window(event) => match event {
             window::Event::Opened { position, size } => {
+                if e.menus.is_none() {
+                    let menus = Menus::new();
+                    menus.install();
+                    e.menus = Some(menus);
+                }
                 e.frame.x = position.map_or(e.frame.x, |p| p.x);
                 e.frame.y = position.map_or(e.frame.y, |p| p.y);
                 (e.frame.width, e.frame.height) = (size.width, size.height);
@@ -978,10 +1037,10 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
     Task::none()
 }
 
-/// Cmd-S, Cmd-Shift-S, Cmd-N, Cmd-O, Cmd-R, Cmd-L, Tab and Shift-Tab, also while a box
-/// has focus and takes the key itself; whether Cmd is held; Esc; the arrows,
-/// h/j/k/l, Enter, Cmd-Delete and the letters a c d h i j k l o p s u x y that no
-/// box took, and any other such key as one that only cancels; and clicks.
+/// Tab and Shift-Tab, also while a box has focus and takes the key itself;
+/// whether Cmd is held; Esc; the arrows, h/j/k/l, Enter and the letters
+/// a c d h i j k l o p s u x y that no box took, and any other such key as one
+/// that only cancels; and clicks. The Cmd keys belong to the menu bar.
 fn shortcut(
     event: iced::Event,
     status: iced::event::Status,
@@ -1002,53 +1061,28 @@ fn shortcut(
     };
     use keyboard::key::Named;
     let plain = ignored && modifiers.is_empty();
-    let c = match key {
-        keyboard::Key::Named(Named::Tab) if modifiers.shift() => {
-            return Some(Message::FocusPrevious);
-        }
-        keyboard::Key::Named(Named::Tab) => return Some(Message::FocusNext),
-        keyboard::Key::Named(Named::Escape) => return Some(Message::Escape(!ignored)),
-        keyboard::Key::Named(Named::Backspace | Named::Delete)
-            if ignored && modifiers == keyboard::Modifiers::COMMAND =>
-        {
-            return Some(Message::Key(DELETE));
-        }
-        keyboard::Key::Named(named) if plain => {
-            return match named {
-                Named::Enter => Some(Message::Enter),
-                Named::ArrowLeft => Some(Message::Move(-1, 0)),
-                Named::ArrowRight => Some(Message::Move(1, 0)),
-                Named::ArrowUp => Some(Message::Move(0, -1)),
-                Named::ArrowDown => Some(Message::Move(0, 1)),
-                Named::Shift | Named::Control | Named::Alt | Named::Super | Named::Meta => None,
-                // Any other key only cancels a wait for a second key.
-                _ => Some(Message::Key(OTHER)),
-            };
-        }
-        keyboard::Key::Character(c) if ignored && !modifiers.command() => {
-            return match c.as_str() {
-                "h" | "j" | "k" | "l" | "i" | "c" | "x" | "u" | "a" | "d" | "s" | "p" | "y"
-                | "o"
-                    if modifiers.is_empty() =>
-                {
-                    c.chars().next().map(Message::Key)
-                }
-                _ => Some(Message::Key(OTHER)),
-            };
-        }
-        keyboard::Key::Character(c) if modifiers.command() => c,
-        _ => return None,
-    };
-    match c.to_lowercase().as_str() {
-        "s" if modifiers.shift() => Some(Message::SaveAs),
-        "s" => Some(Message::Save),
-        "n" => Some(Message::New),
-        "o" => Some(Message::Open),
-        "r" => Some(Message::ShowViewer),
-        "l" => Some(Message::Load),
-        "k" => Some(Message::Keep),
-        "z" if modifiers.shift() => Some(Message::Redo),
-        "z" => Some(Message::Undo),
+    match key {
+        keyboard::Key::Named(Named::Tab) if modifiers.shift() => Some(Message::FocusPrevious),
+        keyboard::Key::Named(Named::Tab) => Some(Message::FocusNext),
+        keyboard::Key::Named(Named::Escape) => Some(Message::Escape(!ignored)),
+        keyboard::Key::Named(named) if plain => match named {
+            Named::Enter => Some(Message::Enter),
+            Named::ArrowLeft => Some(Message::Move(-1, 0)),
+            Named::ArrowRight => Some(Message::Move(1, 0)),
+            Named::ArrowUp => Some(Message::Move(0, -1)),
+            Named::ArrowDown => Some(Message::Move(0, 1)),
+            Named::Shift | Named::Control | Named::Alt | Named::Super | Named::Meta => None,
+            // Any other key only cancels a wait for a second key.
+            _ => Some(Message::Key(OTHER)),
+        },
+        keyboard::Key::Character(c) if ignored && !modifiers.command() => match c.as_str() {
+            "h" | "j" | "k" | "l" | "i" | "c" | "x" | "u" | "a" | "d" | "s" | "p" | "y" | "o"
+                if modifiers.is_empty() =>
+            {
+                c.chars().next().map(Message::Key)
+            }
+            _ => Some(Message::Key(OTHER)),
+        },
         _ => None,
     }
 }
@@ -1058,6 +1092,7 @@ fn subscription(_: &Editor) -> Subscription<Message> {
         iced::event::listen_with(shortcut),
         window::events().map(|(_, event)| Message::Window(event)),
         iced::time::every(Duration::from_millis(100)).map(|_| Message::Tick),
+        iced::time::every(Duration::from_millis(50)).map(|_| Message::Poll),
     ])
 }
 
