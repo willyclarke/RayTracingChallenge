@@ -44,6 +44,9 @@ cargo run --release -- --help
   - `i` toggles the status overlay (samples, a stopwatch to the target, frame time, size,
     traversal);
   - resize or go full screen to render at the new size;
+  - the app menu has Hide rtc-metal (Cmd-H), Hide Others (Cmd-Opt-H), Show All and Quit (Cmd-Q);
+  - File ▸ Save Image… (Cmd-S) writes the image as it stands where you pick, while it keeps
+    refining;
   - the Traversal menu switches between BVH (Cmd-1) and Metal (Cmd-2);
   - the Samples menu sets the target (presets, Unlimited, Cmd-] doubles, Cmd-[ halves);
   - quitting (Cmd-Q, closing the window, or SIGTERM) asks whether to save the image at the

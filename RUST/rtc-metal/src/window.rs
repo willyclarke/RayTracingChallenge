@@ -21,7 +21,7 @@
 //! than width and height; a new size only resizes the window.
 //! A file that doesn't load keeps the old image, and the status shows why.
 //! Quitting (Cmd-Q, closing the window, or SIGTERM) hands the final image
-//! and its size to `on_close`, with the `-o` path or, without one, a path
+//! and its size to `write`, with the `-o` path or, without one, a path
 //! the user picks in a save panel after an alert asks whether to save.
 //! The alert's Cancel (Esc) keeps the viewer running, except after a
 //! SIGTERM; cancelling the save panel shows the alert again.
@@ -40,9 +40,10 @@ use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_clas
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSApplication,
     NSApplicationActivationPolicy, NSApplicationDelegate, NSApplicationTerminateReply,
-    NSBackingStoreType, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont,
-    NSMenu, NSMenuItem, NSModalResponseOK, NSResponder, NSSavePanel, NSScreen, NSTextField, NSView,
-    NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowStyleMask,
+    NSBackingStoreType, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent,
+    NSEventModifierFlags, NSFont, NSMenu, NSMenuItem, NSModalResponseOK, NSResponder, NSSavePanel,
+    NSScreen, NSTextField, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowDelegate,
+    NSWindowStyleMask,
 };
 use objc2_foundation::{
     NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSTimer, NSURL,
@@ -87,9 +88,9 @@ extern "C" fn on_sigterm(_sig: i32) {
     QUIT.store(true, Ordering::SeqCst);
 }
 
-/// Called on quit with the final image, its width and height, and the path
-/// to write it to; an `Err` is shown to the user before the app quits.
-pub type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize, &Path) -> Result<(), String>>;
+/// Writes an image, its width and height, to a path: on quit and for
+/// Save Image…; an `Err` is shown to the user.
+pub type Writer = Box<dyn Fn(Vec<[f32; 4]>, usize, usize, &Path) -> Result<(), String>>;
 
 /// Where the image goes on quit.
 pub enum Save {
@@ -105,6 +106,17 @@ pub fn image_name(scene: &Path) -> String {
         "{}.ppm",
         scene.file_stem().unwrap_or_default().to_string_lossy()
     )
+}
+
+/// The file name a save panel offers: the asked-for name, or the `-o`
+/// file's.
+fn offered_name(save: &Save) -> String {
+    match save {
+        Save::Ask(name) => name.clone(),
+        Save::To(path) => Path::new(path)
+            .file_name()
+            .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned()),
+    }
 }
 
 /// The camera `orbit` shows, as from, to and up (x, y, z), with
@@ -763,6 +775,19 @@ define_class!(
     #[ivars = Delegate]
     struct RtcDelegate;
 
+    impl RtcDelegate {
+        /// File ▸ Save Image…: write the image as it stands where the user
+        /// picks; rendering carries on.
+        #[unsafe(method(saveImage:))]
+        fn save_image(&self, _sender: Option<&NSObject>) {
+            let name = offered_name(&self.ivars().save);
+            // No borrow is held while the panel runs: the view may draw.
+            if let Some(path) = save_path(self.mtm(), &name) {
+                self.write_image(&path);
+            }
+        }
+    }
+
     unsafe impl NSObjectProtocol for RtcDelegate {}
 
     unsafe impl MTKViewDelegate for RtcDelegate {
@@ -821,20 +846,7 @@ define_class!(
                 return NSApplicationTerminateReply::TerminateCancel;
             }
             if let Quit::Save(path) = quit {
-                let image = {
-                    let r = ivars.renderer.borrow();
-                    let size = (r.camera.hsize, r.camera.vsize);
-                    r.acc.resolve(&r.gpu).map(|pixels| (pixels, size))
-                };
-                let written =
-                    image.and_then(|(pixels, (width, height))| match ivars.on_close.take() {
-                        Some(on_close) => on_close(pixels, width, height, &path),
-                        None => Ok(()),
-                    });
-                if let Err(e) = written {
-                    eprintln!("rtc-metal: {e}");
-                    show_error(mtm, &e);
-                }
+                self.write_image(&path);
             }
             NSApplicationTerminateReply::TerminateNow
         }
@@ -849,7 +861,8 @@ struct Delegate {
     save: Save,
     /// Set while quitting asks where to save.
     asking: Cell<bool>,
-    on_close: Cell<Option<OnClose>>,
+    /// Writes the image to a file.
+    write: Writer,
     title: String,
 }
 
@@ -858,6 +871,22 @@ impl RtcDelegate {
         let this = Self::alloc(mtm).set_ivars(ivars);
         // SAFETY: NSObject's `init`.
         unsafe { msg_send![super(this), init] }
+    }
+
+    /// Write the image as it stands to `path`; a failure is shown.
+    fn write_image(&self, path: &Path) {
+        let ivars = self.ivars();
+        let image = {
+            let r = ivars.renderer.borrow();
+            let size = (r.camera.hsize, r.camera.vsize);
+            r.acc.resolve(&r.gpu).map(|pixels| (pixels, size))
+        };
+        let written =
+            image.and_then(|(pixels, (width, height))| (ivars.write)(pixels, width, height, path));
+        if let Err(e) = written {
+            eprintln!("rtc-metal: {e}");
+            show_error(self.mtm(), &e);
+        }
     }
 
     /// Add a batch of frames and show the running mean; pause once
@@ -933,7 +962,7 @@ impl RtcDelegate {
 /// Open a window showing `scene` refining up to `samples` frames, viewed
 /// from `camera` (the scene file's `camera_desc`, at the scene's size), run
 /// the app until it quits, then exit. With `watch`, the scene reloads when
-/// its file changes. On quit, `on_close` gets the final image (row-major
+/// its file changes. On quit, `write` gets the final image (row-major
 /// RGBA, as `Accumulator::resolve`) and the path `save` gives (see
 /// `choose`), if at least one frame was drawn and a path was chosen. A
 /// SIGTERM quits as Cmd-Q does. With `share`, the camera is written there
@@ -950,7 +979,7 @@ pub fn run(
     at: Option<(f64, f64)>,
     share: Option<Shared>,
     save: Save,
-    on_close: OnClose,
+    write: Writer,
 ) -> ! {
     let mtm = MainThreadMarker::new().expect("the window must run on the main thread");
     let (width, height) = (scene.width() as f64, scene.height() as f64);
@@ -982,7 +1011,6 @@ pub fn run(
 
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-    app.setMainMenu(Some(&main_menu(mtm)));
     let overlay = status_label(mtm, &title);
     let delegate = RtcDelegate::new(
         mtm,
@@ -991,11 +1019,12 @@ pub fn run(
             overlay: overlay.clone(),
             save,
             asking: Cell::new(false),
-            on_close: Cell::new(Some(on_close)),
+            write,
             title: title.clone(),
         },
     );
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+    app.setMainMenu(Some(&main_menu(mtm, &delegate)));
 
     // One drawable pixel per image pixel, shrunk uniformly so the window,
     // title bar included, fits the screen.
@@ -1153,27 +1182,44 @@ fn status_label(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
     label
 }
 
-/// The main menu: the app menu with Quit (Cmd-Q; a bare `NSApplication`
-/// has no menu, so Cmd-Q would do nothing), Traversal and Samples.
-fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
-    let quit = NSString::from_str("Quit");
-    let q = NSString::from_str("q");
-    // SAFETY: `terminate:` is NSApplication's action method, reached through
-    // the responder chain.
-    let quit_item = unsafe {
-        NSMenuItem::initWithTitle_action_keyEquivalent(
-            NSMenuItem::alloc(mtm),
-            &quit,
-            Some(sel!(terminate:)),
-            &q,
-        )
+/// The main menu: the app menu with Hide, Hide Others, Show All and Quit
+/// (Cmd-Q; a bare `NSApplication` has no menu, so Cmd-Q would do nothing),
+/// File with Save Image… (Cmd-S, sent to `delegate`), Traversal and
+/// Samples.
+fn main_menu(mtm: MainThreadMarker, delegate: &RtcDelegate) -> Retained<NSMenu> {
+    let item = |name: &str, action, key: &str| {
+        // SAFETY: each action is NSApplication's (reached through the
+        // responder chain) or `RtcDelegate`'s, taking one sender.
+        unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(name),
+                Some(action),
+                &NSString::from_str(key),
+            )
+        }
     };
     let app_menu = NSMenu::new(mtm);
-    app_menu.addItem(&quit_item);
+    app_menu.addItem(&item("Hide rtc-metal", sel!(hide:), "h"));
+    let others = item("Hide Others", sel!(hideOtherApplications:), "h");
+    others
+        .setKeyEquivalentModifierMask(NSEventModifierFlags::Option | NSEventModifierFlags::Command);
+    app_menu.addItem(&others);
+    app_menu.addItem(&item("Show All", sel!(unhideAllApplications:), ""));
+    app_menu.addItem(&NSMenuItem::separatorItem(mtm));
+    app_menu.addItem(&item("Quit", sel!(terminate:), "q"));
     let app_item = NSMenuItem::new(mtm);
     app_item.setSubmenu(Some(&app_menu));
+    let file_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("File"));
+    let save = item("Save Image…", sel!(saveImage:), "s");
+    // SAFETY: the delegate lives until the app exits.
+    unsafe { save.setTarget(Some(delegate)) };
+    file_menu.addItem(&save);
+    let file_item = NSMenuItem::new(mtm);
+    file_item.setSubmenu(Some(&file_menu));
     let menu = NSMenu::new(mtm);
     menu.addItem(&app_item);
+    menu.addItem(&file_item);
     menu.addItem(&traversal_menu(mtm));
     menu.addItem(&samples_menu(mtm));
     menu
@@ -1802,6 +1848,12 @@ mod tests {
             "chapter7.ppm"
         );
         assert_eq!(image_name(Path::new("/tmp/rtc-edit-1/a.b.json")), "a.b.ppm");
+    }
+
+    #[test]
+    fn offered_name_is_the_ask_name_or_the_out_file_name() {
+        assert_eq!(offered_name(&Save::Ask("a.ppm".into())), "a.ppm");
+        assert_eq!(offered_name(&Save::To("dir/b.ppm".into())), "b.ppm");
     }
 
     #[test]
