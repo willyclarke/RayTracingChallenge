@@ -237,7 +237,7 @@ impl Renderer {
     fn publish(&self) {
         if let Some(share) = &self.share {
             let (from, to, up, focus) = shot(&self.orbit, self.camera.focal_distance);
-            share.write(from, to, up, focus);
+            share.write_camera(from, to, up, focus);
         }
     }
 

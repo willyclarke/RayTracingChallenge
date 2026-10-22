@@ -742,7 +742,7 @@ impl Editor {
             self.follower.stop();
             return;
         }
-        let Some(shot) = self.share.as_ref().and_then(Shared::read) else {
+        let Some(shot) = self.share.as_ref().and_then(Shared::read_camera) else {
             return;
         };
         if self.seen.is_some_and(|s| s.seq == shot.seq) {
