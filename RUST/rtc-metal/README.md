@@ -72,6 +72,11 @@ cargo run --release -- --help
     and whenever it changes: orbiting, zooming, space, or a reload with a new camera. rtc-edit
     shows it and can follow it into the scene. A file made by another version of rtc-share is
     refused with `rebuild rtc-metal`, and the window runs without sharing.
+    Through the same file the editor sends scenes to load (New and Open from the scene's own
+    camera, Load Edits keeping the view), which a thread sleeping in
+    `os_sync_wait_on_address` hands to the main queue; the window is never raised for them.
+    With `--share` the viewer doesn't take the focus at start, so the editor keeps the
+    keyboard. rtc-edit no longer passes `--watch`.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.
 

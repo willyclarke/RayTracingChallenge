@@ -1,6 +1,7 @@
 pub mod accel;
 pub mod bvh;
 pub mod gpu;
+pub mod loads;
 pub mod orbit;
 pub mod scene;
 pub mod types;
