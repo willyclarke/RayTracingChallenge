@@ -61,6 +61,16 @@ impl History {
         self.open = None;
     }
 
+    /// Whether there is a step to undo.
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    /// Whether there is a step to redo.
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
     /// Put `scene` back as it was before the last step; its label.
     pub fn undo(&mut self, scene: &mut SceneDescription) -> Option<String> {
         Self::swap(&mut self.undo, &mut self.redo, scene, &mut self.open)
@@ -242,6 +252,17 @@ mod tests {
         h.redo(&mut s);
         h.redo(&mut s);
         assert_eq!((s.camera.field_of_view, s.camera.width), (3.0, 7));
+    }
+
+    #[test]
+    fn can_undo_and_can_redo_follow_the_steps() {
+        let mut s = with_fov(&new_scene(), 1.0);
+        let mut h = History::new(&s);
+        assert!(!h.can_undo() && !h.can_redo());
+        change(&mut h, &mut s, 2.0, Group::Once);
+        assert!(h.can_undo() && !h.can_redo());
+        h.undo(&mut s);
+        assert!(!h.can_undo() && h.can_redo());
     }
 
     #[test]

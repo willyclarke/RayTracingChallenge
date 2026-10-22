@@ -16,6 +16,7 @@ The editor grows in milestones:
 - **21 (done):** the editor and the viewer side by side.
 - **23 (done):** the viewer's view into the scene's camera.
 - **24 (done):** undo and redo.
+- **25 (done):** a native menu bar.
 
 ## Dependencies
 
@@ -25,6 +26,7 @@ The editor grows in milestones:
 - `iced` 0.14: the window and widgets.
 - `rfd`: the native Save and Open panels and the unsaved-changes alert, since iced has no
   file dialogs.
+- `muda` 0.21: the native menu bar, since iced has none.
 
 The editor never uses Metal itself; it starts `rtc-metal` as a separate program. No Cargo
 workspace: the crate has its own `target/`, and the first build takes a minute or two.
@@ -49,16 +51,25 @@ Open and Cmd-R) opens just right of it, tops aligned, fitted to the rest of that
 stays where it is. With less than 200 points left right of the editor, the viewer opens
 centred.
 
-| key | does |
-|---|---|
-| Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
-| Cmd-O | open another scene (a `.json` file) |
-| Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
-| Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
-| Cmd-L | load the edits into the viewer |
-| Cmd-R | start the viewer again after closing it (with one open, the status line says `viewer already running`) |
-| Cmd-K | keep the followed view (see below) |
-| Cmd-Z, Cmd-Shift-Z | undo, redo (see Undo) |
+The menu bar holds every command, with its key; an item that can't act is greyed.
+
+| menu | item | key | does |
+|---|---|---|---|
+| rtc-edit | About rtc-edit, Services, Hide, Hide Others, Show All, Quit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app |
+| File | New | Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
+| File | Open… | Cmd-O | open another scene (a `.json` file) |
+| File | Save | Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
+| File | Save As… | Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
+| Edit | Undo, Redo | Cmd-Z, Cmd-Shift-Z | undo, redo (see Undo); greyed with nothing to undo or redo |
+| Edit | Delete | Cmd-Delete | delete the selected shape or light; greyed when it can't go, or while a box is shaded or edited |
+| Scene | Add Sphere … Add Light | | add a sphere, cube, plane, cylinder, cone or light (see Adding and deleting) |
+| Viewer | Load Edits | Cmd-L | load the edits into the viewer; greyed with no viewer |
+| Viewer | Start Viewer | Cmd-R | start the viewer again after closing it; greyed while one runs |
+| Viewer | Follow the Viewer | | tick or untick follow (see below); greyed with no viewer |
+| Viewer | Keep Followed View | Cmd-K | keep the followed view (see below); greyed unless following |
+
+The Edit menu has no Cut, Copy, Paste or Select All: Cmd-X, Cmd-C, Cmd-V and Cmd-A go to the
+box being edited.
 
 `rtc-edit` with no argument starts with a new scene. Cmd-N and Cmd-O replace the scene; with
 unsaved edits (the ` •`) an alert first asks `Save changes to <name>?` with Save, Don't Save and
@@ -134,13 +145,14 @@ letters only act with no modifier held, so Cmd-L stays Load.
 | editing | Enter or Esc | leave the box, shaded; Esc on a red box also puts the scene's value back |
 | anywhere | Tab, Shift-Tab | edit the next or previous box |
 | tree | a, then s c p y o l | add a sphere, cube, plane, cylinder, cone or light; any other key cancels |
-| tree | d d or Cmd-Delete | delete the selected shape or light |
+| tree | d d | delete the selected shape or light |
 
 ## Adding and deleting
 
-The button bar above the tree adds a sphere, cube, plane, cylinder, cone or light, and deletes
-the selected item (the Delete button). `a` then a letter does the same from the keyboard (`a` shows the letters in
-the status line), and `d d` or Cmd-Delete deletes. They work with no box shaded or edited.
+The button bar above the tree and the Scene menu add a sphere, cube, plane, cylinder, cone or
+light, and the Delete button and Edit ▸ Delete delete the selected item. `a` then a letter does
+the same from the keyboard (`a` shows the letters in the status line), and `d d` or Cmd-Delete
+deletes. The keys work with no box shaded or edited.
 
 A new shape goes at the end of a selected group, else right after the selected shape; inside a
 CSG it goes after the CSG, whose two shapes are fixed. With nothing selected it goes at the end of
@@ -190,4 +202,5 @@ starts in the folder you started `rtc-edit` from.
 | `src/fields.rs` | the boxes an item has, and writing typed text into the scene |
 | `src/preview.rs` | the preview file and its folder |
 | `src/viewer.rs` | finding and running `rtc-metal` |
+| `src/menu.rs` | the menu bar: its commands, when each is greyed, and the `muda` menus |
 | `docs/superpowers/` | design specs and implementation plans |
