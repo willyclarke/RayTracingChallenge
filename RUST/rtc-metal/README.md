@@ -71,7 +71,8 @@ cargo run --release -- --help
     `PATH`, a file the scene editor made with [rtc-share](../rtc-share/README.md), at start-up
     and whenever it changes: orbiting, zooming, space, or a reload with a new camera. rtc-edit
     shows it and can follow it into the scene. A file made by another version of rtc-share is
-    refused with `rebuild rtc-metal`, and the window runs without sharing.
+    refused with `rebuild rtc-metal`, and the viewer exits (rebuild rtc-metal after changing
+    rtc-share).
     Through the same file the editor sends scenes to load (New and Open from the scene's own
     camera, Load Edits keeping the view), which a thread sleeping in
     `os_sync_wait_on_address` hands to the main queue; a new scene (New, Open) brings the
