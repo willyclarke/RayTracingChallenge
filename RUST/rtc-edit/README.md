@@ -2,8 +2,8 @@
 
 A scene editor for the JSON scenes of [rtc-rust](../rtc-rust/README.md), written with
 [iced](https://iced.rs). It has no image of its own: it writes a preview copy of the scene,
-and [rtc-metal](../rtc-metal/README.md)'s `--window --watch` renders it live and reloads it
-whenever it changes. macOS only, because the viewer is.
+and [rtc-metal](../rtc-metal/README.md)'s `--window` renders it live, reloading it when the
+editor sends it a scene through a shared file. macOS only, because the viewer is.
 
 The editor grows in milestones:
 
@@ -17,6 +17,7 @@ The editor grows in milestones:
 - **23 (done):** the viewer's view into the scene's camera.
 - **24 (done):** undo and redo.
 - **25 (done):** a native menu bar.
+- **26 (done):** a command channel in the shared file; one viewer lives through New and Open.
 
 ## Dependencies
 
@@ -45,8 +46,8 @@ The editor looks for the viewer in `$RTC_METAL`, and otherwise at
 `../rtc-metal/target/release/rtc-metal` next to this crate. Without it, the editor still
 works and the status line says where it looked.
 
-The editor opens at the top-left of the screen, and each viewer it starts (on opening, New,
-Open and Cmd-R) opens just right of it, tops aligned, fitted to the rest of that screen
+The editor opens at the top-left of the screen, and each viewer it starts (on opening and
+Cmd-R) opens just right of it, without taking the focus, tops aligned, fitted to the rest of that screen
 (`rtc-metal --at`). A new viewer goes beside the editor where it is now; one already open
 stays where it is. With less than 200 points left right of the editor, the viewer opens
 centred.
@@ -75,15 +76,18 @@ box being edited.
 unsaved edits (the ` •`) an alert first asks `Save changes to <name>?` with Save, Don't Save and
 Cancel. Cancel, or a Save that fails or whose Save As is cancelled, keeps the scene and its
 edits. A file that doesn't load leaves the scene as it is, and the status line says why. On a
-switch the old viewer gets SIGTERM, so it offers to save its image, and a new viewer opens on the
-new scene.
+switch the running viewer shows the new scene from its own camera, and the editor keeps the
+focus; with no viewer running, none starts (Cmd-R starts one). To keep the old scene's image,
+use the viewer's File ▸ Save Image… (Cmd-S) first.
 
 ## The viewer's view
 
 With the camera selected, a `viewer` column beside `from`, `to` and `up` shows the viewer's
 camera, greyed, as you orbit and zoom in it (`no viewer` with none running, `waiting` until it
-has written one). The two share it through a small file in the preview folder
-([rtc-share](../rtc-share/README.md)); a viewer built from an older rtc-share prints
+has written one). The two share it through a small file, `$TMPDIR/rtc-edit-<pid>.share`
+([rtc-share](../rtc-share/README.md)), made by the first viewer and removed when the editor
+quits; the editor sleeps on it until the viewer writes, and sends the scenes to load through it
+(Load Edits, New, Open); a viewer built from an older rtc-share prints
 `rebuild rtc-metal` and the column stays at `waiting`.
 
 - Ticking **follow the viewer**, above the `from` row, copies the viewer's `from` into the scene as you orbit, rounded to 4

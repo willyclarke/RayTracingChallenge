@@ -76,11 +76,20 @@ Success:
 
 - The editor starts it as `rtc-metal <preview> --window --at X,Y --share
   <file>`, without `--watch`. `--share` now means: write the camera, take
-  load commands, and don't activate at start. `--watch` stays, unchanged,
+  load commands, and don't activate at start. AppKit activates a new app at
+  launch when the app that started it is active, so a viewer activated in
+  its first two seconds activates its parent (the editor) again (added after
+  the by-eye check: Cmd-R took the focus). `--watch` stays, unchanged,
   for running it alone.
 - At start it takes the load block's `seq` as the baseline, so an old
   command is not replayed. A thread waits in `wait_load`; each `Load` goes
   to the main thread with `dispatch_async` on the main queue (`dispatch2`).
+- Handshake (added after the by-eye check): after taking the baseline
+  the viewer calls `viewer_ready()`, storing its generation + 1 in a
+  `ready` word; `is_ready()` compares it with the current generation. The
+  editor holds a load (fresh wins over not) while the running viewer isn't
+  ready, sends it from Tick once it is, drops it when the viewer ends, and
+  ignores camera reads until then (they may be the last viewer's).
 - On a `Load`:
   - the scene at `path` is read and built through the existing `reload`;
     `path` becomes the scene's path (the title, and the name Save Image and
@@ -90,7 +99,10 @@ Success:
   - not `fresh` (Load Edits): today's `--watch` reload, keeping the orbit
     unless the file's camera changed;
   - a scene that fails keeps the old image and shows why, as today;
-  - the window is neither activated nor raised.
+  - the window is never activated; a `fresh` load brings it in front of
+    other apps' windows (`orderFrontRegardless`), one that isn't fresh
+    leaves it where it is (changed after the by-eye check: an open panel
+    could leave the viewer covered).
 - Menus:
 
 | Menu | Items (key) |
