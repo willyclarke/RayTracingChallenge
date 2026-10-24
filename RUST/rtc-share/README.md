@@ -11,9 +11,12 @@ tell the viewer which scene to show.
   `wait_camera` until it does. The editor sends a scene (`send_load`, `fresh` for a new
   scene); the viewer sleeps in `wait_load` until one comes. `end_viewer` moves the viewer
   generation on, so the editor's camera waiter for an ended viewer returns `None`.
+- The viewer calls `viewer_ready` once it takes loads; until `is_ready` says so for the
+  current generation, the editor holds its loads, as one sent earlier may be missed.
 - The layout, `#[repr(C)]`: `signature`, `size`, the camera word (seq in the low half,
   viewer generation in the high half), `from`, `to`, `up` and the focal distance (`f64`),
-  then the load's `seq`, `fresh`, `len` and a 1024-byte path.
+  then the load's `seq`, `fresh`, `len`, a 1024-byte path, and `ready` (one more than the
+  generation of the viewer that last said it takes loads).
 - Each block has one writer and is a seqlock: its `seq` is odd while it is written, and a
   reader retries while `seq` is odd or changed. After a write the writer calls
   `os_sync_wake_by_address_all`; the reader sleeps in `os_sync_wait_on_address` (both with

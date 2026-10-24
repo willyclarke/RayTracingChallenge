@@ -55,6 +55,9 @@ struct Layout {
     fresh: u32,
     len: u32,
     path: [u8; PATH_MAX],
+    /// One more than the generation of the viewer that last said it takes
+    /// loads (0: none has); written by the viewer.
+    ready: u32,
 }
 
 const SIZE: usize = size_of::<Layout>();
@@ -225,6 +228,11 @@ impl Shared {
         unsafe { AtomicU32::from_ptr((&raw mut (*self.map).camera_word).cast::<u32>().add(1)) }
     }
 
+    fn ready_word(&self) -> &AtomicU32 {
+        // SAFETY: an aligned u32 of our live mapping, only accessed atomically.
+        unsafe { AtomicU32::from_ptr(&raw mut (*self.map).ready) }
+    }
+
     fn load_seq_word(&self) -> &AtomicU32 {
         // SAFETY: an aligned u32 of our live mapping, only accessed atomically.
         unsafe { AtomicU32::from_ptr(&raw mut (*self.map).load_seq) }
@@ -316,6 +324,19 @@ impl Shared {
     /// The current viewer's number; `end_viewer` moves it on.
     pub fn generation(&self) -> u32 {
         self.generation_word().load(Ordering::Acquire)
+    }
+
+    /// The viewer says it takes loads, from the `load_seq` it has seen on:
+    /// call after reading that.
+    pub fn viewer_ready(&self) {
+        self.ready_word()
+            .store(self.generation().wrapping_add(1), Ordering::Release);
+    }
+
+    /// Whether the current viewer has said it takes loads: one sent before
+    /// then may be missed.
+    pub fn is_ready(&self) -> bool {
+        self.ready_word().load(Ordering::Acquire) == self.generation().wrapping_add(1)
     }
 
     /// The viewer has ended: wake its camera waiters, which then return
@@ -548,6 +569,22 @@ mod tests {
         a.end_viewer();
         assert_eq!(waiter.join().unwrap()?, None);
         assert_eq!(c.wait_camera(0, g)?, None);
+        std::fs::remove_file(&p).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn a_viewer_is_ready_from_saying_so_until_it_ends() -> Result<(), String> {
+        let p = path("ready");
+        let editor = Shared::create(&p)?;
+        let viewer = Shared::open(&p)?;
+        assert!(!editor.is_ready());
+        viewer.viewer_ready();
+        assert!(editor.is_ready());
+        editor.end_viewer();
+        assert!(!editor.is_ready());
+        Shared::open(&p)?.viewer_ready();
+        assert!(editor.is_ready());
         std::fs::remove_file(&p).unwrap();
         Ok(())
     }

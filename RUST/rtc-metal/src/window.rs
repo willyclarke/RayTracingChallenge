@@ -39,14 +39,15 @@ use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSApplication,
-    NSApplicationActivationPolicy, NSApplicationDelegate, NSApplicationTerminateReply,
-    NSBackingStoreType, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent,
-    NSEventModifierFlags, NSFont, NSMenu, NSMenuItem, NSModalResponseOK, NSResponder, NSSavePanel,
-    NSScreen, NSTextField, NSView, NSWindow, NSWindowCollectionBehavior, NSWindowDelegate,
-    NSWindowStyleMask,
+    NSApplicationActivationOptions, NSApplicationActivationPolicy, NSApplicationDelegate,
+    NSApplicationTerminateReply, NSBackingStoreType, NSColor, NSControlStateValueOff,
+    NSControlStateValueOn, NSEvent, NSEventModifierFlags, NSFont, NSMenu, NSMenuItem,
+    NSModalResponseOK, NSResponder, NSRunningApplication, NSSavePanel, NSScreen, NSTextField,
+    NSView, NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowStyleMask,
 };
 use objc2_foundation::{
-    NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSTimer, NSURL,
+    NSArray, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
+    NSTimer, NSURL,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLPixelFormat};
 use objc2_metal_kit::{MTKView, MTKViewDelegate};
@@ -116,6 +117,24 @@ impl Save {
 /// started it (`--share`), so the editor keeps the keyboard.
 pub fn activates_at_start(shared: bool) -> bool {
     !shared
+}
+
+/// How long after start a viewer the editor started hands back the
+/// focus it is given: AppKit activates a new app at launch when the app
+/// that started it (the editor) is active.
+const QUIET_START: Duration = Duration::from_secs(2);
+
+/// Whether the viewer, becoming active `since_start` after its run loop
+/// started, gives the focus back to the editor: only when it was started
+/// not to take it, and only at start, so a later click on it keeps it.
+pub fn hands_focus_back(quiet: bool, since_start: Duration) -> bool {
+    quiet && since_start < QUIET_START
+}
+
+/// Whether a load the editor sends brings the window to the front (without
+/// the focus): a new scene (New, Open) does, Load Edits doesn't.
+pub fn raises_on_load(fresh: bool) -> bool {
+    fresh
 }
 
 /// The default image file name for `scene`: its stem with `.ppm`.
@@ -859,6 +878,34 @@ define_class!(
     }
 
     unsafe impl NSApplicationDelegate for RtcDelegate {
+        /// Started by the editor, the window comes in front of other apps'
+        /// windows once launched, without the focus.
+        #[unsafe(method(applicationDidFinishLaunching:))]
+        fn did_finish_launching(&self, _notification: &NSNotification) {
+            if self.ivars().quiet_since.get().is_some() {
+                raise_window();
+            }
+        }
+
+        /// Started by the editor while it was active, AppKit activates the
+        /// viewer at launch: give the focus back to the editor (the parent),
+        /// keeping the window in front.
+        #[unsafe(method(applicationDidBecomeActive:))]
+        fn did_become_active(&self, _notification: &NSNotification) {
+            let Some(since) = self.ivars().quiet_since.take() else {
+                return;
+            };
+            if hands_focus_back(true, since.elapsed()) {
+                let parent = std::os::unix::process::parent_id() as i32;
+                if let Some(editor) =
+                    NSRunningApplication::runningApplicationWithProcessIdentifier(parent)
+                {
+                    editor.activateWithOptions(NSApplicationActivationOptions::empty());
+                }
+                raise_window();
+            }
+        }
+
         #[unsafe(method(applicationShouldTerminateAfterLastWindowClosed:))]
         fn should_terminate_after_last_window_closed(&self, _sender: &NSApplication) -> bool {
             true
@@ -905,6 +952,9 @@ struct Delegate {
     write: Writer,
     /// The scene file's name, at the head of the status.
     title: RefCell<String>,
+    /// When the run loop started, if the viewer is to give the focus it
+    /// gets at start back to the editor; cleared on the first activation.
+    quiet_since: Cell<Option<Instant>>,
 }
 
 thread_local! {
@@ -913,8 +963,20 @@ thread_local! {
         const { std::cell::OnceCell::new() };
 }
 
+/// Bring the window in front of other apps' windows without activating
+/// the viewer.
+fn raise_window() {
+    WINDOW.with(|w| {
+        if let Some((view, _)) = w.get()
+            && let Some(window) = view.window()
+        {
+            window.orderFrontRegardless();
+        }
+    });
+}
+
 /// Load the scene the editor sent, from its own camera when `load.fresh`:
-/// on the main thread, never raising the window.
+/// on the main thread, never activating the viewer.
 pub fn deliver(load: Load) {
     WINDOW.with(|w| {
         let Some((view, delegate)) = w.get() else {
@@ -926,6 +988,10 @@ pub fn deliver(load: Load) {
             *ivars.title.borrow_mut() = name.to_string_lossy().into_owned();
             let save = ivars.save.borrow().for_scene(&load.path);
             *ivars.save.borrow_mut() = save;
+            // Over other apps' windows, leaving the editor active.
+            if raises_on_load(load.fresh) {
+                raise_window();
+            }
         }
     });
 }
@@ -1087,6 +1153,7 @@ pub fn run(
             asking: Cell::new(false),
             write,
             title: RefCell::new(title.clone()),
+            quiet_since: Cell::new(None),
         },
     );
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -1181,6 +1248,9 @@ pub fn run(
     WINDOW.with(|w| {
         let _ = w.set((view.clone(), delegate.clone()));
     });
+    if !activate {
+        delegate.ivars().quiet_since.set(Some(Instant::now()));
+    }
     app.run();
     std::process::exit(0);
 }
@@ -1552,6 +1622,19 @@ mod tests {
     fn the_viewer_activates_only_when_run_alone() {
         assert!(activates_at_start(false));
         assert!(!activates_at_start(true));
+    }
+
+    #[test]
+    fn a_quiet_viewer_hands_back_only_the_focus_it_gets_while_starting() {
+        assert!(hands_focus_back(true, Duration::from_millis(500)));
+        assert!(!hands_focus_back(true, Duration::from_secs(3)));
+        assert!(!hands_focus_back(false, Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn only_a_fresh_load_raises_the_window() {
+        assert!(raises_on_load(true));
+        assert!(!raises_on_load(false));
     }
 
     #[test]
