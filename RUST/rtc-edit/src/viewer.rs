@@ -1,5 +1,6 @@
-//! The Metal viewer, `rtc-metal <preview> --window --watch --at X,Y`, run as a child
-//! process that ends with the editor.
+//! The Metal viewer, `rtc-metal <preview> --window --at X,Y --share <file>`, run as a
+//! child process that ends with the editor. It takes the scenes to load
+//! through the shared file.
 
 use std::ffi::OsString;
 use std::os::raw::c_int;
@@ -23,18 +24,28 @@ pub fn find(env: Option<&str>, crate_dir: &Path) -> Result<PathBuf, String> {
     }
 }
 
-/// The viewer's arguments: `<preview> --window --watch --at X,Y`, with its
-/// window's top-left at `at` (points right and down from the main screen's
-/// top-left), and `--share <path>` when the camera is to be shared.
-pub fn viewer_args(preview: &Path, at: (f64, f64), share: Option<&Path>) -> Vec<OsString> {
+/// The shared file of the editor with process id `pid`: `root/rtc-edit-<pid>.share`.
+pub fn share_path(root: &Path, pid: u32) -> PathBuf {
+    root.join(format!("rtc-edit-{pid}.share"))
+}
+
+/// The viewer's arguments: `<preview> --window --at X,Y --share <share>`,
+/// with its window's top-left at `at` (points right and down from the main
+/// screen's top-left).
+pub fn viewer_args(preview: &Path, at: (f64, f64), share: &Path) -> Vec<OsString> {
     let mut args = vec![preview.as_os_str().to_owned()];
-    args.extend(["--window", "--watch", "--at"].map(OsString::from));
+    args.extend(["--window", "--at"].map(OsString::from));
     args.push(format!("{},{}", at.0, at.1).into());
-    if let Some(share) = share {
-        args.push("--share".into());
-        args.push(share.as_os_str().to_owned());
-    }
+    args.push("--share".into());
+    args.push(share.as_os_str().to_owned());
     args
+}
+
+/// Whether a load held for a viewer that isn't ready yet, then asked for
+/// again with `fresh`, is sent fresh: a new scene (New, Open) held
+/// outlasts a later Load Edits.
+pub fn held_fresh(held: Option<bool>, fresh: bool) -> bool {
+    held == Some(true) || fresh
 }
 
 pub struct Viewer {
@@ -42,13 +53,13 @@ pub struct Viewer {
 }
 
 impl Viewer {
-    /// Start `exe` on `preview` with its window's top-left at `at`, writing
-    /// its camera to `share` if given.
+    /// Start `exe` on `preview` with its window's top-left at `at`, sharing
+    /// its camera and taking loads through `share`.
     pub fn start(
         exe: &Path,
         preview: &Path,
         at: (f64, f64),
-        share: Option<&Path>,
+        share: &Path,
     ) -> Result<Viewer, String> {
         Command::new(exe)
             .args(viewer_args(preview, at, share))
@@ -93,22 +104,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn viewer_args_put_the_window_at_the_point() {
-        let args = |at| viewer_args(Path::new("/p/s.json"), at, None);
-        assert_eq!(
-            args((900.0, 0.0)),
-            ["/p/s.json", "--window", "--watch", "--at", "900,0"].map(OsString::from)
-        );
-        assert_eq!(args((-1440.0, 12.5))[4], "-1440,12.5");
+    fn a_held_new_scene_outlasts_a_later_load_edits() {
+        assert!(held_fresh(Some(true), false));
+        assert!(held_fresh(None, true));
+        assert!(held_fresh(Some(false), true));
+        assert!(!held_fresh(Some(false), false));
+        assert!(!held_fresh(None, false));
     }
 
     #[test]
-    fn viewer_args_pass_the_shared_file() {
-        let preview = Path::new("/p/s.json");
-        let args = viewer_args(preview, (0.0, 0.0), Some(Path::new("/p/view")));
-        assert_eq!(args[5..], ["--share", "/p/view"].map(OsString::from));
-        assert_eq!(viewer_args(preview, (0.0, 0.0), None).len(), 5);
+    fn viewer_args_put_the_window_at_the_point() {
+        let args = |at| viewer_args(Path::new("/p/s.json"), at, Path::new("/t/x.share"));
+        assert_eq!(
+            args((10.0, 20.0)),
+            [
+                "/p/s.json",
+                "--window",
+                "--at",
+                "10,20",
+                "--share",
+                "/t/x.share"
+            ]
+            .map(OsString::from)
+        );
+        assert_eq!(args((-1440.0, 12.5))[3], "-1440,12.5");
+        assert!(!args((0.0, 0.0)).contains(&OsString::from("--watch")));
     }
+
+    #[test]
+    fn share_path_is_named_for_the_pid() {
+        assert_eq!(
+            share_path(Path::new("/t"), 42),
+            PathBuf::from("/t/rtc-edit-42.share")
+        );
+    }
+
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::time::{Duration, Instant};
@@ -160,7 +190,8 @@ mod tests {
     fn running_is_true_while_the_child_runs() {
         let root = fresh("runs");
         let exe = script(&root, "viewer", "exec sleep 30");
-        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
+        let mut v =
+            Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), Path::new("x.share")).unwrap();
         assert!(v.running());
     }
 
@@ -168,7 +199,8 @@ mod tests {
     fn running_is_false_after_the_child_exits() {
         let root = fresh("exits");
         let exe = script(&root, "viewer", "exit 0");
-        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
+        let mut v =
+            Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), Path::new("x.share")).unwrap();
         let start = Instant::now();
         while v.running() && start.elapsed() < Duration::from_secs(2) {
             std::thread::sleep(Duration::from_millis(20));
@@ -187,7 +219,7 @@ mod tests {
             ready.display()
         );
         let exe = script(&root, "viewer", &body);
-        let v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
+        let v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), Path::new("x.share")).unwrap();
         // Wait for the shell to install its trap before the signal arrives.
         let start = Instant::now();
         while !ready.exists() {
@@ -209,7 +241,8 @@ mod tests {
     fn dropping_a_viewer_that_already_exited_is_harmless() {
         let root = fresh("exited");
         let exe = script(&root, "viewer", "exit 0");
-        let mut v = Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), None).unwrap();
+        let mut v =
+            Viewer::start(&exe, Path::new("p.json"), (0.0, 0.0), Path::new("x.share")).unwrap();
         let start = Instant::now();
         while v.running() {
             assert!(
@@ -227,7 +260,7 @@ mod tests {
             Path::new("/no/such/rtc-metal"),
             Path::new("p.json"),
             (0.0, 0.0),
-            None,
+            Path::new("x.share"),
         )
         .err()
         .expect("start should fail");

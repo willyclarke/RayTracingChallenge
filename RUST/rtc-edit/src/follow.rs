@@ -117,7 +117,7 @@ mod tests {
         }
     }
 
-    fn shot(seq: u64) -> Snapshot {
+    fn shot(seq: u32) -> Snapshot {
         Snapshot {
             seq,
             from: [0.81234, 2.1, -4.87],

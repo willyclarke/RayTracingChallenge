@@ -1,12 +1,13 @@
 //! rtc-edit: `rtc-edit [scene.json]` shows the scene as a tree, starts
-//! `rtc-metal --window --watch` on a preview copy of it, and saves it
+//! `rtc-metal --window` on a preview copy of it, and saves it
 //! (Cmd-S, and Cmd-Shift-S to save elsewhere with asset paths rebased).
 //! Cmd-R starts the viewer again after it was closed. Simple shapes,
 //! point lights and the camera are edited in fixed fields; Cmd-L loads the
-//! edits into the viewer. Cmd-N and Cmd-O start a new scene or open another,
-//! and shapes and lights are added and deleted from a button bar and keys.
+//! edits into the viewer. Cmd-N and Cmd-O start a new scene or open another
+//! in the same viewer, which keeps the focus off itself, and shapes and lights are added and deleted from a button bar and keys.
 //! The menu bar lists every command with its Cmd key, and owns those keys.
 
+use iced::futures::channel::mpsc::{UnboundedReceiver, unbounded};
 use iced::widget::operation;
 use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
@@ -23,7 +24,7 @@ use rtc_edit::menu::{self, Command, Menus, State};
 use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
-use rtc_edit::viewer::{Viewer, find};
+use rtc_edit::viewer::{Viewer, find, held_fresh, share_path};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
 use rtc_share::{Shared, Snapshot};
 use std::collections::{HashMap, HashSet};
@@ -50,12 +51,18 @@ unsafe extern "C" {
     fn atexit(f: extern "C" fn()) -> std::ffi::c_int;
 }
 
-/// Close the viewer and remove the preview folder.
+/// Close the viewer and remove the preview folder and the shared file.
 extern "C" fn clean_up() {
     if let Ok(mut children) = CHILDREN.lock() {
         children.viewer = None;
         children.preview = None;
     }
+    let _ = std::fs::remove_file(own_share_path());
+}
+
+/// This editor's shared file, made by the first Start Viewer.
+fn own_share_path() -> PathBuf {
+    share_path(&std::env::temp_dir(), std::process::id())
 }
 
 struct Editor {
@@ -92,12 +99,15 @@ struct Editor {
     /// The window's outer top-left and inner size, in points from the main
     /// screen's top-left; each viewer starts at its top-right corner.
     frame: Rectangle,
-    /// The current viewer's shared camera file, when it has one.
+    /// The file shared with every viewer: their camera, the scenes sent to
+    /// them; made by the first Start Viewer.
     share: Option<Shared>,
     /// Whether a viewer is running, as of the last tick.
     live: bool,
     /// The viewer's camera as last read from `share`.
     seen: Option<Snapshot>,
+    /// A load held until the viewer says it takes loads: whether fresh.
+    held: Option<bool>,
     /// Whether the camera's `from` follows the viewer's.
     follower: Follower,
     /// The steps Cmd-Z undoes and Cmd-Shift-Z redoes.
@@ -145,8 +155,12 @@ enum Message {
     Command(bool),
     /// The window opened, moved or was resized.
     Window(window::Event),
-    /// Time to read the viewer's camera.
+    /// Time to see whether the viewer still runs.
     Tick,
+    /// The viewer wrote its camera.
+    Camera(Snapshot),
+    /// Waiting for the viewer's camera failed, and why.
+    CameraLost(String),
     /// The follow checkbox.
     Follow(bool),
     /// Keep the followed camera (the button or Cmd-K).
@@ -211,6 +225,7 @@ fn boot() -> Editor {
         share: None,
         live: false,
         seen: None,
+        held: None,
         follower: Follower::default(),
         // `switch` below starts the history on the scene it opens.
         history: History::new(&new_scene()),
@@ -220,6 +235,7 @@ fn boot() -> Editor {
         Some((desc, path)) => editor.switch(desc, Some(path)),
         None => editor.switch(new_scene(), None),
     }
+    editor.show_viewer();
     editor
 }
 
@@ -263,15 +279,15 @@ impl Editor {
         dir_for(self.path.as_deref())
     }
 
-    /// Replace the scene: the old viewer ends (and offers its image), the old
-    /// preview goes, and a preview and viewer start on `desc`.
+    /// Replace the scene: the old preview goes, a preview of `desc` is
+    /// made, and the running viewer shows it from its own camera.
     fn switch(&mut self, desc: SceneDescription, path: Option<PathBuf>) {
-        {
+        let sent = {
             let mut children = CHILDREN.lock().unwrap();
-            children.viewer = None;
-            self.share = None;
             self.seen = None;
             self.follower.stop();
+            // Before the new preview: both live in the same folder, which
+            // the old one's drop removes.
             children.preview = None;
             let name = scene_name(path.as_deref());
             let preview = Preview::new(&std::env::temp_dir(), OsStr::new(&name))
@@ -281,6 +297,16 @@ impl Editor {
                 Ok(p) => children.preview = Some(p),
                 Err(e) => self.preview_error = Some(e),
             }
+            let running = children.viewer.as_mut().is_some_and(Viewer::running);
+            match (&children.preview, &self.share) {
+                (Some(p), Some(share)) if running => {
+                    Some(send_or_hold(share, &mut self.held, p.path(), true))
+                }
+                _ => None,
+            }
+        };
+        if let Some(Err(e)) = sent {
+            self.status = e;
         }
         self.desc = desc;
         self.path = path;
@@ -295,7 +321,6 @@ impl Editor {
         self.unsaved = false;
         self.unloaded = false;
         self.history.clear(&self.desc);
-        self.show_viewer();
     }
 
     /// Before New or Open: true when the scene has no unsaved edits, or they
@@ -354,13 +379,23 @@ impl Editor {
         }
     }
 
-    /// Start the viewer on the scene as it is now, with a fresh shared
-    /// camera file, unless it is still open.
+    /// Start the viewer on the scene as it is now, unless it is still
+    /// open; the shared file is made the first time.
     fn show_viewer(&mut self) {
         let mut children = CHILDREN.lock().unwrap();
         if children.viewer.as_mut().is_some_and(Viewer::running) {
             self.status = "viewer already running".into();
             return;
+        }
+        self.viewer_ended();
+        if self.share.is_none() {
+            match Shared::create(&own_share_path()) {
+                Ok(s) => self.share = Some(s),
+                Err(e) => {
+                    self.status = format!("no shared file: {e}");
+                    return;
+                }
+            }
         }
         let Some(preview) = &children.preview else {
             let e = self.preview_error.as_deref().unwrap_or("none");
@@ -381,20 +416,12 @@ impl Editor {
         .and_then(|exe| {
             let at = (self.frame.x + self.frame.width, self.frame.y);
             let at = (f64::from(at.0), f64::from(at.1));
-            let path = preview.dir().join("view");
-            let shared = Shared::create(&path);
-            let share = shared.as_ref().ok().map(|_| path.as_path());
-            let viewer = Viewer::start(&exe, preview.path(), at, share)?;
-            Ok((viewer, shared))
+            Viewer::start(&exe, preview.path(), at, &own_share_path())
         });
         match started {
-            Ok((v, shared)) => {
+            Ok(v) => {
                 children.viewer = Some(v);
-                self.status = match &shared {
-                    Ok(_) => "viewer started".into(),
-                    Err(e) => format!("viewer started; no shared view: {e}"),
-                };
-                self.share = shared.ok();
+                self.status = "viewer started".into();
             }
             Err(e) => self.status = e,
         }
@@ -585,7 +612,8 @@ impl Editor {
         }
     }
 
-    /// Write the preview, so the viewer reloads the edits.
+    /// Write the preview and send it to the viewer, which reloads the
+    /// edits keeping its view.
     fn load(&mut self) {
         let children = CHILDREN.lock().unwrap();
         let Some(preview) = &children.preview else {
@@ -593,7 +621,16 @@ impl Editor {
             self.status = format!("no preview file: {e}");
             return;
         };
-        self.status = match preview.write(&self.desc, &self.dir()) {
+        let sent =
+            preview
+                .write(&self.desc, &self.dir())
+                .and_then(|()| match (&self.share, self.live) {
+                    (Some(share), true) => {
+                        send_or_hold(share, &mut self.held, preview.path(), false)
+                    }
+                    _ => Err("no viewer running".into()),
+                });
+        self.status = match sent {
             Ok(()) => {
                 self.unloaded = false;
                 self.warn("loaded into viewer".into())
@@ -728,23 +765,53 @@ impl Editor {
             .unwrap_or_else(|| "item".into())
     }
 
-    /// Read the viewer's camera: on a new write, show it and, following,
-    /// copy it into the scene. A viewer that ended stops the following.
+    /// See whether the viewer still runs; one that ended stops the
+    /// following.
     fn tick(&mut self) {
-        self.live = CHILDREN
+        let live = CHILDREN
             .lock()
             .unwrap()
             .viewer
             .as_mut()
             .is_some_and(Viewer::running);
-        if !self.live {
-            self.seen = None;
-            self.follower.stop();
+        if !live {
+            self.viewer_ended();
             return;
         }
-        let Some(shot) = self.share.as_ref().and_then(Shared::read) else {
+        self.live = true;
+        if self.held.is_some()
+            && let Some(share) = &self.share
+            && share.is_ready()
+            && let Some(preview) = &CHILDREN.lock().unwrap().preview
+            && let Err(e) = send_or_hold(share, &mut self.held, preview.path(), false)
+        {
+            self.status = e;
+        }
+    }
+
+    /// No viewer runs: end its camera stream (once), say so, and stop
+    /// following.
+    fn viewer_ended(&mut self) {
+        if self.live {
+            if let Some(share) = &self.share {
+                share.end_viewer();
+            }
+            self.status = "viewer closed".into();
+        }
+        self.live = false;
+        self.seen = None;
+        // The next viewer starts on the preview as it is.
+        self.held = None;
+        self.follower.stop();
+    }
+
+    /// The viewer wrote its camera: on a new write, show it and, following,
+    /// copy it into the scene.
+    fn camera(&mut self, shot: Snapshot) {
+        // Until the viewer is ready the camera may be the last viewer's.
+        if !self.share.as_ref().is_some_and(Shared::is_ready) {
             return;
-        };
+        }
         if self.seen.is_some_and(|s| s.seq == shot.seq) {
             return;
         }
@@ -803,6 +870,30 @@ impl Editor {
         }
     }
 
+    /// Give the preview the scene's name, and have the viewer reload it
+    /// keeping its view, so its title and the image name it offers follow
+    /// a Save As. The preview keeps what the viewer last loaded.
+    fn rename_preview(&mut self) {
+        let name = scene_name(self.path.as_deref());
+        let mut children = CHILDREN.lock().unwrap();
+        let running = children.viewer.as_mut().is_some_and(Viewer::running);
+        let Some(preview) = children.preview.as_mut() else {
+            return;
+        };
+        if preview.path().file_name() == Some(OsStr::new(&name)) {
+            return;
+        }
+        let sent = preview
+            .rename(OsStr::new(&name))
+            .and_then(|()| match (&self.share, running) {
+                (Some(share), true) => send_or_hold(share, &mut self.held, preview.path(), false),
+                _ => Ok(()),
+            });
+        if let Err(e) = sent {
+            self.status = e;
+        }
+    }
+
     /// Ask where to save, rebasing asset paths; true when it saved.
     fn save_as(&mut self) -> bool {
         let dir = self.dir();
@@ -833,6 +924,7 @@ impl Editor {
                 // Rebasing touches only asset paths, which have no boxes,
                 // so the boxes and any red text stay as they are.
                 self.status = self.saved();
+                self.rename_preview();
                 true
             }
             Err(e) => {
@@ -840,6 +932,23 @@ impl Editor {
                 false
             }
         }
+    }
+}
+
+/// Send the viewer the load of `preview`, or hold it in `held` while the
+/// viewer isn't ready, as a load sent then may be missed.
+fn send_or_hold(
+    share: &Shared,
+    held: &mut Option<bool>,
+    preview: &Path,
+    fresh: bool,
+) -> Result<(), String> {
+    let fresh = held_fresh(held.take(), fresh);
+    if share.is_ready() {
+        share.send_load(preview, fresh)
+    } else {
+        *held = Some(fresh);
+        Ok(())
     }
 }
 
@@ -897,6 +1006,8 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             | Message::Focused(..)
             | Message::Window(_)
             | Message::Tick
+            | Message::Camera(_)
+            | Message::CameraLost(_)
             | Message::Poll
     ) && let Some(waiting) = e.pending.take()
     {
@@ -941,6 +1052,11 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         Message::Paste(field, value) => e.edit(field, value),
         Message::Load => e.load(),
         Message::Tick => e.tick(),
+        Message::Camera(shot) => e.camera(shot),
+        Message::CameraLost(why) => {
+            e.follower.stop();
+            e.status = format!("lost the viewer's camera: {why}");
+        }
         Message::Follow(true) => {
             if e.live {
                 e.follower.start(&e.desc.camera);
@@ -1087,13 +1203,54 @@ fn shortcut(
     }
 }
 
-fn subscription(_: &Editor) -> Subscription<Message> {
-    Subscription::batch([
+fn subscription(e: &Editor) -> Subscription<Message> {
+    let mut subscriptions = vec![
         iced::event::listen_with(shortcut),
         window::events().map(|(_, event)| Message::Window(event)),
         iced::time::every(Duration::from_millis(100)).map(|_| Message::Tick),
         iced::time::every(Duration::from_millis(50)).map(|_| Message::Poll),
-    ])
+    ];
+    if e.live
+        && let Some(share) = &e.share
+    {
+        let key = (own_share_path(), share.generation());
+        subscriptions.push(Subscription::run_with(key, camera_stream));
+    }
+    Subscription::batch(subscriptions)
+}
+
+/// The viewer's camera writes, from the shared file at `key.0`, while the
+/// viewer of generation `key.1` runs: a thread sleeps on the file and sends
+/// each write on.
+fn camera_stream(key: &(PathBuf, u32)) -> UnboundedReceiver<Message> {
+    let (path, generation) = key.clone();
+    let (tx, rx) = unbounded();
+    std::thread::spawn(move || {
+        let shared = match Shared::open(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                let _ = tx.unbounded_send(Message::CameraLost(e));
+                return;
+            }
+        };
+        let mut last = 0;
+        loop {
+            match shared.wait_camera(last, generation) {
+                Ok(Some(shot)) => {
+                    last = shot.seq;
+                    if tx.unbounded_send(Message::Camera(shot)).is_err() {
+                        return;
+                    }
+                }
+                Ok(None) => return,
+                Err(e) => {
+                    let _ = tx.unbounded_send(Message::CameraLost(e));
+                    return;
+                }
+            }
+        }
+    });
+    rx
 }
 
 fn view(e: &Editor) -> Element<'_, Message> {

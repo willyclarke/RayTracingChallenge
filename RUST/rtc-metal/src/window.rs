@@ -21,7 +21,7 @@
 //! than width and height; a new size only resizes the window.
 //! A file that doesn't load keeps the old image, and the status shows why.
 //! Quitting (Cmd-Q, closing the window, or SIGTERM) hands the final image
-//! and its size to `on_close`, with the `-o` path or, without one, a path
+//! and its size to `write`, with the `-o` path or, without one, a path
 //! the user picks in a save panel after an alert asks whether to save.
 //! The alert's Cancel (Esc) keeps the viewer running, except after a
 //! SIGTERM; cancelling the save panel shows the alert again.
@@ -39,20 +39,22 @@ use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSApplication,
-    NSApplicationActivationPolicy, NSApplicationDelegate, NSApplicationTerminateReply,
-    NSBackingStoreType, NSColor, NSControlStateValueOff, NSControlStateValueOn, NSEvent, NSFont,
-    NSMenu, NSMenuItem, NSModalResponseOK, NSResponder, NSSavePanel, NSScreen, NSTextField, NSView,
-    NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowStyleMask,
+    NSApplicationActivationOptions, NSApplicationActivationPolicy, NSApplicationDelegate,
+    NSApplicationTerminateReply, NSBackingStoreType, NSColor, NSControlStateValueOff,
+    NSControlStateValueOn, NSEvent, NSEventModifierFlags, NSFont, NSMenu, NSMenuItem,
+    NSModalResponseOK, NSResponder, NSRunningApplication, NSSavePanel, NSScreen, NSTextField,
+    NSView, NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowStyleMask,
 };
 use objc2_foundation::{
-    NSArray, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSTimer, NSURL,
+    NSArray, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
+    NSTimer, NSURL,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLPixelFormat};
 use objc2_metal_kit::{MTKView, MTKViewDelegate};
 use objc2_quartz_core::CAMetalDrawable;
 use rtc_rust::camera::Camera;
 use rtc_rust::scene::{CameraDescription, SceneDescription};
-use rtc_share::Shared;
+use rtc_share::{Load, Shared};
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -87,16 +89,52 @@ extern "C" fn on_sigterm(_sig: i32) {
     QUIT.store(true, Ordering::SeqCst);
 }
 
-/// Called on quit with the final image, its width and height, and the path
-/// to write it to; an `Err` is shown to the user before the app quits.
-pub type OnClose = Box<dyn FnOnce(Vec<[f32; 4]>, usize, usize, &Path) -> Result<(), String>>;
+/// Writes an image, its width and height, to a path: on quit and for
+/// Save Image…; an `Err` is shown to the user.
+pub type Writer = Box<dyn Fn(Vec<[f32; 4]>, usize, usize, &Path) -> Result<(), String>>;
 
 /// Where the image goes on quit.
+#[derive(Clone, Debug, PartialEq)]
 pub enum Save {
     /// Write it to this path (`-o`) without asking.
     To(String),
     /// Ask, offering this file name (`image_name` of the scene).
     Ask(String),
+}
+
+impl Save {
+    /// Where the image of the newly loaded `scene` goes: an asked-for name
+    /// follows the scene, an `-o` path stays.
+    fn for_scene(&self, scene: &Path) -> Save {
+        match self {
+            Save::Ask(_) => Save::Ask(image_name(scene)),
+            Save::To(path) => Save::To(path.clone()),
+        }
+    }
+}
+
+/// Whether the viewer takes the focus at start: not when the scene editor
+/// started it (`--share`), so the editor keeps the keyboard.
+pub fn activates_at_start(shared: bool) -> bool {
+    !shared
+}
+
+/// How long after start a viewer the editor started hands back the
+/// focus it is given: AppKit activates a new app at launch when the app
+/// that started it (the editor) is active.
+const QUIET_START: Duration = Duration::from_secs(2);
+
+/// Whether the viewer, becoming active `since_start` after its run loop
+/// started, gives the focus back to the editor: only when it was started
+/// not to take it, and only at start, so a later click on it keeps it.
+pub fn hands_focus_back(quiet: bool, since_start: Duration) -> bool {
+    quiet && since_start < QUIET_START
+}
+
+/// Whether a load the editor sends brings the window to the front (without
+/// the focus): a new scene (New, Open) does, Load Edits doesn't.
+pub fn raises_on_load(fresh: bool) -> bool {
+    fresh
 }
 
 /// The default image file name for `scene`: its stem with `.ppm`.
@@ -105,6 +143,17 @@ pub fn image_name(scene: &Path) -> String {
         "{}.ppm",
         scene.file_stem().unwrap_or_default().to_string_lossy()
     )
+}
+
+/// The file name a save panel offers: the asked-for name, or the `-o`
+/// file's.
+fn offered_name(save: &Save) -> String {
+    match save {
+        Save::Ask(name) => name.clone(),
+        Save::To(path) => Path::new(path)
+            .file_name()
+            .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned()),
+    }
 }
 
 /// The camera `orbit` shows, as from, to and up (x, y, z), with
@@ -237,7 +286,7 @@ impl Renderer {
     fn publish(&self) {
         if let Some(share) = &self.share {
             let (from, to, up, focus) = shot(&self.orbit, self.camera.focal_distance);
-            share.write(from, to, up, focus);
+            share.write_camera(from, to, up, focus);
         }
     }
 
@@ -306,15 +355,25 @@ impl Renderer {
     /// again. The view is kept unless the camera changed in more than width
     /// and height, which then becomes the new home view. On error nothing
     /// changes but `reload_error`.
-    fn reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
-        let result = self.try_reload(desc, base_dir);
+    fn load(
+        &mut self,
+        desc: &SceneDescription,
+        base_dir: &Path,
+        fresh: bool,
+    ) -> Result<(), String> {
+        let result = self.try_load(desc, base_dir, fresh);
         self.reload_error = result.as_ref().err().cloned();
         result
     }
 
-    fn try_reload(&mut self, desc: &SceneDescription, base_dir: &Path) -> Result<(), String> {
+    fn try_load(
+        &mut self,
+        desc: &SceneDescription,
+        base_dir: &Path,
+        fresh: bool,
+    ) -> Result<(), String> {
         let (world, file_camera) = desc.build(base_dir).map_err(|e| e.0)?;
-        let new_view = (!same_view(&desc.camera, &self.camera_desc)).then(|| {
+        let new_view = (fresh || !same_view(&desc.camera, &self.camera_desc)).then(|| {
             let camera = resized(&file_camera, self.camera.hsize, self.camera.vsize);
             (camera, Orbit::of(&desc.camera))
         });
@@ -697,7 +756,7 @@ impl RtcView {
     /// Reload the watched scene file if it changed: refine the new scene, or
     /// keep the old one and show why the reload failed.
     fn reload_if_changed(&self) {
-        let reloaded = {
+        let path = {
             let mut r = self.ivars().borrow_mut();
             let Some(watch) = r.watch.as_mut() else {
                 return;
@@ -705,11 +764,20 @@ impl RtcView {
             if !watch.changed() {
                 return;
             }
-            let path = watch.path().to_path_buf();
+            watch.path().to_path_buf()
+        };
+        self.load_from(&path, false);
+    }
+
+    /// Load the scene at `path`, from its own camera when `fresh`: refine
+    /// it, or keep the old one and show why; whether it loaded.
+    fn load_from(&self, path: &Path, fresh: bool) -> bool {
+        let reloaded = {
+            let mut r = self.ivars().borrow_mut();
             let base_dir = path.parent().unwrap_or(Path::new("."));
-            let result = SceneDescription::from_path(&path)
+            let result = SceneDescription::from_path(path)
                 .map_err(|e| e.0)
-                .and_then(|desc| r.reload(&desc, base_dir));
+                .and_then(|desc| r.load(&desc, base_dir, fresh));
             if let Err(e) = &result {
                 eprintln!("rtc-metal: reload failed: {e}");
                 // A file that doesn't parse never reaches `reload`.
@@ -752,6 +820,7 @@ impl RtcView {
             // Paused: one draw call shows the message.
             self.setNeedsDisplay(true);
         }
+        reloaded
     }
 }
 
@@ -762,6 +831,19 @@ define_class!(
     #[thread_kind = MainThreadOnly]
     #[ivars = Delegate]
     struct RtcDelegate;
+
+    impl RtcDelegate {
+        /// File ▸ Save Image…: write the image as it stands where the user
+        /// picks; rendering carries on.
+        #[unsafe(method(saveImage:))]
+        fn save_image(&self, _sender: Option<&NSObject>) {
+            let name = offered_name(&self.ivars().save.borrow());
+            // No borrow is held while the panel runs: the view may draw.
+            if let Some(path) = save_path(self.mtm(), &name) {
+                self.write_image(&path);
+            }
+        }
+    }
 
     unsafe impl NSObjectProtocol for RtcDelegate {}
 
@@ -796,6 +878,34 @@ define_class!(
     }
 
     unsafe impl NSApplicationDelegate for RtcDelegate {
+        /// Started by the editor, the window comes in front of other apps'
+        /// windows once launched, without the focus.
+        #[unsafe(method(applicationDidFinishLaunching:))]
+        fn did_finish_launching(&self, _notification: &NSNotification) {
+            if self.ivars().quiet_since.get().is_some() {
+                raise_window();
+            }
+        }
+
+        /// Started by the editor while it was active, AppKit activates the
+        /// viewer at launch: give the focus back to the editor (the parent),
+        /// keeping the window in front.
+        #[unsafe(method(applicationDidBecomeActive:))]
+        fn did_become_active(&self, _notification: &NSNotification) {
+            let Some(since) = self.ivars().quiet_since.take() else {
+                return;
+            };
+            if hands_focus_back(true, since.elapsed()) {
+                let parent = std::os::unix::process::parent_id() as i32;
+                if let Some(editor) =
+                    NSRunningApplication::runningApplicationWithProcessIdentifier(parent)
+                {
+                    editor.activateWithOptions(NSApplicationActivationOptions::empty());
+                }
+                raise_window();
+            }
+        }
+
         #[unsafe(method(applicationShouldTerminateAfterLastWindowClosed:))]
         fn should_terminate_after_last_window_closed(&self, _sender: &NSApplication) -> bool {
             true
@@ -815,26 +925,15 @@ define_class!(
             let frames = ivars.renderer.borrow().acc.frames();
             let mtm = self.mtm();
             let cancel = offers_cancel(QUIT.load(Ordering::SeqCst));
-            let quit = choose(&ivars.save, frames, |name| ask(mtm, name, cancel));
+            // A copy: a load may rename the scene while the alert is up.
+            let save = ivars.save.borrow().clone();
+            let quit = choose(&save, frames, |name| ask(mtm, name, cancel));
             if quit == Quit::Cancel {
                 ivars.asking.set(false);
                 return NSApplicationTerminateReply::TerminateCancel;
             }
             if let Quit::Save(path) = quit {
-                let image = {
-                    let r = ivars.renderer.borrow();
-                    let size = (r.camera.hsize, r.camera.vsize);
-                    r.acc.resolve(&r.gpu).map(|pixels| (pixels, size))
-                };
-                let written =
-                    image.and_then(|(pixels, (width, height))| match ivars.on_close.take() {
-                        Some(on_close) => on_close(pixels, width, height, &path),
-                        None => Ok(()),
-                    });
-                if let Err(e) = written {
-                    eprintln!("rtc-metal: {e}");
-                    show_error(mtm, &e);
-                }
+                self.write_image(&path);
             }
             NSApplicationTerminateReply::TerminateNow
         }
@@ -845,12 +944,56 @@ struct Delegate {
     renderer: Rc<RefCell<Renderer>>,
     /// The status label over the image.
     overlay: Retained<NSTextField>,
-    /// Where the image goes on quit.
-    save: Save,
+    /// Where the image goes on quit; follows the scene loaded.
+    save: RefCell<Save>,
     /// Set while quitting asks where to save.
     asking: Cell<bool>,
-    on_close: Cell<Option<OnClose>>,
-    title: String,
+    /// Writes the image to a file.
+    write: Writer,
+    /// The scene file's name, at the head of the status.
+    title: RefCell<String>,
+    /// When the run loop started, if the viewer is to give the focus it
+    /// gets at start back to the editor; cleared on the first activation.
+    quiet_since: Cell<Option<Instant>>,
+}
+
+thread_local! {
+    /// The window's view and delegate, for `deliver`; set by `run`.
+    static WINDOW: std::cell::OnceCell<(Retained<RtcView>, Retained<RtcDelegate>)> =
+        const { std::cell::OnceCell::new() };
+}
+
+/// Bring the window in front of other apps' windows without activating
+/// the viewer.
+fn raise_window() {
+    WINDOW.with(|w| {
+        if let Some((view, _)) = w.get()
+            && let Some(window) = view.window()
+        {
+            window.orderFrontRegardless();
+        }
+    });
+}
+
+/// Load the scene the editor sent, from its own camera when `load.fresh`:
+/// on the main thread, never activating the viewer.
+pub fn deliver(load: Load) {
+    WINDOW.with(|w| {
+        let Some((view, delegate)) = w.get() else {
+            return;
+        };
+        if view.load_from(&load.path, load.fresh) {
+            let ivars = delegate.ivars();
+            let name = load.path.file_name().unwrap_or_default();
+            *ivars.title.borrow_mut() = name.to_string_lossy().into_owned();
+            let save = ivars.save.borrow().for_scene(&load.path);
+            *ivars.save.borrow_mut() = save;
+            // Over other apps' windows, leaving the editor active.
+            if raises_on_load(load.fresh) {
+                raise_window();
+            }
+        }
+    });
 }
 
 impl RtcDelegate {
@@ -858,6 +1001,22 @@ impl RtcDelegate {
         let this = Self::alloc(mtm).set_ivars(ivars);
         // SAFETY: NSObject's `init`.
         unsafe { msg_send![super(this), init] }
+    }
+
+    /// Write the image as it stands to `path`; a failure is shown.
+    fn write_image(&self, path: &Path) {
+        let ivars = self.ivars();
+        let image = {
+            let r = ivars.renderer.borrow();
+            let size = (r.camera.hsize, r.camera.vsize);
+            r.acc.resolve(&r.gpu).map(|pixels| (pixels, size))
+        };
+        let written =
+            image.and_then(|(pixels, (width, height))| (ivars.write)(pixels, width, height, path));
+        if let Err(e) = written {
+            eprintln!("rtc-metal: {e}");
+            show_error(self.mtm(), &e);
+        }
     }
 
     /// Add a batch of frames and show the running mean; pause once
@@ -904,7 +1063,7 @@ impl RtcDelegate {
         let ivars = self.ivars();
         let r = ivars.renderer.borrow();
         let mut text = status(
-            &ivars.title,
+            &ivars.title.borrow(),
             r.acc.frames(),
             r.target,
             r.elapsed.as_secs_f64(),
@@ -933,11 +1092,12 @@ impl RtcDelegate {
 /// Open a window showing `scene` refining up to `samples` frames, viewed
 /// from `camera` (the scene file's `camera_desc`, at the scene's size), run
 /// the app until it quits, then exit. With `watch`, the scene reloads when
-/// its file changes. On quit, `on_close` gets the final image (row-major
+/// its file changes. On quit, `write` gets the final image (row-major
 /// RGBA, as `Accumulator::resolve`) and the path `save` gives (see
 /// `choose`), if at least one frame was drawn and a path was chosen. A
 /// SIGTERM quits as Cmd-Q does. With `share`, the camera is written there
-/// at start-up and whenever it changes.
+/// at start-up and whenever it changes. The app takes the focus only when
+/// `activate`; `deliver` loads a scene the editor sent.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     gpu: Gpu,
@@ -950,7 +1110,8 @@ pub fn run(
     at: Option<(f64, f64)>,
     share: Option<Shared>,
     save: Save,
-    on_close: OnClose,
+    write: Writer,
+    activate: bool,
 ) -> ! {
     let mtm = MainThreadMarker::new().expect("the window must run on the main thread");
     let (width, height) = (scene.width() as f64, scene.height() as f64);
@@ -982,20 +1143,21 @@ pub fn run(
 
     let app = NSApplication::sharedApplication(mtm);
     app.setActivationPolicy(NSApplicationActivationPolicy::Regular);
-    app.setMainMenu(Some(&main_menu(mtm)));
     let overlay = status_label(mtm, &title);
     let delegate = RtcDelegate::new(
         mtm,
         Delegate {
             renderer: renderer.clone(),
             overlay: overlay.clone(),
-            save,
+            save: RefCell::new(save),
             asking: Cell::new(false),
-            on_close: Cell::new(Some(on_close)),
-            title: title.clone(),
+            write,
+            title: RefCell::new(title.clone()),
+            quiet_since: Cell::new(None),
         },
     );
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+    app.setMainMenu(Some(&main_menu(mtm, &delegate)));
 
     // One drawable pixel per image pixel, shrunk uniformly so the window,
     // title bar included, fits the screen.
@@ -1080,7 +1242,15 @@ pub fn run(
     }
     window.makeKeyAndOrderFront(None);
     window.makeFirstResponder(Some(&view));
-    app.activate(); // needs macOS 14+ (older: activateIgnoringOtherApps)
+    if activate {
+        app.activate(); // needs macOS 14+ (older: activateIgnoringOtherApps)
+    }
+    WINDOW.with(|w| {
+        let _ = w.set((view.clone(), delegate.clone()));
+    });
+    if !activate {
+        delegate.ivars().quiet_since.set(Some(Instant::now()));
+    }
     app.run();
     std::process::exit(0);
 }
@@ -1153,27 +1323,44 @@ fn status_label(mtm: MainThreadMarker, text: &str) -> Retained<NSTextField> {
     label
 }
 
-/// The main menu: the app menu with Quit (Cmd-Q; a bare `NSApplication`
-/// has no menu, so Cmd-Q would do nothing), Traversal and Samples.
-fn main_menu(mtm: MainThreadMarker) -> Retained<NSMenu> {
-    let quit = NSString::from_str("Quit");
-    let q = NSString::from_str("q");
-    // SAFETY: `terminate:` is NSApplication's action method, reached through
-    // the responder chain.
-    let quit_item = unsafe {
-        NSMenuItem::initWithTitle_action_keyEquivalent(
-            NSMenuItem::alloc(mtm),
-            &quit,
-            Some(sel!(terminate:)),
-            &q,
-        )
+/// The main menu: the app menu with Hide, Hide Others, Show All and Quit
+/// (Cmd-Q; a bare `NSApplication` has no menu, so Cmd-Q would do nothing),
+/// File with Save Image… (Cmd-S, sent to `delegate`), Traversal and
+/// Samples.
+fn main_menu(mtm: MainThreadMarker, delegate: &RtcDelegate) -> Retained<NSMenu> {
+    let item = |name: &str, action, key: &str| {
+        // SAFETY: each action is NSApplication's (reached through the
+        // responder chain) or `RtcDelegate`'s, taking one sender.
+        unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(name),
+                Some(action),
+                &NSString::from_str(key),
+            )
+        }
     };
     let app_menu = NSMenu::new(mtm);
-    app_menu.addItem(&quit_item);
+    app_menu.addItem(&item("Hide rtc-metal", sel!(hide:), "h"));
+    let others = item("Hide Others", sel!(hideOtherApplications:), "h");
+    others
+        .setKeyEquivalentModifierMask(NSEventModifierFlags::Option | NSEventModifierFlags::Command);
+    app_menu.addItem(&others);
+    app_menu.addItem(&item("Show All", sel!(unhideAllApplications:), ""));
+    app_menu.addItem(&NSMenuItem::separatorItem(mtm));
+    app_menu.addItem(&item("Quit", sel!(terminate:), "q"));
     let app_item = NSMenuItem::new(mtm);
     app_item.setSubmenu(Some(&app_menu));
+    let file_menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str("File"));
+    let save = item("Save Image…", sel!(saveImage:), "s");
+    // SAFETY: the delegate lives until the app exits.
+    unsafe { save.setTarget(Some(delegate)) };
+    file_menu.addItem(&save);
+    let file_item = NSMenuItem::new(mtm);
+    file_item.setSubmenu(Some(&file_menu));
     let menu = NSMenu::new(mtm);
     menu.addItem(&app_item);
+    menu.addItem(&file_item);
     menu.addItem(&traversal_menu(mtm));
     menu.addItem(&samples_menu(mtm));
     menu
@@ -1409,14 +1596,56 @@ mod tests {
     }
 
     #[test]
-    fn reload_with_the_same_camera_keeps_the_view() -> Result<(), String> {
+    fn a_fresh_load_with_the_same_camera_resets_the_view() -> Result<(), String> {
+        let (mut r, desc) = chapter7()?;
+        let home = r.camera.transform();
+        r.orbit.drag(0.3, 0.0);
+        r.moved = true;
+        r.restart();
+        assert!(!r.camera.transform().approx_eq(home));
+        r.load(&desc, Path::new("scenes"), true)?;
+        assert!(!r.moved);
+        assert!(r.camera.transform().approx_eq(home));
+        assert_eq!(r.acc.frames(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn save_for_a_new_scene_offers_its_name() {
+        let ask = Save::Ask("old.ppm".into()).for_scene(Path::new("/t/new.json"));
+        assert_eq!(ask, Save::Ask("new.ppm".into()));
+        let to = Save::To("o.ppm".into()).for_scene(Path::new("/t/new.json"));
+        assert_eq!(to, Save::To("o.ppm".into()));
+    }
+
+    #[test]
+    fn the_viewer_activates_only_when_run_alone() {
+        assert!(activates_at_start(false));
+        assert!(!activates_at_start(true));
+    }
+
+    #[test]
+    fn a_quiet_viewer_hands_back_only_the_focus_it_gets_while_starting() {
+        assert!(hands_focus_back(true, Duration::from_millis(500)));
+        assert!(!hands_focus_back(true, Duration::from_secs(3)));
+        assert!(!hands_focus_back(false, Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn only_a_fresh_load_raises_the_window() {
+        assert!(raises_on_load(true));
+        assert!(!raises_on_load(false));
+    }
+
+    #[test]
+    fn a_load_that_is_not_fresh_keeps_the_view() -> Result<(), String> {
         let (mut r, mut desc) = chapter7()?;
         r.orbit.drag(0.3, 0.0);
         r.moved = true;
         r.restart();
         let view = r.camera.transform();
         desc.shapes[3].material.get_or_insert_default().color = Some([1.0, 0.0, 0.0]);
-        r.reload(&desc, Path::new("scenes"))?;
+        r.load(&desc, Path::new("scenes"), false)?;
         assert_eq!(r.acc.frames(), 0);
         assert_eq!(r.elapsed, Duration::ZERO);
         assert_eq!((r.camera.hsize, r.camera.vsize), (40, 20));
@@ -1457,7 +1686,7 @@ mod tests {
         r.restart();
         let view = r.camera.transform();
         desc.camera.width = 77;
-        r.reload(&desc, Path::new("scenes"))?;
+        r.load(&desc, Path::new("scenes"), false)?;
         assert_eq!((r.camera.hsize, r.camera.vsize), (40, 20));
         assert!(r.camera.transform().approx_eq(view));
         assert!(r.moved);
@@ -1473,7 +1702,7 @@ mod tests {
         r.restart();
         let view = r.camera.transform();
         desc.camera.width = 77;
-        r.reload(&desc, Path::new("scenes"))?;
+        r.load(&desc, Path::new("scenes"), false)?;
         assert_eq!(r.resize, Some((77, desc.camera.height)));
         assert!(r.camera.transform().approx_eq(view));
         assert!(r.moved);
@@ -1485,7 +1714,7 @@ mod tests {
         let (mut r, mut desc) = chapter7()?;
         desc.camera.focal_blur = None;
         desc.camera.from = [0.0, 3.0, -8.0];
-        r.reload(&desc, Path::new("scenes"))?;
+        r.load(&desc, Path::new("scenes"), false)?;
         assert_eq!(r.resize, None);
         Ok(())
     }
@@ -1636,7 +1865,7 @@ mod tests {
         let (mut r, mut desc) = chapter7()?;
         r.moved = true;
         desc.camera.from = [0.0, 3.0, -8.0];
-        r.reload(&desc, Path::new("scenes"))?;
+        r.load(&desc, Path::new("scenes"), false)?;
         let view = rtc_rust::world::view_transform(
             rtc_rust::tuple::Tuple::point(0.0, 3.0, -8.0),
             rtc_rust::tuple::Tuple::point(0.0, 1.0, 0.0),
@@ -1658,14 +1887,14 @@ mod tests {
         broken.lights = Some(vec![]);
         broken.camera.from = [0.0, 3.0, -8.0];
         let err = r
-            .reload(&broken, Path::new("scenes"))
+            .load(&broken, Path::new("scenes"), false)
             .err()
             .ok_or("expected an error")?;
         assert!(err.contains("lights"), "{err}");
         assert_eq!(r.reload_error.as_deref(), Some(err.as_str()));
         assert_eq!(r.acc.frames(), 2);
         assert_eq!(r.camera_desc, desc.camera);
-        r.reload(&desc, Path::new("scenes"))?;
+        r.load(&desc, Path::new("scenes"), false)?;
         assert_eq!(r.reload_error, None);
         Ok(())
     }
@@ -1681,7 +1910,7 @@ mod tests {
             outer_angle: 0.4,
         });
         let err = r
-            .reload(&desc, Path::new("scenes"))
+            .load(&desc, Path::new("scenes"), false)
             .err()
             .ok_or("expected an error")?;
         assert!(err.contains("spot"), "{err}");
@@ -1693,7 +1922,7 @@ mod tests {
     fn reload_keeps_the_traversal() -> Result<(), String> {
         let (mut r, desc) = chapter7()?;
         assert!(r.set_traversal(TRAVERSAL_METAL));
-        r.reload(&desc, Path::new("scenes"))?;
+        r.load(&desc, Path::new("scenes"), false)?;
         assert_eq!(r.scene.info.counts.traversal, TRAVERSAL_METAL);
         r.acc.add_frame(&r.gpu, &r.scene.info)?;
         Ok(())
@@ -1802,6 +2031,12 @@ mod tests {
             "chapter7.ppm"
         );
         assert_eq!(image_name(Path::new("/tmp/rtc-edit-1/a.b.json")), "a.b.ppm");
+    }
+
+    #[test]
+    fn offered_name_is_the_ask_name_or_the_out_file_name() {
+        assert_eq!(offered_name(&Save::Ask("a.ppm".into())), "a.ppm");
+        assert_eq!(offered_name(&Save::To("dir/b.ppm".into())), "b.ppm");
     }
 
     #[test]

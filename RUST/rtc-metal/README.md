@@ -44,6 +44,9 @@ cargo run --release -- --help
   - `i` toggles the status overlay (samples, a stopwatch to the target, frame time, size,
     traversal);
   - resize or go full screen to render at the new size;
+  - the app menu has Hide rtc-metal (Cmd-H), Hide Others (Cmd-Opt-H), Show All and Quit (Cmd-Q);
+  - File ▸ Save Image… (Cmd-S) writes the image as it stands where you pick, while it keeps
+    refining;
   - the Traversal menu switches between BVH (Cmd-1) and Metal (Cmd-2);
   - the Samples menu sets the target (presets, Unlimited, Cmd-] doubles, Cmd-[ halves);
   - quitting (Cmd-Q, closing the window, or SIGTERM) asks whether to save the image at the
@@ -68,7 +71,15 @@ cargo run --release -- --help
     `PATH`, a file the scene editor made with [rtc-share](../rtc-share/README.md), at start-up
     and whenever it changes: orbiting, zooming, space, or a reload with a new camera. rtc-edit
     shows it and can follow it into the scene. A file made by another version of rtc-share is
-    refused with `rebuild rtc-metal`, and the window runs without sharing.
+    refused with `rebuild rtc-metal`, and the viewer exits (rebuild rtc-metal after changing
+    rtc-share).
+    Through the same file the editor sends scenes to load (New and Open from the scene's own
+    camera, Load Edits keeping the view), which a thread sleeping in
+    `os_sync_wait_on_address` hands to the main queue; a new scene (New, Open) brings the
+    window in front of other apps' windows without taking the focus, Load Edits leaves it where it is.
+    With `--share` the viewer doesn't take the focus at start, so the editor keeps the
+    keyboard: when AppKit activates it at launch anyway (the active editor started it), it
+    hands the focus back to its parent within the first two seconds. rtc-edit no longer passes `--watch`.
 - `--traversal bvh|metal` picks how rays search the bounded shapes: our own flattened BVH
   walk (the default) or Metal's ray tracing API.
 

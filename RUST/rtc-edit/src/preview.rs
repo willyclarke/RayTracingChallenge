@@ -37,6 +37,14 @@ impl Preview {
         absolutize(&mut desc, scene_dir)?;
         desc.save(&self.path).map_err(|e| e.to_string())
     }
+
+    /// Move the preview to `scene_name` in its folder, keeping what it holds.
+    pub fn rename(&mut self, scene_name: &OsStr) -> Result<(), String> {
+        let path = self.dir.join(scene_name);
+        std::fs::rename(&self.path, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.path = path;
+        Ok(())
+    }
 }
 
 impl Drop for Preview {
@@ -86,5 +94,17 @@ mod tests {
         assert!(folder.is_dir());
         drop(p);
         assert!(!folder.exists());
+    }
+
+    #[test]
+    fn renaming_the_preview_moves_its_file_and_keeps_its_contents() {
+        let root = fresh("rename");
+        let mut p = Preview::new(&root, OsStr::new("untitled.json")).unwrap();
+        fs::write(p.path(), "the scene").unwrap();
+        let old = p.path().to_path_buf();
+        p.rename(OsStr::new("boxes.json")).unwrap();
+        assert!(p.path().ends_with("boxes.json"));
+        assert_eq!(fs::read_to_string(p.path()).unwrap(), "the scene");
+        assert!(!old.exists());
     }
 }

@@ -17,7 +17,8 @@
 //! editor, or a text editor, saves it) and refines it again; a file that
 //! doesn't load keeps the old image and shows why. `--share PATH` writes the
 //! window's camera to a file made by the scene editor (rtc-share) whenever
-//! it changes. `--traversal metal` searches the bounded
+//! it changes, loads the scenes the editor sends through it, and leaves the
+//! focus with the editor at start. `--traversal metal` searches the bounded
 //! shapes with Metal's ray tracing API instead of the BVH walk
 //! (milestone 10).
 
@@ -167,6 +168,12 @@ fn open_window(
     let mut scene = GpuScene::from_world(&world, &camera).unwrap_or_else(|e| fail(&e));
     scene.info.counts.traversal = traversal;
     let title = path.file_name().unwrap().to_string_lossy().into_owned();
+    // Without the file the editor's loads would never arrive: exit, and
+    // the editor sees the viewer end.
+    let shared = share.map(|p| {
+        rtc_metal::loads::listen(Path::new(p)).unwrap_or_else(|e| fail(&e));
+        rtc_share::Shared::open(Path::new(p)).unwrap_or_else(|e| fail(&e))
+    });
     rtc_metal::window::run(
         gpu,
         scene,
@@ -176,13 +183,10 @@ fn open_window(
         title,
         watch,
         at,
-        share.and_then(|p| {
-            rtc_share::Shared::open(Path::new(p))
-                .map_err(|e| eprintln!("rtc-metal: {e}"))
-                .ok()
-        }),
+        shared,
         save,
         Box::new(write_ppm),
+        rtc_metal::window::activates_at_start(share.is_some()),
     )
 }
 
@@ -234,7 +238,7 @@ fn usage() -> ! {
         "  --at X,Y     with --window: the window's top-left, in points right and down from\n               the main screen's top-left, fitted to the room right of it\n               (centred when under 200 points are left)"
     );
     eprintln!(
-        "  --share PATH with --window: write the camera to PATH, a file the scene editor made,\n               whenever it changes"
+        "  --share PATH with --window: write the camera to PATH, a file the scene editor made,\n               whenever it changes, and load the scenes it sends; don't take\n               the focus at start; exits when it can't use PATH"
     );
     eprintln!("  --traversal  bvh (default): our BVH walk; metal: Metal's ray tracing API");
     eprintln!("               (in --window, also the Traversal menu: Cmd-1 bvh, Cmd-2 metal)");
