@@ -60,9 +60,13 @@ it, so it stays, and Report an Issue… sits beside it.
   `git diff --quiet HEAD` reports changes to tracked files (untracked files,
   like the example scenes, don't count). Any git failure gives `unknown`.
 - It reruns when the repository's `HEAD` or `index` changes (paths from
-  `git rev-parse --git-path`), so a commit or a staged change updates it.
-- About panel: `short_version` = `CARGO_PKG_VERSION`, `version` = the
-  commit string, which AppKit shows as `Version 0.1.0 (7f1756a 2026-10-25)`.
+  `git rev-parse --git-path`), so a commit or a staged change updates it,
+  and when `src`, `assets`, `Cargo.toml` or the path crates' sources change,
+  so an unstaged edit says dirty too (review fix).
+- About panel: `version` = `CARGO_PKG_VERSION`, `short_version` = the
+  commit string; AppKit shows `Version <version> (<short_version>)`, so
+  `Version 0.1.0 (7f1756a 2026-10-25)` (review fix: the first draft had
+  them swapped).
 
 ### Credits and copyright
 
