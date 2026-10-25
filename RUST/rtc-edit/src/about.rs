@@ -1,11 +1,31 @@
 //! What About rtc-edit and Help ▸ Report an Issue… show: the build, the
 //! credits, the icon and the GitHub issue to open.
 
+use rtc_rust::canvas::Canvas;
+
 /// The commit rtc-edit was built from and its date, such as
 /// `7f1756a 2026-10-25`, with ` dirty` for uncommitted changes; `unknown`
 /// without git.
 pub fn version() -> &'static str {
     env!("RTC_EDIT_COMMIT")
+}
+
+/// The icon, rendered by rtc-metal from `assets/about.json`.
+pub const ICON_PPM: &[u8] = include_bytes!("../assets/about.ppm");
+
+/// A binary PPM as RGBA rows, top to bottom, with its width and height;
+/// `None` if it doesn't decode.
+pub fn icon(ppm: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    let canvas = Canvas::from_ppm_binary(ppm).ok()?;
+    let byte = |v: f64| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    let mut rgba = Vec::with_capacity(canvas.width * canvas.height * 4);
+    for y in 0..canvas.height {
+        for x in 0..canvas.width {
+            let c = canvas.pixel_at(x, y);
+            rgba.extend_from_slice(&[byte(c.x), byte(c.y), byte(c.z), 255]);
+        }
+    }
+    Some((rgba, canvas.width as u32, canvas.height as u32))
 }
 
 pub const COPYRIGHT: &str = "© 2026 Willy Clarke";
@@ -68,6 +88,19 @@ mod tests {
             )),
             "{body}"
         );
+    }
+
+    #[test]
+    fn the_icon_decodes_to_opaque_rgba() {
+        let (rgba, w, h) = icon(ICON_PPM).expect("icon");
+        assert_eq!((w, h), (256, 256));
+        assert_eq!(rgba.len(), 256 * 256 * 4);
+        assert!(rgba.chunks(4).all(|p| p[3] == 255));
+    }
+
+    #[test]
+    fn bad_bytes_give_no_icon() {
+        assert_eq!(icon(b"not a ppm"), None);
     }
 
     #[test]
