@@ -33,6 +33,7 @@ __pycache__/
 /RUST/rtc-metal/*.ppm
 /RUST/rtc-edit/target
 /RUST/rtc-share/target
+/RUST/rtc-config/target
 /RUST/rtc-edit/*.ppm
 # graphify knowledge graphs
 graphify-out/
