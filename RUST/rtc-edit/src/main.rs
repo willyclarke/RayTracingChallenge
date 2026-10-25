@@ -27,7 +27,7 @@ use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, camera_start, exit_source, find, held_fresh, share_path};
-use rtc_edit::windows::{self, Closed, HELP_SIZE, Input, Route, help_at};
+use rtc_edit::windows::{self, Closed, HELP_SIZE, Input, Route, help_position};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
 use rtc_share::{Shared, Snapshot};
 use std::collections::{HashMap, HashSet};
@@ -185,6 +185,8 @@ enum Message {
     MenuEvent(MenuEvent),
     /// Help ▸ rtc-edit Help (Cmd-?).
     Help,
+    /// Open help, knowing the editor's screen size.
+    OpenHelp(Option<Size>),
 }
 
 /// The editor window's size at start-up.
@@ -1122,14 +1124,23 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             if let Some(id) = e.help {
                 return window::gain_focus(id);
             }
+            // Ask for the editor's screen first: help mustn't open off it.
+            return window::monitor_size(e.main).map(Message::OpenHelp);
+        }
+        Message::OpenHelp(screen) => {
+            // A second Cmd-? may have opened it while the first waited.
+            if let Some(id) = e.help {
+                return window::gain_focus(id);
+            }
             let (id, open) = window::open(window::Settings {
                 size: HELP_SIZE,
-                position: window::Position::Specific(help_at(e.frame)),
+                position: help_position(e.frame, screen),
                 ..Default::default()
             });
             e.help = Some(id);
             return open.discard();
         }
+        // Routed in `update` before it gets here.
         Message::Shortcut(..) => {}
         Message::Undo => e.undo(true),
         Message::Redo => e.undo(false),

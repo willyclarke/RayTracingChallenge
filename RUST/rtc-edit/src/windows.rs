@@ -1,7 +1,7 @@
 //! Which window a key or a close belongs to: the editor's window, or the
 //! help window.
 
-use iced::window::Id;
+use iced::window::{Id, Position};
 use iced::{Point, Rectangle, Size};
 
 /// The help window's size when it opens.
@@ -10,6 +10,17 @@ pub const HELP_SIZE: Size = Size::new(560.0, 720.0);
 /// Where help opens: at the editor's top-right corner.
 pub fn help_at(editor: Rectangle) -> Point {
     Point::new(editor.x + editor.width, editor.y)
+}
+
+/// Where help opens: beside the editor when it fits on `screen` (the
+/// editor's monitor), else centred, so it never opens out of sight.
+pub fn help_position(editor: Rectangle, screen: Option<Size>) -> Position {
+    match screen {
+        Some(screen) if editor.x + editor.width + HELP_SIZE.width <= screen.width => {
+            Position::Specific(help_at(editor))
+        }
+        _ => Position::Centered,
+    }
 }
 
 /// What kind of input a key or click is, for routing.
@@ -69,6 +80,22 @@ mod tests {
     fn help_opens_at_the_editors_top_right() {
         let frame = Rectangle::new(Point::new(10.0, 20.0), Size::new(900.0, 640.0));
         assert_eq!(help_at(frame), Point::new(910.0, 20.0));
+    }
+
+    #[test]
+    fn help_is_centred_when_there_is_no_room_beside_the_editor() {
+        let frame = Rectangle::new(Point::new(0.0, 0.0), Size::new(900.0, 640.0));
+        let wide = Some(Size::new(1920.0, 1080.0));
+        assert!(matches!(
+            help_position(frame, wide),
+            Position::Specific(p) if p == Point::new(900.0, 0.0)
+        ));
+        // 900 + 560 > 1440: help would poke off the right edge.
+        let narrow = Some(Size::new(1440.0, 900.0));
+        assert!(matches!(help_position(frame, narrow), Position::Centered));
+        let full = Rectangle::new(Point::new(0.0, 0.0), Size::new(1920.0, 1050.0));
+        assert!(matches!(help_position(full, wide), Position::Centered));
+        assert!(matches!(help_position(frame, None), Position::Centered));
     }
 
     #[test]
