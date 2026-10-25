@@ -20,6 +20,7 @@ The editor grows in milestones:
 - **26 (done):** a command channel in the shared file; one viewer lives through New and Open.
 - **27 (done):** GCD sources and callbacks instead of timers; an idle editor and viewer run no code.
 - **28 (done):** a help window: the menus, keys, viewer and command line on one page.
+- **29:** About with a ray-traced icon and the build; Report an Issue….
 
 ## Dependencies
 
@@ -59,7 +60,7 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 
 | menu | item | key | does |
 |---|---|---|---|
-| rtc-edit | About rtc-edit, Services, Hide, Hide Others, Show All, Quit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app |
+| rtc-edit | About rtc-edit, Services, Hide, Hide Others, Show All, Quit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app; About shows the icon, the build (`Version 0.1.0 (<commit> <date>)`, ` dirty` for uncommitted changes) and the credits |
 | File | New | Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
 | File | Open… | Cmd-O | open another scene (a `.json` file) |
 | File | Save | Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
@@ -72,6 +73,14 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 | Viewer | Follow the Viewer | | tick or untick follow (see below); greyed with no viewer |
 | Viewer | Keep Followed View | Cmd-K | keep the followed view (see below); greyed unless following |
 | Help | rtc-edit Help | | open the help window beside the editor (centred if it doesn't fit), or bring it to the front; Esc closes it. Cmd-? opens the Help menu with macOS's search box, where this item is first |
+| Help | Report an Issue… | | open a new GitHub issue with rtc-edit's and macOS's versions filled in |
+
+The Help menu's Send rtc-edit Feedback isn't rtc-edit's: macOS adds it for users in Apple's beta
+program, and it reports to Apple.
+
+The icon, in About and in the Dock while rtc-edit runs, is rendered by rtc-metal from
+`assets/about.json`. After changing the scene, render it again from `../rtc-metal`:
+`cargo run --release -- ../rtc-edit/assets/about.json --samples 1024 -o ../rtc-edit/assets/about.ppm`.
 
 The Edit menu has no Cut, Copy, Paste or Select All: Cmd-X, Cmd-C, Cmd-V and Cmd-A go to the
 box being edited.
@@ -216,4 +225,7 @@ starts in the folder you started `rtc-edit` from.
 | `src/menu.rs` | the menu bar: its commands, their labels and keys, when each is greyed, and the `muda` menus |
 | `src/help.rs` | the help window's page: sections, chips, view |
 | `src/windows.rs` | which window a key or a close belongs to |
+| `src/about.rs` | About's build, credits and icon, and the GitHub issue URL |
+| `build.rs` | the commit rtc-edit is built from, for About |
+| `assets/` | the icon's scene and its render |
 | `docs/superpowers/` | design specs and implementation plans |

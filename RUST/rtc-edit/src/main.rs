@@ -15,6 +15,9 @@ use iced::widget::{
 };
 use iced::{Element, Font, Length, Point, Rectangle, Size, Subscription, Task, keyboard, window};
 use muda::MenuEvent;
+use objc2::AllocAnyThread;
+use objc2_app_kit::{NSApplication, NSBitmapImageRep, NSDeviceRGBColorSpace, NSImage};
+use objc2_foundation::{MainThreadMarker, NSSize};
 use rtc_edit::about;
 use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
@@ -1023,6 +1026,45 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
     task
 }
 
+/// The ray-traced ball as the Dock icon; nothing if it doesn't decode.
+/// Set once the window has opened, after AppKit has set its own.
+fn set_dock_icon() {
+    let (Some((rgba, w, h)), Some(mtm)) = (about::icon(about::ICON_PPM), MainThreadMarker::new())
+    else {
+        return;
+    };
+    let (w, h) = (w as isize, h as isize);
+    // SAFETY: null planes ask AppKit to allocate the bitmap itself: 8-bit
+    // RGBA, meshed, w * 4 bytes a row.
+    let Some(rep) = (unsafe {
+        NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(),
+            w,
+            h,
+            8,
+            4,
+            true,
+            false,
+            NSDeviceRGBColorSpace,
+            w * 4,
+            32,
+        )
+    }) else {
+        return;
+    };
+    let data = rep.bitmapData();
+    if data.is_null() || rgba.len() != (w * h * 4) as usize {
+        return;
+    }
+    // SAFETY: the rep owns w * h * 4 bytes at `data`, and `rgba` is that long.
+    unsafe { std::ptr::copy_nonoverlapping(rgba.as_ptr(), data, rgba.len()) };
+    let image = NSImage::initWithSize(NSImage::alloc(), NSSize::new(w as f64, h as f64));
+    image.addRepresentation(&rep);
+    // SAFETY: on the main thread (`mtm`), with an image that stays retained.
+    unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
+}
+
 /// The message a menu command sends.
 fn menu_message(command: Command, following: bool) -> Message {
     match command {
@@ -1227,6 +1269,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
                 if e.menus.is_none() {
                     let menus = Menus::new();
                     menus.install();
+                    set_dock_icon();
                     e.menus = Some(menus);
                 }
                 e.frame.x = position.map_or(e.frame.x, |p| p.x);
