@@ -21,6 +21,8 @@ The editor grows in milestones:
 - **27 (done):** GCD sources and callbacks instead of timers; an idle editor and viewer run no code.
 - **28 (done):** a help window: the menus, keys, viewer and command line on one page.
 - **29 (done):** About with a ray-traced icon and the build; Report an Issue….
+- **30 (done):** a settings file: the scene and image folders and the editor's window.
+- **31 (planned):** an app bundle.
 
 ## Dependencies
 
@@ -32,6 +34,8 @@ The editor grows in milestones:
   file dialogs.
 - `muda` 0.21: the native menu bar, since iced has none.
 - `dispatch2`, `block2`: a GCD proc source that says when the viewer has exited.
+- [`rtc-config`](../rtc-config) (path dependency): the settings file, shared with the
+  viewer.
 
 The editor never uses Metal itself; it starts `rtc-metal` as a separate program. No Cargo
 workspace: the crate has its own `target/`, and the first build takes a minute or two.
@@ -211,6 +215,30 @@ Ctrl-C or `kill` doesn't: the folder stays behind.
 Quitting the editor or the viewer asks in the viewer whether to save the image; Save...
 starts in the folder you started `rtc-edit` from.
 
+## Settings
+
+rtc-edit and the viewer remember a few things in
+`~/Library/Application Support/rtc-edit/config.json`:
+
+```json
+{
+  "scene_folder": "/Users/me/rtc/scenes",
+  "image_folder": "/Users/me/rtc/renders",
+  "editor_frame": { "x": 0, "y": 25, "width": 900, "height": 640 }
+}
+```
+
+- `scene_folder`: where Open… and Save As… start for an untitled scene, set by the last
+  Open… or Save As…. A scene with a file starts in its own folder. At first, `~/rtc/scenes`.
+- `image_folder`: where the viewer's Save Image… starts, set by the last image saved. At
+  first, `~/rtc/renders`.
+- `editor_frame`: the editor's window when it last closed. A frame that no longer fits its
+  screen goes back to the top-left at 900×640.
+
+The `~/rtc` folders are made when a panel is about to open in them. Every key is optional,
+a file that isn't a JSON object counts as empty, and keys the programs don't know are kept.
+Delete the file to forget everything.
+
 ## Layout
 
 | path | what it holds |
@@ -228,4 +256,5 @@ starts in the folder you started `rtc-edit` from.
 | `src/about.rs` | About's build, credits and icon, and the GitHub issue URL |
 | `build.rs` | the commit rtc-edit is built from, for About |
 | `assets/` | the icon's scene and its render |
+| `../rtc-config` | the settings file both programs share |
 | `docs/superpowers/` | design specs and implementation plans |

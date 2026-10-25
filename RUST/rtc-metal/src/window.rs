@@ -850,7 +850,7 @@ define_class!(
         fn save_image(&self, _sender: Option<&NSObject>) {
             let name = offered_name(&self.ivars().save.borrow());
             // No borrow is held while the panel runs: the view may draw.
-            if let Some(path) = save_path(self.mtm(), &name) {
+            if let Some(path) = save_path(self.mtm(), &name, &image_dir()) {
                 self.write_image(&path);
             }
         }
@@ -1044,9 +1044,12 @@ impl RtcDelegate {
         };
         let written =
             image.and_then(|(pixels, (width, height))| (ivars.write)(pixels, width, height, path));
-        if let Err(e) = written {
-            eprintln!("rtc-metal: {e}");
-            show_error(self.mtm(), &e);
+        match written {
+            Ok(()) => remember_folder(path),
+            Err(e) => {
+                eprintln!("rtc-metal: {e}");
+                show_error(self.mtm(), &e);
+            }
         }
     }
 
@@ -1299,7 +1302,7 @@ pub fn run(
 }
 
 /// Ask whether to save the image and, if so, where, offering `name` in the
-/// current directory, with a Cancel button (Esc) when `cancel`.
+/// image folder, with a Cancel button (Esc) when `cancel`.
 fn ask(mtm: MainThreadMarker, name: &str, cancel: bool) -> Quit {
     let app = NSApplication::sharedApplication(mtm);
     // A SIGTERM may come while another app (the scene editor) is active:
@@ -1319,17 +1322,51 @@ fn ask(mtm: MainThreadMarker, name: &str, cancel: bool) -> Quit {
         r if r == NSAlertSecondButtonReturn => Button::Discard,
         _ => Button::Cancel,
     };
-    answer(button, || save_path(mtm, name))
+    answer(button, || save_path(mtm, name, &image_dir()))
 }
 
-/// A save panel offering `name` in the current directory; the chosen path,
-/// or `None` when cancelled.
-fn save_path(mtm: MainThreadMarker, name: &str) -> Option<PathBuf> {
-    let panel = NSSavePanel::savePanel(mtm);
-    if let Ok(dir) = std::env::current_dir() {
-        let dir = NSString::from_str(&dir.to_string_lossy());
-        panel.setDirectoryURL(Some(&NSURL::fileURLWithPath_isDirectory(&dir, true)));
+/// Store the folder of the image just written at `path` as the image
+/// folder; a failure only goes to stderr.
+fn remember_folder(path: &Path) {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let (Some(config), Some(dir)) = (rtc_config::path(), folder_of(path, &cwd)) else {
+        return;
+    };
+    if let Err(e) = rtc_config::set(&config, rtc_config::IMAGE_FOLDER, dir.into()) {
+        eprintln!("rtc-metal: couldn't save settings: {e}");
     }
+}
+
+/// The folder of the image at `path`, made absolute against `cwd`: the
+/// file is shared, so a relative folder would mean another place to the
+/// next program that reads it. `-o out.ppm` is in `cwd` itself.
+fn folder_of(path: &Path, cwd: &Path) -> Option<String> {
+    let dir = cwd.join(path).parent()?.to_string_lossy().into_owned();
+    (!dir.is_empty()).then_some(dir)
+}
+
+/// Where the save panels start: the remembered image folder, else
+/// `~/rtc/renders`, made if missing; the current directory without a
+/// settings file.
+fn image_dir() -> PathBuf {
+    let Some(config) = rtc_config::path() else {
+        return std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    };
+    let dir = rtc_config::folder(
+        &rtc_config::load(&config),
+        rtc_config::IMAGE_FOLDER,
+        "renders",
+    );
+    rtc_config::ensure_dir(&dir);
+    dir
+}
+
+/// A save panel offering `name` in `dir`; the chosen path, or `None` when
+/// cancelled.
+fn save_path(mtm: MainThreadMarker, name: &str, dir: &Path) -> Option<PathBuf> {
+    let panel = NSSavePanel::savePanel(mtm);
+    let dir = NSString::from_str(&dir.to_string_lossy());
+    panel.setDirectoryURL(Some(&NSURL::fileURLWithPath_isDirectory(&dir, true)));
     panel.setNameFieldStringValue(&NSString::from_str(name));
     // `allowedContentTypes` would need the UniformTypeIdentifiers crate.
     #[allow(deprecated)]
@@ -2179,5 +2216,22 @@ mod tests {
     fn cancel_is_offered_unless_the_editor_asked_to_quit() {
         assert!(offers_cancel(false));
         assert!(!offers_cancel(true));
+    }
+
+    #[test]
+    fn the_image_folder_is_stored_absolute() {
+        let cwd = Path::new("/work");
+        assert_eq!(
+            folder_of(Path::new("out.ppm"), cwd).as_deref(),
+            Some("/work")
+        );
+        assert_eq!(
+            folder_of(Path::new("renders/x.ppm"), cwd).as_deref(),
+            Some("/work/renders")
+        );
+        assert_eq!(
+            folder_of(Path::new("/Users/me/rtc/renders/x.ppm"), cwd).as_deref(),
+            Some("/Users/me/rtc/renders")
+        );
     }
 }

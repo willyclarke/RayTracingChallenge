@@ -2,6 +2,7 @@
 //! rewritten for another folder on Save As, or made absolute for the
 //! preview file.
 
+use rtc_config::{Map, Value};
 use rtc_rust::scene::{
     PatternDescription, PatternKind, SceneDescription, ShapeDescription, ShapeKind, UvDescription,
 };
@@ -144,6 +145,27 @@ pub fn dir_of(path: &Path) -> &Path {
     }
 }
 
+/// Where Open… and Save As… start: the scene's folder when it has a file,
+/// else the remembered scene folder, else `<home>/rtc/scenes`.
+pub fn panel_dir_in(
+    scene: Option<&Path>,
+    config: &Map<String, Value>,
+    home: Option<&Path>,
+) -> PathBuf {
+    match scene {
+        Some(p) => dir_of(p).to_path_buf(),
+        None => rtc_config::folder_in(config, rtc_config::SCENE_FOLDER, "scenes", home),
+    }
+}
+
+/// [`panel_dir_in`] under `$HOME`.
+pub fn panel_dir(scene: Option<&Path>, config: &Map<String, Value>) -> PathBuf {
+    match scene {
+        Some(p) => dir_of(p).to_path_buf(),
+        None => rtc_config::folder(config, rtc_config::SCENE_FOLDER, "scenes"),
+    }
+}
+
 /// A scene's file name, or `untitled.json` for a scene with no file yet.
 pub fn scene_name(path: Option<&Path>) -> String {
     path.and_then(Path::file_name)
@@ -154,7 +176,7 @@ pub fn scene_name(path: Option<&Path>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{Value, json};
+    use serde_json::json;
     use std::fs;
     use std::path::PathBuf;
 
@@ -339,5 +361,21 @@ mod tests {
     fn scene_name_is_the_file_name_or_untitled() {
         assert_eq!(scene_name(Some(Path::new("a/b/c.json"))), "c.json");
         assert_eq!(scene_name(None), "untitled.json");
+    }
+
+    #[test]
+    fn panels_start_in_the_scenes_folder_then_the_remembered_one() {
+        let home = Some(Path::new("/Users/me"));
+        let mut map = rtc_config::Map::new();
+        assert_eq!(
+            panel_dir_in(None, &map, home),
+            Path::new("/Users/me/rtc/scenes")
+        );
+        map.insert("scene_folder".into(), json!("/s"));
+        assert_eq!(panel_dir_in(None, &map, home), Path::new("/s"));
+        assert_eq!(
+            panel_dir_in(Some(Path::new("/x/a.json")), &map, home),
+            Path::new("/x")
+        );
     }
 }

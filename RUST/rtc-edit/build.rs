@@ -38,7 +38,14 @@ fn main() {
     }
     // An edit not yet staged changes neither: watch what rtc-edit is built
     // from, so the build says dirty. Not `.`, which holds `target/`.
-    for path in ["src", "assets", "Cargo.toml", "../rtc-rust/src", "../rtc-share/src"] {
+    for path in [
+        "src",
+        "assets",
+        "Cargo.toml",
+        "../rtc-rust/src",
+        "../rtc-share/src",
+        "../rtc-config/src",
+    ] {
         println!("cargo:rerun-if-changed={path}");
     }
     println!("cargo:rerun-if-changed=build.rs");
