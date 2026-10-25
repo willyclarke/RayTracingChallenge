@@ -32,7 +32,6 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
 
 /// The preview and the viewer, which must not outlive the editor. They live
 /// here rather than in `Editor` because Quit in the app menu (Cmd-Q) ends
@@ -174,8 +173,8 @@ enum Message {
     /// Cmd-Z and Cmd-Shift-Z.
     Undo,
     Redo,
-    /// Time to read the menu bar's clicks and keys.
-    Poll,
+    /// A menu bar click or key, from muda's event handler.
+    MenuEvent(MenuEvent),
 }
 
 /// The editor window's size at start-up.
@@ -1012,7 +1011,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             | Message::ViewerExited(_)
             | Message::Camera(_)
             | Message::CameraLost(_)
-            | Message::Poll
+            | Message::MenuEvent(_)
     ) && let Some(waiting) = e.pending.take()
     {
         if waiting == 'a' {
@@ -1083,15 +1082,11 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         }
         Message::Undo => e.undo(true),
         Message::Redo => e.undo(false),
-        Message::Poll => {
-            let mut tasks = Vec::new();
-            while let Ok(event) = MenuEvent::receiver().try_recv() {
-                if let Some(c) = menu::command(&event.id.0) {
-                    let message = menu_message(c, e.follower.following());
-                    tasks.push(handle(e, message));
-                }
+        Message::MenuEvent(event) => {
+            if let Some(c) = menu::command(&event.id.0) {
+                let message = menu_message(c, e.follower.following());
+                return handle(e, message);
             }
-            return Task::batch(tasks);
         }
         Message::Submit(field) => {
             e.left = Some(field);
@@ -1211,7 +1206,7 @@ fn subscription(e: &Editor) -> Subscription<Message> {
     let mut subscriptions = vec![
         iced::event::listen_with(shortcut),
         window::events().map(|(_, event)| Message::Window(event)),
-        iced::time::every(Duration::from_millis(50)).map(|_| Message::Poll),
+        Subscription::run(menu_events),
     ];
     if e.live
         && let Some(share) = &e.share
@@ -1254,6 +1249,17 @@ fn camera_stream(key: &(PathBuf, u32, u32)) -> UnboundedReceiver<Message> {
             }
         }
     });
+    rx
+}
+
+/// The menu bar's clicks and keys: muda calls its event handler on the
+/// main thread for each, which forwards it here. A restarted subscription
+/// sets the handler again for its own channel.
+fn menu_events() -> UnboundedReceiver<Message> {
+    let (tx, rx) = unbounded();
+    MenuEvent::set_event_handler(Some(move |event| {
+        let _ = tx.unbounded_send(Message::MenuEvent(event));
+    }));
     rx
 }
 
