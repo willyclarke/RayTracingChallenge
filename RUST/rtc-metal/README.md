@@ -112,6 +112,7 @@ use them are rejected with a message naming the feature.
 | `src/window.rs`, `src/orbit.rs` | the `--window` view and the orbiting camera |
 | `src/probes.rs`, `src/compare.rs` | tests: per-function probe kernels, and whole-image comparisons with the CPU |
 | `shaders/` | the Metal shading language sources |
+| `assets/icon.json`, `assets/icon.ppm` | the app icon (a blue glass ball) inside rtc-edit's app bundle; re-render with `cargo run --release -- assets/icon.json --samples 1024 -o assets/icon.ppm` |
 | `docs/superpowers/` | design specs and implementation plans, one per milestone |
 
 The port was built in milestones, each on its own `metal/NN-name` branch merged into
