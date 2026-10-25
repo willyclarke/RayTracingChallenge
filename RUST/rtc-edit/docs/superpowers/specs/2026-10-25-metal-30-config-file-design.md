@@ -97,7 +97,9 @@ pub fn ensure_dir(dir: &Path);
     the preview's base) is unchanged: still the current folder.
 - The frame:
   - `frame_from(map) -> Option<Rectangle>`: `editor_frame` with four
-    numbers, width and height above zero; anything else is `None`.
+    finite numbers, width and height within 200×150 to 8192 points;
+    anything else is `None` (review fix: a hand-edited `1e39` or `1` was
+    taken).
   - Boot opens the editor at it, or at the top-left at 900×640.
   - On main's first Opened, `window::monitor_size(main)`; when
     `fits(frame, screen)` is false, `window::move_to(main, ORIGIN)` and
@@ -121,8 +123,10 @@ pub fn ensure_dir(dir: &Path);
   callers (File ▸ Save Image… and the Save button of the unsaved-image
   alert) pass `folder(load(path), IMAGE_FOLDER, "renders")` after
   `ensure_dir`.
-- After `write_image` succeeds, the image's folder is stored as
-  `image_folder`. A cancelled panel or failed write stores nothing.
+- After `write_image` succeeds, the image's folder, made absolute against
+  the current folder, is stored as `image_folder` (review fix: `-o out.ppm`
+  stored `""`, and `-o renders/x.ppm` a relative folder other programs
+  would read as somewhere else). A cancelled panel or failed write stores nothing.
 - A failed `set` prints `rtc-metal: couldn't save settings: <error>` to
   stderr; no alert.
 - No `path()` (no `$HOME`): panels start in the current folder, as today,
