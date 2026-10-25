@@ -10,5 +10,8 @@ serde_json = "1"
 iced = { version = "0.14", features = ["tokio"] }
 rtc-share = { path = "../rtc-share" }
 rfd = "0.15"
+# GCD: the proc source that says the viewer ended.
+dispatch2 = "0.3"
+block2 = "0.6"
 # The native menu bar.
 muda = "0.21"
