@@ -179,6 +179,13 @@ pub fn shot(orbit: &Orbit, focal_distance: f64) -> ([f64; 3], [f64; 3], [f64; 3]
     )
 }
 
+/// Whether a SIGTERM calls `terminate`: not while the quit alert is up
+/// (`asking`), as AppKit then exits at once without asking the delegate.
+/// It only sets `QUIT`, and a Cancel asks again with no Cancel.
+fn sigterm_terminates(asking: bool) -> bool {
+    !asking
+}
+
 /// Whether a quit the user cancelled asks again: when a SIGTERM came
 /// meanwhile, as the editor that sent it is gone.
 fn asks_again(quit: &Quit, sigterm: bool) -> bool {
@@ -1243,11 +1250,14 @@ pub fn run(
     view.setPreferredFramesPerSecond(FPS);
     view.addSubview(&overlay);
     // Kept until the process exits: `run` never returns. QUIT stays set:
-    // the quit it starts offers no Cancel, and a SIGTERM while the alert
-    // is up is refused (`asking`).
+    // the quit it starts offers no Cancel; while the quit alert is up the
+    // alert is left to finish, and a Cancel there asks again.
     let _sigterm = signal_source(libc::SIGTERM, DispatchQueue::main(), || {
         QUIT.store(true, Ordering::SeqCst);
-        if let Some(mtm) = MainThreadMarker::new() {
+        let asking = WINDOW.with(|w| w.get().is_some_and(|(_, d)| d.ivars().asking.get()));
+        if sigterm_terminates(asking)
+            && let Some(mtm) = MainThreadMarker::new()
+        {
             NSApplication::sharedApplication(mtm).terminate(None);
         }
     });
@@ -1674,6 +1684,12 @@ mod tests {
         assert!(hands_focus_back(true, Duration::from_millis(500)));
         assert!(!hands_focus_back(true, Duration::from_secs(3)));
         assert!(!hands_focus_back(false, Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn a_sigterm_while_the_quit_alert_is_up_leaves_the_alert_to_finish() {
+        assert!(sigterm_terminates(false));
+        assert!(!sigterm_terminates(true));
     }
 
     #[test]
