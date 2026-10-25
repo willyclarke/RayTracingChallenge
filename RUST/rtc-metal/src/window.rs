@@ -34,7 +34,11 @@ use crate::orbit::Orbit;
 use crate::scene::GpuScene;
 use crate::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
 use crate::watch::{FileEvents, Watch};
-use dispatch2::DispatchQueue;
+use block2::RcBlock;
+use dispatch2::{
+    _dispatch_source_type_signal, DispatchObject, DispatchQueue, DispatchRetained, DispatchSource,
+    dispatch_source_type_t,
+};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
@@ -47,8 +51,7 @@ use objc2_app_kit::{
     NSView, NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowStyleMask,
 };
 use objc2_foundation::{
-    NSArray, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
-    NSTimer, NSURL,
+    NSArray, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLPixelFormat};
 use objc2_metal_kit::{MTKView, MTKViewDelegate};
@@ -68,26 +71,33 @@ const UNLIMITED: u32 = u32::MAX;
 const PRESETS: [u32; 5] = [16, 64, 256, 1024, 4096];
 /// Screen refreshes per second the view asks for.
 const FPS: isize = 60;
-/// Seconds between checks for SIGTERM and of a `--watch`ed scene file.
-const WATCH_INTERVAL: f64 = 0.25;
-/// SIGTERM's number on macOS.
-const SIGTERM: i32 = 15;
 /// Time between screen refreshes, in ms.
 const REFRESH_MS: f64 = 1000.0 / FPS as f64;
 
-/// Set by the SIGTERM handler; the timer quits the app when it sees it,
-/// and the quit then offers no Cancel.
+/// Set when a SIGTERM came; the quit it starts then offers no Cancel.
 static QUIT: AtomicBool = AtomicBool::new(false);
 
-unsafe extern "C" {
-    /// libc's `signal(3)`; returns the previous handler (unused here).
-    fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
-}
-
-/// SIGTERM handler: only flags the quit, as a handler may do nothing that
-/// isn't async-signal-safe; the main thread's timer does the quitting.
-extern "C" fn on_sigterm(_sig: i32) {
-    QUIT.store(true, Ordering::SeqCst);
+/// An active GCD signal source calling `handler` on `queue` for each
+/// `sig`, which the process then ignores, so the default action doesn't
+/// kill it. The handler is ordinary code on the queue, not a signal
+/// handler, so it may do anything.
+fn signal_source(
+    sig: i32,
+    queue: &DispatchQueue,
+    handler: impl Fn() + Send + Sync + 'static,
+) -> DispatchRetained<DispatchSource> {
+    let kind: dispatch_source_type_t = (&raw const _dispatch_source_type_signal).cast_mut();
+    // SAFETY: ignoring a signal is always allowed; a signal source with a
+    // valid signal number; the handler is `Send + Sync` and dispatch copies
+    // the block.
+    unsafe {
+        libc::signal(sig, libc::SIG_IGN);
+        let source = DispatchSource::new(kind, sig as usize, 0, Some(queue));
+        let event: RcBlock<dyn Fn()> = RcBlock::new(handler);
+        source.set_event_handler_with_block(RcBlock::as_ptr(&event));
+        source.activate();
+        source
+    }
 }
 
 /// Writes an image, its width and height, to a path: on quit and for
@@ -636,16 +646,6 @@ define_class!(
         #[unsafe(method(halveSamples:))]
         fn halve_samples(&self, _sender: Option<&NSObject>) {
             self.change_target(halved);
-        }
-
-        /// The timer: quit after a SIGTERM.
-        #[unsafe(method(checkQuitAndWatchedFile:))]
-        fn check_quit_and_watched_file(&self, _timer: &NSTimer) {
-            // QUIT stays set: the quit it starts offers no Cancel, and a
-            // repeat while the alert is up is refused.
-            if QUIT.load(Ordering::SeqCst) {
-                NSApplication::sharedApplication(self.mtm()).terminate(None);
-            }
         }
 
         /// AppKit asks before showing a menu: tick the current traversal and
@@ -1229,21 +1229,15 @@ pub fn run(
     view.setAutoResizeDrawable(true);
     view.setPreferredFramesPerSecond(FPS);
     view.addSubview(&overlay);
-    // SAFETY: `checkQuitAndWatchedFile:` takes the timer, as the selector
-    // expects; the view lives until the app exits, and so does the
-    // repeating timer, which the run loop retains.
-    let _ = unsafe {
-        NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
-            WATCH_INTERVAL,
-            &view,
-            sel!(checkQuitAndWatchedFile:),
-            None,
-            true,
-        )
-    };
-    // SAFETY: `on_sigterm` has the signature `signal` expects and only
-    // stores to an atomic, which is async-signal-safe.
-    unsafe { signal(SIGTERM, on_sigterm) };
+    // Kept until the process exits: `run` never returns. QUIT stays set:
+    // the quit it starts offers no Cancel, and a SIGTERM while the alert
+    // is up is refused (`asking`).
+    let _sigterm = signal_source(libc::SIGTERM, DispatchQueue::main(), || {
+        QUIT.store(true, Ordering::SeqCst);
+        if let Some(mtm) = MainThreadMarker::new() {
+            NSApplication::sharedApplication(mtm).terminate(None);
+        }
+    });
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
     // window can be closed, so the `Retained` stays the only owner.
@@ -1642,6 +1636,18 @@ mod tests {
         assert_eq!(ask, Save::Ask("new.ppm".into()));
         let to = Save::To("o.ppm".into()).for_scene(Path::new("/t/new.json"));
         assert_eq!(to, Save::To("o.ppm".into()));
+    }
+
+    #[test]
+    fn a_sigterm_source_reports_the_signal_without_killing() {
+        let queue = DispatchQueue::new("rtc-metal.test.sigterm", None);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _source = signal_source(libc::SIGTERM, &queue, move || {
+            let _ = tx.send(());
+        });
+        // SAFETY: signals this test process, which now ignores SIGTERM.
+        unsafe { libc::kill(libc::getpid(), libc::SIGTERM) };
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
     }
 
     #[test]
