@@ -167,6 +167,21 @@ pub fn enabled(command: Command, state: &State) -> bool {
     }
 }
 
+/// What About rtc-edit shows: the icon, the build and the credits.
+pub fn about_metadata() -> AboutMetadata {
+    AboutMetadata {
+        name: Some("rtc-edit".into()),
+        // AppKit shows "Version <version> (<short_version>)".
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        short_version: Some(about::version().into()),
+        copyright: Some(about::COPYRIGHT.into()),
+        credits: Some(about::CREDITS.into()),
+        icon: about::icon(about::ICON_PPM)
+            .and_then(|(rgba, w, h)| Icon::from_rgba(rgba, w, h).ok()),
+        ..Default::default()
+    }
+}
+
 /// The menu bar, with the items whose greying or tick changes.
 pub struct Menus {
     menu: Menu,
@@ -226,19 +241,7 @@ impl Menus {
             None,
         );
 
-        let about = PredefinedMenuItem::about(
-            Some("About rtc-edit"),
-            Some(AboutMetadata {
-                name: Some("rtc-edit".into()),
-                short_version: Some(env!("CARGO_PKG_VERSION").into()),
-                version: Some(about::version().into()),
-                copyright: Some(about::COPYRIGHT.into()),
-                credits: Some(about::CREDITS.into()),
-                icon: about::icon(about::ICON_PPM)
-                    .and_then(|(rgba, w, h)| Icon::from_rgba(rgba, w, h).ok()),
-                ..Default::default()
-            }),
-        );
+        let about = PredefinedMenuItem::about(Some("About rtc-edit"), Some(about_metadata()));
         let app = Submenu::with_items(
             "rtc-edit",
             true,
@@ -365,6 +368,18 @@ mod tests {
         assert_eq!(id(Command::ReportIssue), "report-issue");
         assert!(enabled(Command::ReportIssue, &State::default()));
         assert_eq!(ALL.last(), Some(&Command::ReportIssue));
+    }
+
+    #[test]
+    fn about_shows_the_crate_version_then_the_build() {
+        // AppKit shows `version` as "Version X" and `short_version` in
+        // parentheses after it.
+        let about = about_metadata();
+        assert_eq!(about.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(about.short_version.as_deref(), Some(about::version()));
+        assert_eq!(about.credits.as_deref(), Some(about::CREDITS));
+        assert_eq!(about.copyright.as_deref(), Some(about::COPYRIGHT));
+        assert!(about.icon.is_some());
     }
 
     #[test]
