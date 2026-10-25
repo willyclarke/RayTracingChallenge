@@ -8,6 +8,7 @@ rtc-rust = { version = "0.1.0", path = "../rtc-rust" }
 serde_json = "1"
 iced = "0.14"
 rtc-share = { path = "../rtc-share" }
+rtc-config = { path = "../rtc-config" }
 rfd = "0.15"
 # GCD: the proc source that says the viewer ended.
 dispatch2 = "0.3"

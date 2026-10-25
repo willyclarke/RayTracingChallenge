@@ -27,7 +27,7 @@ use rtc_edit::follow::Follower;
 use rtc_edit::help;
 use rtc_edit::history::{Group, History};
 use rtc_edit::menu::{self, Command, Menus, State};
-use rtc_edit::paths::{dir_of, rebase, scene_name};
+use rtc_edit::paths::{dir_of, panel_dir, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, camera_start, exit_source, find, held_fresh, share_path};
@@ -309,6 +309,21 @@ impl Editor {
         self.warn(format!("saved {}", path.display()))
     }
 
+    /// Where Open… and Save As… start, made if missing.
+    fn panel_dir(&self) -> PathBuf {
+        let dir = panel_dir(self.path.as_deref(), &config());
+        rtc_config::ensure_dir(&dir);
+        dir
+    }
+
+    /// Store `value` under `key` in the settings file; a failure goes to
+    /// the status line.
+    fn remember(&mut self, key: &str, value: rtc_config::Value) {
+        if let Err(e) = remember(key, value) {
+            self.status = format!("couldn't save settings: {e}");
+        }
+    }
+
     /// The scene's folder, or the working directory for an untitled scene.
     fn dir(&self) -> PathBuf {
         dir_for(self.path.as_deref())
@@ -403,13 +418,17 @@ impl Editor {
             return;
         }
         let picked = rfd::FileDialog::new()
-            .set_directory(self.dir())
+            .set_directory(self.panel_dir())
             .add_filter("scene", &["json"])
             .pick_file();
         self.command = false;
         let Some(path) = picked else { return };
         match SceneDescription::from_path(&path) {
-            Ok(desc) => self.switch(desc, Some(path)),
+            Ok(desc) => {
+                let folder = folder_value(&path);
+                self.switch(desc, Some(path));
+                self.remember(rtc_config::SCENE_FOLDER, folder);
+            }
             Err(e) => self.status = format!("{}: {e}", file_name(&path)),
         }
     }
@@ -929,7 +948,7 @@ impl Editor {
     fn save_as(&mut self) -> bool {
         let dir = self.dir();
         let picked = rfd::FileDialog::new()
-            .set_directory(&dir)
+            .set_directory(self.panel_dir())
             .set_file_name(self.name())
             .add_filter("scene", &["json"])
             .save_file();
@@ -956,6 +975,8 @@ impl Editor {
                 // so the boxes and any red text stay as they are.
                 self.status = self.saved();
                 self.rename_preview();
+                let folder = folder_value(self.path.as_deref().unwrap_or(Path::new(".")));
+                self.remember(rtc_config::SCENE_FOLDER, folder);
                 true
             }
             Err(e) => {
@@ -984,6 +1005,24 @@ fn send_or_hold(
 }
 
 /// `path`'s folder, or the working directory for a scene with no file.
+/// The settings file's keys; empty without one.
+fn config() -> rtc_config::Map<String, rtc_config::Value> {
+    rtc_config::path().map_or_else(rtc_config::Map::new, |p| rtc_config::load(&p))
+}
+
+/// Store `value` under `key` in the settings file, when there is one.
+fn remember(key: &str, value: rtc_config::Value) -> Result<(), String> {
+    match rtc_config::path() {
+        Some(p) => rtc_config::set(&p, key, value),
+        None => Ok(()),
+    }
+}
+
+/// The folder of the scene file `path`, as the settings file stores it.
+fn folder_value(path: &Path) -> rtc_config::Value {
+    dir_of(path).to_string_lossy().into_owned().into()
+}
+
 fn dir_for(path: Option<&Path>) -> PathBuf {
     match path {
         Some(p) => dir_of(p).to_path_buf(),
