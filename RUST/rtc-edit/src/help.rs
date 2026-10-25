@@ -3,6 +3,9 @@
 //! command line.
 
 use crate::menu::{ALL, key, label, menu_of};
+use iced::theme::palette::{Extended, Pair};
+use iced::widget::{Column, Row, container, scrollable, text};
+use iced::{Alignment, Element, Font, Length, Theme, border, font};
 use muda::accelerator::{Code, Modifiers};
 
 /// One piece of a key or mouse action, drawn as a chip.
@@ -216,9 +219,67 @@ pub fn sections() -> Vec<Section> {
     ]
 }
 
+/// The page, drawn: a scrolling column of sections, groups and entries,
+/// with each chip in its kind's colour.
+pub fn view<M: 'static>(sections: Vec<Section>) -> Element<'static, M> {
+    let bold = Font {
+        weight: font::Weight::Bold,
+        ..Font::DEFAULT
+    };
+    let mut page = Column::new().spacing(6).padding(16);
+    for section in sections {
+        page = page.push(text(section.title).size(18).font(bold));
+        for g in section.groups {
+            if !g.title.is_empty() {
+                page = page.push(text(g.title).size(14).font(bold));
+            }
+            for e in g.entries {
+                let mut line = Row::new().spacing(6).align_y(Alignment::Center);
+                for c in e.chips {
+                    line = line.push(chip(c));
+                }
+                let words = if section.monospace {
+                    text(e.text).size(13).font(Font::MONOSPACE)
+                } else {
+                    text(e.text).size(13)
+                };
+                page = page.push(line.push(words));
+            }
+        }
+    }
+    scrollable(page).width(Length::Fill).into()
+}
+
+/// A chip: a small rounded box coloured by kind; a word is plain text.
+fn chip<M: 'static>(c: Chip) -> Element<'static, M> {
+    let (s, pick): (_, fn(&Extended) -> Pair) = match c {
+        Chip::Word(s) => return text(s).size(12).into(),
+        Chip::Modifier(s) => (s, |p| p.secondary.weak),
+        Chip::Key(s) => (s, |p| p.primary.weak),
+        Chip::Mouse(s) => (s, |p| p.success.weak),
+    };
+    container(text(s).size(12))
+        .padding([2, 6])
+        .style(move |theme: &Theme| {
+            let pair = pick(theme.extended_palette());
+            container::Style {
+                background: Some(pair.color.into()),
+                text_color: Some(pair.text),
+                border: border::rounded(4),
+                ..container::Style::default()
+            }
+        })
+        .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_page_draws() {
+        let _: iced::Element<'static, ()> = view(sections());
+    }
 
     #[test]
     fn chips_put_modifiers_in_mac_order() {

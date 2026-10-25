@@ -12,3 +12,4 @@ pub mod preview;
 pub mod tree;
 pub mod trs;
 pub mod viewer;
+pub mod windows;
