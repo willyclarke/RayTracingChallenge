@@ -1198,8 +1198,9 @@ fn test_chap_17_gpu_perlin_noise_matches_cpu() -> Result<(), String> {
     let mut points: Vec<Tuple> = (-2..3)
         .map(|k| Tuple::point(k as f64, -k as f64, 2.0 * k as f64))
         .collect();
-    for i in 0..300 {
-        let c = |k: u32| ((i * 2654435761u32.wrapping_mul(k)) % 40000) as f64 / 1000.0 - 20.0;
+    for i in 0..300u32 {
+        let c =
+            |k: u32| (i.wrapping_mul(2654435761u32.wrapping_mul(k)) % 40000) as f64 / 1000.0 - 20.0;
         points.push(Tuple::point(c(1), c(3), c(7)));
     }
     for (k, &seed) in seeds.iter().enumerate() {
