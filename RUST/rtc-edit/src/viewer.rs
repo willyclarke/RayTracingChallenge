@@ -2,6 +2,12 @@
 //! child process that ends with the editor. It takes the scenes to load
 //! through the shared file.
 
+use block2::RcBlock;
+use dispatch2::{
+    _dispatch_source_type_proc, DispatchObject, DispatchQueue, DispatchRetained, DispatchSource,
+    dispatch_source_proc_flags_t, dispatch_source_type_t,
+};
+use rtc_share::Shared;
 use std::ffi::OsString;
 use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
@@ -48,6 +54,33 @@ pub fn held_fresh(held: Option<bool>, fresh: bool) -> bool {
     held == Some(true) || fresh
 }
 
+/// An active GCD proc source calling `notify` (on a queue of its own) when
+/// the process `pid` exits. An exit before the source is active may go
+/// unreported: check the process after making it.
+pub fn exit_source(
+    pid: u32,
+    notify: impl Fn() + Send + Sync + 'static,
+) -> DispatchRetained<DispatchSource> {
+    let kind: dispatch_source_type_t = (&raw const _dispatch_source_type_proc).cast_mut();
+    let exit = dispatch_source_proc_flags_t::DISPATCH_PROC_EXIT.0 as usize;
+    let queue = DispatchQueue::new("rtc-edit.viewer-exit", None);
+    // SAFETY: a proc source for a pid with a proc flag; the handler is
+    // `Send + Sync` and dispatch copies the block.
+    unsafe {
+        let source = DispatchSource::new(kind, pid as usize, exit, Some(&queue));
+        let event: RcBlock<dyn Fn()> = RcBlock::new(notify);
+        source.set_event_handler_with_block(RcBlock::as_ptr(&event));
+        source.activate();
+        source
+    }
+}
+
+/// The camera write a new viewer's camera stream waits from, so it never
+/// yields the camera the last viewer left in `share`.
+pub fn camera_start(share: &Shared) -> u32 {
+    share.read_camera().map_or(0, |s| s.seq)
+}
+
 pub struct Viewer {
     child: Child,
 }
@@ -70,6 +103,10 @@ impl Viewer {
     }
 
     /// Whether the viewer is still open.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     pub fn running(&mut self) -> bool {
         matches!(self.child.try_wait(), Ok(None))
     }
@@ -102,6 +139,46 @@ impl Drop for Viewer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_exit_source_reports_a_child_that_exits() {
+        let mut child = Command::new("sleep").arg("0.1").spawn().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _source = exit_source(child.id(), move || {
+            let _ = tx.send(());
+        });
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(3)).is_ok());
+        child.wait().unwrap();
+    }
+
+    #[test]
+    fn the_exit_source_is_made_for_a_child_that_already_exited() {
+        let mut child = Command::new("true").spawn().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        // Exited, not yet reaped: making the source must not panic.
+        let _source = exit_source(child.id(), || {});
+        child.wait().unwrap();
+    }
+
+    #[test]
+    fn camera_start_is_the_last_write_so_waiting_skips_it() {
+        let path = std::env::temp_dir().join(format!(
+            "rtc-edit-camera-start-{}.share",
+            std::process::id()
+        ));
+        let share = rtc_share::Shared::create(&path).unwrap();
+        share.write_camera([0.0; 3], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0], 1.0);
+        let start = camera_start(&share);
+        let generation = share.generation();
+        let waiter = rtc_share::Shared::open(&path).unwrap();
+        let waiting = std::thread::spawn(move || waiter.wait_camera(start, generation));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!waiting.is_finished());
+        share.write_camera([1.0; 3], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0], 1.0);
+        let shot = waiting.join().unwrap().unwrap().unwrap();
+        assert_ne!(shot.seq, start);
+        std::fs::remove_file(&path).unwrap();
+    }
 
     #[test]
     fn a_held_new_scene_outlasts_a_later_load_edits() {

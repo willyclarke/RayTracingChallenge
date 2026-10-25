@@ -8,6 +8,7 @@
 //! The menu bar lists every command with its Cmd key, and owns those keys.
 
 use iced::futures::channel::mpsc::{UnboundedReceiver, unbounded};
+use iced::futures::{Stream, StreamExt};
 use iced::widget::operation;
 use iced::widget::{
     Column, Row, button, checkbox, column, container, row, scrollable, space, text, text_input,
@@ -24,14 +25,13 @@ use rtc_edit::menu::{self, Command, Menus, State};
 use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
-use rtc_edit::viewer::{Viewer, find, held_fresh, share_path};
+use rtc_edit::viewer::{Viewer, camera_start, exit_source, find, held_fresh, share_path};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
 use rtc_share::{Shared, Snapshot};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
 
 /// The preview and the viewer, which must not outlive the editor. They live
 /// here rather than in `Editor` because Quit in the app menu (Cmd-Q) ends
@@ -102,8 +102,13 @@ struct Editor {
     /// The file shared with every viewer: their camera, the scenes sent to
     /// them; made by the first Start Viewer.
     share: Option<Shared>,
-    /// Whether a viewer is running, as of the last tick.
+    /// Whether a viewer is running: set when one starts, cleared when its
+    /// exit is reported.
     live: bool,
+    /// The running viewer's pid, for its exit source.
+    viewer_pid: u32,
+    /// The camera write the running viewer's camera stream waits from.
+    camera_start: u32,
     /// The viewer's camera as last read from `share`.
     seen: Option<Snapshot>,
     /// A load held until the viewer says it takes loads: whether fresh.
@@ -155,8 +160,8 @@ enum Message {
     Command(bool),
     /// The window opened, moved or was resized.
     Window(window::Event),
-    /// Time to see whether the viewer still runs.
-    Tick,
+    /// The viewer with this pid exited.
+    ViewerExited(u32),
     /// The viewer wrote its camera.
     Camera(Snapshot),
     /// Waiting for the viewer's camera failed, and why.
@@ -168,8 +173,8 @@ enum Message {
     /// Cmd-Z and Cmd-Shift-Z.
     Undo,
     Redo,
-    /// Time to read the menu bar's clicks and keys.
-    Poll,
+    /// A menu bar click or key, from muda's event handler.
+    MenuEvent(MenuEvent),
 }
 
 /// The editor window's size at start-up.
@@ -226,6 +231,8 @@ fn boot() -> Editor {
         live: false,
         seen: None,
         held: None,
+        viewer_pid: 0,
+        camera_start: 0,
         follower: Follower::default(),
         // `switch` below starts the history on the scene it opens.
         history: History::new(&new_scene()),
@@ -409,6 +416,8 @@ impl Editor {
             return;
         }
         self.unloaded = false;
+        // The new viewer's camera stream skips the camera the last one left.
+        self.camera_start = self.share.as_ref().map_or(0, camera_start);
         let started = find(
             std::env::var("RTC_METAL").ok().as_deref(),
             Path::new(env!("CARGO_MANIFEST_DIR")),
@@ -420,6 +429,8 @@ impl Editor {
         });
         match started {
             Ok(v) => {
+                self.viewer_pid = v.pid();
+                self.live = true;
                 children.viewer = Some(v);
                 self.status = "viewer started".into();
             }
@@ -765,27 +776,10 @@ impl Editor {
             .unwrap_or_else(|| "item".into())
     }
 
-    /// See whether the viewer still runs; one that ended stops the
-    /// following.
-    fn tick(&mut self) {
-        let live = CHILDREN
-            .lock()
-            .unwrap()
-            .viewer
-            .as_mut()
-            .is_some_and(Viewer::running);
-        if !live {
+    /// The viewer with `pid` exited: if it is the running one, it ended.
+    fn viewer_exited(&mut self, pid: u32) {
+        if pid == self.viewer_pid {
             self.viewer_ended();
-            return;
-        }
-        self.live = true;
-        if self.held.is_some()
-            && let Some(share) = &self.share
-            && share.is_ready()
-            && let Some(preview) = &CHILDREN.lock().unwrap().preview
-            && let Err(e) = send_or_hold(share, &mut self.held, preview.path(), false)
-        {
-            self.status = e;
         }
     }
 
@@ -811,6 +805,15 @@ impl Editor {
         // Until the viewer is ready the camera may be the last viewer's.
         if !self.share.as_ref().is_some_and(Shared::is_ready) {
             return;
+        }
+        // The new viewer says it is ready before its first camera write:
+        // the load it may have missed goes now.
+        if self.held.is_some()
+            && let Some(share) = &self.share
+            && let Some(preview) = &CHILDREN.lock().unwrap().preview
+            && let Err(e) = send_or_hold(share, &mut self.held, preview.path(), false)
+        {
+            self.status = e;
         }
         if self.seen.is_some_and(|s| s.seq == shot.seq) {
             return;
@@ -1005,10 +1008,10 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             | Message::Command(_)
             | Message::Focused(..)
             | Message::Window(_)
-            | Message::Tick
+            | Message::ViewerExited(_)
             | Message::Camera(_)
             | Message::CameraLost(_)
-            | Message::Poll
+            | Message::MenuEvent(_)
     ) && let Some(waiting) = e.pending.take()
     {
         if waiting == 'a' {
@@ -1051,7 +1054,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         }
         Message::Paste(field, value) => e.edit(field, value),
         Message::Load => e.load(),
-        Message::Tick => e.tick(),
+        Message::ViewerExited(pid) => e.viewer_exited(pid),
         Message::Camera(shot) => e.camera(shot),
         Message::CameraLost(why) => {
             e.follower.stop();
@@ -1079,15 +1082,11 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         }
         Message::Undo => e.undo(true),
         Message::Redo => e.undo(false),
-        Message::Poll => {
-            let mut tasks = Vec::new();
-            while let Ok(event) = MenuEvent::receiver().try_recv() {
-                if let Some(c) = menu::command(&event.id.0) {
-                    let message = menu_message(c, e.follower.following());
-                    tasks.push(handle(e, message));
-                }
+        Message::MenuEvent(event) => {
+            if let Some(c) = menu::command(&event.id.0) {
+                let message = menu_message(c, e.follower.following());
+                return handle(e, message);
             }
-            return Task::batch(tasks);
         }
         Message::Submit(field) => {
             e.left = Some(field);
@@ -1207,14 +1206,14 @@ fn subscription(e: &Editor) -> Subscription<Message> {
     let mut subscriptions = vec![
         iced::event::listen_with(shortcut),
         window::events().map(|(_, event)| Message::Window(event)),
-        iced::time::every(Duration::from_millis(100)).map(|_| Message::Tick),
-        iced::time::every(Duration::from_millis(50)).map(|_| Message::Poll),
+        Subscription::run(menu_events),
     ];
     if e.live
         && let Some(share) = &e.share
     {
-        let key = (own_share_path(), share.generation());
+        let key = (own_share_path(), share.generation(), e.camera_start);
         subscriptions.push(Subscription::run_with(key, camera_stream));
+        subscriptions.push(Subscription::run_with(e.viewer_pid, viewer_exit));
     }
     Subscription::batch(subscriptions)
 }
@@ -1222,8 +1221,8 @@ fn subscription(e: &Editor) -> Subscription<Message> {
 /// The viewer's camera writes, from the shared file at `key.0`, while the
 /// viewer of generation `key.1` runs: a thread sleeps on the file and sends
 /// each write on.
-fn camera_stream(key: &(PathBuf, u32)) -> UnboundedReceiver<Message> {
-    let (path, generation) = key.clone();
+fn camera_stream(key: &(PathBuf, u32, u32)) -> UnboundedReceiver<Message> {
+    let (path, generation, start) = key.clone();
     let (tx, rx) = unbounded();
     std::thread::spawn(move || {
         let shared = match Shared::open(&path) {
@@ -1233,7 +1232,7 @@ fn camera_stream(key: &(PathBuf, u32)) -> UnboundedReceiver<Message> {
                 return;
             }
         };
-        let mut last = 0;
+        let mut last = start;
         loop {
             match shared.wait_camera(last, generation) {
                 Ok(Some(shot)) => {
@@ -1251,6 +1250,42 @@ fn camera_stream(key: &(PathBuf, u32)) -> UnboundedReceiver<Message> {
         }
     });
     rx
+}
+
+/// The menu bar's clicks and keys: muda calls its event handler on the
+/// main thread for each, which forwards it here. A restarted subscription
+/// sets the handler again for its own channel.
+fn menu_events() -> UnboundedReceiver<Message> {
+    let (tx, rx) = unbounded();
+    MenuEvent::set_event_handler(Some(move |event| {
+        let _ = tx.unbounded_send(Message::MenuEvent(event));
+    }));
+    rx
+}
+
+/// `ViewerExited(pid)` when the viewer `pid` exits, from a GCD proc
+/// source kept alive by the stream.
+fn viewer_exit(pid: &u32) -> impl Stream<Item = Message> + use<> {
+    let pid = *pid;
+    let (tx, rx) = unbounded();
+    let notify = tx.clone();
+    let source = exit_source(pid, move || {
+        let _ = notify.unbounded_send(Message::ViewerExited(pid));
+    });
+    // An exit before the source was active goes unreported: look once.
+    let running = CHILDREN
+        .lock()
+        .unwrap()
+        .viewer
+        .as_mut()
+        .is_some_and(|v| v.pid() == pid && v.running());
+    if !running {
+        let _ = tx.unbounded_send(Message::ViewerExited(pid));
+    }
+    rx.map(move |m| {
+        let _source = &source;
+        m
+    })
 }
 
 fn view(e: &Editor) -> Element<'_, Message> {

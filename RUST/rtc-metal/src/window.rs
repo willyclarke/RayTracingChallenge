@@ -33,7 +33,12 @@ use crate::gpu::{Accumulator, Gpu};
 use crate::orbit::Orbit;
 use crate::scene::GpuScene;
 use crate::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
-use crate::watch::Watch;
+use crate::watch::{FileEvents, Watch};
+use block2::RcBlock;
+use dispatch2::{
+    _dispatch_source_type_signal, DispatchObject, DispatchQueue, DispatchRetained, DispatchSource,
+    dispatch_source_type_t,
+};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
@@ -46,8 +51,7 @@ use objc2_app_kit::{
     NSView, NSWindow, NSWindowCollectionBehavior, NSWindowDelegate, NSWindowStyleMask,
 };
 use objc2_foundation::{
-    NSArray, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
-    NSTimer, NSURL,
+    NSArray, NSNotification, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL,
 };
 use objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLPixelFormat};
 use objc2_metal_kit::{MTKView, MTKViewDelegate};
@@ -67,26 +71,33 @@ const UNLIMITED: u32 = u32::MAX;
 const PRESETS: [u32; 5] = [16, 64, 256, 1024, 4096];
 /// Screen refreshes per second the view asks for.
 const FPS: isize = 60;
-/// Seconds between checks for SIGTERM and of a `--watch`ed scene file.
-const WATCH_INTERVAL: f64 = 0.25;
-/// SIGTERM's number on macOS.
-const SIGTERM: i32 = 15;
 /// Time between screen refreshes, in ms.
 const REFRESH_MS: f64 = 1000.0 / FPS as f64;
 
-/// Set by the SIGTERM handler; the timer quits the app when it sees it,
-/// and the quit then offers no Cancel.
+/// Set when a SIGTERM came; the quit it starts then offers no Cancel.
 static QUIT: AtomicBool = AtomicBool::new(false);
 
-unsafe extern "C" {
-    /// libc's `signal(3)`; returns the previous handler (unused here).
-    fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
-}
-
-/// SIGTERM handler: only flags the quit, as a handler may do nothing that
-/// isn't async-signal-safe; the main thread's timer does the quitting.
-extern "C" fn on_sigterm(_sig: i32) {
-    QUIT.store(true, Ordering::SeqCst);
+/// An active GCD signal source calling `handler` on `queue` for each
+/// `sig`, which the process then ignores, so the default action doesn't
+/// kill it. The handler is ordinary code on the queue, not a signal
+/// handler, so it may do anything.
+fn signal_source(
+    sig: i32,
+    queue: &DispatchQueue,
+    handler: impl Fn() + Send + Sync + 'static,
+) -> DispatchRetained<DispatchSource> {
+    let kind: dispatch_source_type_t = (&raw const _dispatch_source_type_signal).cast_mut();
+    // SAFETY: ignoring a signal is always allowed; a signal source with a
+    // valid signal number; the handler is `Send + Sync` and dispatch copies
+    // the block.
+    unsafe {
+        libc::signal(sig, libc::SIG_IGN);
+        let source = DispatchSource::new(kind, sig as usize, 0, Some(queue));
+        let event: RcBlock<dyn Fn()> = RcBlock::new(handler);
+        source.set_event_handler_with_block(RcBlock::as_ptr(&event));
+        source.activate();
+        source
+    }
 }
 
 /// Writes an image, its width and height, to a path: on quit and for
@@ -166,6 +177,12 @@ pub fn shot(orbit: &Orbit, focal_distance: f64) -> ([f64; 3], [f64; 3], [f64; 3]
         xyz(orbit.up()),
         focal_distance,
     )
+}
+
+/// Whether a quit the user cancelled asks again: when a SIGTERM came
+/// meanwhile, as the editor that sent it is gone.
+fn asks_again(quit: &Quit, sigterm: bool) -> bool {
+    *quit == Quit::Cancel && sigterm
 }
 
 /// What a quit does with the image.
@@ -637,19 +654,6 @@ define_class!(
             self.change_target(halved);
         }
 
-        /// The timer: quit after a SIGTERM, otherwise reload a `--watch`ed
-        /// scene when its file changed.
-        #[unsafe(method(checkQuitAndWatchedFile:))]
-        fn check_quit_and_watched_file(&self, _timer: &NSTimer) {
-            // QUIT stays set: the quit it starts offers no Cancel, and a
-            // repeat while the alert is up is refused.
-            if QUIT.load(Ordering::SeqCst) {
-                NSApplication::sharedApplication(self.mtm()).terminate(None);
-                return;
-            }
-            self.reload_if_changed();
-        }
-
         /// AppKit asks before showing a menu: tick the current traversal and
         /// sample target.
         #[unsafe(method(validateMenuItem:))]
@@ -924,10 +928,17 @@ define_class!(
             // draw meanwhile.
             let frames = ivars.renderer.borrow().acc.frames();
             let mtm = self.mtm();
-            let cancel = offers_cancel(QUIT.load(Ordering::SeqCst));
             // A copy: a load may rename the scene while the alert is up.
             let save = ivars.save.borrow().clone();
-            let quit = choose(&save, frames, |name| ask(mtm, name, cancel));
+            let quit = loop {
+                let cancel = offers_cancel(QUIT.load(Ordering::SeqCst));
+                let quit = choose(&save, frames, |name| ask(mtm, name, cancel));
+                // A SIGTERM while the alert was up was refused (`asking`):
+                // the editor is gone, so ask again, now with no Cancel.
+                if !asks_again(&quit, QUIT.load(Ordering::SeqCst)) {
+                    break quit;
+                }
+            };
             if quit == Quit::Cancel {
                 ivars.asking.set(false);
                 return NSApplicationTerminateReply::TerminateCancel;
@@ -955,12 +966,25 @@ struct Delegate {
     /// When the run loop started, if the viewer is to give the focus it
     /// gets at start back to the editor; cleared on the first activation.
     quiet_since: Cell<Option<Instant>>,
+    /// Wakes the main queue when the `--watch`ed file changes; kept for the
+    /// app's life.
+    #[allow(dead_code)]
+    file_events: Option<FileEvents>,
 }
 
 thread_local! {
     /// The window's view and delegate, for `deliver`; set by `run`.
     static WINDOW: std::cell::OnceCell<(Retained<RtcView>, Retained<RtcDelegate>)> =
         const { std::cell::OnceCell::new() };
+}
+
+/// The `--watch`ed file may have changed: reload it if its time is new.
+fn reload_watched() {
+    WINDOW.with(|w| {
+        if let Some((view, _)) = w.get() {
+            view.reload_if_changed();
+        }
+    });
 }
 
 /// Bring the window in front of other apps' windows without activating
@@ -1120,6 +1144,20 @@ pub fn run(
         std::process::exit(1);
     });
     let orbit = Orbit::of(&camera_desc);
+    // Each change wakes the main queue, which reloads if the file's time is
+    // new; a file that can't be watched says why in the overlay.
+    let (file_events, watch_error) = match &watch {
+        Some(w) => match FileEvents::start(w.path(), || {
+            DispatchQueue::main().exec_async(reload_watched)
+        }) {
+            Ok(events) => (Some(events), None),
+            Err(e) => {
+                eprintln!("rtc-metal: --watch: {e}");
+                (None, Some(format!("--watch: {e}")))
+            }
+        },
+        None => (None, None),
+    };
     let renderer = Rc::new(RefCell::new(Renderer {
         gpu,
         scene,
@@ -1134,7 +1172,7 @@ pub fn run(
         elapsed: Duration::ZERO,
         batch: 1,
         camera_desc,
-        reload_error: None,
+        reload_error: watch_error,
         watch,
         resize: None,
         share,
@@ -1154,6 +1192,7 @@ pub fn run(
             write,
             title: RefCell::new(title.clone()),
             quiet_since: Cell::new(None),
+            file_events,
         },
     );
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -1203,21 +1242,15 @@ pub fn run(
     view.setAutoResizeDrawable(true);
     view.setPreferredFramesPerSecond(FPS);
     view.addSubview(&overlay);
-    // SAFETY: `checkQuitAndWatchedFile:` takes the timer, as the selector
-    // expects; the view lives until the app exits, and so does the
-    // repeating timer, which the run loop retains.
-    let _ = unsafe {
-        NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
-            WATCH_INTERVAL,
-            &view,
-            sel!(checkQuitAndWatchedFile:),
-            None,
-            true,
-        )
-    };
-    // SAFETY: `on_sigterm` has the signature `signal` expects and only
-    // stores to an atomic, which is async-signal-safe.
-    unsafe { signal(SIGTERM, on_sigterm) };
+    // Kept until the process exits: `run` never returns. QUIT stays set:
+    // the quit it starts offers no Cancel, and a SIGTERM while the alert
+    // is up is refused (`asking`).
+    let _sigterm = signal_source(libc::SIGTERM, DispatchQueue::main(), || {
+        QUIT.store(true, Ordering::SeqCst);
+        if let Some(mtm) = MainThreadMarker::new() {
+            NSApplication::sharedApplication(mtm).terminate(None);
+        }
+    });
 
     // SAFETY: `releasedWhenClosed` is turned off right below, before the
     // window can be closed, so the `Retained` stays the only owner.
@@ -1619,6 +1652,18 @@ mod tests {
     }
 
     #[test]
+    fn a_sigterm_source_reports_the_signal_without_killing() {
+        let queue = DispatchQueue::new("rtc-metal.test.sigterm", None);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _source = signal_source(libc::SIGTERM, &queue, move || {
+            let _ = tx.send(());
+        });
+        // SAFETY: signals this test process, which now ignores SIGTERM.
+        unsafe { libc::kill(libc::getpid(), libc::SIGTERM) };
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+    }
+
+    #[test]
     fn the_viewer_activates_only_when_run_alone() {
         assert!(activates_at_start(false));
         assert!(!activates_at_start(true));
@@ -1629,6 +1674,13 @@ mod tests {
         assert!(hands_focus_back(true, Duration::from_millis(500)));
         assert!(!hands_focus_back(true, Duration::from_secs(3)));
         assert!(!hands_focus_back(false, Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn a_sigterm_during_a_cancelled_alert_asks_again() {
+        assert!(asks_again(&Quit::Cancel, true));
+        assert!(!asks_again(&Quit::Cancel, false));
+        assert!(!asks_again(&Quit::Discard, true));
     }
 
     #[test]

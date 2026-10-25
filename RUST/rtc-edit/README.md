@@ -18,6 +18,7 @@ The editor grows in milestones:
 - **24 (done):** undo and redo.
 - **25 (done):** a native menu bar.
 - **26 (done):** a command channel in the shared file; one viewer lives through New and Open.
+- **27 (done):** GCD sources and callbacks instead of timers; an idle editor and viewer run no code.
 
 ## Dependencies
 
@@ -28,6 +29,7 @@ The editor grows in milestones:
 - `rfd`: the native Save and Open panels and the unsaved-changes alert, since iced has no
   file dialogs.
 - `muda` 0.21: the native menu bar, since iced has none.
+- `dispatch2`, `block2`: a GCD proc source that says when the viewer has exited.
 
 The editor never uses Metal itself; it starts `rtc-metal` as a separate program. No Cargo
 workspace: the crate has its own `target/`, and the first build takes a minute or two.
