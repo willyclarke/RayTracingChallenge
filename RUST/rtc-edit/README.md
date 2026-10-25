@@ -19,7 +19,7 @@ The editor grows in milestones:
 - **25 (done):** a native menu bar.
 - **26 (done):** a command channel in the shared file; one viewer lives through New and Open.
 - **27 (done):** GCD sources and callbacks instead of timers; an idle editor and viewer run no code.
-- **28:** a help window: the menus, keys, viewer and command line on one page.
+- **28 (done):** a help window: the menus, keys, viewer and command line on one page.
 
 ## Dependencies
 
