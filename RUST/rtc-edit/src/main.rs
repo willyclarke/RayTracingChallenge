@@ -20,12 +20,14 @@ use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
 use rtc_edit::follow::Follower;
+use rtc_edit::help;
 use rtc_edit::history::{Group, History};
 use rtc_edit::menu::{self, Command, Menus, State};
 use rtc_edit::paths::{dir_of, rebase, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, camera_start, exit_source, find, held_fresh, share_path};
+use rtc_edit::windows::{self, Closed, HELP_SIZE, Input, Route, help_position};
 use rtc_rust::scene::{FocalBlur, SceneDescription};
 use rtc_share::{Shared, Snapshot};
 use std::collections::{HashMap, HashSet};
@@ -119,6 +121,10 @@ struct Editor {
     history: History,
     /// The menu bar, once the window has opened.
     menus: Option<Menus>,
+    /// The editor's window.
+    main: window::Id,
+    /// The help window, while it is open.
+    help: Option<window::Id>,
 }
 
 #[derive(Debug, Clone)]
@@ -158,8 +164,10 @@ enum Message {
     Focused(Field, bool),
     /// Whether Cmd is held.
     Command(bool),
-    /// The window opened, moved or was resized.
-    Window(window::Event),
+    /// A window opened, moved, was resized or closed.
+    Window(window::Id, window::Event),
+    /// A key or click in a window, routed by `windows::route`.
+    Shortcut(window::Id, Box<Message>),
     /// The viewer with this pid exited.
     ViewerExited(u32),
     /// The viewer wrote its camera.
@@ -175,6 +183,10 @@ enum Message {
     Redo,
     /// A menu bar click or key, from muda's event handler.
     MenuEvent(MenuEvent),
+    /// Help ▸ rtc-edit Help.
+    Help,
+    /// Open help, knowing the editor's screen size.
+    OpenHelp(Option<Size>),
 }
 
 /// The editor window's size at start-up.
@@ -182,15 +194,18 @@ const WIDTH: f32 = 900.0;
 const HEIGHT: f32 = 640.0;
 
 fn main() -> iced::Result {
-    iced::application(boot, update, view)
-        .title(|e: &Editor| {
-            let mark = if e.unsaved { " •" } else { "" };
-            format!("rtc-edit — {}{mark}", e.name())
-        })
+    iced::daemon(boot, update, view)
+        .title(title)
         .subscription(subscription)
-        .window_size((WIDTH, HEIGHT))
-        .position(window::Position::Specific(Point::ORIGIN))
         .run()
+}
+
+fn title(e: &Editor, id: window::Id) -> String {
+    if Some(id) == e.help {
+        return "rtc-edit Help".into();
+    }
+    let mark = if e.unsaved { " •" } else { "" };
+    format!("rtc-edit — {}{mark}", e.name())
 }
 
 fn file_name(path: &Path) -> String {
@@ -199,7 +214,7 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-fn boot() -> Editor {
+fn boot() -> (Editor, Task<Message>) {
     let loaded = std::env::args().nth(1).map(|arg| {
         let path = PathBuf::from(arg);
         let desc = SceneDescription::from_path(&path).unwrap_or_else(|e| {
@@ -210,6 +225,11 @@ fn boot() -> Editor {
     });
     // SAFETY: registers a plain function with no arguments; it runs once, at exit.
     unsafe { atexit(clean_up) };
+    let (main, open) = window::open(window::Settings {
+        size: Size::new(WIDTH, HEIGHT),
+        position: window::Position::Specific(Point::ORIGIN),
+        ..Default::default()
+    });
     let mut editor = Editor {
         path: None,
         desc: new_scene(),
@@ -237,13 +257,15 @@ fn boot() -> Editor {
         // `switch` below starts the history on the scene it opens.
         history: History::new(&new_scene()),
         menus: None,
+        main,
+        help: None,
     };
     match loaded {
         Some((desc, path)) => editor.switch(desc, Some(path)),
         None => editor.switch(new_scene(), None),
     }
     editor.show_viewer();
-    editor
+    (editor, open.discard())
 }
 
 impl Editor {
@@ -967,6 +989,23 @@ fn dir_for(path: Option<&Path>) -> PathBuf {
 const OTHER: char = '\0';
 
 fn update(e: &mut Editor, message: Message) -> Task<Message> {
+    // Route a window's key or click first, so one dropped in help doesn't
+    // end a wait for a second key.
+    let message = match message {
+        Message::Shortcut(id, m) => {
+            let input = match *m {
+                Message::Escape(_) => Input::Escape,
+                Message::Command(_) => Input::Modifiers,
+                _ => Input::Other,
+            };
+            match windows::route(id, e.main, e.help, input) {
+                Route::Editor => *m,
+                Route::CloseHelp => return window::close(id),
+                Route::Drop => return Task::none(),
+            }
+        }
+        m => m,
+    };
     let editing = e.editing;
     let task = handle(e, message);
     // Leaving a box, for none or another, ends its undo step. Entering one
@@ -996,6 +1035,7 @@ fn menu_message(command: Command, following: bool) -> Message {
         Command::StartViewer => Message::ShowViewer,
         Command::Follow => Message::Follow(!following),
         Command::Keep => Message::Keep,
+        Command::Help => Message::Help,
     }
 }
 
@@ -1007,7 +1047,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         Message::Key(_)
             | Message::Command(_)
             | Message::Focused(..)
-            | Message::Window(_)
+            | Message::Window(..)
             | Message::ViewerExited(_)
             | Message::Camera(_)
             | Message::CameraLost(_)
@@ -1080,6 +1120,28 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             e.follower.keep();
             e.history.close();
         }
+        Message::Help => {
+            if let Some(id) = e.help {
+                return window::gain_focus(id);
+            }
+            // Ask for the editor's screen first: help mustn't open off it.
+            return window::monitor_size(e.main).map(Message::OpenHelp);
+        }
+        Message::OpenHelp(screen) => {
+            // A second click may have opened it while the first waited.
+            if let Some(id) = e.help {
+                return window::gain_focus(id);
+            }
+            let (id, open) = window::open(window::Settings {
+                size: HELP_SIZE,
+                position: help_position(e.frame, screen),
+                ..Default::default()
+            });
+            e.help = Some(id);
+            return open.discard();
+        }
+        // Routed in `update` before it gets here.
+        Message::Shortcut(..) => {}
         Message::Undo => e.undo(true),
         Message::Redo => e.undo(false),
         Message::MenuEvent(event) => {
@@ -1131,7 +1193,14 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             }
         }
         Message::Command(held) => e.command = held,
-        Message::Window(event) => match event {
+        Message::Window(id, window::Event::Closed) => match windows::closed(id, e.main, e.help) {
+            Closed::Quit => return iced::exit(),
+            Closed::Help => e.help = None,
+            Closed::Other => {}
+        },
+        // Only the editor's frame is tracked: viewers and help open beside it.
+        Message::Window(id, _) if id != e.main => {}
+        Message::Window(_, event) => match event {
             window::Event::Opened { position, size } => {
                 if e.menus.is_none() {
                     let menus = Menus::new();
@@ -1159,8 +1228,13 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
 fn shortcut(
     event: iced::Event,
     status: iced::event::Status,
-    _: iced::window::Id,
+    id: iced::window::Id,
 ) -> Option<Message> {
+    key_message(event, status).map(|m| Message::Shortcut(id, Box::new(m)))
+}
+
+/// The message a key or click asks for, before it is routed by window.
+fn key_message(event: iced::Event, status: iced::event::Status) -> Option<Message> {
     let ignored = status == iced::event::Status::Ignored;
     let event = match event {
         iced::Event::Keyboard(event) => event,
@@ -1205,7 +1279,7 @@ fn shortcut(
 fn subscription(e: &Editor) -> Subscription<Message> {
     let mut subscriptions = vec![
         iced::event::listen_with(shortcut),
-        window::events().map(|(_, event)| Message::Window(event)),
+        window::events().map(|(id, event)| Message::Window(id, event)),
         Subscription::run(menu_events),
     ];
     if e.live
@@ -1288,7 +1362,14 @@ fn viewer_exit(pid: &u32) -> impl Stream<Item = Message> + use<> {
     })
 }
 
-fn view(e: &Editor) -> Element<'_, Message> {
+fn view(e: &Editor, id: window::Id) -> Element<'_, Message> {
+    if Some(id) == e.help {
+        return help::view(help::sections());
+    }
+    editor_view(e)
+}
+
+fn editor_view(e: &Editor) -> Element<'_, Message> {
     let mut tree = Column::new().spacing(1);
     for r in rows(&e.desc, &e.folded) {
         let indent = "    ".repeat(r.depth);
