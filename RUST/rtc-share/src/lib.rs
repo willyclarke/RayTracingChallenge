@@ -19,6 +19,44 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering, fence};
 
+/// A seqlock's counter: read it, and move it on by one (each write moves
+/// it twice, odd while the block is written).
+trait SeqWord {
+    fn load(&self, order: Ordering) -> u32;
+    fn bump(&self, order: Ordering);
+}
+
+impl SeqWord for AtomicU32 {
+    fn load(&self, order: Ordering) -> u32 {
+        AtomicU32::load(self, order)
+    }
+
+    /// Only the block's one writer bumps it.
+    fn bump(&self, order: Ordering) {
+        let s = AtomicU32::load(self, Ordering::Relaxed);
+        self.store(s.wrapping_add(1), order);
+    }
+}
+
+/// The camera seqlock, the low half of the camera word, whose high half
+/// `end_viewer` may change at the same time: every access is to the whole
+/// word, as atomics of two sizes on one word are undefined in Rust.
+struct CameraSeq<'a>(&'a AtomicU64);
+
+impl SeqWord for CameraSeq<'_> {
+    fn load(&self, order: Ordering) -> u32 {
+        self.0.load(order) as u32
+    }
+
+    /// The low half wraps without carrying into the generation.
+    fn bump(&self, order: Ordering) {
+        let next = |w: u64| (w & !0xffff_ffff) | (w as u32).wrapping_add(1) as u64;
+        let _ = self
+            .0
+            .fetch_update(order, Ordering::Relaxed, |w| Some(next(w)));
+    }
+}
+
 /// FNV-1a, 64 bits: a quick hash for noticing a change, not for security.
 pub const fn fnv1a(s: &str) -> u64 {
     let bytes = s.as_bytes();
@@ -216,16 +254,9 @@ impl Shared {
         unsafe { AtomicU64::from_ptr(&raw mut (*self.map).camera_word) }
     }
 
-    /// The camera seqlock, the word's low half.
-    fn camera_seq(&self) -> &AtomicU32 {
-        // SAFETY: as `camera_word`; the low half on this little-endian Mac.
-        unsafe { AtomicU32::from_ptr((&raw mut (*self.map).camera_word).cast()) }
-    }
-
-    /// The viewer generation, the word's high half.
-    fn generation_word(&self) -> &AtomicU32 {
-        // SAFETY: as `camera_seq`, the high half.
-        unsafe { AtomicU32::from_ptr((&raw mut (*self.map).camera_word).cast::<u32>().add(1)) }
+    /// The camera seqlock: the camera word's low half.
+    fn camera_seq(&self) -> CameraSeq<'_> {
+        CameraSeq(self.camera_word())
     }
 
     fn ready_word(&self) -> &AtomicU32 {
@@ -239,16 +270,15 @@ impl Shared {
     }
 
     /// Write a block under the seqlock `seq`: odd while `write` runs.
-    fn seq_write(seq: &AtomicU32, write: impl FnOnce()) {
-        let s = seq.load(Ordering::Relaxed);
-        seq.store(s.wrapping_add(1), Ordering::Relaxed);
+    fn seq_write(seq: &impl SeqWord, write: impl FnOnce()) {
+        seq.bump(Ordering::Relaxed);
         fence(Ordering::Release);
         write();
-        seq.store(s.wrapping_add(2), Ordering::Release);
+        seq.bump(Ordering::Release);
     }
 
     /// Copy a block under the seqlock `seq`, with the `seq` it was copied at.
-    fn seq_read<T>(seq: &AtomicU32, read: impl Fn() -> T) -> (u32, T) {
+    fn seq_read<T>(seq: &impl SeqWord, read: impl Fn() -> T) -> (u32, T) {
         loop {
             let s = seq.load(Ordering::Acquire);
             if !s.is_multiple_of(2) {
@@ -266,7 +296,7 @@ impl Shared {
     /// Write the camera, as the next write, and wake the editor.
     pub fn write_camera(&self, from: [f64; 3], to: [f64; 3], up: [f64; 3], focal_distance: f64) {
         let m = self.map;
-        Shared::seq_write(self.camera_seq(), || {
+        Shared::seq_write(&self.camera_seq(), || {
             // SAFETY: the viewer is the camera's one writer; readers retry.
             unsafe {
                 (&raw mut (*m).from).write_volatile(from);
@@ -281,7 +311,7 @@ impl Shared {
     /// The camera last written; `None` before the first write.
     pub fn read_camera(&self) -> Option<Snapshot> {
         let m = self.map;
-        let (seq, (from, to, up, focal_distance)) = Shared::seq_read(self.camera_seq(), || {
+        let (seq, (from, to, up, focal_distance)) = Shared::seq_read(&self.camera_seq(), || {
             // SAFETY: a copy, checked against the seqlock.
             unsafe {
                 (
@@ -323,7 +353,7 @@ impl Shared {
 
     /// The current viewer's number; `end_viewer` moves it on.
     pub fn generation(&self) -> u32 {
-        self.generation_word().load(Ordering::Acquire)
+        (self.camera_word().load(Ordering::Acquire) >> 32) as u32
     }
 
     /// The viewer says it takes loads, from the `load_seq` it has seen on:
@@ -342,7 +372,7 @@ impl Shared {
     /// The viewer has ended: wake its camera waiters, which then return
     /// `None`.
     pub fn end_viewer(&self) {
-        self.generation_word().fetch_add(1, Ordering::Release);
+        self.camera_word().fetch_add(1 << 32, Ordering::Release);
         wake(self.camera_word().as_ptr().cast(), 8);
     }
 
