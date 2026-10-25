@@ -24,14 +24,27 @@ pub fn help_position(editor: Rectangle, screen: Option<Size>) -> Position {
     }
 }
 
-/// The editor's frame as the settings file keeps it: four numbers, width
-/// and height above zero; anything else is `None`.
+/// The smallest and largest saved size taken, in points: a smaller window
+/// is hard to find, and a larger one is bigger than any screen and may be
+/// more than a Metal surface can hold.
+const FRAME_MIN: Size = Size::new(200.0, 150.0);
+const FRAME_MAX: f32 = 8192.0;
+
+/// The editor's frame as the settings file keeps it: four finite numbers,
+/// the size within `FRAME_MIN`..`FRAME_MAX`; anything else is `None`.
 pub fn frame_from(config: &Map<String, Value>) -> Option<Rectangle> {
     let frame = config.get(rtc_config::EDITOR_FRAME)?;
-    let n = |k| frame.get(k).and_then(Value::as_f64).map(|v| v as f32);
+    let n = |k| {
+        frame
+            .get(k)
+            .and_then(Value::as_f64)
+            .map(|v| v as f32)
+            .filter(|v| v.is_finite())
+    };
     let (x, y, width, height) = (n("x")?, n("y")?, n("width")?, n("height")?);
-    (width > 0.0 && height > 0.0)
-        .then(|| Rectangle::new(Point::new(x, y), Size::new(width, height)))
+    ((FRAME_MIN.width..=FRAME_MAX).contains(&width)
+        && (FRAME_MIN.height..=FRAME_MAX).contains(&height))
+    .then(|| Rectangle::new(Point::new(x, y), Size::new(width, height)))
 }
 
 /// `frame` as the settings file keeps it.
@@ -170,6 +183,11 @@ mod tests {
             json!({"x": 0, "y": 0, "width": 0, "height": 640}),
             json!({"x": 0, "y": 0, "width": -5, "height": 640}),
             json!([1, 2, 3, 4]),
+            // Too big for any screen or surface, or too small to find.
+            json!({"x": 0, "y": 0, "width": 1e39, "height": 640}),
+            json!({"x": 0, "y": 0, "width": 20000, "height": 640}),
+            json!({"x": 0, "y": 0, "width": 1, "height": 1}),
+            json!({"x": 1e39, "y": 0, "width": 900, "height": 640}),
         ] {
             assert_eq!(frame_from(&map(bad.clone())), None, "{bad}");
         }
