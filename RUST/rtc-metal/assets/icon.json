@@ -1,0 +1,16 @@
+{
+  "comment": "rtc-metal's app icon: rtc-edit's scene with a blue glass ball. Re-render: rtc-metal assets/icon.json --samples 1024 -o assets/icon.ppm",
+  "camera": { "width": 1024, "height": 1024, "field_of_view": 0.8,
+              "from": [0, 1.6, -4.2], "to": [0, 0.9, 0], "up": [0, 1, 0] },
+  "light": { "type": "point", "position": [-8, 10, -8], "intensity": [1, 1, 1] },
+  "shapes": [
+    { "type": "plane", "comment": "floor",
+      "material": { "specular": 0, "reflective": 0.1,
+                    "pattern": { "type": "checkers", "a": [0.95, 0.95, 0.95], "b": [0.15, 0.15, 0.2] } } },
+    { "type": "sphere", "comment": "ball",
+      "transform": [ { "translate": [0, 1, 0] } ],
+      "material": { "color": [0.1, 0.3, 0.9], "diffuse": 0.3, "specular": 0.9,
+                    "shininess": 300, "reflective": 0.6, "transparency": 0.8,
+                    "refractive_index": 1.5 } }
+  ]
+}
