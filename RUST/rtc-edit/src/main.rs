@@ -15,6 +15,10 @@ use iced::widget::{
 };
 use iced::{Element, Font, Length, Point, Rectangle, Size, Subscription, Task, keyboard, window};
 use muda::MenuEvent;
+use objc2::AllocAnyThread;
+use objc2_app_kit::{NSApplication, NSBitmapImageRep, NSDeviceRGBColorSpace, NSImage};
+use objc2_foundation::{MainThreadMarker, NSSize};
+use rtc_edit::about;
 use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
@@ -185,6 +189,8 @@ enum Message {
     MenuEvent(MenuEvent),
     /// Help ▸ rtc-edit Help.
     Help,
+    /// Help ▸ Report an Issue….
+    ReportIssue,
     /// Open help, knowing the editor's screen size.
     OpenHelp(Option<Size>),
 }
@@ -1020,6 +1026,45 @@ fn update(e: &mut Editor, message: Message) -> Task<Message> {
     task
 }
 
+/// The ray-traced ball as the Dock icon; nothing if it doesn't decode.
+/// Set once the window has opened, after AppKit has set its own.
+fn set_dock_icon() {
+    let (Some((rgba, w, h)), Some(mtm)) = (about::icon(about::ICON_PPM), MainThreadMarker::new())
+    else {
+        return;
+    };
+    let (w, h) = (w as isize, h as isize);
+    // SAFETY: null planes ask AppKit to allocate the bitmap itself: 8-bit
+    // RGBA, meshed, w * 4 bytes a row.
+    let Some(rep) = (unsafe {
+        NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(),
+            w,
+            h,
+            8,
+            4,
+            true,
+            false,
+            NSDeviceRGBColorSpace,
+            w * 4,
+            32,
+        )
+    }) else {
+        return;
+    };
+    let data = rep.bitmapData();
+    if data.is_null() || rgba.len() != (w * h * 4) as usize {
+        return;
+    }
+    // SAFETY: the rep owns w * h * 4 bytes at `data`, and `rgba` is that long.
+    unsafe { std::ptr::copy_nonoverlapping(rgba.as_ptr(), data, rgba.len()) };
+    let image = NSImage::initWithSize(NSImage::alloc(), NSSize::new(w as f64, h as f64));
+    image.addRepresentation(&rep);
+    // SAFETY: on the main thread (`mtm`), with an image that stays retained.
+    unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
+}
+
 /// The message a menu command sends.
 fn menu_message(command: Command, following: bool) -> Message {
     match command {
@@ -1036,6 +1081,7 @@ fn menu_message(command: Command, following: bool) -> Message {
         Command::Follow => Message::Follow(!following),
         Command::Keep => Message::Keep,
         Command::Help => Message::Help,
+        Command::ReportIssue => Message::ReportIssue,
     }
 }
 
@@ -1127,6 +1173,24 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             // Ask for the editor's screen first: help mustn't open off it.
             return window::monitor_size(e.main).map(Message::OpenHelp);
         }
+        Message::ReportIssue => {
+            let macos = std::process::Command::new("sw_vers")
+                .arg("-productVersion")
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+                .unwrap_or_else(|| "unknown".into());
+            let version = format!("{} ({})", env!("CARGO_PKG_VERSION"), about::version());
+            match std::process::Command::new("open")
+                .arg(about::issue_url(&version, &macos))
+                .spawn()
+            {
+                // `open` returns at once; wait for it so it isn't left a zombie.
+                Ok(mut child) => drop(std::thread::spawn(move || child.wait())),
+                Err(err) => e.status = format!("couldn't open the browser: {err}"),
+            }
+        }
         Message::OpenHelp(screen) => {
             // A second click may have opened it while the first waited.
             if let Some(id) = e.help {
@@ -1205,6 +1269,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
                 if e.menus.is_none() {
                     let menus = Menus::new();
                     menus.install();
+                    set_dock_icon();
                     e.menus = Some(menus);
                 }
                 e.frame.x = position.map_or(e.frame.x, |p| p.x);

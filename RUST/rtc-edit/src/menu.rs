@@ -1,9 +1,12 @@
 //! The menu bar: its commands, the ids its items carry, and when each can
 //! act.
 
+use crate::about;
 use crate::edit::Item;
 use muda::accelerator::{Accelerator, Code, Modifiers};
-use muda::{AboutMetadata, CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{
+    AboutMetadata, CheckMenuItem, Icon, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu,
+};
 
 /// What a menu item asks the editor to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,10 +24,11 @@ pub enum Command {
     Follow,
     Keep,
     Help,
+    ReportIssue,
 }
 
 /// Every command, in menu order.
-pub const ALL: [Command; 18] = [
+pub const ALL: [Command; 19] = [
     Command::New,
     Command::Open,
     Command::Save,
@@ -43,6 +47,7 @@ pub const ALL: [Command; 18] = [
     Command::Follow,
     Command::Keep,
     Command::Help,
+    Command::ReportIssue,
 ];
 
 /// The id the command's menu item carries.
@@ -66,6 +71,7 @@ pub fn id(command: Command) -> &'static str {
         Command::Follow => "follow",
         Command::Keep => "keep",
         Command::Help => "help",
+        Command::ReportIssue => "report-issue",
     }
 }
 
@@ -90,6 +96,7 @@ pub fn label(command: Command) -> &'static str {
         Command::Follow => "Follow the Viewer",
         Command::Keep => "Keep Followed View",
         Command::Help => "rtc-edit Help",
+        Command::ReportIssue => "Report an Issue…",
     }
 }
 
@@ -110,7 +117,7 @@ pub fn key(command: Command) -> Option<(Modifiers, Code)> {
         Command::Keep => Some((cmd, Code::KeyK)),
         // macOS keeps Cmd-? for its own Help-menu search, which finds this
         // item; a key of ours would never arrive.
-        Command::Add(_) | Command::Follow | Command::Help => None,
+        Command::Add(_) | Command::Follow | Command::Help | Command::ReportIssue => None,
     }
 }
 
@@ -121,7 +128,7 @@ pub fn menu_of(command: Command) -> &'static str {
         Command::Undo | Command::Redo | Command::Delete => "Edit",
         Command::Add(_) => "Scene",
         Command::Load | Command::StartViewer | Command::Follow | Command::Keep => "Viewer",
-        Command::Help => "Help",
+        Command::Help | Command::ReportIssue => "Help",
     }
 }
 
@@ -155,7 +162,23 @@ pub fn enabled(command: Command, state: &State) -> bool {
         | Command::Save
         | Command::SaveAs
         | Command::Add(_)
-        | Command::Help => true,
+        | Command::Help
+        | Command::ReportIssue => true,
+    }
+}
+
+/// What About rtc-edit shows: the icon, the build and the credits.
+pub fn about_metadata() -> AboutMetadata {
+    AboutMetadata {
+        name: Some("rtc-edit".into()),
+        // AppKit shows "Version <version> (<short_version>)".
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        short_version: Some(about::version().into()),
+        copyright: Some(about::COPYRIGHT.into()),
+        credits: Some(about::CREDITS.into()),
+        icon: about::icon(about::ICON_PPM)
+            .and_then(|(rgba, w, h)| Icon::from_rgba(rgba, w, h).ok()),
+        ..Default::default()
     }
 }
 
@@ -209,7 +232,7 @@ impl Menus {
         let load = item(Command::Load);
         let start = item(Command::StartViewer);
         let keep = item(Command::Keep);
-        let help = [item(Command::Help)];
+        let help = [item(Command::Help), item(Command::ReportIssue)];
         let follow = CheckMenuItem::with_id(
             id(Command::Follow),
             label(Command::Follow),
@@ -218,14 +241,7 @@ impl Menus {
             None,
         );
 
-        let about = PredefinedMenuItem::about(
-            Some("About rtc-edit"),
-            Some(AboutMetadata {
-                name: Some("rtc-edit".into()),
-                version: Some(env!("CARGO_PKG_VERSION").into()),
-                ..Default::default()
-            }),
-        );
+        let about = PredefinedMenuItem::about(Some("About rtc-edit"), Some(about_metadata()));
         let app = Submenu::with_items(
             "rtc-edit",
             true,
@@ -342,6 +358,28 @@ mod tests {
         assert_eq!(menu_of(Command::Keep), "Viewer");
         assert_eq!(menu_of(Command::Help), "Help");
         assert!(enabled(Command::Help, &State::default()));
+    }
+
+    #[test]
+    fn report_an_issue_is_in_help_and_always_enabled() {
+        assert_eq!(label(Command::ReportIssue), "Report an Issue…");
+        assert_eq!(menu_of(Command::ReportIssue), "Help");
+        assert_eq!(key(Command::ReportIssue), None);
+        assert_eq!(id(Command::ReportIssue), "report-issue");
+        assert!(enabled(Command::ReportIssue, &State::default()));
+        assert_eq!(ALL.last(), Some(&Command::ReportIssue));
+    }
+
+    #[test]
+    fn about_shows_the_crate_version_then_the_build() {
+        // AppKit shows `version` as "Version X" and `short_version` in
+        // parentheses after it.
+        let about = about_metadata();
+        assert_eq!(about.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+        assert_eq!(about.short_version.as_deref(), Some(about::version()));
+        assert_eq!(about.credits.as_deref(), Some(about::CREDITS));
+        assert_eq!(about.copyright.as_deref(), Some(about::COPYRIGHT));
+        assert!(about.icon.is_some());
     }
 
     #[test]
