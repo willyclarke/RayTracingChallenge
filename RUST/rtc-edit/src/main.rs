@@ -481,6 +481,7 @@ impl Editor {
         self.camera_start = self.share.as_ref().map_or(0, camera_start);
         let started = find(
             std::env::var("RTC_METAL").ok().as_deref(),
+            std::env::current_exe().ok().as_deref(),
             Path::new(env!("CARGO_MANIFEST_DIR")),
         )
         .and_then(|exe| {
