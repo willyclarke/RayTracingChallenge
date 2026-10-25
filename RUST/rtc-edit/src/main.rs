@@ -183,7 +183,7 @@ enum Message {
     Redo,
     /// A menu bar click or key, from muda's event handler.
     MenuEvent(MenuEvent),
-    /// Help ▸ rtc-edit Help (Cmd-?).
+    /// Help ▸ rtc-edit Help.
     Help,
     /// Open help, knowing the editor's screen size.
     OpenHelp(Option<Size>),
@@ -1128,7 +1128,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             return window::monitor_size(e.main).map(Message::OpenHelp);
         }
         Message::OpenHelp(screen) => {
-            // A second Cmd-? may have opened it while the first waited.
+            // A second click may have opened it while the first waited.
             if let Some(id) = e.help {
                 return window::gain_focus(id);
             }

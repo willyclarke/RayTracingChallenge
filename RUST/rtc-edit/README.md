@@ -71,7 +71,7 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 | Viewer | Start Viewer | Cmd-R | start the viewer again after closing it; greyed while one runs |
 | Viewer | Follow the Viewer | | tick or untick follow (see below); greyed with no viewer |
 | Viewer | Keep Followed View | Cmd-K | keep the followed view (see below); greyed unless following |
-| Help | rtc-edit Help | Cmd-? | open the help window beside the editor, or bring it to the front; Esc closes it |
+| Help | rtc-edit Help | | open the help window beside the editor (centred if it doesn't fit), or bring it to the front; Esc closes it. Cmd-? opens the Help menu with macOS's search box, where this item is first |
 
 The Edit menu has no Cut, Copy, Paste or Select All: Cmd-X, Cmd-C, Cmd-V and Cmd-A go to the
 box being edited.
@@ -136,7 +136,7 @@ empty box removes the comment; a comment that isn't text gets no box and stays a
 - The title shows ` •` while there are unsaved edits. Quitting doesn't ask: unsaved edits are
   lost.
 
-Help ▸ rtc-edit Help (Cmd-?) shows these keys, the menus, the viewer's mouse and keys and the
+Help ▸ rtc-edit Help (Cmd-?, then Enter on the item) shows these keys, the menus, the viewer's mouse and keys and the
 command line in a window of its own; Esc closes it.
 
 The keyboard works in three places: the tree, a shaded box, and a box being edited. The

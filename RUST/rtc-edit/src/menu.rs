@@ -108,9 +108,9 @@ pub fn key(command: Command) -> Option<(Modifiers, Code)> {
         Command::Load => Some((cmd, Code::KeyL)),
         Command::StartViewer => Some((cmd, Code::KeyR)),
         Command::Keep => Some((cmd, Code::KeyK)),
-        // Cmd-?, the Mac's help key.
-        Command::Help => Some((shift, Code::Slash)),
-        Command::Add(_) | Command::Follow => None,
+        // macOS keeps Cmd-? for its own Help-menu search, which finds this
+        // item; a key of ours would never arrive.
+        Command::Add(_) | Command::Follow | Command::Help => None,
     }
 }
 
@@ -323,7 +323,8 @@ mod tests {
         assert_eq!(key(Command::Follow), None);
         assert_eq!(key(Command::Keep), Some((cmd, Code::KeyK)));
         assert_eq!(label(Command::Help), "rtc-edit Help");
-        assert_eq!(key(Command::Help), Some((shift, Code::Slash)));
+        // macOS keeps Cmd-? for its own Help-menu search.
+        assert_eq!(key(Command::Help), None);
     }
 
     #[test]

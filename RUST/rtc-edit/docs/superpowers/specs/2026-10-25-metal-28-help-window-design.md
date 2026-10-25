@@ -10,8 +10,10 @@ only written down in the READMEs. A help window gives one short page that
 shows them all, opened from the menu bar as other Mac apps do.
 
 Success:
-- Help ▸ rtc-edit Help (Cmd-?) opens a second window to the right of the
-  editor; a second Cmd-? brings it to the front.
+- Help ▸ rtc-edit Help opens a second window to the right of the editor
+  (centred when it wouldn't fit); choosing it again brings it to the front.
+  Cmd-? is macOS's own Help-menu search, which lists the item (see the
+  2026-10-25 eye check below).
 - The window lists, in one scrolling page: the menu commands with their
   keys, the editor's keys by place, the viewer's mouse, keys and menus, and
   the command line.
@@ -57,7 +59,7 @@ Success:
 ### The Help menu
 
 - New `Command::Help`, in a new Help menu after Viewer, labelled
-  `rtc-edit Help`, key Cmd-Shift-/ (shown as ⇧⌘?). The menu is
+  `rtc-edit Help`, no key of its own. The menu is
   `set_as_help_menu_for_nsapp`, so macOS adds its search box.
 - Never greyed.
 - With no help window: `window::open` at the editor's top-right
@@ -70,7 +72,7 @@ Three pure functions taken out of `Menus::new`:
 - `label(Command) -> &'static str`: "New", "Open…", …, "Add Sphere", …,
   "rtc-edit Help".
 - `key(Command) -> Option<(Modifiers, Code)>`: today's accelerators, plus
-  Cmd-Shift-Slash for Help; `None` for the Add items and Follow.
+  `None` for the Add items, Follow and Help.
 - `menu_of(Command) -> &'static str`: File, Edit, Scene, Viewer or Help.
 
 `Menus::new`'s `item` takes only the command and reads `label` and `key`, so
@@ -96,7 +98,7 @@ pub fn chips(modifiers: Modifiers, code: Code) -> Vec<Chip>;
 ```
 
 - `chips` gives the modifiers in macOS order (⌃ ⌥ ⇧ ⌘) and then the key;
-  Shift with Slash is shown as `?`, Backspace as `⌫`.
+  Backspace is shown as `⌫`.
 - A command with no key gets no chips; its keyboard route (`a` then `s`, …)
   is listed under Editor keys.
 
@@ -138,16 +140,16 @@ are plain text. The command-line section is monospace text with no chips.
 ## Tests
 
 - menu.rs: `label` and `key` give what `Menus::new` used before;
-  `key(Help)` is Cmd-Shift-Slash; every command in `ALL` has a non-empty
+  `key(Help)` is `None`; every command in `ALL` has a non-empty
   label; `menu_of(Help)` is "Help".
 - help.rs: every command in `ALL` appears exactly once in the menu section,
   with its label and `chips(key)` when it has one; `chips` gives ⇧ ⌘ S for
-  Cmd-Shift-S, ⌘ ⌫ for Cmd-Backspace, ⇧ ⌘ ? for Cmd-Shift-Slash; the
+  Cmd-Shift-S, ⌘ ⌫ for Cmd-Backspace; the
   sections are titled in order and none is empty.
 - main.rs, as small plain functions where cheap: what a Closed does for
   main / help / another id; whether a key acts in a window (main yes, help
   only Esc); where help opens (right of the tracked frame).
-- By eye: Cmd-? opens help beside the editor and raises it when open; Esc
+- By eye: Help ▸ rtc-edit Help opens help beside the editor and raises it when open; Esc
   and the close button close it; menu keys act on the editor while help is
   in front; closing the editor quits, help included, and cleans up the
   preview folder and the viewer; chips read in light and dark.
@@ -156,3 +158,11 @@ are plain text. The command-line section is monospace text with no chips.
 
 - `window::open` reports no failure we can act on; nothing to handle.
 - Help open when the editor closes: `iced::exit()` takes it with the app.
+
+## Eye check, 2026-10-25
+
+Cmd-Shift-/ never reached the menu item: macOS's App Shortcut "Show Help
+menu" (⇧⌘/) drops the Help menu open with its search box first. The user
+chose to follow the Mac way: the item has no key, and Cmd-? then Enter
+opens help. A review fix also centres help when it wouldn't fit beside the
+editor on its screen (`windows::help_position`).

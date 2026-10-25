@@ -53,7 +53,6 @@ pub fn chips(modifiers: Modifiers, code: Code) -> Vec<Chip> {
     .filter(|(m, _)| modifiers.contains(*m))
     .map(|(_, s)| Chip::Modifier(s))
     .collect();
-    let shift = modifiers.contains(Modifiers::SHIFT);
     chips.push(Chip::Key(match code {
         Code::KeyK => "K",
         Code::KeyL => "L",
@@ -63,8 +62,6 @@ pub fn chips(modifiers: Modifiers, code: Code) -> Vec<Chip> {
         Code::KeyS => "S",
         Code::KeyZ => "Z",
         Code::Backspace => "⌫",
-        Code::Slash if shift => "?",
-        Code::Slash => "/",
         _ => "…",
     }));
     chips
@@ -291,10 +288,6 @@ mod tests {
             [Modifier("⇧"), Modifier("⌘"), Key("S")]
         );
         assert_eq!(chips(cmd, Code::Backspace), [Modifier("⌘"), Key("⌫")]);
-        assert_eq!(
-            chips(shift, Code::Slash),
-            [Modifier("⇧"), Modifier("⌘"), Key("?")]
-        );
         let all = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT | Modifiers::META;
         assert_eq!(
             chips(all, Code::KeyZ),
