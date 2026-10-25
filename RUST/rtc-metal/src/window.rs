@@ -1328,13 +1328,21 @@ fn ask(mtm: MainThreadMarker, name: &str, cancel: bool) -> Quit {
 /// Store the folder of the image just written at `path` as the image
 /// folder; a failure only goes to stderr.
 fn remember_folder(path: &Path) {
-    let (Some(config), Some(dir)) = (rtc_config::path(), path.parent()) else {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let (Some(config), Some(dir)) = (rtc_config::path(), folder_of(path, &cwd)) else {
         return;
     };
-    let dir = dir.to_string_lossy().into_owned().into();
-    if let Err(e) = rtc_config::set(&config, rtc_config::IMAGE_FOLDER, dir) {
+    if let Err(e) = rtc_config::set(&config, rtc_config::IMAGE_FOLDER, dir.into()) {
         eprintln!("rtc-metal: couldn't save settings: {e}");
     }
+}
+
+/// The folder of the image at `path`, made absolute against `cwd`: the
+/// file is shared, so a relative folder would mean another place to the
+/// next program that reads it. `-o out.ppm` is in `cwd` itself.
+fn folder_of(path: &Path, cwd: &Path) -> Option<String> {
+    let dir = cwd.join(path).parent()?.to_string_lossy().into_owned();
+    (!dir.is_empty()).then_some(dir)
 }
 
 /// Where the save panels start: the remembered image folder, else
@@ -2208,5 +2216,22 @@ mod tests {
     fn cancel_is_offered_unless_the_editor_asked_to_quit() {
         assert!(offers_cancel(false));
         assert!(!offers_cancel(true));
+    }
+
+    #[test]
+    fn the_image_folder_is_stored_absolute() {
+        let cwd = Path::new("/work");
+        assert_eq!(
+            folder_of(Path::new("out.ppm"), cwd).as_deref(),
+            Some("/work")
+        );
+        assert_eq!(
+            folder_of(Path::new("renders/x.ppm"), cwd).as_deref(),
+            Some("/work/renders")
+        );
+        assert_eq!(
+            folder_of(Path::new("/Users/me/rtc/renders/x.ppm"), cwd).as_deref(),
+            Some("/Users/me/rtc/renders")
+        );
     }
 }
