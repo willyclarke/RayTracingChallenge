@@ -54,7 +54,9 @@ cargo run --release -- --help
     directory); with `-o` it writes there without asking. Cancel (or Esc) in the alert keeps
     the window open, and cancelling the save panel asks again; a SIGTERM (the scene editor
     closing its viewer) offers no Cancel;
-  - with `--watch`, the window reloads the scene whenever its file changes and refines it
+  - with `--watch`, the window reloads the scene whenever its file changes (a GCD vnode
+    source wakes it: a save in place, an atomic save that renames a new file over the scene,
+    or the file deleted and made again) and refines it
     again, keeping your view unless the camera changed in more than width and height. A new width or
     height in the file resizes the window, keeping its top-left corner and fitted to the room
     from there to the screen's right and bottom edges (the whole screen when under 200 points

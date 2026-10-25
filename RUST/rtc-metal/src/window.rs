@@ -33,7 +33,8 @@ use crate::gpu::{Accumulator, Gpu};
 use crate::orbit::Orbit;
 use crate::scene::GpuScene;
 use crate::types::{TRAVERSAL_BVH, TRAVERSAL_METAL};
-use crate::watch::Watch;
+use crate::watch::{FileEvents, Watch};
+use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
@@ -637,17 +638,14 @@ define_class!(
             self.change_target(halved);
         }
 
-        /// The timer: quit after a SIGTERM, otherwise reload a `--watch`ed
-        /// scene when its file changed.
+        /// The timer: quit after a SIGTERM.
         #[unsafe(method(checkQuitAndWatchedFile:))]
         fn check_quit_and_watched_file(&self, _timer: &NSTimer) {
             // QUIT stays set: the quit it starts offers no Cancel, and a
             // repeat while the alert is up is refused.
             if QUIT.load(Ordering::SeqCst) {
                 NSApplication::sharedApplication(self.mtm()).terminate(None);
-                return;
             }
-            self.reload_if_changed();
         }
 
         /// AppKit asks before showing a menu: tick the current traversal and
@@ -955,12 +953,25 @@ struct Delegate {
     /// When the run loop started, if the viewer is to give the focus it
     /// gets at start back to the editor; cleared on the first activation.
     quiet_since: Cell<Option<Instant>>,
+    /// Wakes the main queue when the `--watch`ed file changes; kept for the
+    /// app's life.
+    #[allow(dead_code)]
+    file_events: Option<FileEvents>,
 }
 
 thread_local! {
     /// The window's view and delegate, for `deliver`; set by `run`.
     static WINDOW: std::cell::OnceCell<(Retained<RtcView>, Retained<RtcDelegate>)> =
         const { std::cell::OnceCell::new() };
+}
+
+/// The `--watch`ed file may have changed: reload it if its time is new.
+fn reload_watched() {
+    WINDOW.with(|w| {
+        if let Some((view, _)) = w.get() {
+            view.reload_if_changed();
+        }
+    });
 }
 
 /// Bring the window in front of other apps' windows without activating
@@ -1120,6 +1131,20 @@ pub fn run(
         std::process::exit(1);
     });
     let orbit = Orbit::of(&camera_desc);
+    // Each change wakes the main queue, which reloads if the file's time is
+    // new; a file that can't be watched says why in the overlay.
+    let (file_events, watch_error) = match &watch {
+        Some(w) => match FileEvents::start(w.path(), || {
+            DispatchQueue::main().exec_async(reload_watched)
+        }) {
+            Ok(events) => (Some(events), None),
+            Err(e) => {
+                eprintln!("rtc-metal: --watch: {e}");
+                (None, Some(format!("--watch: {e}")))
+            }
+        },
+        None => (None, None),
+    };
     let renderer = Rc::new(RefCell::new(Renderer {
         gpu,
         scene,
@@ -1134,7 +1159,7 @@ pub fn run(
         elapsed: Duration::ZERO,
         batch: 1,
         camera_desc,
-        reload_error: None,
+        reload_error: watch_error,
         watch,
         resize: None,
         share,
@@ -1154,6 +1179,7 @@ pub fn run(
             write,
             title: RefCell::new(title.clone()),
             quiet_since: Cell::new(None),
+            file_events,
         },
     );
     app.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
