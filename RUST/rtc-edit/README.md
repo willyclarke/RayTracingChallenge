@@ -19,6 +19,7 @@ The editor grows in milestones:
 - **25 (done):** a native menu bar.
 - **26 (done):** a command channel in the shared file; one viewer lives through New and Open.
 - **27 (done):** GCD sources and callbacks instead of timers; an idle editor and viewer run no code.
+- **28:** a help window: the menus, keys, viewer and command line on one page.
 
 ## Dependencies
 
@@ -70,6 +71,7 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 | Viewer | Start Viewer | Cmd-R | start the viewer again after closing it; greyed while one runs |
 | Viewer | Follow the Viewer | | tick or untick follow (see below); greyed with no viewer |
 | Viewer | Keep Followed View | Cmd-K | keep the followed view (see below); greyed unless following |
+| Help | rtc-edit Help | Cmd-? | open the help window beside the editor, or bring it to the front; Esc closes it |
 
 The Edit menu has no Cut, Copy, Paste or Select All: Cmd-X, Cmd-C, Cmd-V and Cmd-A go to the
 box being edited.
@@ -133,6 +135,9 @@ empty box removes the comment; a comment that isn't text gets no box and stays a
   again, so several edits cost one restart. The status line says when the viewer is behind.
 - The title shows ` •` while there are unsaved edits. Quitting doesn't ask: unsaved edits are
   lost.
+
+Help ▸ rtc-edit Help (Cmd-?) shows these keys, the menus, the viewer's mouse and keys and the
+command line in a window of its own; Esc closes it.
 
 The keyboard works in three places: the tree, a shaded box, and a box being edited. The
 letters only act with no modifier held, so Cmd-L stays Load.
@@ -208,5 +213,7 @@ starts in the folder you started `rtc-edit` from.
 | `src/fields.rs` | the boxes an item has, and writing typed text into the scene |
 | `src/preview.rs` | the preview file and its folder |
 | `src/viewer.rs` | finding and running `rtc-metal` |
-| `src/menu.rs` | the menu bar: its commands, when each is greyed, and the `muda` menus |
+| `src/menu.rs` | the menu bar: its commands, their labels and keys, when each is greyed, and the `muda` menus |
+| `src/help.rs` | the help window's page: sections, chips, view |
+| `src/windows.rs` | which window a key or a close belongs to |
 | `docs/superpowers/` | design specs and implementation plans |
