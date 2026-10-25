@@ -209,6 +209,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtc-config"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "rtc-metal"
 version = "0.1.0"
 dependencies = [
@@ -221,6 +228,7 @@ dependencies = [
  "objc2-metal",
  "objc2-metal-kit",
  "objc2-quartz-core",
+ "rtc-config",
  "rtc-rust",
  "rtc-share",
 ]
