@@ -3,6 +3,7 @@
 
 use iced::window::{Id, Position};
 use iced::{Point, Rectangle, Size};
+use rtc_config::{Map, Value};
 
 /// The help window's size when it opens.
 pub const HELP_SIZE: Size = Size::new(560.0, 720.0);
@@ -21,6 +22,34 @@ pub fn help_position(editor: Rectangle, screen: Option<Size>) -> Position {
         }
         _ => Position::Centered,
     }
+}
+
+/// The editor's frame as the settings file keeps it: four numbers, width
+/// and height above zero; anything else is `None`.
+pub fn frame_from(config: &Map<String, Value>) -> Option<Rectangle> {
+    let frame = config.get(rtc_config::EDITOR_FRAME)?;
+    let n = |k| frame.get(k).and_then(Value::as_f64).map(|v| v as f32);
+    let (x, y, width, height) = (n("x")?, n("y")?, n("width")?, n("height")?);
+    (width > 0.0 && height > 0.0)
+        .then(|| Rectangle::new(Point::new(x, y), Size::new(width, height)))
+}
+
+/// `frame` as the settings file keeps it.
+pub fn frame_json(frame: Rectangle) -> Value {
+    rtc_config::json!({
+        "x": frame.x, "y": frame.y, "width": frame.width, "height": frame.height
+    })
+}
+
+/// Whether `frame` lies wholly on `screen` (the window's monitor, its
+/// top-left at the origin); no screen, no fit.
+pub fn fits(frame: Rectangle, screen: Option<Size>) -> bool {
+    screen.is_some_and(|s| {
+        frame.x >= 0.0
+            && frame.y >= 0.0
+            && frame.x + frame.width <= s.width
+            && frame.y + frame.height <= s.height
+    })
 }
 
 /// What kind of input a key or click is, for routing.
@@ -124,5 +153,38 @@ mod tests {
         assert_eq!(closed(help, main, Some(help)), Closed::Help);
         assert_eq!(closed(other, main, Some(help)), Closed::Other);
         assert_eq!(closed(other, main, None), Closed::Other);
+    }
+
+    #[test]
+    fn a_saved_frame_needs_four_numbers_and_a_size() {
+        use rtc_config::{Map, Value, json};
+        let map = |v: Value| Map::from_iter([("editor_frame".to_string(), v)]);
+        let full = json!({"x": 10, "y": 25, "width": 900, "height": 640});
+        let frame = Rectangle::new(Point::new(10.0, 25.0), Size::new(900.0, 640.0));
+        assert_eq!(frame_from(&map(full)), Some(frame));
+        assert_eq!(frame_from(&map(frame_json(frame))), Some(frame));
+        assert_eq!(frame_from(&Map::new()), None);
+        for bad in [
+            json!({"x": 0, "y": 0, "width": 900}),
+            json!({"x": "0", "y": 0, "width": 900, "height": 640}),
+            json!({"x": 0, "y": 0, "width": 0, "height": 640}),
+            json!({"x": 0, "y": 0, "width": -5, "height": 640}),
+            json!([1, 2, 3, 4]),
+        ] {
+            assert_eq!(frame_from(&map(bad.clone())), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_frame_fits_only_inside_its_screen() {
+        let screen = Some(Size::new(1440.0, 900.0));
+        let at = |x, y, w, h| Rectangle::new(Point::new(x, y), Size::new(w, h));
+        assert!(fits(at(0.0, 25.0, 900.0, 640.0), screen));
+        // Touching the right and bottom edges.
+        assert!(fits(at(540.0, 260.0, 900.0, 640.0), screen));
+        assert!(!fits(at(600.0, 25.0, 900.0, 640.0), screen));
+        assert!(!fits(at(0.0, 300.0, 900.0, 640.0), screen));
+        assert!(!fits(at(-1.0, 25.0, 900.0, 640.0), screen));
+        assert!(!fits(at(0.0, 25.0, 900.0, 640.0), None));
     }
 }

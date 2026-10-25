@@ -48,6 +48,10 @@ static CHILDREN: Mutex<Children> = Mutex::new(Children {
     viewer: None,
 });
 
+/// The editor's frame, kept for `clean_up` to save: `Editor` is gone by
+/// then.
+static FRAME: Mutex<Option<Rectangle>> = Mutex::new(None);
+
 struct Children {
     preview: Option<Preview>,
     viewer: Option<Viewer>,
@@ -57,8 +61,14 @@ unsafe extern "C" {
     fn atexit(f: extern "C" fn()) -> std::ffi::c_int;
 }
 
-/// Close the viewer and remove the preview folder and the shared file.
+/// Save the editor's frame, close the viewer and remove the preview
+/// folder and the shared file.
 extern "C" fn clean_up() {
+    if let Some(frame) = FRAME.lock().ok().and_then(|f| *f)
+        && let Err(e) = remember(rtc_config::EDITOR_FRAME, windows::frame_json(frame))
+    {
+        eprintln!("rtc-edit: couldn't save settings: {e}");
+    }
     if let Ok(mut children) = CHILDREN.lock() {
         children.viewer = None;
         children.preview = None;
@@ -193,6 +203,8 @@ enum Message {
     ReportIssue,
     /// Open help, knowing the editor's screen size.
     OpenHelp(Option<Size>),
+    /// The editor's screen size, to check that a restored frame fits.
+    Fit(Option<Size>),
 }
 
 /// The editor window's size at start-up.
@@ -231,9 +243,11 @@ fn boot() -> (Editor, Task<Message>) {
     });
     // SAFETY: registers a plain function with no arguments; it runs once, at exit.
     unsafe { atexit(clean_up) };
+    let frame = windows::frame_from(&config())
+        .unwrap_or(Rectangle::new(Point::ORIGIN, Size::new(WIDTH, HEIGHT)));
     let (main, open) = window::open(window::Settings {
-        size: Size::new(WIDTH, HEIGHT),
-        position: window::Position::Specific(Point::ORIGIN),
+        size: frame.size(),
+        position: window::Position::Specific(frame.position()),
         ..Default::default()
     });
     let mut editor = Editor {
@@ -252,7 +266,7 @@ fn boot() -> (Editor, Task<Message>) {
         editing: None,
         removed_blur: None,
         pending: None,
-        frame: Rectangle::new(Point::ORIGIN, Size::new(WIDTH, HEIGHT)),
+        frame,
         share: None,
         live: false,
         seen: None,
@@ -1005,6 +1019,13 @@ fn send_or_hold(
 }
 
 /// `path`'s folder, or the working directory for a scene with no file.
+/// Keep the editor's frame for `clean_up`.
+fn track(frame: Rectangle) {
+    if let Ok(mut f) = FRAME.lock() {
+        *f = Some(frame);
+    }
+}
+
 /// The settings file's keys; empty without one.
 fn config() -> rtc_config::Map<String, rtc_config::Value> {
     rtc_config::path().map_or_else(rtc_config::Map::new, |p| rtc_config::load(&p))
@@ -1305,22 +1326,37 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         Message::Window(id, _) if id != e.main => {}
         Message::Window(_, event) => match event {
             window::Event::Opened { position, size } => {
+                e.frame.x = position.map_or(e.frame.x, |p| p.x);
+                e.frame.y = position.map_or(e.frame.y, |p| p.y);
+                (e.frame.width, e.frame.height) = (size.width, size.height);
+                track(e.frame);
                 if e.menus.is_none() {
                     let menus = Menus::new();
                     menus.install();
                     set_dock_icon();
                     e.menus = Some(menus);
+                    return window::monitor_size(e.main).map(Message::Fit);
                 }
-                e.frame.x = position.map_or(e.frame.x, |p| p.x);
-                e.frame.y = position.map_or(e.frame.y, |p| p.y);
-                (e.frame.width, e.frame.height) = (size.width, size.height);
             }
-            window::Event::Moved(p) => (e.frame.x, e.frame.y) = (p.x, p.y),
+            window::Event::Moved(p) => {
+                (e.frame.x, e.frame.y) = (p.x, p.y);
+                track(e.frame);
+            }
             window::Event::Resized(size) => {
-                (e.frame.width, e.frame.height) = (size.width, size.height)
+                (e.frame.width, e.frame.height) = (size.width, size.height);
+                track(e.frame);
             }
             _ => {}
         },
+        // A frame saved on a screen no longer there comes back home.
+        Message::Fit(screen) => {
+            if !windows::fits(e.frame, screen) {
+                return Task::batch([
+                    window::move_to(e.main, Point::ORIGIN),
+                    window::resize(e.main, Size::new(WIDTH, HEIGHT)),
+                ]);
+            }
+        }
     }
     Task::none()
 }
