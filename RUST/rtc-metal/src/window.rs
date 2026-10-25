@@ -179,6 +179,12 @@ pub fn shot(orbit: &Orbit, focal_distance: f64) -> ([f64; 3], [f64; 3], [f64; 3]
     )
 }
 
+/// Whether a quit the user cancelled asks again: when a SIGTERM came
+/// meanwhile, as the editor that sent it is gone.
+fn asks_again(quit: &Quit, sigterm: bool) -> bool {
+    *quit == Quit::Cancel && sigterm
+}
+
 /// What a quit does with the image.
 #[derive(Debug, PartialEq)]
 enum Quit {
@@ -922,10 +928,17 @@ define_class!(
             // draw meanwhile.
             let frames = ivars.renderer.borrow().acc.frames();
             let mtm = self.mtm();
-            let cancel = offers_cancel(QUIT.load(Ordering::SeqCst));
             // A copy: a load may rename the scene while the alert is up.
             let save = ivars.save.borrow().clone();
-            let quit = choose(&save, frames, |name| ask(mtm, name, cancel));
+            let quit = loop {
+                let cancel = offers_cancel(QUIT.load(Ordering::SeqCst));
+                let quit = choose(&save, frames, |name| ask(mtm, name, cancel));
+                // A SIGTERM while the alert was up was refused (`asking`):
+                // the editor is gone, so ask again, now with no Cancel.
+                if !asks_again(&quit, QUIT.load(Ordering::SeqCst)) {
+                    break quit;
+                }
+            };
             if quit == Quit::Cancel {
                 ivars.asking.set(false);
                 return NSApplicationTerminateReply::TerminateCancel;
@@ -1661,6 +1674,13 @@ mod tests {
         assert!(hands_focus_back(true, Duration::from_millis(500)));
         assert!(!hands_focus_back(true, Duration::from_secs(3)));
         assert!(!hands_focus_back(false, Duration::from_millis(500)));
+    }
+
+    #[test]
+    fn a_sigterm_during_a_cancelled_alert_asks_again() {
+        assert!(asks_again(&Quit::Cancel, true));
+        assert!(!asks_again(&Quit::Cancel, false));
+        assert!(!asks_again(&Quit::Discard, true));
     }
 
     #[test]

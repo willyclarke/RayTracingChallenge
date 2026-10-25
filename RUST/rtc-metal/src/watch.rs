@@ -115,7 +115,7 @@ fn arm(this: &Arc<Mutex<Inner>>, inner: &mut Inner) -> Result<Watching, String> 
         }));
         return Ok(Watching::File);
     }
-    let folder = inner.path.parent().unwrap_or(Path::new("."));
+    let folder = folder_of(&inner.path);
     let fd = open(folder).ok_or_else(|| format!("{}: can't watch it", folder.display()))?;
     inner.source = Some(vnode(
         fd,
@@ -176,6 +176,14 @@ fn rearm(this: &Arc<Mutex<Inner>>, inner: &mut Inner) -> bool {
             eprintln!("rtc-metal: --watch stopped: {e}");
             false
         }
+    }
+}
+
+/// The folder `path` is in: `.` for a bare file name, whose parent is "".
+fn folder_of(path: &Path) -> &Path {
+    match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
     }
 }
 
@@ -332,6 +340,13 @@ mod tests {
         drain(&rx);
         fs::write(&path, "{ }").unwrap();
         assert!(next(&rx));
+    }
+
+    #[test]
+    fn a_bare_file_name_is_in_the_working_folder() {
+        assert_eq!(folder_of(Path::new("scene.json")), Path::new("."));
+        assert_eq!(folder_of(Path::new("scenes/a.json")), Path::new("scenes"));
+        assert_eq!(folder_of(Path::new("/a.json")), Path::new("/"));
     }
 
     #[test]
