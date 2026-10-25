@@ -94,8 +94,9 @@ them; the owner keeps the source alive, as dropping it releases it.
 ### The shared file (`rtc-share`)
 
 - `end_viewer` moves the generation with one 64-bit
-  `fetch_add(1 << 32)` on the camera word, so no access to the word is
-  of another size than its other accesses (the 26 review's
+  `fetch_add(1 << 32)` on the camera word, and the camera seqlock's
+  steps become 64-bit compare-exchanges that change only the low half,
+  so every access to the word is 64-bit (the 26 review's
   mixed-size-atomics minor).
 
 ## Error handling
