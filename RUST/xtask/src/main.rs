@@ -28,27 +28,24 @@ fn main() -> ExitCode {
         .expect("xtask lives in RUST/")
         .to_path_buf();
     let app_dir = root.join("build/rtc-edit.app");
-    match build(&root, &app_dir).and_then(|()| {
-        if install {
-            self::install(&app_dir).map(Some)
-        } else {
-            Ok(None)
-        }
-    }) {
-        Ok(installed) => {
-            println!("built {}", app_dir.display());
-            if let Some(at) = installed {
-                println!("installed {}", at.display());
+    if let Err(e) = build(&root, &app_dir) {
+        // A half-built bundle must not be mistaken for a good one.
+        let _ = fs::remove_dir_all(&app_dir);
+        eprintln!("xtask: {e}");
+        return ExitCode::from(1);
+    }
+    println!("built {}", app_dir.display());
+    if install {
+        // The built bundle stays: a failed install can be tried again.
+        match self::install(&app_dir) {
+            Ok(at) => println!("installed {}", at.display()),
+            Err(e) => {
+                eprintln!("xtask: {e}");
+                return ExitCode::from(1);
             }
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            // A half-built bundle must not be mistaken for a good one.
-            let _ = fs::remove_dir_all(&app_dir);
-            eprintln!("xtask: {e}");
-            ExitCode::from(1)
         }
     }
+    ExitCode::SUCCESS
 }
 
 /// Run `cmd`; its stderr names the failure of `step`.
@@ -176,9 +173,75 @@ fn icon(ppm: &Path, icns: &Path) -> Result<(), String> {
 fn install(app_dir: &Path) -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").ok_or("install failed: no $HOME")?;
     let to = PathBuf::from(home).join("Applications/rtc-edit.app");
-    if to.exists() {
-        fs::remove_dir_all(&to).map_err(io("removing the installed app"))?;
-    }
-    run("ditto", Command::new("ditto").arg(app_dir).arg(&to))?;
+    install_to(app_dir, &to)?;
     Ok(to)
+}
+
+/// Copy `app_dir` beside `to` first and swap it in only once the copy is
+/// whole, so a failure leaves the installed app as it was.
+fn install_to(app_dir: &Path, to: &Path) -> Result<(), String> {
+    let staged = to.with_extension("app.new");
+    let old = to.with_extension("app.old");
+    for leftover in [&staged, &old] {
+        let _ = fs::remove_dir_all(leftover);
+    }
+    if let Err(e) = run("ditto", Command::new("ditto").arg(app_dir).arg(&staged)) {
+        let _ = fs::remove_dir_all(&staged);
+        return Err(e);
+    }
+    if to.exists() {
+        fs::rename(to, &old).map_err(io("moving the installed app aside"))?;
+    }
+    if let Err(e) = fs::rename(&staged, to) {
+        let _ = fs::rename(&old, to);
+        let _ = fs::remove_dir_all(&staged);
+        return Err(format!("installing failed: {e}"));
+    }
+    let _ = fs::remove_dir_all(&old);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("xtask-test-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn installing_replaces_the_old_app_wholly() {
+        let dir = scratch("replace");
+        let (new, to) = (dir.join("new.app"), dir.join("Applications/rtc-edit.app"));
+        fs::create_dir_all(new.join("Contents")).unwrap();
+        fs::write(new.join("Contents/new"), "").unwrap();
+        fs::create_dir_all(to.join("Contents")).unwrap();
+        fs::write(to.join("Contents/stale"), "").unwrap();
+        install_to(&new, &to).unwrap();
+        assert!(to.join("Contents/new").is_file());
+        assert!(!to.join("Contents/stale").exists());
+        let names: Vec<_> = fs::read_dir(to.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["rtc-edit.app"]);
+    }
+
+    #[test]
+    fn a_failed_install_keeps_the_old_app() {
+        let dir = scratch("keep");
+        let to = dir.join("Applications/rtc-edit.app");
+        fs::create_dir_all(to.join("Contents")).unwrap();
+        fs::write(to.join("Contents/old"), "").unwrap();
+        assert!(install_to(&dir.join("missing.app"), &to).is_err());
+        assert!(to.join("Contents/old").is_file());
+        let names: Vec<_> = fs::read_dir(to.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["rtc-edit.app"]);
+    }
 }
