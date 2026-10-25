@@ -175,6 +175,8 @@ enum Message {
     Redo,
     /// A menu bar click or key, from muda's event handler.
     MenuEvent(MenuEvent),
+    /// Help ▸ rtc-edit Help (Cmd-?).
+    Help,
 }
 
 /// The editor window's size at start-up.
@@ -996,6 +998,7 @@ fn menu_message(command: Command, following: bool) -> Message {
         Command::StartViewer => Message::ShowViewer,
         Command::Follow => Message::Follow(!following),
         Command::Keep => Message::Keep,
+        Command::Help => Message::Help,
     }
 }
 
@@ -1080,6 +1083,7 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             e.follower.keep();
             e.history.close();
         }
+        Message::Help => {}
         Message::Undo => e.undo(true),
         Message::Redo => e.undo(false),
         Message::MenuEvent(event) => {

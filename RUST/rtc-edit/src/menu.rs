@@ -20,10 +20,11 @@ pub enum Command {
     StartViewer,
     Follow,
     Keep,
+    Help,
 }
 
 /// Every command, in menu order.
-pub const ALL: [Command; 17] = [
+pub const ALL: [Command; 18] = [
     Command::New,
     Command::Open,
     Command::Save,
@@ -41,6 +42,7 @@ pub const ALL: [Command; 17] = [
     Command::StartViewer,
     Command::Follow,
     Command::Keep,
+    Command::Help,
 ];
 
 /// The id the command's menu item carries.
@@ -63,6 +65,63 @@ pub fn id(command: Command) -> &'static str {
         Command::StartViewer => "start-viewer",
         Command::Follow => "follow",
         Command::Keep => "keep",
+        Command::Help => "help",
+    }
+}
+
+/// The command's menu item text.
+pub fn label(command: Command) -> &'static str {
+    match command {
+        Command::New => "New",
+        Command::Open => "Open…",
+        Command::Save => "Save",
+        Command::SaveAs => "Save As…",
+        Command::Undo => "Undo",
+        Command::Redo => "Redo",
+        Command::Delete => "Delete",
+        Command::Add(Item::Sphere) => "Add Sphere",
+        Command::Add(Item::Cube) => "Add Cube",
+        Command::Add(Item::Plane) => "Add Plane",
+        Command::Add(Item::Cylinder) => "Add Cylinder",
+        Command::Add(Item::Cone) => "Add Cone",
+        Command::Add(Item::Light) => "Add Light",
+        Command::Load => "Load Edits",
+        Command::StartViewer => "Start Viewer",
+        Command::Follow => "Follow the Viewer",
+        Command::Keep => "Keep Followed View",
+        Command::Help => "rtc-edit Help",
+    }
+}
+
+/// The command's key, if it has one.
+pub fn key(command: Command) -> Option<(Modifiers, Code)> {
+    let cmd = Modifiers::META;
+    let shift = Modifiers::META | Modifiers::SHIFT;
+    match command {
+        Command::New => Some((cmd, Code::KeyN)),
+        Command::Open => Some((cmd, Code::KeyO)),
+        Command::Save => Some((cmd, Code::KeyS)),
+        Command::SaveAs => Some((shift, Code::KeyS)),
+        Command::Undo => Some((cmd, Code::KeyZ)),
+        Command::Redo => Some((shift, Code::KeyZ)),
+        Command::Delete => Some((cmd, Code::Backspace)),
+        Command::Load => Some((cmd, Code::KeyL)),
+        Command::StartViewer => Some((cmd, Code::KeyR)),
+        Command::Keep => Some((cmd, Code::KeyK)),
+        // Cmd-?, the Mac's help key.
+        Command::Help => Some((shift, Code::Slash)),
+        Command::Add(_) | Command::Follow => None,
+    }
+}
+
+/// The menu the command's item is in.
+pub fn menu_of(command: Command) -> &'static str {
+    match command {
+        Command::New | Command::Open | Command::Save | Command::SaveAs => "File",
+        Command::Undo | Command::Redo | Command::Delete => "Edit",
+        Command::Add(_) => "Scene",
+        Command::Load | Command::StartViewer | Command::Follow | Command::Keep => "Viewer",
+        Command::Help => "Help",
     }
 }
 
@@ -91,13 +150,20 @@ pub fn enabled(command: Command, state: &State) -> bool {
         Command::Load | Command::Follow => state.viewer_running,
         Command::StartViewer => !state.viewer_running,
         Command::Keep => state.following,
-        Command::New | Command::Open | Command::Save | Command::SaveAs | Command::Add(_) => true,
+        Command::New
+        | Command::Open
+        | Command::Save
+        | Command::SaveAs
+        | Command::Add(_)
+        | Command::Help => true,
     }
 }
 
 /// The menu bar, with the items whose greying or tick changes.
 pub struct Menus {
     menu: Menu,
+    /// The Help menu, which macOS gives a search box.
+    help: Submenu,
     /// Every item but Follow the Viewer, with its command.
     items: Vec<(Command, MenuItem)>,
     follow: CheckMenuItem,
@@ -112,45 +178,45 @@ impl Default for Menus {
 }
 
 impl Menus {
-    /// rtc-edit, File, Edit, Scene and Viewer.
+    /// rtc-edit, File, Edit, Scene, Viewer and Help.
     pub fn new() -> Menus {
         let mut items = Vec::new();
-        let mut item = |c: Command, label: &str, key: Option<(Modifiers, Code)>| {
-            let accel = key.map(|(m, k)| Accelerator::new(m, k));
-            let i = MenuItem::with_id(id(c), label, true, accel);
+        let mut item = |c: Command| {
+            let accel = key(c).map(|(m, k)| Accelerator::new(m, k));
+            let i = MenuItem::with_id(id(c), label(c), true, accel);
             items.push((c, i.clone()));
             i
         };
-        let cmd = Modifiers::META;
-        let shift = Modifiers::META | Modifiers::SHIFT;
         let file = [
-            item(Command::New, "New", Some((cmd, Code::KeyN))),
-            item(Command::Open, "Open…", Some((cmd, Code::KeyO))),
-            item(Command::Save, "Save", Some((cmd, Code::KeyS))),
-            item(Command::SaveAs, "Save As…", Some((shift, Code::KeyS))),
+            item(Command::New),
+            item(Command::Open),
+            item(Command::Save),
+            item(Command::SaveAs),
         ];
         let edit = [
-            item(Command::Undo, "Undo", Some((cmd, Code::KeyZ))),
-            item(Command::Redo, "Redo", Some((shift, Code::KeyZ))),
-            item(Command::Delete, "Delete", Some((cmd, Code::Backspace))),
+            item(Command::Undo),
+            item(Command::Redo),
+            item(Command::Delete),
         ];
         let scene = [
-            item(Command::Add(Item::Sphere), "Add Sphere", None),
-            item(Command::Add(Item::Cube), "Add Cube", None),
-            item(Command::Add(Item::Plane), "Add Plane", None),
-            item(Command::Add(Item::Cylinder), "Add Cylinder", None),
-            item(Command::Add(Item::Cone), "Add Cone", None),
-            item(Command::Add(Item::Light), "Add Light", None),
+            item(Command::Add(Item::Sphere)),
+            item(Command::Add(Item::Cube)),
+            item(Command::Add(Item::Plane)),
+            item(Command::Add(Item::Cylinder)),
+            item(Command::Add(Item::Cone)),
+            item(Command::Add(Item::Light)),
         ];
-        let load = item(Command::Load, "Load Edits", Some((cmd, Code::KeyL)));
-        let start = item(
-            Command::StartViewer,
-            "Start Viewer",
-            Some((cmd, Code::KeyR)),
+        let load = item(Command::Load);
+        let start = item(Command::StartViewer);
+        let keep = item(Command::Keep);
+        let help = [item(Command::Help)];
+        let follow = CheckMenuItem::with_id(
+            id(Command::Follow),
+            label(Command::Follow),
+            true,
+            false,
+            None,
         );
-        let keep = item(Command::Keep, "Keep Followed View", Some((cmd, Code::KeyK)));
-        let follow =
-            CheckMenuItem::with_id(id(Command::Follow), "Follow the Viewer", true, false, None);
 
         let about = PredefinedMenuItem::about(
             Some("About rtc-edit"),
@@ -182,6 +248,7 @@ impl Menus {
         };
         let viewer = Submenu::with_items("Viewer", true, &[&load, &start, &follow, &keep])
             .expect("Viewer menu");
+        let help = submenu("Help", &help);
         let menu = Menu::new();
         menu.append_items(&[
             &app,
@@ -189,10 +256,12 @@ impl Menus {
             &submenu("Edit", &edit),
             &submenu("Scene", &scene),
             &viewer,
+            &help,
         ])
         .expect("menu bar");
         Menus {
             menu,
+            help,
             items,
             follow,
             last: None,
@@ -202,6 +271,7 @@ impl Menus {
     /// Make it the app's menu bar; once, when the window has opened.
     pub fn install(&self) {
         self.menu.init_for_nsapp();
+        self.help.set_as_help_menu_for_nsapp();
     }
 
     /// Grey the items that can't act in `state`, and tick Follow the Viewer
@@ -233,6 +303,44 @@ mod tests {
             assert!(ids.insert(id(c)), "{c:?}");
         }
         assert_eq!(command("nonsense"), None);
+    }
+
+    #[test]
+    fn labels_and_keys_are_the_menus() {
+        let cmd = Modifiers::META;
+        let shift = Modifiers::META | Modifiers::SHIFT;
+        assert_eq!(label(Command::New), "New");
+        assert_eq!(key(Command::New), Some((cmd, Code::KeyN)));
+        assert_eq!(label(Command::Open), "Open…");
+        assert_eq!(key(Command::SaveAs), Some((shift, Code::KeyS)));
+        assert_eq!(key(Command::Redo), Some((shift, Code::KeyZ)));
+        assert_eq!(key(Command::Delete), Some((cmd, Code::Backspace)));
+        assert_eq!(label(Command::Add(Item::Cone)), "Add Cone");
+        assert_eq!(key(Command::Add(Item::Cone)), None);
+        assert_eq!(label(Command::Load), "Load Edits");
+        assert_eq!(key(Command::StartViewer), Some((cmd, Code::KeyR)));
+        assert_eq!(label(Command::Follow), "Follow the Viewer");
+        assert_eq!(key(Command::Follow), None);
+        assert_eq!(key(Command::Keep), Some((cmd, Code::KeyK)));
+        assert_eq!(label(Command::Help), "rtc-edit Help");
+        assert_eq!(key(Command::Help), Some((shift, Code::Slash)));
+    }
+
+    #[test]
+    fn every_command_has_a_label_and_a_menu() {
+        for c in ALL {
+            assert!(!label(c).is_empty(), "{c:?}");
+            assert!(
+                ["File", "Edit", "Scene", "Viewer", "Help"].contains(&menu_of(c)),
+                "{c:?}"
+            );
+        }
+        assert_eq!(menu_of(Command::SaveAs), "File");
+        assert_eq!(menu_of(Command::Delete), "Edit");
+        assert_eq!(menu_of(Command::Add(Item::Light)), "Scene");
+        assert_eq!(menu_of(Command::Keep), "Viewer");
+        assert_eq!(menu_of(Command::Help), "Help");
+        assert!(enabled(Command::Help, &State::default()));
     }
 
     #[test]
