@@ -55,8 +55,12 @@ Success:
      copy the binaries and the `.icns` files in.
   4. `codesign --force --sign -` on the helper, then on the outer app (no
      `--deep`).
-  5. With `--install`: remove `~/Applications/rtc-edit.app`, copy the new
-     one there (`ditto`, which keeps the signature).
+  5. With `--install`: `ditto` (which keeps the signature) to
+     `~/Applications/rtc-edit.app.new`, move the old app aside to
+     `.app.old`, rename the new one into place, remove the old one; a
+     failure leaves the installed app as it was, and keeps `build/` (review
+     fix: the first draft removed the installed app first, and a failed
+     install also removed the build).
 - A failed step prints `xtask: <step> failed: <its stderr>`, removes the
   partial bundle and exits 1.
 
