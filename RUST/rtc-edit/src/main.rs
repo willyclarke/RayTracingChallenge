@@ -15,6 +15,7 @@ use iced::widget::{
 };
 use iced::{Element, Font, Length, Point, Rectangle, Size, Subscription, Task, keyboard, window};
 use muda::MenuEvent;
+use rtc_edit::about;
 use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
@@ -185,6 +186,8 @@ enum Message {
     MenuEvent(MenuEvent),
     /// Help ▸ rtc-edit Help.
     Help,
+    /// Help ▸ Report an Issue….
+    ReportIssue,
     /// Open help, knowing the editor's screen size.
     OpenHelp(Option<Size>),
 }
@@ -1036,6 +1039,7 @@ fn menu_message(command: Command, following: bool) -> Message {
         Command::Follow => Message::Follow(!following),
         Command::Keep => Message::Keep,
         Command::Help => Message::Help,
+        Command::ReportIssue => Message::ReportIssue,
     }
 }
 
@@ -1126,6 +1130,24 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
             }
             // Ask for the editor's screen first: help mustn't open off it.
             return window::monitor_size(e.main).map(Message::OpenHelp);
+        }
+        Message::ReportIssue => {
+            let macos = std::process::Command::new("sw_vers")
+                .arg("-productVersion")
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+                .unwrap_or_else(|| "unknown".into());
+            let version = format!("{} ({})", env!("CARGO_PKG_VERSION"), about::version());
+            match std::process::Command::new("open")
+                .arg(about::issue_url(&version, &macos))
+                .spawn()
+            {
+                // `open` returns at once; wait for it so it isn't left a zombie.
+                Ok(mut child) => drop(std::thread::spawn(move || child.wait())),
+                Err(err) => e.status = format!("couldn't open the browser: {err}"),
+            }
         }
         Message::OpenHelp(screen) => {
             // A second click may have opened it while the first waited.
