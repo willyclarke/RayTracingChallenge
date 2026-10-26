@@ -22,7 +22,7 @@ The editor grows in milestones:
 - **28 (done):** a help window: the menus, keys, viewer and command line on one page.
 - **29 (done):** About with a ray-traced icon and the build; Report an Issue….
 - **30 (done):** a settings file: the scene and image folders and the editor's window.
-- **31:** an app bundle with the viewer inside.
+- **31 (done):** an app bundle, RTC Edit with RTC Viewer inside.
 
 Planned: Open Recent; a scene file type, opened from Finder; the viewer's samples and traversal.
 
