@@ -67,22 +67,35 @@ Success:
 ### The layout
 
 ```
-rtc-edit.app/Contents/
+RTC Edit.app/Contents/
   Info.plist
   MacOS/rtc-edit
   Resources/rtc-edit.icns
-  Helpers/rtc-metal.app/Contents/
+  Helpers/RTC Viewer.app/Contents/
     Info.plist
     MacOS/rtc-metal
     Resources/rtc-metal.icns
 ```
+
+### Names (eye-check change, 2026-10-26)
+
+Mac apps show a capitalised name, so the bundles are `RTC Edit.app` and
+`RTC Viewer.app`, with `CFBundleName` and `CFBundleDisplayName` set to
+those; the executables, icon files and ids stay `rtc-edit` / `rtc-metal`.
+`about::NAME = "RTC Edit"` names the app in rtc-edit's app menu (About,
+Hide, Quit), About's name, "RTC Edit Help", the window titles and Report
+an Issue's title and version line; the help page's command line and the
+stderr prefixes keep the commands. rtc-metal's app menu says Hide RTC
+Viewer. Everything below that says `rtc-edit.app` or `rtc-metal.app` as a
+folder means these.
 
 ### Info.plist
 
 | key | rtc-edit | rtc-metal |
 |---|---|---|
 | `CFBundleIdentifier` | `no.sb21.rtc-edit` | `no.sb21.rtc-metal` |
-| `CFBundleName`, `CFBundleExecutable` | `rtc-edit` | `rtc-metal` |
+| `CFBundleName`, `CFBundleDisplayName` | `RTC Edit` | `RTC Viewer` |
+| `CFBundleExecutable` | `rtc-edit` | `rtc-metal` |
 | `CFBundleIconFile` | `rtc-edit.icns` | `rtc-metal.icns` |
 | `CFBundleShortVersionString`, `CFBundleVersion` | rtc-edit's crate version | rtc-metal's crate version |
 | `CFBundlePackageType` | `APPL` | `APPL` |

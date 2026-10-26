@@ -44,7 +44,7 @@ cargo run --release -- --help
   - `i` toggles the status overlay (samples, a stopwatch to the target, frame time, size,
     traversal);
   - resize or go full screen to render at the new size;
-  - the app menu has Hide rtc-metal (Cmd-H), Hide Others (Cmd-Opt-H), Show All and Quit (Cmd-Q);
+  - the app menu has Hide RTC Viewer (Cmd-H), Hide Others (Cmd-Opt-H), Show All and Quit (Cmd-Q);
   - File ▸ Save Image… (Cmd-S) writes the image as it stands where you pick, while it keeps
     refining; the panel starts in the folder the last image went to (`~/rtc/renders` at
     first; see rtc-edit's [Settings](../rtc-edit/README.md#settings));
