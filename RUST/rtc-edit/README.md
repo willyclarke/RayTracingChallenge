@@ -22,7 +22,9 @@ The editor grows in milestones:
 - **28 (done):** a help window: the menus, keys, viewer and command line on one page.
 - **29 (done):** About with a ray-traced icon and the build; Report an Issue….
 - **30 (done):** a settings file: the scene and image folders and the editor's window.
-- **31 (planned):** an app bundle.
+- **31 (done):** an app bundle, RTC Edit with RTC Viewer inside.
+
+Planned: Open Recent; a scene file type, opened from Finder; the viewer's samples and traversal.
 
 ## Dependencies
 
@@ -50,9 +52,33 @@ cargo test                                    # no window needed
 cargo clippy --all-targets
 ```
 
-The editor looks for the viewer in `$RTC_METAL`, and otherwise at
-`../rtc-metal/target/release/rtc-metal` next to this crate. Without it, the editor still
+The editor looks for the viewer in `$RTC_METAL`, then inside the app bundle it runs from (see
+below), and otherwise at `../rtc-metal/target/release/rtc-metal` next to this crate. Without it, the editor still
 works and the status line says where it looked.
+
+### Building the app
+
+From `RUST/` (the alias in `RUST/.cargo/config.toml` works only there):
+
+```bash
+cargo xtask bundle            # builds both crates into "build/RTC Edit.app"
+cargo xtask bundle --install  # …and replaces "~/Applications/RTC Edit.app"
+```
+
+`RTC Edit.app` holds the viewer as `Contents/Helpers/RTC Viewer.app`, so the Dock shows two
+apps with their own names and icons, and the app finds its viewer wherever you put it.
+Finder, the Dock and the menus say RTC Edit and RTC Viewer; the commands stay `rtc-edit` and
+`rtc-metal`. Quit
+the installed app before `--install`; a running copy keeps its old files until it quits.
+
+The bundle is signed ad hoc (`codesign --sign -`): fine on the Mac that built it, with no Apple
+account. Anyone else builds and signs their own the same way; a copy from another Mac would
+need a Developer ID and notarisation to get past Gatekeeper.
+
+Started from Finder, the Dock or Spotlight, rtc-edit starts with a new scene in `/`, which is
+why the panels start in the [Settings](#settings) folders. Opening a scene from Finder (a
+double-click, a drop on the Dock icon, `open -a rtc-edit x.json`) doesn't work yet: the app
+opens with a new scene.
 
 The editor opens at the top-left of the screen, and each viewer it starts (on opening and
 Cmd-R) opens just right of it, without taking the focus, tops aligned, fitted to the rest of that screen
@@ -64,7 +90,7 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 
 | menu | item | key | does |
 |---|---|---|---|
-| rtc-edit | About rtc-edit, Services, Hide, Hide Others, Show All, Quit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app; About shows the icon, the build (`Version 0.1.0 (<commit> <date>)`, ` dirty` for uncommitted changes) and the credits |
+| RTC Edit | About RTC Edit, Services, Hide RTC Edit, Hide Others, Show All, Quit RTC Edit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app; About shows the icon, the build (`Version 0.1.0 (<commit> <date>)`, ` dirty` for uncommitted changes) and the credits |
 | File | New | Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
 | File | Open… | Cmd-O | open another scene (a `.json` file) |
 | File | Save | Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
@@ -76,15 +102,17 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 | Viewer | Start Viewer | Cmd-R | start the viewer again after closing it; greyed while one runs |
 | Viewer | Follow the Viewer | | tick or untick follow (see below); greyed with no viewer |
 | Viewer | Keep Followed View | Cmd-K | keep the followed view (see below); greyed unless following |
-| Help | rtc-edit Help | | open the help window beside the editor (centred if it doesn't fit), or bring it to the front; Esc closes it. Cmd-? opens the Help menu with macOS's search box, where this item is first |
+| Help | RTC Edit Help | | open the help window beside the editor (centred if it doesn't fit), or bring it to the front; Esc closes it. Cmd-? opens the Help menu with macOS's search box, where this item is first |
 | Help | Report an Issue… | | open a new GitHub issue with rtc-edit's and macOS's versions filled in |
 
-The Help menu's Send rtc-edit Feedback isn't rtc-edit's: macOS adds it for users in Apple's beta
+The Help menu's Send RTC Edit Feedback isn't RTC Edit's: macOS adds it for users in Apple's beta
 program, and it reports to Apple.
 
 The icon, in About and in the Dock while rtc-edit runs, is rendered by rtc-metal from
-`assets/about.json`. After changing the scene, render it again from `../rtc-metal`:
-`cargo run --release -- ../rtc-edit/assets/about.json --samples 1024 -o ../rtc-edit/assets/about.ppm`.
+`assets/about.json`; the app bundle's icon is the same scene at 1024 px, `assets/icon.json`.
+After changing either scene, render it again from `../rtc-metal`:
+`cargo run --release -- ../rtc-edit/assets/about.json --samples 1024 -o ../rtc-edit/assets/about.ppm`
+(and the same for `icon.json` / `icon.ppm`).
 
 The Edit menu has no Cut, Copy, Paste or Select All: Cmd-X, Cmd-C, Cmd-V and Cmd-A go to the
 box being edited.
@@ -149,7 +177,7 @@ empty box removes the comment; a comment that isn't text gets no box and stays a
 - The title shows ` •` while there are unsaved edits. Quitting doesn't ask: unsaved edits are
   lost.
 
-Help ▸ rtc-edit Help (Cmd-?, then Enter on the item) shows these keys, the menus, the viewer's mouse and keys and the
+Help ▸ RTC Edit Help (Cmd-?, then Enter on the item) shows these keys, the menus, the viewer's mouse and keys and the
 command line in a window of its own; Esc closes it.
 
 The keyboard works in three places: the tree, a shaded box, and a box being edited. The
@@ -255,6 +283,7 @@ Delete the file to forget everything.
 | `src/windows.rs` | which window a key or a close belongs to |
 | `src/about.rs` | About's build, credits and icon, and the GitHub issue URL |
 | `build.rs` | the commit rtc-edit is built from, for About |
-| `assets/` | the icon's scene and its render |
+| `assets/` | the icons' scenes and their renders: `about.*` for About, `icon.*` for the app |
+| `../xtask` | `cargo xtask bundle`: the app bundle, its `Info.plist` files and icons |
 | `../rtc-config` | the settings file both programs share |
 | `docs/superpowers/` | design specs and implementation plans |

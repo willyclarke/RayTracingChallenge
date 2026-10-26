@@ -13,21 +13,37 @@ use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-/// The viewer program: `env` (`$RTC_METAL`) when set and non-empty,
-/// otherwise rtc-metal's release build next to this crate.
-pub fn find(env: Option<&str>, crate_dir: &Path) -> Result<PathBuf, String> {
+/// The viewer program, in order: `env` (`$RTC_METAL`) when set and
+/// non-empty; the viewer inside the app bundle the editor runs from
+/// (`exe` being its executable); rtc-metal's release build next to this
+/// crate.
+pub fn find(env: Option<&str>, exe: Option<&Path>, crate_dir: &Path) -> Result<PathBuf, String> {
     if let Some(exe) = env.filter(|e| !e.is_empty()) {
         return Ok(PathBuf::from(exe));
     }
-    let exe = crate_dir.join("../rtc-metal/target/release/rtc-metal");
-    if exe.is_file() {
-        Ok(exe)
-    } else {
-        Err(format!(
-            "rtc-metal not found at {}; build it or set RTC_METAL",
-            exe.display()
-        ))
+    let bundled = exe.map(bundled);
+    let dev = crate_dir.join("../rtc-metal/target/release/rtc-metal");
+    if let Some(b) = bundled.as_ref().filter(|b| b.is_file()) {
+        return Ok(b.clone());
     }
+    if dev.is_file() {
+        return Ok(dev);
+    }
+    let places = match &bundled {
+        Some(b) => format!("{} or {}", b.display(), dev.display()),
+        None => dev.display().to_string(),
+    };
+    Err(format!(
+        "rtc-metal not found at {places}; build it or set RTC_METAL"
+    ))
+}
+
+/// Where the app bundle holding `exe` keeps the viewer:
+/// `RTC Edit.app/Contents/Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal`.
+pub fn bundled(exe: &Path) -> PathBuf {
+    exe.parent()
+        .unwrap_or(Path::new("."))
+        .join("../Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal")
 }
 
 /// The shared file of the editor with process id `pid`: `root/rtc-edit-<pid>.share`.
@@ -238,7 +254,7 @@ mod tests {
 
     #[test]
     fn find_prefers_the_environment() {
-        let got = find(Some("/x/rtc-metal"), Path::new("/nowhere")).unwrap();
+        let got = find(Some("/x/rtc-metal"), None, Path::new("/nowhere")).unwrap();
         assert_eq!(got, Path::new("/x/rtc-metal"));
     }
 
@@ -251,7 +267,7 @@ mod tests {
         let crate_dir = root.join("rtc-edit");
         fs::create_dir_all(&crate_dir).unwrap();
         for env in [None, Some("")] {
-            let got = find(env, &crate_dir).unwrap();
+            let got = find(env, None, &crate_dir).unwrap();
             assert_eq!(got.canonicalize().unwrap(), exe.canonicalize().unwrap());
         }
     }
@@ -259,8 +275,34 @@ mod tests {
     #[test]
     fn find_reports_a_missing_viewer() {
         let root = fresh("missing");
-        let err = find(None, &root.join("rtc-edit")).unwrap_err();
-        assert!(err.contains("RTC_METAL"), "{err}");
+        let exe = root.join("a.app/Contents/MacOS/rtc-edit");
+        let err = find(None, Some(&exe), &root.join("rtc-edit")).unwrap_err();
+        for part in [
+            "RTC_METAL",
+            "Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal",
+            "rtc-metal/target/release/rtc-metal",
+        ] {
+            assert!(err.contains(part), "{err}");
+        }
+    }
+
+    #[test]
+    fn find_prefers_a_viewer_in_its_own_bundle() {
+        let root = fresh("bundled");
+        let app = root.join("RTC Edit.app/Contents");
+        let exe = app.join("MacOS/rtc-edit");
+        let viewer = app.join("Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal");
+        // A development build beside it too: the bundle's own wins.
+        let dev = root.join("rtc-metal/target/release/rtc-metal");
+        for f in [&exe, &viewer, &dev] {
+            fs::create_dir_all(f.parent().unwrap()).unwrap();
+            fs::write(f, "").unwrap();
+        }
+        let crate_dir = root.join("rtc-edit");
+        let got = find(None, Some(&exe), &crate_dir).unwrap();
+        assert_eq!(got.canonicalize().unwrap(), viewer.canonicalize().unwrap());
+        let got = find(Some("/x/rtc-metal"), Some(&exe), &crate_dir).unwrap();
+        assert_eq!(got, Path::new("/x/rtc-metal"));
     }
 
     #[test]

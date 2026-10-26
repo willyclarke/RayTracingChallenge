@@ -197,7 +197,7 @@ enum Message {
     Redo,
     /// A menu bar click or key, from muda's event handler.
     MenuEvent(MenuEvent),
-    /// Help ▸ rtc-edit Help.
+    /// Help ▸ RTC Edit Help.
     Help,
     /// Help ▸ Report an Issue….
     ReportIssue,
@@ -220,10 +220,10 @@ fn main() -> iced::Result {
 
 fn title(e: &Editor, id: window::Id) -> String {
     if Some(id) == e.help {
-        return "rtc-edit Help".into();
+        return menu::label(Command::Help).into();
     }
     let mark = if e.unsaved { " •" } else { "" };
-    format!("rtc-edit — {}{mark}", e.name())
+    format!("{} — {}{mark}", about::NAME, e.name())
 }
 
 fn file_name(path: &Path) -> String {
@@ -481,6 +481,7 @@ impl Editor {
         self.camera_start = self.share.as_ref().map_or(0, camera_start);
         let started = find(
             std::env::var("RTC_METAL").ok().as_deref(),
+            std::env::current_exe().ok().as_deref(),
             Path::new(env!("CARGO_MANIFEST_DIR")),
         )
         .and_then(|exe| {

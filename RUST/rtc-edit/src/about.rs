@@ -1,6 +1,10 @@
 //! What About rtc-edit and Help ▸ Report an Issue… show: the build, the
 //! credits, the icon and the GitHub issue to open.
 
+/// The app's name wherever a person reads it: menus, titles, About, the
+/// app bundle. The commands stay `rtc-edit` and `rtc-metal`.
+pub const NAME: &str = "RTC Edit";
+
 use rtc_rust::canvas::Canvas;
 
 /// The commit rtc-edit was built from and its date, such as
@@ -52,11 +56,11 @@ pub fn percent_encode(s: &str) -> String {
 /// `macos`, its body an outline to fill in.
 pub fn issue_url(version: &str, macos: &str) -> String {
     let body = format!(
-        "**What happened**\n\n**What I expected**\n\n**Steps to reproduce**\n\n---\nrtc-edit {version}, macOS {macos}\n"
+        "**What happened**\n\n**What I expected**\n\n**Steps to reproduce**\n\n---\n{NAME} {version}, macOS {macos}\n"
     );
     format!(
         "https://github.com/willyclarke/RayTracingChallenge/issues/new?title={}&body={}",
-        percent_encode("rtc-edit: "),
+        percent_encode(&format!("{NAME}: ")),
         percent_encode(&body)
     )
 }
@@ -75,7 +79,7 @@ mod tests {
     #[test]
     fn the_issue_url_has_the_title_and_the_versions() {
         let url = issue_url("0.1.0 (abc 2026-10-25)", "26.0");
-        let prefix = "https://github.com/willyclarke/RayTracingChallenge/issues/new?title=rtc-edit%3A%20&body=";
+        let prefix = "https://github.com/willyclarke/RayTracingChallenge/issues/new?title=RTC%20Edit%3A%20&body=";
         assert!(url.starts_with(prefix), "{url}");
         let body = &url[prefix.len()..];
         assert!(
@@ -84,7 +88,7 @@ mod tests {
         );
         assert!(
             body.ends_with(&percent_encode(
-                "---\nrtc-edit 0.1.0 (abc 2026-10-25), macOS 26.0\n"
+                "---\nRTC Edit 0.1.0 (abc 2026-10-25), macOS 26.0\n"
             )),
             "{body}"
         );

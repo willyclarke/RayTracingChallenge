@@ -44,7 +44,7 @@ cargo run --release -- --help
   - `i` toggles the status overlay (samples, a stopwatch to the target, frame time, size,
     traversal);
   - resize or go full screen to render at the new size;
-  - the app menu has Hide rtc-metal (Cmd-H), Hide Others (Cmd-Opt-H), Show All and Quit (Cmd-Q);
+  - the app menu has Hide RTC Viewer (Cmd-H), Hide Others (Cmd-Opt-H), Show All and Quit (Cmd-Q);
   - File ▸ Save Image… (Cmd-S) writes the image as it stands where you pick, while it keeps
     refining; the panel starts in the folder the last image went to (`~/rtc/renders` at
     first; see rtc-edit's [Settings](../rtc-edit/README.md#settings));
@@ -112,6 +112,7 @@ use them are rejected with a message naming the feature.
 | `src/window.rs`, `src/orbit.rs` | the `--window` view and the orbiting camera |
 | `src/probes.rs`, `src/compare.rs` | tests: per-function probe kernels, and whole-image comparisons with the CPU |
 | `shaders/` | the Metal shading language sources |
+| `assets/icon.json`, `assets/icon.ppm` | the app icon (a blue glass ball) inside rtc-edit's app bundle; re-render with `cargo run --release -- assets/icon.json --samples 1024 -o assets/icon.ppm` |
 | `docs/superpowers/` | design specs and implementation plans, one per milestone |
 
 The port was built in milestones, each on its own `metal/NN-name` branch merged into

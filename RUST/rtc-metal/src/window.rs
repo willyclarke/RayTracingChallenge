@@ -1421,7 +1421,7 @@ fn main_menu(mtm: MainThreadMarker, delegate: &RtcDelegate) -> Retained<NSMenu> 
         }
     };
     let app_menu = NSMenu::new(mtm);
-    app_menu.addItem(&item("Hide rtc-metal", sel!(hide:), "h"));
+    app_menu.addItem(&item("Hide RTC Viewer", sel!(hide:), "h"));
     let others = item("Hide Others", sel!(hideOtherApplications:), "h");
     others
         .setKeyEquivalentModifierMask(NSEventModifierFlags::Option | NSEventModifierFlags::Command);
