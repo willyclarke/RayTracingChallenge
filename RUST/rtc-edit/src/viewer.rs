@@ -39,11 +39,11 @@ pub fn find(env: Option<&str>, exe: Option<&Path>, crate_dir: &Path) -> Result<P
 }
 
 /// Where the app bundle holding `exe` keeps the viewer:
-/// `rtc-edit.app/Contents/Helpers/rtc-metal.app/Contents/MacOS/rtc-metal`.
+/// `RTC Edit.app/Contents/Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal`.
 pub fn bundled(exe: &Path) -> PathBuf {
     exe.parent()
         .unwrap_or(Path::new("."))
-        .join("../Helpers/rtc-metal.app/Contents/MacOS/rtc-metal")
+        .join("../Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal")
 }
 
 /// The shared file of the editor with process id `pid`: `root/rtc-edit-<pid>.share`.
@@ -279,7 +279,7 @@ mod tests {
         let err = find(None, Some(&exe), &root.join("rtc-edit")).unwrap_err();
         for part in [
             "RTC_METAL",
-            "Helpers/rtc-metal.app/Contents/MacOS/rtc-metal",
+            "Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal",
             "rtc-metal/target/release/rtc-metal",
         ] {
             assert!(err.contains(part), "{err}");
@@ -289,9 +289,9 @@ mod tests {
     #[test]
     fn find_prefers_a_viewer_in_its_own_bundle() {
         let root = fresh("bundled");
-        let app = root.join("rtc-edit.app/Contents");
+        let app = root.join("RTC Edit.app/Contents");
         let exe = app.join("MacOS/rtc-edit");
-        let viewer = app.join("Helpers/rtc-metal.app/Contents/MacOS/rtc-metal");
+        let viewer = app.join("Helpers/RTC Viewer.app/Contents/MacOS/rtc-metal");
         // A development build beside it too: the bundle's own wins.
         let dev = root.join("rtc-metal/target/release/rtc-metal");
         for f in [&exe, &viewer, &dev] {

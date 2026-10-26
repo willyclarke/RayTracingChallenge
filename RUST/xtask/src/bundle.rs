@@ -2,11 +2,13 @@
 
 use std::path::{Path, PathBuf};
 
-/// One app of the bundle: rtc-edit, or rtc-metal inside it. Its
-/// executable and icon are named after `name`.
+/// One app of the bundle: RTC Edit, or RTC Viewer inside it. Its
+/// executable and icon are named after `name` (the command); Finder, the
+/// Dock and the menu bar show `display`.
 pub struct App {
     pub id: String,
     pub name: String,
+    pub display: String,
     pub version: String,
 }
 
@@ -15,7 +17,8 @@ pub fn info_plist(app: &App) -> String {
     let icon = format!("{}.icns", app.name);
     let strings = [
         ("CFBundleIdentifier", app.id.as_str()),
-        ("CFBundleName", &app.name),
+        ("CFBundleName", &app.display),
+        ("CFBundleDisplayName", &app.display),
         ("CFBundleExecutable", &app.name),
         ("CFBundleIconFile", &icon),
         ("CFBundleShortVersionString", &app.version),
@@ -54,11 +57,11 @@ pub struct Paths {
     pub helper_icns: PathBuf,
 }
 
-/// The files of `app_dir` (`…/rtc-edit.app`), with the viewer's app in
+/// The files of `app_dir` (`…/RTC Edit.app`), with the viewer's app in
 /// its `Contents/Helpers`.
 pub fn layout(app_dir: &Path) -> Paths {
     let contents = app_dir.join("Contents");
-    let helper_contents = contents.join("Helpers/rtc-metal.app/Contents");
+    let helper_contents = contents.join("Helpers/RTC Viewer.app/Contents");
     Paths {
         exe: contents.join("MacOS/rtc-edit"),
         plist: contents.join("Info.plist"),
@@ -106,23 +109,25 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    fn app(name: &str) -> App {
+    fn app(display: &str) -> App {
         App {
             id: "no.sb21.rtc-edit".into(),
-            name: name.into(),
+            name: "rtc-edit".into(),
+            display: display.into(),
             version: "0.1.0".into(),
         }
     }
 
     #[test]
     fn the_plist_has_every_key() {
-        let text = info_plist(&app("rtc-edit"));
+        let text = info_plist(&app("RTC Edit"));
         assert!(text.starts_with(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"
         ));
         for (k, v) in [
             ("CFBundleIdentifier", "no.sb21.rtc-edit"),
-            ("CFBundleName", "rtc-edit"),
+            ("CFBundleName", "RTC Edit"),
+            ("CFBundleDisplayName", "RTC Edit"),
             ("CFBundleExecutable", "rtc-edit"),
             ("CFBundleIconFile", "rtc-edit.icns"),
             ("CFBundleShortVersionString", "0.1.0"),
@@ -147,9 +152,9 @@ mod tests {
 
     #[test]
     fn the_helper_sits_inside_the_editor() {
-        let p = layout(Path::new("/b/rtc-edit.app"));
-        let c = "/b/rtc-edit.app/Contents";
-        let h = "/b/rtc-edit.app/Contents/Helpers/rtc-metal.app/Contents";
+        let p = layout(Path::new("/b/RTC Edit.app"));
+        let c = "/b/RTC Edit.app/Contents";
+        let h = "/b/RTC Edit.app/Contents/Helpers/RTC Viewer.app/Contents";
         assert_eq!(p.contents, Path::new(c));
         assert_eq!(p.exe, Path::new(&format!("{c}/MacOS/rtc-edit")));
         assert_eq!(p.plist, Path::new(&format!("{c}/Info.plist")));

@@ -95,7 +95,7 @@ pub fn label(command: Command) -> &'static str {
         Command::StartViewer => "Start Viewer",
         Command::Follow => "Follow the Viewer",
         Command::Keep => "Keep Followed View",
-        Command::Help => "rtc-edit Help",
+        Command::Help => "RTC Edit Help",
         Command::ReportIssue => "Report an Issue…",
     }
 }
@@ -167,10 +167,10 @@ pub fn enabled(command: Command, state: &State) -> bool {
     }
 }
 
-/// What About rtc-edit shows: the icon, the build and the credits.
+/// What About RTC Edit shows: the icon, the build and the credits.
 pub fn about_metadata() -> AboutMetadata {
     AboutMetadata {
-        name: Some("rtc-edit".into()),
+        name: Some(about::NAME.into()),
         // AppKit shows "Version <version> (<short_version>)".
         version: Some(env!("CARGO_PKG_VERSION").into()),
         short_version: Some(about::version().into()),
@@ -241,20 +241,23 @@ impl Menus {
             None,
         );
 
-        let about = PredefinedMenuItem::about(Some("About rtc-edit"), Some(about_metadata()));
+        let about = PredefinedMenuItem::about(
+            Some(&format!("About {}", about::NAME)),
+            Some(about_metadata()),
+        );
         let app = Submenu::with_items(
-            "rtc-edit",
+            about::NAME,
             true,
             &[
                 &about,
                 &PredefinedMenuItem::separator(),
                 &PredefinedMenuItem::services(None),
                 &PredefinedMenuItem::separator(),
-                &PredefinedMenuItem::hide(None),
+                &PredefinedMenuItem::hide(Some(&format!("Hide {}", about::NAME))),
                 &PredefinedMenuItem::hide_others(None),
                 &PredefinedMenuItem::show_all(None),
                 &PredefinedMenuItem::separator(),
-                &PredefinedMenuItem::quit(None),
+                &PredefinedMenuItem::quit(Some(&format!("Quit {}", about::NAME))),
             ],
         )
         .expect("rtc-edit menu");
@@ -338,7 +341,7 @@ mod tests {
         assert_eq!(label(Command::Follow), "Follow the Viewer");
         assert_eq!(key(Command::Follow), None);
         assert_eq!(key(Command::Keep), Some((cmd, Code::KeyK)));
-        assert_eq!(label(Command::Help), "rtc-edit Help");
+        assert_eq!(label(Command::Help), "RTC Edit Help");
         // macOS keeps Cmd-? for its own Help-menu search.
         assert_eq!(key(Command::Help), None);
     }
@@ -375,6 +378,7 @@ mod tests {
         // AppKit shows `version` as "Version X" and `short_version` in
         // parentheses after it.
         let about = about_metadata();
+        assert_eq!(about.name.as_deref(), Some("RTC Edit"));
         assert_eq!(about.version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
         assert_eq!(about.short_version.as_deref(), Some(about::version()));
         assert_eq!(about.credits.as_deref(), Some(about::CREDITS));

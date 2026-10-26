@@ -1,5 +1,5 @@
 //! `cargo xtask bundle [--install]`, run from `RUST/`: builds
-//! `build/rtc-edit.app` with `rtc-metal.app` in its `Contents/Helpers`,
+//! `build/RTC Edit.app` with `RTC Viewer.app` in its `Contents/Helpers`,
 //! signed ad hoc for this Mac, and with `--install` copies it to
 //! `~/Applications`.
 
@@ -27,7 +27,7 @@ fn main() -> ExitCode {
         .parent()
         .expect("xtask lives in RUST/")
         .to_path_buf();
-    let app_dir = root.join("build/rtc-edit.app");
+    let app_dir = root.join("build/RTC Edit.app");
     if let Err(e) = build(&root, &app_dir) {
         // A half-built bundle must not be mistaken for a good one.
         let _ = fs::remove_dir_all(&app_dir);
@@ -87,6 +87,7 @@ fn build(root: &Path, app_dir: &Path) -> Result<(), String> {
             App {
                 id: "no.sb21.rtc-edit".into(),
                 name: "rtc-edit".into(),
+                display: "RTC Edit".into(),
                 version: version(root, "rtc-edit")?,
             },
             &p.plist,
@@ -97,6 +98,7 @@ fn build(root: &Path, app_dir: &Path) -> Result<(), String> {
             App {
                 id: "no.sb21.rtc-metal".into(),
                 name: "rtc-metal".into(),
+                display: "RTC Viewer".into(),
                 version: version(root, "rtc-metal")?,
             },
             &p.helper_plist,
@@ -169,10 +171,10 @@ fn icon(ppm: &Path, icns: &Path) -> Result<(), String> {
     made
 }
 
-/// Replace `~/Applications/rtc-edit.app` with `app_dir`; where it went.
+/// Replace `~/Applications/RTC Edit.app` with `app_dir`; where it went.
 fn install(app_dir: &Path) -> Result<PathBuf, String> {
     let home = std::env::var_os("HOME").ok_or("install failed: no $HOME")?;
-    let to = PathBuf::from(home).join("Applications/rtc-edit.app");
+    let to = PathBuf::from(home).join("Applications/RTC Edit.app");
     install_to(app_dir, &to)?;
     Ok(to)
 }
