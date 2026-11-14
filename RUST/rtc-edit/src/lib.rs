@@ -4,6 +4,7 @@
 pub mod about;
 pub mod edit;
 pub mod fields;
+pub mod finder;
 pub mod follow;
 pub mod help;
 pub mod history;
