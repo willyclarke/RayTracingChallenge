@@ -23,8 +23,9 @@ The editor grows in milestones:
 - **29 (done):** About with a ray-traced icon and the build; Report an Issue….
 - **30 (done):** a settings file: the scene and image folders and the editor's window.
 - **31 (done):** an app bundle, RTC Edit with RTC Viewer inside.
+- **32 (done):** File ▸ Open Recent, kept in the settings file.
 
-Planned: Open Recent; a scene file type, opened from Finder; the viewer's samples and traversal.
+Planned: a scene file type, opened from Finder; the viewer's samples and traversal.
 
 ## Dependencies
 
@@ -93,6 +94,7 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 | RTC Edit | About RTC Edit, Services, Hide RTC Edit, Hide Others, Show All, Quit RTC Edit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app; About shows the icon, the build (`Version 0.1.0 (<commit> <date>)`, ` dirty` for uncommitted changes) and the credits |
 | File | New | Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
 | File | Open… | Cmd-O | open another scene (a `.json` file) |
+| File | Open Recent ▸ | | the last 10 scenes opened, saved as or launched with, newest first; a name two of them share gets its folder; a moved or deleted scene says "not found" and leaves the list; Clear Menu empties it |
 | File | Save | Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
 | File | Save As… | Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
 | Edit | Undo, Redo | Cmd-Z, Cmd-Shift-Z | undo, redo (see Undo); greyed with nothing to undo or redo |
@@ -252,7 +254,8 @@ rtc-edit and the viewer remember a few things in
 {
   "scene_folder": "/Users/me/rtc/scenes",
   "image_folder": "/Users/me/rtc/renders",
-  "editor_frame": { "x": 0, "y": 25, "width": 900, "height": 640 }
+  "editor_frame": { "x": 0, "y": 25, "width": 900, "height": 640 },
+  "recent_scenes": ["/Users/me/rtc/scenes/pencil.json"]
 }
 ```
 
@@ -262,6 +265,7 @@ rtc-edit and the viewer remember a few things in
   first, `~/rtc/renders`.
 - `editor_frame`: the editor's window when it last closed. A frame that no longer fits its
   screen goes back to the top-left at 900×640.
+- `recent_scenes`: File ▸ Open Recent, newest first, at most 10 absolute paths.
 
 The `~/rtc` folders are made when a panel is about to open in them. Every key is optional,
 a file that isn't a JSON object counts as empty, and keys the programs don't know are kept.
@@ -277,6 +281,7 @@ Delete the file to forget everything.
 | `src/trs.rs` | a transform list as scale, rotation and translation |
 | `src/fields.rs` | the boxes an item has, and writing typed text into the scene |
 | `src/preview.rs` | the preview file and its folder |
+| `src/recent.rs` | the Open Recent list: reading and writing it, adding, removing, and its menu labels |
 | `src/viewer.rs` | finding and running `rtc-metal` |
 | `src/menu.rs` | the menu bar: its commands, their labels and keys, when each is greyed, and the `muda` menus |
 | `src/help.rs` | the help window's page: sections, chips, view |

@@ -29,6 +29,7 @@ use rtc_edit::history::{Group, History};
 use rtc_edit::menu::{self, Command, Menus, State};
 use rtc_edit::paths::{dir_of, panel_dir, rebase, scene_name};
 use rtc_edit::preview::Preview;
+use rtc_edit::recent;
 use rtc_edit::tree::{Node, json, next_row, rows};
 use rtc_edit::viewer::{Viewer, camera_start, exit_source, find, held_fresh, share_path};
 use rtc_edit::windows::{self, Closed, HELP_SIZE, Input, Route, help_position};
@@ -135,6 +136,8 @@ struct Editor {
     history: History,
     /// The menu bar, once the window has opened.
     menus: Option<Menus>,
+    /// File ▸ Open Recent's scenes, newest first.
+    recent: Vec<PathBuf>,
     /// The editor's window.
     main: window::Id,
     /// The help window, while it is open.
@@ -149,6 +152,10 @@ enum Message {
     SaveAs,
     New,
     Open,
+    /// File ▸ Open Recent's entry `n`.
+    OpenRecent(usize),
+    /// File ▸ Open Recent ▸ Clear Menu.
+    ClearRecent,
     ShowViewer,
     Edit(Field, String),
     /// Pasted text, which arrives while Cmd is held.
@@ -277,11 +284,15 @@ fn boot() -> (Editor, Task<Message>) {
         // `switch` below starts the history on the scene it opens.
         history: History::new(&new_scene()),
         menus: None,
+        recent: recent::from_config(&config()),
         main,
         help: None,
     };
     match loaded {
-        Some((desc, path)) => editor.switch(desc, Some(path)),
+        Some((desc, path)) => {
+            editor.switch(desc, Some(path.clone()));
+            editor.note_recent(&path);
+        }
         None => editor.switch(new_scene(), None),
     }
     editor.show_viewer();
@@ -369,9 +380,12 @@ impl Editor {
                 _ => None,
             }
         };
-        if let Some(Err(e)) = sent {
-            self.status = e;
-        }
+        // The old scene's message (saved …, undid: …) doesn't belong to
+        // the new one.
+        self.status = match sent {
+            Some(Err(e)) => e,
+            _ => String::new(),
+        };
         self.desc = desc;
         self.path = path;
         self.folded.clear();
@@ -440,10 +454,56 @@ impl Editor {
         match SceneDescription::from_path(&path) {
             Ok(desc) => {
                 let folder = folder_value(&path);
-                self.switch(desc, Some(path));
+                self.switch(desc, Some(path.clone()));
                 self.remember(rtc_config::SCENE_FOLDER, folder);
+                self.note_recent(&path);
             }
             Err(e) => self.status = format!("{}: {e}", file_name(&path)),
+        }
+    }
+
+    /// File ▸ Open Recent's entry `n`: like Open… without the panel. A
+    /// missing file leaves the list; one that won't load stays on it.
+    fn open_recent(&mut self, n: usize) {
+        let Some(path) = self.recent.get(n).cloned() else {
+            return;
+        };
+        if !path.exists() {
+            self.status = format!("{}: not found", file_name(&path));
+            self.forget_recent(&path);
+            return;
+        }
+        if !self.ask_unsaved() {
+            return;
+        }
+        match SceneDescription::from_path(&path) {
+            Ok(desc) => {
+                self.switch(desc, Some(path.clone()));
+                self.remember(rtc_config::SCENE_FOLDER, folder_value(&path));
+                self.note_recent(&path);
+            }
+            Err(e) => self.status = format!("{}: {e}", file_name(&path)),
+        }
+    }
+
+    /// Put `path` first in Open Recent, on the list as the settings file
+    /// has it now (another editor may have added to it).
+    fn note_recent(&mut self, path: &Path) {
+        self.set_recent(recent::add(&recent::from_config(&config()), path));
+    }
+
+    /// Take `path` off Open Recent.
+    fn forget_recent(&mut self, path: &Path) {
+        self.set_recent(recent::remove(&recent::from_config(&config()), path));
+    }
+
+    /// Store `list` as Open Recent's scenes: in the settings file, here
+    /// and in the menu. A failed write still changes the menu.
+    fn set_recent(&mut self, list: Vec<PathBuf>) {
+        self.remember(rtc_config::RECENT_SCENES, recent::to_value(&list));
+        self.recent = list;
+        if let Some(menus) = &mut self.menus {
+            menus.set_recent(&recent::labels(&self.recent));
         }
     }
 
@@ -992,6 +1052,9 @@ impl Editor {
                 self.rename_preview();
                 let folder = folder_value(self.path.as_deref().unwrap_or(Path::new(".")));
                 self.remember(rtc_config::SCENE_FOLDER, folder);
+                if let Some(path) = self.path.clone() {
+                    self.note_recent(&path);
+                }
                 true
             }
             Err(e) => {
@@ -1143,6 +1206,8 @@ fn menu_message(command: Command, following: bool) -> Message {
         Command::Keep => Message::Keep,
         Command::Help => Message::Help,
         Command::ReportIssue => Message::ReportIssue,
+        Command::OpenRecent(n) => Message::OpenRecent(n),
+        Command::ClearRecent => Message::ClearRecent,
     }
 }
 
@@ -1181,6 +1246,8 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         }
         Message::New => e.new_file(),
         Message::Open => e.open(),
+        Message::OpenRecent(n) => e.open_recent(n),
+        Message::ClearRecent => e.set_recent(Vec::new()),
         Message::ShowViewer => e.show_viewer(),
         Message::Edit(field, value) => {
             // A focused box also takes Cmd-L's `l` as typing, over any
@@ -1332,7 +1399,8 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
                 (e.frame.width, e.frame.height) = (size.width, size.height);
                 track(e.frame);
                 if e.menus.is_none() {
-                    let menus = Menus::new();
+                    let mut menus = Menus::new();
+                    menus.set_recent(&recent::labels(&e.recent));
                     menus.install();
                     set_dock_icon();
                     e.menus = Some(menus);

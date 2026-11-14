@@ -10,6 +10,7 @@ pub mod history;
 pub mod menu;
 pub mod paths;
 pub mod preview;
+pub mod recent;
 pub mod tree;
 pub mod trs;
 pub mod viewer;
