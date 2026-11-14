@@ -380,9 +380,12 @@ impl Editor {
                 _ => None,
             }
         };
-        if let Some(Err(e)) = sent {
-            self.status = e;
-        }
+        // The old scene's message (saved …, undid: …) doesn't belong to
+        // the new one.
+        self.status = match sent {
+            Some(Err(e)) => e,
+            _ => String::new(),
+        };
         self.desc = desc;
         self.path = path;
         self.folded.clear();
