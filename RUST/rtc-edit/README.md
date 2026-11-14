@@ -25,7 +25,8 @@ The editor grows in milestones:
 - **31 (done):** an app bundle, RTC Edit with RTC Viewer inside.
 - **32 (done):** File ▸ Open Recent, kept in the settings file.
 
-Planned: a scene file type, opened from Finder; the viewer's samples and traversal.
+Planned: a scene file type, opened from Finder; the viewer's samples and traversal;
+importing a scene into the current one as a group (File ▸ Import Scene…).
 
 ## Dependencies
 
