@@ -23,6 +23,7 @@ use rtc_edit::edit::{self, Item, ancestors, new_scene};
 use rtc_edit::fields::{
     Field, closed, fields, is_cut, lens_radius, next_box, set_closed, set_remembering,
 };
+use rtc_edit::finder;
 use rtc_edit::follow::Follower;
 use rtc_edit::help;
 use rtc_edit::history::{Group, History};
@@ -156,6 +157,8 @@ enum Message {
     OpenRecent(usize),
     /// File ▸ Open Recent ▸ Clear Menu.
     ClearRecent,
+    /// Files opened from Finder, the Dock or Open With.
+    OpenFiles(Vec<PathBuf>),
     ShowViewer,
     Edit(Field, String),
     /// Pasted text, which arrives while Cmd is held.
@@ -250,6 +253,9 @@ fn boot() -> (Editor, Task<Message>) {
     });
     // SAFETY: registers a plain function with no arguments; it runs once, at exit.
     unsafe { atexit(clean_up) };
+    if let Some(mtm) = MainThreadMarker::new() {
+        finder::install(mtm);
+    }
     let frame = windows::frame_from(&config())
         .unwrap_or(Rectangle::new(Point::ORIGIN, Size::new(WIDTH, HEIGHT)));
     let (main, open) = window::open(window::Settings {
@@ -451,15 +457,7 @@ impl Editor {
             .pick_file();
         self.command = false;
         let Some(path) = picked else { return };
-        match SceneDescription::from_path(&path) {
-            Ok(desc) => {
-                let folder = folder_value(&path);
-                self.switch(desc, Some(path.clone()));
-                self.remember(rtc_config::SCENE_FOLDER, folder);
-                self.note_recent(&path);
-            }
-            Err(e) => self.status = format!("{}: {e}", file_name(&path)),
-        }
+        self.open_path(&path);
     }
 
     /// File ▸ Open Recent's entry `n`: like Open… without the panel. A
@@ -476,13 +474,40 @@ impl Editor {
         if !self.ask_unsaved() {
             return;
         }
-        match SceneDescription::from_path(&path) {
+        self.open_path(&path);
+    }
+
+    /// Files opened from Finder: like Open… without the panel, for the
+    /// first of them; the status line says how many more were not opened.
+    fn open_files(&mut self, paths: Vec<PathBuf>) {
+        let Some(first) = paths.first() else { return };
+        if !self.ask_unsaved() {
+            return;
+        }
+        if self.open_path(first) && paths.len() > 1 {
+            self.status = format!(
+                "{}{}",
+                file_name(first),
+                finder::more_not_opened(paths.len())
+            );
+        }
+    }
+
+    /// Load the scene at `path` in place of this one, remembering its
+    /// folder and putting it first in Open Recent; on failure the error
+    /// goes to the status line and the scene stays. True when it opened.
+    fn open_path(&mut self, path: &Path) -> bool {
+        match SceneDescription::from_path(path) {
             Ok(desc) => {
-                self.switch(desc, Some(path.clone()));
-                self.remember(rtc_config::SCENE_FOLDER, folder_value(&path));
-                self.note_recent(&path);
+                self.switch(desc, Some(path.to_path_buf()));
+                self.remember(rtc_config::SCENE_FOLDER, folder_value(path));
+                self.note_recent(path);
+                true
             }
-            Err(e) => self.status = format!("{}: {e}", file_name(&path)),
+            Err(e) => {
+                self.status = format!("{}: {e}", file_name(path));
+                false
+            }
         }
     }
 
@@ -1248,6 +1273,10 @@ fn handle(e: &mut Editor, message: Message) -> Task<Message> {
         Message::Open => e.open(),
         Message::OpenRecent(n) => e.open_recent(n),
         Message::ClearRecent => e.set_recent(Vec::new()),
+        Message::OpenFiles(paths) => {
+            e.open_files(paths);
+            return window::gain_focus(e.main);
+        }
         Message::ShowViewer => e.show_viewer(),
         Message::Edit(field, value) => {
             // A focused box also takes Cmd-L's `l` as typing, over any
@@ -1490,6 +1519,7 @@ fn subscription(e: &Editor) -> Subscription<Message> {
         iced::event::listen_with(shortcut),
         window::events().map(|(id, event)| Message::Window(id, event)),
         Subscription::run(menu_events),
+        Subscription::run(finder_opens),
     ];
     if e.live
         && let Some(share) = &e.share
@@ -1544,6 +1574,11 @@ fn menu_events() -> UnboundedReceiver<Message> {
         let _ = tx.unbounded_send(Message::MenuEvent(event));
     }));
     rx
+}
+
+/// Files opened from Finder, the Dock or Open With, as they come.
+fn finder_opens() -> impl Stream<Item = Message> {
+    finder::opens().map(Message::OpenFiles)
 }
 
 /// `ViewerExited(pid)` when the viewer `pid` exits, from a GCD proc
