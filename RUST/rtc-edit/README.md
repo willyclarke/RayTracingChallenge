@@ -24,8 +24,10 @@ The editor grows in milestones:
 - **30 (done):** a settings file: the scene and image folders and the editor's window.
 - **31 (done):** an app bundle, RTC Edit with RTC Viewer inside.
 - **32 (done):** File ▸ Open Recent, kept in the settings file.
+- **33 (done):** `.rtc` scene files, opened from Finder.
 
-Planned: a scene file type, opened from Finder; the viewer's samples and traversal.
+Planned: the viewer's samples and traversal; importing a scene into the current one as a
+group (File ▸ Import Scene…).
 
 ## Dependencies
 
@@ -77,9 +79,15 @@ account. Anyone else builds and signs their own the same way; a copy from anothe
 need a Developer ID and notarisation to get past Gatekeeper.
 
 Started from Finder, the Dock or Spotlight, rtc-edit starts with a new scene in `/`, which is
-why the panels start in the [Settings](#settings) folders. Opening a scene from Finder (a
-double-click, a drop on the Dock icon, `open -a rtc-edit x.json`) doesn't work yet: the app
-opens with a new scene.
+why the panels start in the [Settings](#settings) folders.
+
+Scenes are JSON; RTC Edit saves them as `.rtc` files, a type of its own (`no.sb21.rtc.scene`,
+a kind of JSON), so Finder opens them in the editor: a double-click, a drop on the Dock icon,
+`open x.rtc`. `.json` scenes still open and save everywhere; Finder offers RTC Edit for them
+under Open With without taking over their double-click. Opening from Finder works like Open…:
+"Save changes?" first, errors in the status line, the scene first in Open Recent, and the
+editor in front. Of several files opened at once, the first opens and the status line says
+how many more were not.
 
 The editor opens at the top-left of the screen, and each viewer it starts (on opening and
 Cmd-R) opens just right of it, without taking the focus, tops aligned, fitted to the rest of that screen
@@ -92,11 +100,11 @@ The menu bar holds every command, with its key; an item that can't act is greyed
 | menu | item | key | does |
 |---|---|---|---|
 | RTC Edit | About RTC Edit, Services, Hide RTC Edit, Hide Others, Show All, Quit RTC Edit | Cmd-H, Cmd-Opt-H, Cmd-Q | as in any Mac app; About shows the icon, the build (`Version 0.1.0 (<commit> <date>)`, ` dirty` for uncommitted changes) and the credits |
-| File | New | Cmd-N | a new scene, `untitled.json`: the camera, a light and a floor |
-| File | Open… | Cmd-O | open another scene (a `.json` file) |
+| File | New | Cmd-N | a new scene, `untitled.rtc`: the camera, a light and a floor |
+| File | Open… | Cmd-O | open another scene (a `.rtc` or `.json` file) |
 | File | Open Recent ▸ | | the last 10 scenes opened, saved as or launched with, newest first; a name two of them share gets its folder; a moved or deleted scene says "not found" and leaves the list; Clear Menu empties it |
 | File | Save | Cmd-S | save the scene; on an untitled scene it asks where, like Save As |
-| File | Save As… | Cmd-Shift-S | save it elsewhere; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
+| File | Save As… | Cmd-Shift-S | save it elsewhere, suggesting the name with `.rtc`; relative `.obj` and `.ppm` paths are rewritten so they still reach the same files |
 | Edit | Undo, Redo | Cmd-Z, Cmd-Shift-Z | undo, redo (see Undo); greyed with nothing to undo or redo |
 | Edit | Delete | Cmd-Delete | delete the selected shape or light; greyed when it can't go, or while a box is shaded or edited |
 | Scene | Add Sphere … Add Light | | add a sphere, cube, plane, cylinder, cone or light (see Adding and deleting) |
@@ -281,6 +289,7 @@ Delete the file to forget everything.
 | `src/trs.rs` | a transform list as scale, rotation and translation |
 | `src/fields.rs` | the boxes an item has, and writing typed text into the scene |
 | `src/preview.rs` | the preview file and its folder |
+| `src/finder.rs` | scenes opened from Finder: the `application:openURLs:` hook and the queue to the editor |
 | `src/recent.rs` | the Open Recent list: reading and writing it, adding, removing, and its menu labels |
 | `src/viewer.rs` | finding and running `rtc-metal` |
 | `src/menu.rs` | the menu bar: its commands, their labels and keys, when each is greyed, and the `muda` menus |

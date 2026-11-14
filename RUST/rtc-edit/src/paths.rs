@@ -166,11 +166,23 @@ pub fn panel_dir(scene: Option<&Path>, config: &Map<String, Value>) -> PathBuf {
     }
 }
 
-/// A scene's file name, or `untitled.json` for a scene with no file yet.
+/// The extensions Open… and Save As accept, the scene type's first.
+pub const SCENE_EXTENSIONS: [&str; 2] = ["rtc", "json"];
+
+/// A scene's file name, or `untitled.rtc` for a scene with no file yet.
 pub fn scene_name(path: Option<&Path>) -> String {
     path.and_then(Path::file_name)
         .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "untitled.json".into())
+        .unwrap_or_else(|| "untitled.rtc".into())
+}
+
+/// The name Save As suggests: the scene's stem with `.rtc`
+/// (`pencil.json` → `pencil.rtc`, no file → `untitled.rtc`).
+pub fn save_as_name(path: Option<&Path>) -> String {
+    let stem = path
+        .and_then(Path::file_stem)
+        .map_or_else(|| "untitled".into(), |s| s.to_string_lossy());
+    format!("{stem}.rtc")
 }
 
 #[cfg(test)]
@@ -358,9 +370,26 @@ mod tests {
     }
 
     #[test]
+    fn save_as_suggests_the_stem_with_rtc() {
+        assert_eq!(save_as_name(None), "untitled.rtc");
+        assert_eq!(
+            save_as_name(Some(Path::new("/a/pencil.json"))),
+            "pencil.rtc"
+        );
+        assert_eq!(save_as_name(Some(Path::new("/a/pencil.rtc"))), "pencil.rtc");
+        assert_eq!(save_as_name(Some(Path::new("/a/notes"))), "notes.rtc");
+        assert_eq!(save_as_name(Some(Path::new("/a/a.b.json"))), "a.b.rtc");
+    }
+
+    #[test]
+    fn panels_accept_rtc_first_then_json() {
+        assert_eq!(SCENE_EXTENSIONS, ["rtc", "json"]);
+    }
+
+    #[test]
     fn scene_name_is_the_file_name_or_untitled() {
         assert_eq!(scene_name(Some(Path::new("a/b/c.json"))), "c.json");
-        assert_eq!(scene_name(None), "untitled.json");
+        assert_eq!(scene_name(None), "untitled.rtc");
     }
 
     #[test]

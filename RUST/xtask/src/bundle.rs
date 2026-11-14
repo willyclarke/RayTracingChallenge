@@ -10,6 +10,9 @@ pub struct App {
     pub name: String,
     pub display: String,
     pub version: String,
+    /// Whether Finder opens scenes with this app: the `.rtc` type and the
+    /// document types.
+    pub documents: bool,
 }
 
 /// The app's `Info.plist`.
@@ -35,9 +38,58 @@ pub fn info_plist(app: &App) -> String {
     for (k, v) in strings {
         text += &format!("\t<key>{k}</key>\n\t<string>{}</string>\n", escape(v));
     }
+    if app.documents {
+        text += &documents();
+    }
     text += "\t<key>NSHighResolutionCapable</key>\n\t<true/>\n</dict>\n</plist>\n";
     text
 }
+
+/// The `.rtc` scene type RTC Edit declares and owns, and the document
+/// types it opens: its own scenes (Owner) and any JSON (Alternate, so
+/// Open With lists it without taking over double-clicks).
+fn documents() -> String {
+    let s = |v: &str| format!("<string>{}</string>", escape(v));
+    let doc = |name: &str, rank: &str, ty: &str| {
+        format!(
+            "\t\t<dict>\n\
+             \t\t\t<key>CFBundleTypeName</key>{}\n\
+             \t\t\t<key>CFBundleTypeRole</key>{}\n\
+             \t\t\t<key>LSHandlerRank</key>{}\n\
+             \t\t\t<key>LSItemContentTypes</key><array>{}</array>\n\
+             \t\t</dict>\n",
+            s(name),
+            s("Editor"),
+            s(rank),
+            s(ty)
+        )
+    };
+    format!(
+        "\t<key>UTExportedTypeDeclarations</key>\n\
+         \t<array>\n\
+         \t\t<dict>\n\
+         \t\t\t<key>UTTypeIdentifier</key>{}\n\
+         \t\t\t<key>UTTypeDescription</key>{}\n\
+         \t\t\t<key>UTTypeConformsTo</key><array>{}</array>\n\
+         \t\t\t<key>UTTypeTagSpecification</key>\n\
+         \t\t\t<dict>\n\
+         \t\t\t\t<key>public.filename-extension</key><array>{}</array>\n\
+         \t\t\t</dict>\n\
+         \t\t</dict>\n\
+         \t</array>\n\
+         \t<key>CFBundleDocumentTypes</key>\n\
+         \t<array>\n{}{}\t</array>\n",
+        s(SCENE_TYPE),
+        s("RTC Scene"),
+        s("public.json"),
+        s("rtc"),
+        doc("RTC Scene", "Owner", SCENE_TYPE),
+        doc("JSON", "Alternate", "public.json"),
+    )
+}
+
+/// The uniform type identifier of RTC Edit's scene files.
+const SCENE_TYPE: &str = "no.sb21.rtc.scene";
 
 fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -115,7 +167,39 @@ mod tests {
             name: "rtc-edit".into(),
             display: display.into(),
             version: "0.1.0".into(),
+            documents: true,
         }
+    }
+
+    #[test]
+    fn the_editor_plist_declares_the_scene_type() {
+        let text = info_plist(&app("RTC Edit"));
+        for want in [
+            "<key>UTExportedTypeDeclarations</key>",
+            "<string>no.sb21.rtc.scene</string>",
+            "<string>RTC Scene</string>",
+            "<key>UTTypeConformsTo</key>",
+            "<key>public.filename-extension</key>",
+            "<string>rtc</string>",
+            "<key>CFBundleDocumentTypes</key>",
+            "<string>Owner</string>",
+            "<string>Alternate</string>",
+            "<string>public.json</string>",
+            "<string>Editor</string>",
+        ] {
+            assert!(text.contains(want), "{want} missing:\n{text}");
+        }
+        assert!(text.ends_with("</dict>\n</plist>\n"));
+    }
+
+    #[test]
+    fn the_viewer_plist_has_no_document_types() {
+        let text = info_plist(&App {
+            documents: false,
+            ..app("RTC Viewer")
+        });
+        assert!(!text.contains("UTExportedTypeDeclarations"));
+        assert!(!text.contains("CFBundleDocumentTypes"));
     }
 
     #[test]
