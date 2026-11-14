@@ -3,6 +3,7 @@
 
 use crate::about;
 use crate::edit::Item;
+use crate::recent;
 use muda::accelerator::{Accelerator, Code, Modifiers};
 use muda::{
     AboutMetadata, CheckMenuItem, Icon, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu,
@@ -25,9 +26,20 @@ pub enum Command {
     Keep,
     Help,
     ReportIssue,
+    /// File ▸ Open Recent's entry `n`, newest first.
+    OpenRecent(usize),
+    /// File ▸ Open Recent ▸ Clear Menu.
+    ClearRecent,
 }
 
-/// Every command, in menu order.
+/// The ids of Open Recent's entries, one per place on the list.
+const RECENT_IDS: [&str; recent::MAX] = [
+    "recent-0", "recent-1", "recent-2", "recent-3", "recent-4", "recent-5", "recent-6", "recent-7",
+    "recent-8", "recent-9",
+];
+
+/// Every command with a fixed item, in menu order; Open Recent's entries and
+/// Clear Menu come and go with the list.
 pub const ALL: [Command; 19] = [
     Command::New,
     Command::Open,
@@ -72,6 +84,8 @@ pub fn id(command: Command) -> &'static str {
         Command::Keep => "keep",
         Command::Help => "help",
         Command::ReportIssue => "report-issue",
+        Command::OpenRecent(n) => RECENT_IDS[n],
+        Command::ClearRecent => "clear-recent",
     }
 }
 
@@ -97,6 +111,9 @@ pub fn label(command: Command) -> &'static str {
         Command::Keep => "Keep Followed View",
         Command::Help => "RTC Edit Help",
         Command::ReportIssue => "Report an Issue…",
+        // The submenu's title; its entries are labelled by `recent::labels`.
+        Command::OpenRecent(_) => "Open Recent",
+        Command::ClearRecent => "Clear Menu",
     }
 }
 
@@ -117,14 +134,24 @@ pub fn key(command: Command) -> Option<(Modifiers, Code)> {
         Command::Keep => Some((cmd, Code::KeyK)),
         // macOS keeps Cmd-? for its own Help-menu search, which finds this
         // item; a key of ours would never arrive.
-        Command::Add(_) | Command::Follow | Command::Help | Command::ReportIssue => None,
+        Command::Add(_)
+        | Command::Follow
+        | Command::Help
+        | Command::ReportIssue
+        | Command::OpenRecent(_)
+        | Command::ClearRecent => None,
     }
 }
 
 /// The menu the command's item is in.
 pub fn menu_of(command: Command) -> &'static str {
     match command {
-        Command::New | Command::Open | Command::Save | Command::SaveAs => "File",
+        Command::New
+        | Command::Open
+        | Command::Save
+        | Command::SaveAs
+        | Command::OpenRecent(_)
+        | Command::ClearRecent => "File",
         Command::Undo | Command::Redo | Command::Delete => "Edit",
         Command::Add(_) => "Scene",
         Command::Load | Command::StartViewer | Command::Follow | Command::Keep => "Viewer",
@@ -134,7 +161,15 @@ pub fn menu_of(command: Command) -> &'static str {
 
 /// The command a menu item's id names.
 pub fn command(id: &str) -> Option<Command> {
-    ALL.into_iter().find(|&c| self::id(c) == id)
+    ALL.into_iter()
+        .chain([Command::ClearRecent])
+        .find(|&c| self::id(c) == id)
+        .or_else(|| {
+            RECENT_IDS
+                .iter()
+                .position(|&r| r == id)
+                .map(Command::OpenRecent)
+        })
 }
 
 /// What the greying needs to know about the editor.
@@ -163,7 +198,9 @@ pub fn enabled(command: Command, state: &State) -> bool {
         | Command::SaveAs
         | Command::Add(_)
         | Command::Help
-        | Command::ReportIssue => true,
+        | Command::ReportIssue
+        | Command::OpenRecent(_)
+        | Command::ClearRecent => true,
     }
 }
 
@@ -190,6 +227,8 @@ pub struct Menus {
     /// Every item but Follow the Viewer, with its command.
     items: Vec<(Command, MenuItem)>,
     follow: CheckMenuItem,
+    /// File ▸ Open Recent, rebuilt by [`Menus::set_recent`].
+    recent: Submenu,
     /// The state the items were last set for.
     last: Option<State>,
 }
@@ -210,12 +249,10 @@ impl Menus {
             items.push((c, i.clone()));
             i
         };
-        let file = [
-            item(Command::New),
-            item(Command::Open),
-            item(Command::Save),
-            item(Command::SaveAs),
-        ];
+        let new = item(Command::New);
+        let open = item(Command::Open);
+        let save = item(Command::Save);
+        let save_as = item(Command::SaveAs);
         let edit = [
             item(Command::Undo),
             item(Command::Redo),
@@ -265,26 +302,53 @@ impl Menus {
             let items: Vec<&dyn IsMenuItem> = items.iter().map(|i| i as &dyn IsMenuItem).collect();
             Submenu::with_items(name, true, &items).expect(name)
         };
+        let recent = Submenu::new(label(Command::OpenRecent(0)), true);
+        let file = Submenu::with_items("File", true, &[&new, &open, &recent, &save, &save_as])
+            .expect("File menu");
         let viewer = Submenu::with_items("Viewer", true, &[&load, &start, &follow, &keep])
             .expect("Viewer menu");
         let help = submenu("Help", &help);
         let menu = Menu::new();
         menu.append_items(&[
             &app,
-            &submenu("File", &file),
+            &file,
             &submenu("Edit", &edit),
             &submenu("Scene", &scene),
             &viewer,
             &help,
         ])
         .expect("menu bar");
-        Menus {
+        let mut menus = Menus {
             menu,
             help,
             items,
             follow,
+            recent,
             last: None,
+        };
+        menus.set_recent(&[]);
+        menus
+    }
+
+    /// Fill File ▸ Open Recent: one entry per label, newest first, then
+    /// Clear Menu, greyed when there are none.
+    pub fn set_recent(&mut self, labels: &[String]) {
+        while self.recent.remove_at(0).is_some() {}
+        for (id, text) in RECENT_IDS.iter().zip(labels) {
+            let _ = self
+                .recent
+                .append(&MenuItem::with_id(*id, text, true, None));
         }
+        if !labels.is_empty() {
+            let _ = self.recent.append(&PredefinedMenuItem::separator());
+        }
+        let clear = Command::ClearRecent;
+        let _ = self.recent.append(&MenuItem::with_id(
+            id(clear),
+            label(clear),
+            !labels.is_empty(),
+            None,
+        ));
     }
 
     /// Make it the app's menu bar; once, when the window has opened.
@@ -447,5 +511,27 @@ mod tests {
                 assert!(enabled(c, &state), "{c:?}");
             }
         }
+    }
+
+    #[test]
+    fn recent_ids_map_back_only_in_range() {
+        assert_eq!(command("recent-0"), Some(Command::OpenRecent(0)));
+        assert_eq!(command("recent-9"), Some(Command::OpenRecent(9)));
+        assert_eq!(command("clear-recent"), Some(Command::ClearRecent));
+        for bad in ["recent-10", "recent-", "recent-x", "recent--1"] {
+            assert_eq!(command(bad), None, "{bad}");
+        }
+        assert_eq!(id(Command::OpenRecent(3)), "recent-3");
+    }
+
+    #[test]
+    fn recent_commands_are_file_items_outside_all() {
+        for c in [Command::OpenRecent(0), Command::ClearRecent] {
+            assert!(!ALL.contains(&c), "{c:?}");
+            assert_eq!(menu_of(c), "File");
+            assert_eq!(key(c), None);
+            assert!(enabled(c, &State::default()), "{c:?}");
+        }
+        assert_eq!(label(Command::ClearRecent), "Clear Menu");
     }
 }
