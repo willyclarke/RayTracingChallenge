@@ -27,7 +27,7 @@ use rtc_edit::follow::Follower;
 use rtc_edit::help;
 use rtc_edit::history::{Group, History};
 use rtc_edit::menu::{self, Command, Menus, State};
-use rtc_edit::paths::{dir_of, panel_dir, rebase, scene_name};
+use rtc_edit::paths::{SCENE_EXTENSIONS, dir_of, panel_dir, rebase, save_as_name, scene_name};
 use rtc_edit::preview::Preview;
 use rtc_edit::recent;
 use rtc_edit::tree::{Node, json, next_row, rows};
@@ -447,7 +447,7 @@ impl Editor {
         }
         let picked = rfd::FileDialog::new()
             .set_directory(self.panel_dir())
-            .add_filter("scene", &["json"])
+            .add_filter("scene", &SCENE_EXTENSIONS)
             .pick_file();
         self.command = false;
         let Some(path) = picked else { return };
@@ -1024,8 +1024,8 @@ impl Editor {
         let dir = self.dir();
         let picked = rfd::FileDialog::new()
             .set_directory(self.panel_dir())
-            .set_file_name(self.name())
-            .add_filter("scene", &["json"])
+            .set_file_name(save_as_name(self.path.as_deref()))
+            .add_filter("scene", &SCENE_EXTENSIONS)
             .save_file();
         // The key-up of Cmd went to the dialog.
         self.command = false;
