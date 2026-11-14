@@ -19,6 +19,8 @@ pub const SCENE_FOLDER: &str = "scene_folder";
 pub const IMAGE_FOLDER: &str = "image_folder";
 /// The editor window's `{x, y, width, height}` when it last closed.
 pub const EDITOR_FRAME: &str = "editor_frame";
+/// Scenes opened or saved last, newest first, as absolute paths.
+pub const RECENT_SCENES: &str = "recent_scenes";
 
 /// The file under the home folder `home`.
 pub fn path_in(home: &Path) -> PathBuf {
